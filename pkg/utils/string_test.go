@@ -1,0 +1,56 @@
+package utils
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func Test_IncludesString(t *testing.T) {
+	assert.True(t, IncludesString("a", []string{"a", "b", "c"}))
+	assert.False(t, IncludesString("d", []string{"a", "b", "c"}))
+}
+
+func Test_FindOverlap(t *testing.T) {
+	exp := []string{"a"}
+	got := FindOverlap([]string{"a", "d"}, []string{"a", "b", "c"})
+	assert.Equal(t, exp, got)
+}
+
+func Test_FindMissingInSecond(t *testing.T) {
+	exp := []string{"a"}
+	got := FindMissingInSecond([]string{"a", "b", "c"}, []string{"b", "c"})
+	assert.Equal(t, exp, got)
+}
+
+func Test_StringUnion(t *testing.T) {
+	a := []string{"a", "b", "c"}
+	b := []string{"A", "B", "C"}
+	exp := []string{"a", "b", "c", "A", "B", "C"}
+	got := StringUnion(a, b)
+	assert.Equal(t, exp, got)
+}
+
+func Test_shortenDigest(t *testing.T) {
+	tests := []struct {
+		input string
+		exp   string
+	}{
+		{"sha256:a3ed95caeb02ffe68cdd9fd84406680ae93d633cb16422d00e8a7c22955b46d4", "a3ed95cae"},
+		{"latest1234", "latest123"},
+		{"latest", "latest"},
+	}
+	for _, test := range tests {
+		got := ShortenDigest(test.input)
+		res := []string{}
+		if got != test.exp {
+			res = append(res, fmt.Sprintf("(input:'%-56s' EXP: '%s' // GOT: '%s' >> ", test.input, test.exp, got))
+		}
+		if len(res) > 0 {
+			t.Error(t, strings.Join(res, "\n"))
+		}
+	}
+
+}
