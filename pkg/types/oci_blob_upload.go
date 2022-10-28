@@ -10,6 +10,7 @@ type OCIBlobUpload struct {
 	NeoID      int64     `json:"neo_id"`
 	SqlID      int64     `json:"sql_id"`
 	UUID       uuid.UUID `json:"uuid"`
+	Data       []byte    `json:"-"`
 	UploadedBy string    `json:"uploaded_by"`
 	CreatedAt  time.Time `json:"created_at"`
 	FinishedAt time.Time `json:"finished_at"`

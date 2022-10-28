@@ -11,7 +11,7 @@ import (
 
 func Test_ManifestFromBlob(t *testing.T) {
 	SetupTest("cfg:generic")
-	defer TeardownTest("cfg:generic")
+	defer TeardownTest("")
 	mani, err := min.NewManifestFromBytes(featureTestGenericMani)
 	assert.NoError(t, err)
 	assert.Equal(t, "application/vnd.docker.distribution.manifest.v2+json", mani.MediaType)
@@ -41,7 +41,7 @@ func Test_Manifest_RemoveManifestAliases(t *testing.T) {
 }
 func Test_Manifest_PutStatRemove(t *testing.T) {
 	SetupTest("cfg:generic")
-	defer TeardownTest("cfg:generic")
+	defer TeardownTest("")
 	// Test
 	ctx := context.Background()
 	err := min.ManifestsPutObj(ctx, featureTestGenericManiDigest, []byte(featureTestGenericMani))

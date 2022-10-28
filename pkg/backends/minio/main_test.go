@@ -2,10 +2,13 @@ package minio
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
+	"github.com/metahub-registry/metahub-core/pkg/types"
 )
 
 var (
@@ -65,8 +68,13 @@ var (
 		"rootfs":{
 			"type":"layers",
 			"diff_ids":["sha256:8d3ac3489996423f53d6087c81180006263b79f206d3fdec9e66f0e27ceb8759","sha256:aff8eba572d7cf1d51ae8245ac42189a896b0d0f069ad5f130795916ade7587a"]}}`)
-	cfgBlobs = map[string][]byte{
-		featureTestGenericCfgDigest: featureTestGenericCfg,
+	BlobUp_FeaturetestGeneric = types.OCIBlobUpload{
+		Digest:     featureTestGenericCfgDigest,
+		UUID:       uuid.New(),
+		UploadedBy: "test",
+		Repo:       "qnib/featuretest",
+		BlobType:   "config",
+		Data:       featureTestGenericCfg,
 	}
 )
 
@@ -101,28 +109,36 @@ func TestMain(m *testing.M) {
 
 func TeardownTest(bootstrap string) {
 	logrus.Info("> TeardownTest")
+	err := min.EmptyAll()
+	if err != nil {
+		logrus.Fatal(err)
+	}
 	switch bootstrap {
-	case "cfg:generic":
-		err := min.ConfigRemoveObj(ctx, featureTestGenericCfgDigest)
-		if err != nil {
-			logrus.Fatal(err)
-		}
+	case "":
+	default:
+		err := fmt.Errorf("No teardown for '%s'", bootstrap)
+		logrus.Fatal(err)
 	}
 }
 
 func SetupTest(bootstrap string) (err error) {
 	logrus.Info("> SetupTest")
 	switch bootstrap {
+	case "":
 	case "cfg:generic":
 		err := min.PutConfig(ctx, featureTestGenericCfg, featureTestGenericCfgDigest)
 		if err != nil {
 			logrus.Fatal(err)
 		}
-	case "mani:generic":
-		err := min.PutConfig(ctx, featureTestGenericCfg, featureTestGenericCfgDigest)
-		if err != nil {
-			logrus.Fatal(err)
-		}
+	/*
+		case "mani:generic":
+			err := min.PutConfig(ctx, featureTestGenericCfg, featureTestGenericCfgDigest)
+			if err != nil {
+				logrus.Fatal(err)
+			}
+	*/
+	default:
+		return fmt.Errorf("No bootstrap for '%s'", bootstrap)
 	}
 	return
 }

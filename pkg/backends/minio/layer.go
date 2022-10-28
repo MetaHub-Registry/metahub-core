@@ -90,6 +90,7 @@ func (m Minio) LayerGetBytes(ctx context.Context, path string) (b []byte, err er
 	l := logrus.WithFields(logrus.Fields{
 		"package": "backends/minio",
 		"func":    "LayerGetBytes",
+		"path":    path,
 	})
 	cli := m.BucketConfig[layersBucketKey].Client
 	obj, err := cli.GetObject(ctx, m.GetLayersBucketName(), path, minio.GetObjectOptions{})
@@ -101,6 +102,7 @@ func (m Minio) LayerGetBytes(ctx context.Context, path string) (b []byte, err er
 	b, e := io.ReadAll(obj)
 	if e != nil {
 		if e.Error() == "The specified key does not exist." {
+			l.Error("")
 			return nil, e
 		}
 		err = errors.Wrap(e, "failed to read layer")
