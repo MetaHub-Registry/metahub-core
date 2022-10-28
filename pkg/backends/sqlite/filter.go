@@ -55,6 +55,30 @@ func (f Filter) createFilterTable() (err error) {
 	return
 }
 
+func (f Filter) GetFilter(fltr types.Filter) (filterID int64, found bool, err error) {
+	q := `SELECT id FROM filters WHERE label = ?`
+	stmt, err := db.Prepare(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	rows, err := stmt.Query(fltr.Label)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	defer rows.Close()
+	if rows.Next() {
+		err = rows.Scan(&fltr.SqlID)
+		if err != nil {
+			logrus.Error(err)
+		}
+		filterID = fltr.SqlID
+		found = true
+	}
+	return
+}
+
 func (f Filter) createProfileFilterXTable() (err error) {
 	tableName := "profile_filter"
 	q := fmt.Sprintf(`PRAGMA table_info(%s)`, tableName)
