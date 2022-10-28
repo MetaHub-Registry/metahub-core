@@ -2,6 +2,7 @@ package magazine
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
@@ -20,6 +21,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
+	defer minioC.Terminate(ctx)
 	configsBucketKey := minio.GetConfigsBucketKey()
 	layersBucketKey := minio.GetLayersBucketKey()
 	manifestsBucketKey := minio.GetManifestsBucketKey()
@@ -55,6 +57,28 @@ func TestMain(m *testing.M) {
 	}
 	code := m.Run()
 	os.Exit(code)
-	defer minioC.Terminate(ctx)
 	logrus.Info("End TestMain")
+}
+
+func TeardownTest(bootstrap string) {
+	logrus.Info("> TeardownTest")
+	err := mag.Minio.EmptyAll()
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	err = mag.SQlite.EmptyData()
+	if err != nil {
+		logrus.Fatal(err)
+	}
+}
+
+func SetupTest(bootstrap string) (err error) {
+	logrus.Info("> SetupTest")
+	switch bootstrap {
+	case "":
+	default:
+		err = fmt.Errorf("No teardown for '%s'", bootstrap)
+		return err
+	}
+	return
 }

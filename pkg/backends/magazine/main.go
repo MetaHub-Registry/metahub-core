@@ -6,10 +6,12 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/metahub-registry/metahub-core/pkg/backends/minio"
+	"github.com/metahub-registry/metahub-core/pkg/backends/neo"
 	"github.com/metahub-registry/metahub-core/pkg/backends/sqlite"
 )
 
 type Magazine struct {
+	Neo    neo.Neo
 	Minio  minio.Minio
 	SQlite sqlite.Sqlite
 }
