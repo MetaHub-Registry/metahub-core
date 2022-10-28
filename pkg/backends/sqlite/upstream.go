@@ -3,6 +3,7 @@ package sqlite
 import (
 	"fmt"
 
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 )
@@ -23,7 +24,7 @@ func (u Upstream) CreateTables() (err error) {
 	}
 	defer rows.Close()
 	if rows.Next() {
-		logrus.Infof("Table '%s' already exists!", tableName)
+		//logrus.Infof("Table '%s' already exists!", tableName)
 		return
 	}
 	s := `CREATE TABLE IF NOT EXISTS %s (
@@ -58,5 +59,59 @@ func (u Upstream) Insert(i *types.Upstream) (err error) {
 		logrus.Fatal(err)
 	}
 	i.SqlID, err = res.LastInsertId()
+	return
+}
+
+func (up Upstream) GetByRequest(res *types.Upstream) (found bool, err error) {
+	q := `SELECT id FROM main.upstreams 
+		WHERE reg="metahub-registry.org" AND repo="%s" AND tag="%s";`
+	query := fmt.Sprintf(q, res.Repo, res.Tag)
+	rows, err := db.Query(query)
+	if err != nil {
+
+		logrus.Error(err)
+		return false, err
+	}
+	for rows.Next() {
+		found = true
+		err = rows.Scan(&res.SqlID)
+	}
+	return
+}
+
+func (up Upstream) GetCreateByRequest(r types.Request) (u types.Upstream, err error) {
+	tag := r.Tag
+	if r.Profile != "" {
+		tag = fmt.Sprintf("%s-%s", r.Tag, r.Profile)
+	}
+	u = types.Upstream{
+		Reg:  "metahub-registry.org",
+		Repo: r.Repo,
+		Tag:  tag,
+	}
+
+	found, err := up.GetByRequest(&u)
+	if err != nil {
+		return u, err
+	}
+	if found {
+		return u, err
+	}
+	// Create Upstream
+	q := `INSERT INTO main.upstreams (reg, repo, tag) VALUES ("metahub-registry.org", ?, ?);`
+	stmt, err := db.Prepare(q)
+	if err != nil {
+		err = errors.Wrap(err, "failed to db.Prepare")
+
+		logrus.Error(err)
+		return
+	}
+	res, err := stmt.Exec(u.Repo, u.Tag)
+	if err != nil {
+		err = errors.Wrap(err, "failed to stmt.Exec")
+		logrus.Error(err)
+		return
+	}
+	u.SqlID, err = res.LastInsertId()
 	return
 }

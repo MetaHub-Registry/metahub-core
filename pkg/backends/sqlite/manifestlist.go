@@ -16,6 +16,19 @@ type ManifestList struct {
 	Platforms map[string]Platform `json:"platform"`
 }
 
+type mlRes struct {
+	ColID    int    `json:"collection_id"`
+	MlID     int    `json:"manifest_list_id"`
+	ColRepo  string `json:"collection_repo"`
+	ColTag   string `json:"collection_tag"`
+	MLDigest string `json:"manifest_list_digest"`
+	MlDigest string `json:"manifest_digest"`
+	UpReg    string `json:"upstream_reg"`
+	UpRepo   string `json:"upstream_repo"`
+	UpTag    string `json:"upstream_tag"`
+	Profile  string `json:"profile"`
+}
+
 func (ml ManifestList) CreateTables() (err error) {
 	err = ml.createManifestlistTable()
 	if err != nil {
@@ -72,7 +85,7 @@ func (ml ManifestList) createManifestListXTable() (err error) {
 	}
 	defer rows.Close()
 	if rows.Next() {
-		logrus.Infof("Table '%s' already exists!", tableName)
+		//logrus.Infof("Table '%s' already exists!", tableName)
 		return
 	}
 	s := `CREATE TABLE IF NOT EXISTS %s (
@@ -106,7 +119,7 @@ func (ml ManifestList) createManifestlistTable() (err error) {
 	}
 	defer rows.Close()
 	if rows.Next() {
-		logrus.Infof("Table '%s' already exists!", tableName)
+		//logrus.Infof("Table '%s' already exists!", tableName)
 		return
 	}
 	s := `CREATE TABLE IF NOT EXISTS %s (
@@ -166,6 +179,45 @@ func (ml ManifestList) Insert(i *types.ManifestList) (err error) {
 		if err != nil {
 			logrus.Error(err)
 			return
+		}
+	}
+	return
+}
+
+func (ml ManifestList) GetTypesManifestListByRequest(req types.Request) (res types.ManifestList, found bool, err error) {
+	q := fmt.Sprintf(`SELECT DISTINCT colID,colRepo,colTag,manifestlistDigest,manifestlistID FROM v_get_manifestlist WHERE colRepo="%s" AND colTag="%s" AND profileName="%s"`, req.Repo, req.Tag, req.Profile)
+	if req.Tag == "" {
+		q = fmt.Sprintf(`SELECT DISTINCT colID,colRepo,colTag,manifestlistDigest,manifestlistID FROM v_get_manifestlist WHERE colRepo="%s" AND manifestlistDigest="%s" AND profileName="%s"`, req.Repo, req.Digest, req.Profile)
+	}
+	rows, err := db.Query(q)
+	if err != nil {
+		logrus.Error(err)
+	}
+	// BootStrap the ML
+	res = types.ManifestList{
+		Digest:        "",
+		SchemaVersion: 2,
+		MediaType:     "application/vnd.docker.distribution.manifest.list.v2+json",
+		Manifests:     []types.Manifest{},
+	}
+	for rows.Next() {
+		found = true
+		r := mlRes{}
+		err = rows.Scan(
+			&r.ColID,
+			&r.ColRepo,
+			&r.ColTag,
+			&r.MlDigest,
+			&r.MlID,
+		)
+		if err != nil {
+			logrus.Error(err)
+			continue
+		}
+		res.SqlID = int64(r.MlID)
+		if res.Digest == "" {
+			// First row
+			res.Digest = r.MlDigest
 		}
 	}
 	return

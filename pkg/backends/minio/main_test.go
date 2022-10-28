@@ -2,22 +2,16 @@ package minio
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-const (
-	minioAccessKey = "minio"
-	minioSecretKey = "miniominio"
+var (
+	min Minio
+	ctx = context.Background()
 )
-
-var min Minio
 
 var (
 	featureTestGenericManiDigest = "sha256:9a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b"
@@ -76,19 +70,6 @@ var (
 	}
 )
 
-func newBucketConfig(bucket, url string) BucketConfig {
-	bc := BucketConfig{
-		URL:      url,
-		Region:   "us-east-1",
-		User:     minioAccessKey,
-		Password: minioSecretKey,
-		Redirect: false,
-		Ssl:      false,
-		Bucket:   bucket,
-	}
-	return bc
-}
-
 func TestMain(m *testing.M) {
 	logrus.Info("Start TestMain")
 	ctx := context.Background()
@@ -96,72 +77,52 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	cfgName := "../../../misc/config/metahub-admin.yaml"
-	min, err = NewMinio(cfgName)
+
+	logrus.Warnf("Minio: %v", min)
+	bc := map[string]BucketConfig{
+		configsBucketKey:   NewBucketConfig(configsBucketKey, minioC.HttpURI),
+		layersBucketKey:    NewBucketConfig(layersBucketKey, minioC.HttpURI),
+		manifestsBucketKey: NewBucketConfig(manifestsBucketKey, minioC.HttpURI),
+	}
+	min, err = NewMiniWithCfg(bc)
 	if err != nil {
 		logrus.Fatal(err)
-	}
-	logrus.Warnf("Minio: %v", min)
-	min.BucketConfig = map[string]BucketConfig{
-		configsBucketKey:   newBucketConfig(configsBucketKey, minioC.HttpURI),
-		layersBucketKey:    newBucketConfig(layersBucketKey, minioC.HttpURI),
-		manifestsBucketKey: newBucketConfig(manifestsBucketKey, minioC.HttpURI),
 	}
 	err = min.ConnectClients()
 	if err != nil {
 		logrus.Fatal(err)
 	}
 	min.BucketCheck()
-	for dig, blob := range cfgBlobs {
-		min.PutConfig(ctx, blob, dig)
-	}
+	defer minioC.Terminate(ctx)
 	code := m.Run()
 	os.Exit(code)
 	logrus.Info("End TestMain")
 }
 
-type MinioContainer struct {
-	testcontainers.Container
-	HttpURI    string
-	ConsoleURI string
+func TeardownTest(bootstrap string) {
+	logrus.Info("> TeardownTest")
+	switch bootstrap {
+	case "cfg:generic":
+		err := min.ConfigRemoveObj(ctx, featureTestGenericCfgDigest)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+	}
 }
 
-func SetupMinio(ctx context.Context) (*MinioContainer, error) {
-	req := testcontainers.ContainerRequest{
-		Image:        "quay.io/minio/minio:RELEASE.2022-08-02T23-59-16Z",
-		ExposedPorts: []string{"9000/tcp", "9001/tcp"},
-		WaitingFor:   wait.ForHTTP("/minio/health/live").WithPort("9000"),
-		Env: map[string]string{
-			"MINIO_ROOT_USER":     minioAccessKey,
-			"MINIO_ROOT_PASSWORD": minioSecretKey,
-		},
-		Cmd: []string{"server", "/data", "--console-address=0.0.0.0:9001"},
+func SetupTest(bootstrap string) (err error) {
+	logrus.Info("> SetupTest")
+	switch bootstrap {
+	case "cfg:generic":
+		err := min.PutConfig(ctx, featureTestGenericCfg, featureTestGenericCfgDigest)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+	case "mani:generic":
+		err := min.PutConfig(ctx, featureTestGenericCfg, featureTestGenericCfgDigest)
+		if err != nil {
+			logrus.Fatal(err)
+		}
 	}
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	time.Sleep(time.Second * 3)
-	ip, err := container.Host(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	httpPort, err := container.MappedPort(ctx, "9000")
-	if err != nil {
-		return nil, err
-	}
-	consolePort, err := container.MappedPort(ctx, "9001")
-	if err != nil {
-		return nil, err
-	}
-
-	httpUri := fmt.Sprintf("%s:%s", ip, httpPort.Port())
-	consoleUri := fmt.Sprintf("%s:%s", ip, consolePort.Port())
-
-	return &MinioContainer{Container: container, HttpURI: httpUri, ConsoleURI: consoleUri}, nil
+	return
 }

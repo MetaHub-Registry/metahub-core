@@ -69,7 +69,9 @@ func (m Minio) PutManifest(ctx context.Context, b []byte, up upstream.UpstreamTr
 		attribute.Key("tag").String(up.Tag),
 	)
 	defer span.End()
-	err = m.ManifestsPutObj(ctx, filepath.Join(aliasPrefix, up.GetObjPath()), up.ToBytes())
+	aliasPath := filepath.Join(aliasPrefix, up.GetObjPath())
+	l.Warnf("aliasPath: %s", aliasPath)
+	err = m.ManifestsPutObj(ctx, aliasPath, up.ToBytes())
 	if err != nil {
 		l.Error(err)
 		return err
@@ -95,7 +97,6 @@ func RawManifestFromBlob(b []byte) (mani manifest.Manifest, err error) {
 	}
 	return
 }
-
 func (m Minio) NewManifestFromBytes(b []byte) (mani types.Manifest, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"packrusage": "backend/minio/manifest.go",
@@ -110,6 +111,7 @@ func (m Minio) NewManifestFromBytes(b []byte) (mani types.Manifest, err error) {
 	bInfo := cntMani.ConfigInfo()
 	// TODO: Is deriving digest from byte safe?
 	maniDig := digest.FromBytes(b)
+	l.Error("maniDig: ", maniDig)
 	mani = types.Manifest{
 		MediaType: mt,
 		Digest:    maniDig.String(),
@@ -119,6 +121,7 @@ func (m Minio) NewManifestFromBytes(b []byte) (mani types.Manifest, err error) {
 	if err != nil {
 		err = errors.Wrapf(err, "failed to inspect manifest")
 		l.Error(err)
+		return
 	}
 	mani.Config = types.Config{
 		Digest:    bInfo.Digest.String(),
@@ -184,6 +187,7 @@ func (m Minio) ManifestGetObj(ctx context.Context, path string) (mani types.Mani
 	b, e := io.ReadAll(obj)
 	if e != nil {
 		logrus.Error(e)
+		return
 	}
 	mani, err = m.NewManifestFromBytes(b)
 	if err != nil {
@@ -200,7 +204,12 @@ func (m Minio) GetManifestViaPath(ctx context.Context, path string) (mani types.
 		"path":       path,
 	})
 	cli := m.BucketConfig[manifestsBucketKey].Client
-
+	_, err = cli.StatObject(ctx, m.GetManifestsBucketName(), path, minio.StatObjectOptions{})
+	if err != nil {
+		err = errors.Wrapf(err, "StatObject %s", path)
+		l.Error(err)
+		return
+	}
 	obj, err := cli.GetObject(ctx, m.GetManifestsBucketName(), path, minio.GetObjectOptions{})
 	if err != nil {
 		l.Errorf("Error getting manifest via path: %s", err)
@@ -221,9 +230,16 @@ func (m Minio) GetManifestViaPath(ctx context.Context, path string) (mani types.
 }
 
 func (m Minio) ManifestsStatObj(ctx context.Context, object string) (obj minio.ObjectInfo, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"packrusage": "backend/minio/manifest.go",
+		"func":       "ManifestsStatObj",
+		"object":     object,
+	})
+	_ = l
 	bucket := m.GetManifestsBucketName()
 	cli := m.BucketConfig[manifestsBucketKey].Client
-	return cli.StatObject(ctx, bucket, object, minio.StatObjectOptions{})
+	obj, err = cli.StatObject(ctx, bucket, object, minio.StatObjectOptions{})
+	return
 }
 
 func (m Minio) ManifestsPutObj(ctx context.Context, object string, data []byte) (err error) {

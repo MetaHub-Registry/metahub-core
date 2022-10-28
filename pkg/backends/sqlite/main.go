@@ -17,6 +17,7 @@ type Sqlite struct {
 	MhFile       string
 	UsrFile      string
 	Sql          *sql.DB
+	BlobUpload   BlobUpload
 	User         User
 	Token        Token
 	Profile      Profile
@@ -32,6 +33,8 @@ type Sqlite struct {
 
 func New(mhFile string, tables string) (s Sqlite, err error) {
 	s = Sqlite{
+		MhFile:       mhFile,
+		BlobUpload:   BlobUpload{},
 		User:         User{},
 		Token:        Token{},
 		Config:       Config{},
@@ -57,6 +60,10 @@ func New(mhFile string, tables string) (s Sqlite, err error) {
 func (s Sqlite) Close() {
 	db.Close()
 
+}
+
+func (s Sqlite) Query(q string) (*sql.Rows, error) {
+	return db.Query(q)
 }
 
 func (s Sqlite) createViews(tables string) (err error) {
@@ -89,11 +96,43 @@ func (s Sqlite) createViews(tables string) (err error) {
 	return
 }
 
+func (s Sqlite) EmptyData() (err error) {
+	skipTable := set.FromSlice([]string{"users", "profiles", "filters", "profile_filter"})
+	logrus.Infof("Empty SQlite DB (except %s)", strings.Join(skipTable.Values(), "/"))
+	q := `SELECT name FROM  sqlite_schema WHERE type ='table' AND name NOT LIKE 'sqlite_%';`
+	rows, err := db.Query(q)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	tables := []string{}
+	for rows.Next() {
+		var name string
+		err = rows.Scan(&name)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+		tables = append(tables, name)
+	}
+	rows.Close()
+	for _, table := range tables {
+		if skipTable.Has(table) {
+			logrus.Debugf(">> SKIP table %s", table)
+			continue
+		}
+		logrus.Debugf(">> Empty table %s", table)
+		_, err = db.Exec("DELETE FROM " + table)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+	}
+	return
+}
+
 func (s *Sqlite) createDB(mhFile string, tables string) (err error) {
 	if tables == "none" {
 		return
 	}
-	logrus.Info(">> Create User databases")
+	logrus.Infof(">> Create User databases: %s", mhFile)
 	db, err = sql.Open("sqlite3", mhFile)
 	checkErr(err, "while opening user-sqlite3")
 	tbls := []string{}
@@ -104,6 +143,10 @@ func (s *Sqlite) createDB(mhFile string, tables string) (err error) {
 	}
 	t := set.FromSlice(tbls)
 	// Create tables
+	if len(tables) == 0 || t.Has("blob-upload") {
+		err = s.BlobUpload.CreateTables()
+		checkErr(err, "while creating blob-upload")
+	}
 	if len(tables) == 0 || t.Has("users") {
 		err = s.User.CreateTables()
 		checkErr(err, "while creating user-tables")

@@ -24,6 +24,8 @@ type Request struct {
 }
 
 func NewRequest(r *http.Request) Request {
+	//dumpedReq, _ := httputil.DumpRequest(r, false)
+	//logrus.Errorf("Request:#### \n%s\n####", dumpedReq)
 	parRepo, parImg, parRef := extractRepoName(r)
 	var tag string
 	dig := r.FormValue("digest")
