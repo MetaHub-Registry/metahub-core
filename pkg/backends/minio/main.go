@@ -3,6 +3,7 @@ package minio
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"reflect"
 
@@ -19,6 +20,17 @@ const (
 	configsBucketKey   = "configs"
 )
 
+func GetLayersBucketKey() string {
+	return layersBucketKey
+}
+
+func GetManifestsBucketKey() string {
+	return manifestsBucketKey
+}
+func GetConfigsBucketKey() string {
+	return configsBucketKey
+}
+
 type BucketConfig struct {
 	Client   *minio.Client
 	URL      string
@@ -32,6 +44,13 @@ type BucketConfig struct {
 
 type Minio struct {
 	BucketConfig map[string]BucketConfig
+}
+
+func NewMiniWithCfg(cfg map[string]BucketConfig) (m Minio, err error) {
+	m = Minio{
+		BucketConfig: cfg,
+	}
+	return
 }
 
 func NewMinio(cfgFile string) (m Minio, err error) {
@@ -170,6 +189,35 @@ func (m Minio) BucketCheck() (err error) {
 			}
 		} else {
 			logrus.Debugf("Bucket '%s' exists", bc.Bucket)
+		}
+	}
+	return
+}
+
+func (m Minio) EmptyAll() (err error) {
+	logrus.Info("Emptying all buckets")
+	for _, bc := range m.BucketConfig {
+		logrus.Infof(">> Emptying bucket '%s'", bc.Bucket)
+		objectsCh := make(chan minio.ObjectInfo)
+
+		// Send object names that are needed to be removed to objectsCh
+		go func() {
+			defer close(objectsCh)
+			// List all objects from a bucket-name with a matching prefix.
+			for object := range bc.Client.ListObjects(context.Background(), bc.Bucket, minio.ListObjectsOptions{}) {
+				if object.Err != nil {
+					log.Fatalln(object.Err)
+				}
+				objectsCh <- object
+			}
+		}()
+
+		opts := minio.RemoveObjectsOptions{
+			GovernanceBypass: true,
+		}
+
+		for rErr := range bc.Client.RemoveObjects(context.Background(), bc.Bucket, objectsCh, opts) {
+			fmt.Println("Error detected during deletion: ", rErr)
 		}
 	}
 	return

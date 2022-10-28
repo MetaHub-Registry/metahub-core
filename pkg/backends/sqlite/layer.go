@@ -23,7 +23,7 @@ func (l Layer) CreateTables() (err error) {
 	}
 	defer rows.Close()
 	if rows.Next() {
-		logrus.Infof("Table '%s' already exists!", tableName)
+		//logrus.Infof("Table '%s' already exists!", tableName)
 		return
 	}
 	s := `CREATE TABLE IF NOT EXISTS %s (
@@ -44,6 +44,44 @@ func (l Layer) CreateTables() (err error) {
 	return
 }
 
+func (l Layer) LayerGetByDigest(dig string) (layer types.Layer, found bool, err error) {
+	// Already exists?
+	q := fmt.Sprintf(`SELECT digest, media_type, size FROM layers WHERE digest="%s"`, dig)
+	rows, err := db.Query(q)
+	if err != nil {
+		logrus.Error(err)
+	}
+	type Res struct {
+		Digest    string
+		MediaType string
+		Size      int64
+	}
+	for rows.Next() {
+		if found {
+			logrus.Errorf("found more than one layer with digest: %s", dig)
+			found = false
+			return
+		}
+		r := Res{}
+		err = rows.Scan(
+			&r.Digest,
+			&r.MediaType,
+			&r.Size,
+		)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		layer = types.Layer{
+			Digest:    r.Digest,
+			MediaType: r.MediaType,
+			Size:      r.Size,
+		}
+		found = true
+	}
+	return
+}
+
 func (l Layer) GetID(digest string) (id int64, err error) {
 	q := fmt.Sprintf(`SELECT id FROM layers WHERE digest="%s"`, digest)
 	rows, err := db.Query(q)
@@ -54,10 +92,9 @@ func (l Layer) GetID(digest string) (id int64, err error) {
 	if rows.Next() {
 		err = rows.Scan(&id)
 		return
-	} else {
-		return 0, fmt.Errorf("no ID found for digest '%s'", digest)
 	}
-	return
+	return 0, fmt.Errorf("no ID found for digest '%s'", digest)
+
 }
 
 func (l Layer) Upsert(i *types.Layer) (err error) {

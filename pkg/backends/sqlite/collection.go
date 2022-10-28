@@ -299,7 +299,7 @@ func (c Collection) createCollectionTable() (err error) {
 	}
 	defer rows.Close()
 	if rows.Next() {
-		logrus.Infof("Table '%s' already exists!", tableName)
+		//logrus.Infof("Table '%s' already exists!", tableName)
 		return
 	}
 	s := `CREATE TABLE IF NOT EXISTS %s (
@@ -329,7 +329,7 @@ func (c Collection) createCollectionXTable() (err error) {
 	}
 	defer rows.Close()
 	if rows.Next() {
-		logrus.Infof("Table '%s' already exists!", tableName)
+		//logrus.Infof("Table '%s' already exists!", tableName)
 		return
 	}
 	s := `CREATE TABLE IF NOT EXISTS %s (
@@ -393,6 +393,140 @@ func (c Collection) InsertXTable(colID, mlID int64) (err error) {
 	if err != nil {
 		logrus.Error(err)
 		return
+	}
+	return
+}
+
+func (c *Collection) GetInsertCollectionByRepoTag(repo, tag string) (col types.Collection, err error) {
+	col, err = c.GetCollectionByRepoTag(repo, tag)
+	if col.SqlID == -1 {
+		// Collection does not exist, thus we create it
+		err = c.Insert(&col)
+	}
+	return
+}
+
+func (c *Collection) GetCollectionsByRepoLike(repo string) (cols []Collection, err error) {
+	cols = []Collection{}
+	q := fmt.Sprintf(`SELECT
+		colID,
+		colRepo,
+		colTag,
+		maniID,
+		upstreamReg,
+		upstreamRepo,
+		upstreamTag,
+		os,
+		arch,
+		variant,
+		features,
+		profile
+	FROM
+		main.v_get_collections WHERE colRepo LIKE '%s%%';`, repo)
+	rows, err := db.Query(q)
+	if err != nil {
+		logrus.Error(err)
+	}
+	col := Collection{
+		ID: 0,
+	}
+	for rows.Next() {
+		cRes := colRes{}
+		err = rows.Scan(
+			&cRes.ColID,
+			&cRes.ColRepo,
+			&cRes.ColTag,
+			&cRes.ManiID,
+			&cRes.UpReg,
+			&cRes.UpRepo,
+			&cRes.UpTag,
+			&cRes.OS,
+			&cRes.Arch,
+			&cRes.Variant,
+			&cRes.Features,
+			&cRes.Profile,
+		)
+		if err != nil {
+			logrus.Error(err)
+		}
+		if col.ID != int64(cRes.ColID) {
+			if col.ID != 0 {
+				// In case it is not 0 it holds the previous collection, thus we add it
+				cols = append(cols, col)
+			}
+			col = Collection{
+				ID:            int64(cRes.ColID),
+				Repo:          cRes.ColRepo,
+				Tag:           cRes.ColTag,
+				Manifests:     map[string]Manifest{},
+				ManifestCount: 0,
+			}
+		}
+		// Add the manifest to the collection
+		m := Manifest{
+			ID: int64(cRes.ManiID),
+			Upstream: Upstream{
+				Reg:  cRes.UpReg,
+				Repo: cRes.UpRepo,
+				Tag:  cRes.UpTag,
+			},
+		}
+		key := fmt.Sprintf("%s/%s:%s", cRes.UpReg, cRes.UpRepo, cRes.UpTag)
+		col.Manifests[key] = m
+		col.ManifestCount++
+		//fmt.Printf("%+v\n", cRes)
+	}
+	cols = append(cols, col)
+
+	return
+}
+
+func (c *Collection) GetCollectionByRepoTag(repo, tag string) (col types.Collection, err error) {
+	q := fmt.Sprintf(`SELECT id FROM collections WHERE repo = '%s' AND tag = "%s";`, repo, tag)
+	rows, err := db.Query(q)
+	if err != nil {
+		logrus.Error(err)
+	}
+	if err != nil {
+		logrus.Error(err)
+	}
+	col = types.Collection{
+		SqlID:         -1,
+		Repo:          repo,
+		Tag:           tag,
+		ManifestLists: []types.ManifestList{},
+	}
+	var id int64
+	if rows.Next() {
+		err = rows.Scan(&id)
+		if err != nil {
+			logrus.Error(err)
+		}
+		col.SqlID = id
+	}
+	return
+}
+
+func (c Collection) GetTagsListByRepo(repo string) (res types.TagResponse, err error) {
+	q := fmt.Sprintf(`SELECT DISTINCT colTag FROM main.v_get_collections WHERE colRepo="%s" ORDER BY colTag;`, repo)
+	rows, err := db.Query(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	res = types.TagResponse{
+		Name: repo,
+		Tags: []string{},
+	}
+	// TODO: add pagination https://docs.docker.com/registry/spec/api/#pagination-1
+	for rows.Next() {
+		var tag string
+		err = rows.Scan(&tag)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		res.Tags = append(res.Tags, tag)
 	}
 	return
 }

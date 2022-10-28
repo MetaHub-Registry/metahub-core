@@ -25,7 +25,7 @@ func (p Profile) createTable() (err error) {
 	}
 	defer rows.Close()
 	if rows.Next() {
-		logrus.Infof("Table '%s' already exists!", tableName)
+		//logrus.Infof("Table '%s' already exists!", tableName)
 		return
 	}
 	q = `CREATE TABLE IF NOT EXISTS %s (

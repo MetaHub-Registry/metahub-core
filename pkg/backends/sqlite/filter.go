@@ -35,7 +35,7 @@ func (f Filter) createFilterTable() (err error) {
 	}
 	defer rows.Close()
 	if rows.Next() {
-		logrus.Infof("Table '%s' already exists!", tableName)
+		//logrus.Infof("Table '%s' already exists!", tableName)
 		return
 	}
 	s := `CREATE TABLE IF NOT EXISTS %s (
@@ -64,7 +64,7 @@ func (f Filter) createProfileFilterXTable() (err error) {
 	}
 	defer rows.Close()
 	if rows.Next() {
-		logrus.Infof("Table '%s' already exists!", tableName)
+		//logrus.Infof("Table '%s' already exists!", tableName)
 		return
 	}
 	s := `CREATE TABLE IF NOT EXISTS %s (
