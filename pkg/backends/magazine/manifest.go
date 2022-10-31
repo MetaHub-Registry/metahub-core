@@ -2,7 +2,9 @@ package magazine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 
 	"github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
@@ -65,12 +67,12 @@ func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani typ
 			logrus.Error(err)
 			return mani, err
 		}
-		sB, err := rawMani.Serialize()
+		/*sB, err := rawMani.Serialize()
 		if err != nil {
 			logrus.Error(err)
 		}
 		logrus.Fatal("CachManifest: ", string(sB))
-
+		*/
 		switch blob.MediaType {
 		case "application/vnd.docker.distribution.manifest.v1+prettyjws":
 			err = fmt.Errorf("manifest type is not supported: %s", blob.MediaType)
@@ -151,4 +153,131 @@ func (mag Magazine) NeoLinkManifestToLayer(ctx context.Context, maniID, lID int6
 
 func (mag Magazine) NeoLinkManifestToPlatform(ctx context.Context, maniID, platID int64) (err error) {
 	return mag.Neo.LinkManifestToPlatform(ctx, maniID, platID)
+}
+
+func (mag Magazine) Manifest_GetByHTTPRequest(r *http.Request) (m types.Manifest, found bool, err error) {
+	req := types.NewRequest(r)
+	msg := fmt.Sprintf("%-5s ManifestHandler(%s, ", r.Method, req.Repo)
+	if req.Tag == "" {
+		msg += fmt.Sprintf("%s)", req.Digest)
+	} else {
+		msg += fmt.Sprintf("%s)", req.Tag)
+	}
+	if req.Profile != "generic" {
+		msg += fmt.Sprintf(" - profile: %s", req.Profile)
+	}
+	logrus.Info(msg)
+	m, found, err = mag.Manifest_GetByRequest(req)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func (mag Magazine) Manifest_GetByRequest(req types.Request) (m types.Manifest, found bool, err error) {
+	ctx := context.Background()
+	// Fetch Manifest from SQLite
+	m, found, err = mag.SQlite.Manifest.GetTypesManifestByRequest(req)
+	if err != nil {
+		err = errors.Wrap(err, "failed to get Manifest from SQLite")
+		return
+	}
+	if !found {
+		return
+	}
+	m, err = mag.Minio.ManifestGetObj(ctx, m.Digest)
+	return
+}
+
+func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani types.Manifest, err error) {
+	ctx := context.Background()
+	ociMani := types.OCIManifest{}
+	err = json.Unmarshal(buf, &ociMani)
+	if err != nil {
+		logrus.Fatal("request", err)
+	}
+	dig := digest.FromBytes(buf)
+	if req.Digest != "" && req.Digest != dig.String() {
+		err = fmt.Errorf("digest mismatch: %s != %s", req.Digest, dig.String())
+		return
+	}
+	err = mag.Minio.ManifestsPutObj(ctx, dig.String(), buf)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	logrus.Infof("Manifest: %v", ociMani)
+	mani = types.Manifest{
+		Digest:    dig.String(),
+		MediaType: ociMani.MediaType,
+		Data:      buf,
+		Size:      int64(len(buf)),
+	}
+	// Fetch/Create Upstream
+	mani.Upstream, err = mag.SQlite.Upstream.GetCreateByRequest(req)
+	if err != nil {
+		err = errors.Wrap(err, "failed to Upstream.GetCreateByRequest")
+		return
+	}
+	// Fetch Config
+	mani.Config, err = mag.SQlite.Config.GetCreateByRequest(ociMani)
+	if err != nil {
+		err = errors.Wrap(err, "failed to Config.GetCreateByRequest")
+		return
+	}
+	/// Extract Platform
+	cfg, found, err := mag.Minio.GetConfig(ctx, mani.Config.Digest)
+	if err != nil {
+		err = errors.Wrap(err, "failed to get Config from Minio")
+		return
+	}
+	if !found {
+		err = errors.New("config not found")
+		return
+	}
+	if cfg.Architecture == "" {
+		logrus.Infof("cfg: %v", cfg)
+		logrus.Fatal("architecture should not be empty")
+	}
+	plat := types.Platform{
+		Arch:    cfg.Architecture,
+		OS:      cfg.OS,
+		Variant: cfg.Variant,
+	}
+	err = mag.SQlite.InsertRelation(req, &plat)
+	if err != nil {
+		err = errors.Wrap(err, "failed to Platform.GetCreate")
+		return
+	}
+	logrus.Warnf("Platform: %v", plat)
+	mani.Platform = plat
+	// Add Manifest to SQLite
+	//// The Manifest is suffixed with the profile to make it unique
+	err = mag.SQlite.Manifest.GetInsert(&mani)
+	if err != nil {
+		err = errors.Wrap(err, "failed to SQlite.Manifest.Insert")
+		return
+	}
+	// Collection & ManifestList
+	//// Fetch current collection or create new one
+	col, err := mag.SQlite.Collection.GetInsertCollectionByRepoTag(req.Repo, req.Tag)
+	if err != nil {
+		err = errors.Wrap(err, "failed to SQlite.Collection.GetInsertCollectionByRepoTag")
+		return
+	}
+	/*// TODO: Augment ManifestList to collection
+	err = mag.AddMLtoCollection(&col)
+	if err != nil {
+		err = errors.Wrap(err, "failed to SQlite.Collection.GetInsertCollectionByRepoTag")
+		return
+	}
+	// TODO: Add Manifest to ManifestList (which is linked to Collection)
+	for _, ml := range col.ManifestLists {
+		b := ml.ToOCIBytes()
+		logrus.Warnf("ManifestList: %s", string(b))
+	}*/
+	logrus.Fatalf("Col: %d // ManiID: %d", col.SqlID, mani.SqlID)
+	//mani.SqlID
+	///// Once the Manifest is added it should also be added to a collection by the same name (without the suffix)
+	return
 }
