@@ -4,20 +4,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/docker/distribution"
 	"github.com/opencontainers/go-digest"
+	v1 "github.com/regclient/regclient/types/oci/v1"
 	"github.com/sirupsen/logrus"
 )
 
 type Config struct {
-	NeoID     int64  `json:"neo_id"`
-	SqlID     int64  `json:"sql_id"`
-	Data      []byte `json:"-"`
-	Digest    string `json:"digest"`
-	Label     string `json:"label"`
-	MediaType string `json:"media_type"`
-	Size      int64  `json:"size"`
+	NeoID     int64    `json:"neo_id"`
+	SqlID     int64    `json:"sql_id"`
+	Data      []byte   `json:"-"`
+	Digest    string   `json:"digest"`
+	Label     string   `json:"label"`
+	MediaType string   `json:"media_type"`
+	Size      int64    `json:"size"`
+	Cfg       v1.Image `json:"cfg"`
 }
 
 func NewConfigFromBytes(data []byte) (res Config, err error) {
@@ -25,11 +28,26 @@ func NewConfigFromBytes(data []byte) (res Config, err error) {
 		"packrusage": "types/config.go",
 		"func":       "NewConfigFromBytes",
 	})
-	err = json.Unmarshal(data, &res)
+	err = json.Unmarshal(data, &res.Cfg)
 	if err != nil {
 		l.Error(err)
 	}
+	errs := []string{}
+	if res.Cfg.Architecture == "" {
+		errs = append(errs, "architecture")
+	}
+	if res.Cfg.OS == "" {
+		errs = append(errs, "os")
+	}
+	if len(errs) > 0 {
+		err = fmt.Errorf("config object has missing fields: %s", strings.Join(errs, ", "))
+		l.Error(err)
+		return
+	}
+	res.MediaType = "application/vnd.docker.container.image.v1+json"
+	res.Digest = digest.FromBytes(data).String()
 	res.Data = data
+	res.Size = int64(len(data))
 	return
 }
 

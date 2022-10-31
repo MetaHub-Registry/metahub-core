@@ -3,6 +3,7 @@ package magazine
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 
 	"github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
@@ -93,6 +94,35 @@ func (mag Magazine) NeoInsertConfig(ctx context.Context, cfg types.Config, up ty
 		if err != nil {
 			return
 		}
+	}
+	return
+}
+
+func (mag Magazine) ConfigBlob_GetByHTTPRequest(r *http.Request) (cfg types.Config, found bool, err error) {
+	ctx := context.Background()
+	req := types.NewRequest(r)
+	return mag.Minio.GetTypesConfig(ctx, req.Digest)
+}
+
+func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUpload, buf []byte) (err error) {
+	// TODO: Wait; we are getting the actual config, not only the descriptor
+
+	// Store Blob
+	err = mag.Minio.PutConfig(ctx, buf, bu.Digest)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	// Insert Layer into SQLite
+	l := types.Config{
+		Digest:    bu.Digest,
+		MediaType: "application/vnd.docker.container.image.v1+json",
+		Size:      int64(len(buf)),
+	}
+	err = mag.SQlite.Config.Upsert(&l)
+	if err != nil {
+		logrus.Error(err)
+		return
 	}
 	return
 }
