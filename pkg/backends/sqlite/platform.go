@@ -139,19 +139,21 @@ func (p Platform) Upsert(i *types.Platform) (err error) {
 
 func (p Platform) InsertPlatformFilter(pfp types.ProfileFilterPlatform) (err error) {
 	if pfp.Platform.SqlID == 0 {
-		logrus.Fatal("Platform.SqlID is 0")
+		return fmt.Errorf("Platform.SqlID is 0")
 	}
 	if pfp.Filter.SqlID == 0 {
-		logrus.Fatal("Filter.SqlID is 0")
+		return fmt.Errorf("Filter.SqlID is 0")
 	}
 
-	stmt, err := db.Prepare("INSERT INTO platform_filter (platform_id, filter_id) VALUES (?, ?)")
+	q := "INSERT INTO platform_filter (platform_id, filter_id) VALUES (?, ?)"
+	stmt, err := db.Prepare(q)
+
 	if err != nil {
-		logrus.Fatal(err)
+		return err
 	}
 	_, err = stmt.Exec(pfp.Platform.SqlID, pfp.Filter.SqlID)
 	if err != nil {
-		logrus.Fatal(err)
+		return err
 	}
 	return
 }

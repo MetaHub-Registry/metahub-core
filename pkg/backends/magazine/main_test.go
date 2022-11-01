@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -11,6 +12,9 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/backends/minio"
 	"github.com/metahub-registry/metahub-core/pkg/backends/sqlite"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"github.com/metahub-registry/metahub-core/pkg/yaml/config"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var mag Magazine
@@ -102,28 +106,138 @@ func TestMain(m *testing.M) {
 	logrus.Info("End TestMain")
 }
 
-func TeardownTest(bootstrap string) {
+func TeardownTest(bs utils.Bootstrap) {
 	logrus.Info("> TeardownTest")
+	if bs.CopySqlite != "" {
+		logrus.Infof("Copy SQlite DB to '%s'", bs.CopySqlite)
+		mag.SQlite.Close()
+		utils.CopyFile(mag.SQlite.MhFile, bs.CopySqlite)
+		err := mag.SQlite.ReOpenDB()
+		if err != nil {
+			logrus.Fatal(err)
+		}
+	}
 	err := mag.Minio.EmptyAll()
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	err = mag.SQlite.EmptyData()
+	err = mag.SQlite.EmptyData(bs.SqlEmptyAll)
 	if err != nil {
 		logrus.Fatal(err)
 	}
 }
 
-func SetupTest(bootstrap string) (err error) {
+func SetupTest(bs utils.Bootstrap) (err error) {
 	logrus.Info("> SetupTest")
-	switch bootstrap {
-	case "":
-	case "cfg:generic":
-		err = mag.StoreLayerUpload(ctx, &BlobUp_FeaturetestGeneric, BlobUp_FeaturetestGeneric.Data)
-		return
-	default:
-		err = fmt.Errorf("No teardown for '%s'", bootstrap)
-		return err
+	for _, b := range bs.Bootstraps {
+		logrus.Errorf("SetupTest: %s", b)
+		switch b {
+		case "":
+		case "collection:qnib/featuretest":
+			Setup_Collection_QNIB_FeatureTest()
+		case "users":
+			Setup_Profiles()
+		case "profiles":
+			Setup_Profiles()
+		case "cfg:generic":
+			Setup_FTarm_Config()
+		default:
+			err = fmt.Errorf("No teardown for '%s'", b)
+			return err
+		}
 	}
 	return
+}
+
+func Setup_FTarm_Config() {
+	bu, b := types.FT_arm_BlobUpload_Config()
+	err := mag.StoreBlobUpload(ctx, &bu, b)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+}
+
+func Setup_Users() {
+	logrus.Warn("Setup Users")
+	usrs, err := config.FindUsers(ctx, "../../../misc/yaml/users")
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	for _, user := range usrs {
+		u := types.User{
+			Username:  user.Username,
+			FirstName: user.FirstName,
+			LastName:  user.LastName,
+			Email:     user.Email,
+		}
+		switch {
+		case (user.Hash != "") && (user.Password != ""):
+			logrus.Errorf("User '%s' has both 'hash' and 'password' set. Please remove one of them.", user.Username)
+			continue
+		case user.Hash != "":
+			u.PasswordHash = user.Hash
+		case user.Password != "":
+			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), 12)
+			if err != nil {
+				logrus.Errorf("Error while hashing password for user '%s': %s", user.Username, err)
+				continue
+			}
+			u.PasswordHash = string(hashedPassword)
+		}
+		err := mag.InsertUser(ctx, u)
+		if err != nil {
+			logrus.Error(err)
+		}
+	}
+}
+
+func Setup_Profiles() {
+	logrus.Warn("Setup_Profiles")
+	prfs, err := config.FindProfiles(ctx, "../../../misc/yaml/profiles")
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	for _, prf := range prfs {
+		f := types.Filter{
+			Label: prf.Name,
+		}
+		feats := []string{}
+		for _, act := range prf.Actions {
+			for k, v := range act.Args {
+				if k == "value" {
+					feats = append(feats, v.(string))
+				}
+			}
+		}
+		f.Feature = strings.Join(feats, ",")
+		msg := fmt.Sprintf("# Profile: %s", f.Label)
+		if len(f.Feature) > 0 {
+			msg += fmt.Sprintf(" [%s]", f.Feature)
+		}
+		logrus.Info(msg)
+		fID, err := mag.SQliteInsertFilter(ctx, f)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+		logrus.Infof("Filter '%s' created with ID: %d", f.Label, fID)
+		// Profile
+		p := types.Profile{
+			Name: prf.Name,
+		}
+		prfId, err := mag.SQliteInsertProfile(ctx, p)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+		logrus.Infof("Profile '%s' created with ID: %d", p.Name, prfId)
+		err = mag.SQliteLinkProfileToFilter(ctx, prfId, fID)
+		if err != nil {
+			logrus.Error(err)
+			continue
+		}
+	}
+}
+
+func Setup_Collection_QNIB_FeatureTest() {
+	logrus.Warn("Setup_Collection_QNIB_FeatureTest")
+
 }

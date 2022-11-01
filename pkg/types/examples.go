@@ -25,6 +25,24 @@ func ManifestReferenceByte_FT_arm() []byte {
 	  }`)
 }
 
+func Example_Platform_amd64() Platform {
+	return Platform{
+		Arch:     "amd64",
+		OS:       "linux",
+		Variant:  "",
+		Features: "",
+	}
+}
+
+func Example_Platform_broadwell() Platform {
+	return Platform{
+		Arch:     "amd64",
+		OS:       "linux",
+		Variant:  "",
+		Features: "cpu:broadwell",
+	}
+}
+
 func FT_arm_ConfigByte() []byte {
 	// read file and return bytes
 	dat, err := f.ReadFile("data/cfg/cf5c26263929e84d7373d23b2692222cceceb3175b3325b183ead2ab6b5a5ce3.dat")
@@ -34,20 +52,66 @@ func FT_arm_ConfigByte() []byte {
 	return dat
 }
 
-func FT_arm_Manifest() Manifest {
-	dat, err := f.ReadFile("data/manifests/ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5.dat")
-	if err != nil {
-		panic(err)
-	}
+func FT_arm_Config() Config {
 	cfg, _ := NewConfigFromBytes(FT_arm_ConfigByte())
-	l0 := FT_arm_Layer0Reference()
-	l1 := FT_arm_Layer1Reference()
-	up := Upstream{
+	return cfg
+}
+
+func FT_arm_Upstream_Generic() Upstream {
+	return Upstream{
 		Reg:    "registry.gitlab.com",
 		Repo:   "qnib-pub-containers/qnib/plain-featuretest",
 		Tag:    "20220715-arm64-generic",
 		Digest: digest.Digest("sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5"),
 	}
+}
+
+func FT_arm_Upstream() Upstream {
+	return Upstream{
+		Reg:    "registry.gitlab.com",
+		Repo:   "qnib-pub-containers/qnib/plain-featuretest",
+		Tag:    "20220715-arm64-generic",
+		Digest: digest.Digest("sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5"),
+	}
+}
+func FT_arm_Collection() Collection {
+	return Collection{
+		Repo: "qnib/featuretest",
+		Tag:  "latest",
+		ManifestLists: []ManifestList{
+			FT_generic_arm_Manifestlist(),
+		},
+	}
+}
+
+func FT_generic_arm_Manifestlist() ManifestList {
+	dat, err := f.ReadFile("data/manifestlists/d46f2503b600eac6066ba46c034425096087875de9480334b3471347d14bf227.dat")
+	if err != nil {
+		panic(err)
+	}
+	dig := digest.FromBytes(dat).String()
+	if dig != "sha256:d46f2503b600eac6066ba46c034425096087875de9480334b3471347d14bf227" {
+		panic("digest mismatch")
+	}
+	return ManifestList{
+		SchemaVersion: 2,
+		Digest:        dig,
+		MediaType:     "application/vnd.docker.distribution.manifest.list.v2+json",
+		Manifests: []Manifest{
+			FT_arm_Manifest(),
+		},
+	}
+}
+
+func FT_arm_Manifest() Manifest {
+	dat, err := f.ReadFile("data/manifests/ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5.dat")
+	if err != nil {
+		panic(err)
+	}
+	cfg := FT_arm_Config()
+	l0 := FT_arm_Layer0Reference()
+	l1 := FT_arm_Layer1Reference()
+	up := FT_arm_Upstream()
 	mani := Manifest{
 		Digest:    string(digest.FromBytes(dat)),
 		Size:      735,
@@ -70,7 +134,6 @@ func FT_arm_Manifest() Manifest {
 }
 
 // Layer
-
 func FT_arm_Layer0Reference() distribution.Descriptor {
 	return distribution.Descriptor{
 		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
@@ -103,4 +166,28 @@ func FT_arm_Layer1Byte() []byte {
 		panic(err)
 	}
 	return dat
+}
+
+func FT_arm_BlobUpload_Layer0() (OCIBlobUpload, []byte) {
+	r := FT_arm_Layer0Reference()
+	bu := OCIBlobUpload{
+		UploadedBy: "test",
+		BlobType:   "layer",
+		BlobID:     1,
+		Repo:       "qnib/featuretest",
+		Digest:     r.Digest.String(),
+	}
+	return bu, FT_arm_Layer0Byte()
+}
+
+func FT_arm_BlobUpload_Config() (OCIBlobUpload, []byte) {
+	cfg := FT_arm_Config()
+	bu := OCIBlobUpload{
+		UploadedBy: "test",
+		BlobType:   "config",
+		BlobID:     1,
+		Repo:       "qnib/featuretest",
+		Digest:     cfg.Digest,
+	}
+	return bu, FT_arm_ConfigByte()
 }

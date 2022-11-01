@@ -28,27 +28,24 @@ type User struct {
 
 // / SQlite specific methods
 func (s Sqlite) InsertUser(ctx context.Context, u types.User) (userID int64, err error) {
-	q := `INSERT INTO users (user_name, email, first_name, last_name, password_hash, user_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
+	q := `INSERT INTO users (user_name, email, first_name, last_name, password_hash, user_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 	stmt, err := db.Prepare(q)
 	if err != nil {
-		logrus.Error(err)
 		return
 	}
-	res, err := stmt.Exec(u.Username, u.Email, u.FirstName, u.LastName, u.PasswordHash, u.Active, time.Now())
+	res, err := stmt.Exec(u.Username, u.Email, u.FirstName, u.LastName, u.PasswordHash, u.Active, time.Now(), time.Now())
 	if err != nil {
-		logrus.Error(err)
 		return
 	}
 	userID, err = res.LastInsertId()
 	if err != nil {
-		logrus.Error(err)
 		return
 	}
 	u.SqlID = userID
 	return
 }
 
-func (s Sqlite) LoginUser(username, profile, password string) (err error) {
+func (s Sqlite) LoginUser(username, password string) (err error) {
 	logrus.Debug(">> LoginUser")
 	// check login and return token
 	u, err := s.User.GetByUsername(username)
@@ -57,8 +54,6 @@ func (s Sqlite) LoginUser(username, profile, password string) (err error) {
 	}
 	match, err := u.PasswordMatches(password)
 	if err != nil {
-		err = errors.Wrap(err, "when matching password")
-		logrus.Error(err)
 		return fmt.Errorf("error when matching passwords")
 	}
 	if !match {
@@ -105,6 +100,7 @@ func (u User) CreateTables() (err error) {
 	return
 }
 
+// / That needs some improvement
 func (u *User) GetAccessToken(token string) (at *types.AccessToken, err error) {
 	return &types.AccessToken{
 		Token: token,
@@ -112,16 +108,16 @@ func (u *User) GetAccessToken(token string) (at *types.AccessToken, err error) {
 }
 
 // GetAll returns a slice of all users, sorted by last name
-func (u *User) GetAll() ([]*User, error) {
+/*func (u *User) GetAll() ([]*User, error) {
 	ctx := context.Background()
 
-	query := `select id, email, first_name, last_name, password, user_active, created_at, updated_at,
-	CASE 
+	query := `select id, email, first_name, last_name, password_hash, user_active, created_at, updated_at,
+	CASE
 		WHEN (SELECT COUNT(id) FROM tokens t WHERE user_id = users.id AND t.expiry > NOW()) > 0 THEN 1
 		ELSE 0
     END AS has_token
 	FROM users ORDER BY last_name`
-
+	logrus.Warn(query)
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
@@ -151,7 +147,7 @@ func (u *User) GetAll() ([]*User, error) {
 	}
 
 	return users, nil
-}
+}*/
 
 // GetByEmail returns one user by email
 func (u *User) GetByUsername(username string) (*User, error) {
@@ -184,7 +180,7 @@ func (u *User) GetByUsername(username string) (*User, error) {
 func (u *User) GetByEmail(email string) (*User, error) {
 	ctx := context.Background()
 
-	query := `SELECT id, username, email, first_name, last_name, password, user_active, created_at, updated_at FROM users WHERE email = $1`
+	query := `SELECT id, user_name, email, first_name, last_name, password_hash, user_active, created_at, updated_at FROM users WHERE email = $1`
 
 	var user User
 	row := db.QueryRowContext(ctx, query, email)
@@ -212,7 +208,7 @@ func (u *User) GetByEmail(email string) (*User, error) {
 func (u *User) GetOne(id int) (*User, error) {
 	ctx := context.Background()
 
-	query := `select id, username, email, first_name, last_name, password, user_active, created_at, updated_at from users where id = $1`
+	query := `select id, user_name, email, first_name, last_name, password_hash, user_active, created_at, updated_at from users where id = $1`
 
 	var user User
 	row := db.QueryRowContext(ctx, query, id)
@@ -294,36 +290,6 @@ func (u *User) DeleteByID(id int) error {
 	return nil
 }
 
-// Insert inserts a new user into the datbase, and returns the ID of the newly inserted row
-func (u *User) Insert(user User) (int, error) {
-	ctx := context.Background()
-
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.PasswordHash), 12)
-	if err != nil {
-		return 0, err
-	}
-
-	var newID int
-	stmt := `insert into users (username, email, first_name, last_name, password, user_active, created_at, updated_at)
-		values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`
-	err = db.QueryRowContext(ctx, stmt,
-		user.UserName,
-		user.Email,
-		user.FirstName,
-		user.LastName,
-		hashedPassword,
-		user.Active,
-		time.Now(),
-		time.Now(),
-	).Scan(&newID)
-
-	if err != nil {
-		return 0, err
-	}
-
-	return newID, nil
-}
-
 // ResetPassword is the method we will use to change a user's password.
 func (u *User) ResetPassword(password string) error {
 	ctx := context.Background()
@@ -333,7 +299,7 @@ func (u *User) ResetPassword(password string) error {
 		return err
 	}
 
-	stmt := `update users set password = $1 where id = $2`
+	stmt := `update users set password_hash = $1 where id = $2`
 	_, err = db.ExecContext(ctx, stmt, hashedPassword, u.ID)
 	if err != nil {
 		return err

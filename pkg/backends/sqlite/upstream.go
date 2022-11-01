@@ -3,6 +3,7 @@ package sqlite
 import (
 	"fmt"
 
+	"github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
@@ -85,9 +86,13 @@ func (up Upstream) GetCreateByRequest(r types.Request) (u types.Upstream, err er
 		tag = fmt.Sprintf("%s-%s", r.Tag, r.Profile)
 	}
 	u = types.Upstream{
-		Reg:  "metahub-registry.org",
-		Repo: r.Repo,
-		Tag:  tag,
+		Reg:    "metahub-registry.org",
+		Repo:   r.Repo,
+		Tag:    tag,
+		Digest: digest.Digest(""),
+	}
+	if r.Digest != "" {
+		u.Digest = digest.Digest(r.Digest)
 	}
 
 	found, err := up.GetByRequest(&u)
@@ -98,7 +103,7 @@ func (up Upstream) GetCreateByRequest(r types.Request) (u types.Upstream, err er
 		return u, err
 	}
 	// Create Upstream
-	q := `INSERT INTO main.upstreams (reg, repo, tag) VALUES ("metahub-registry.org", ?, ?);`
+	q := `INSERT INTO main.upstreams (reg, repo, tag, digest) VALUES ("metahub-registry.org", ?, ?, ?);`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		err = errors.Wrap(err, "failed to db.Prepare")
@@ -106,7 +111,7 @@ func (up Upstream) GetCreateByRequest(r types.Request) (u types.Upstream, err er
 		logrus.Error(err)
 		return
 	}
-	res, err := stmt.Exec(u.Repo, u.Tag)
+	res, err := stmt.Exec(u.Repo, u.Tag, u.Digest)
 	if err != nil {
 		err = errors.Wrap(err, "failed to stmt.Exec")
 		logrus.Error(err)
