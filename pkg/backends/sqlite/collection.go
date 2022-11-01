@@ -31,7 +31,9 @@ type colRes struct {
 }
 
 func (c *Collection) GetAll() (cols []Collection, err error) {
-	q := `SELECT * FROM main.v_get_collections`
+	q := `SELECT 
+		colID, colRepo, colTag, maniID, upstreamReg, upstreamRepo, upstreamTag 
+	FROM main.v_get_collections`
 	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Error(err)
@@ -92,11 +94,9 @@ func (c *Collection) GetCollectionByID(colID int64) (col Collection, err error) 
 	logrus.Errorf("q: %s", q)
 	rows, err := db.Query(q)
 	if err != nil {
-		logrus.Error(err)
+		return
 	}
-	if err != nil {
-		logrus.Error(err)
-	}
+	defer rows.Close()
 	col = Collection{
 		Manifests:     map[string]Manifest{},
 		ManifestCount: 0,
@@ -148,18 +148,19 @@ func (c *Collection) GetCollectionByID(colID int64) (col Collection, err error) 
 	return
 }
 
-func (c *Collection) GetCollectionByRepo(repo string) (cols []Collection, err error) {
+func (c *Collection) GetCollectionsByRepo(repo string) (cols []Collection, err error) {
 	cols = []Collection{}
-	q := fmt.Sprintf(`SELECT * FROM main.v_get_collections WHERE colRepo LIKE '%s%%';`, repo)
+	q := fmt.Sprintf(`SELECT 
+		colID, colRepo, colTag, maniID, upstreamReg, upstreamRepo, upstreamTag
+	FROM main.v_get_collections WHERE colRepo LIKE '%s%%';`, repo)
 	rows, err := db.Query(q)
 	if err != nil {
-		logrus.Error(err)
+		return
 	}
-	if err != nil {
-		logrus.Error(err)
-	}
+	defer rows.Close()
 	col := Collection{
-		ID: 0,
+		ID:        0,
+		Manifests: map[string]Manifest{},
 	}
 	for rows.Next() {
 		cRes := colRes{}
@@ -203,7 +204,6 @@ func (c *Collection) GetCollectionByRepo(repo string) (cols []Collection, err er
 		//fmt.Printf("%+v\n", cRes)
 	}
 	cols = append(cols, col)
-
 	return
 }
 
@@ -427,6 +427,7 @@ func (c *Collection) GetCollectionsByRepoLike(repo string) (cols []Collection, e
 	if err != nil {
 		logrus.Error(err)
 	}
+	defer rows.Close()
 	col := Collection{
 		ID: 0,
 	}
@@ -485,11 +486,9 @@ func (c *Collection) GetCollectionByRepoTag(repo, tag string) (col types.Collect
 	q := fmt.Sprintf(`SELECT id FROM collections WHERE repo = '%s' AND tag = "%s";`, repo, tag)
 	rows, err := db.Query(q)
 	if err != nil {
-		logrus.Error(err)
+		return
 	}
-	if err != nil {
-		logrus.Error(err)
-	}
+	defer rows.Close()
 	col = types.Collection{
 		SqlID:         -1,
 		Repo:          repo,

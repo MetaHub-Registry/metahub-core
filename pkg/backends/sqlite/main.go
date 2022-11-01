@@ -57,6 +57,15 @@ func New(mhFile string, tables string) (s Sqlite, err error) {
 	}
 	return
 }
+
+func (s Sqlite) ReOpenDB() (err error) {
+	db, err = sql.Open("sqlite3", s.MhFile)
+	if err != nil {
+		return
+	}
+	return
+}
+
 func (s Sqlite) Close() {
 	db.Close()
 
@@ -96,8 +105,11 @@ func (s Sqlite) createViews(tables string) (err error) {
 	return
 }
 
-func (s Sqlite) EmptyData() (err error) {
+func (s Sqlite) EmptyData(all bool) (err error) {
 	skipTable := set.FromSlice([]string{"users", "profiles", "filters", "profile_filter"})
+	if all {
+		skipTable = set.FromSlice([]string{})
+	}
 	logrus.Infof("Empty SQlite DB (except %s)", strings.Join(skipTable.Values(), "/"))
 	q := `SELECT name FROM  sqlite_schema WHERE type ='table' AND name NOT LIKE 'sqlite_%';`
 	rows, err := db.Query(q)
@@ -150,6 +162,10 @@ func (s *Sqlite) createDB(mhFile string, tables string) (err error) {
 	if len(tables) == 0 || t.Has("users") {
 		err = s.User.CreateTables()
 		checkErr(err, "while creating user-tables")
+	}
+	if len(tables) == 0 || t.Has("tokens") {
+		err = s.Token.CreateTables()
+		checkErr(err, "while creating token-tables")
 	}
 	if len(tables) == 0 || t.Has("profiles") {
 		err = s.Profile.CreateTables()

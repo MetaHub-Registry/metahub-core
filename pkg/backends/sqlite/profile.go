@@ -50,19 +50,16 @@ func (p Profile) HasProfile(name string) (profileID int64, found bool, err error
 	q := `SELECT id FROM profiles WHERE name = ?`
 	stmt, err := db.Prepare(q)
 	if err != nil {
-		logrus.Error(err)
 		return
 	}
 	rows, err := stmt.Query(name)
 	if err != nil {
-		logrus.Error(err)
 		return
 	}
 	defer rows.Close()
 	if rows.Next() {
 		err = rows.Scan(&profileID)
 		if err != nil {
-			logrus.Error(err)
 			return
 		}
 		found = true
@@ -74,11 +71,11 @@ func (p Profile) Insert(prf *types.Profile) (err error) {
 	// TODO: Do not insert if already exists?
 	stmt, err := db.Prepare("INSERT INTO profiles (name) VALUES (?) RETURNING id")
 	if err != nil {
-		logrus.Fatal(err)
+		return
 	}
 	res, err := stmt.Exec(prf.Name)
 	if err != nil {
-		logrus.Fatal(err)
+		return
 	}
 	prf.SqlID, err = res.LastInsertId()
 	return

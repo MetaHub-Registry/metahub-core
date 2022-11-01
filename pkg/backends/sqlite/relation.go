@@ -1,12 +1,6 @@
 package sqlite
 
-import (
-	"fmt"
-
-	"github.com/sirupsen/logrus"
-	"github.com/metahub-registry/metahub-core/pkg/types"
-)
-
+/*
 func (s Sqlite) InsertRelation(req types.Request, plat *types.Platform) (err error) {
 	q := `SELECT
 		profiles.id AS profID,
@@ -59,3 +53,4 @@ func (s Sqlite) InsertRelation(req types.Request, plat *types.Platform) (err err
 	}
 	return
 }
+*/

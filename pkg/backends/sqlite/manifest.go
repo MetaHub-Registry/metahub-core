@@ -38,7 +38,11 @@ type maniRow struct {
 
 func (m *Manifest) GetByCollectionId(colId int64) (manis []Manifest, err error) {
 	manis = []Manifest{}
-	q := fmt.Sprintf(`SELECT * FROM main.manifests_view WHERE colID =%d;`, colId)
+	q := fmt.Sprintf(`SELECT 
+		colID, maniID, maniDigest, upstreamReg, upstreamRepo, upstreamTag, 
+		os, arch, variant, features, 
+		configDigest, configMediaType, configSize, profile
+	FROM main.manifests_view WHERE colID =%d;`, colId)
 	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Error(err)
@@ -156,17 +160,14 @@ func (m Manifest) CreateTables() (err error) {
 		"media_type" TEXT,
 		"size" INT,
 		"platform_id" int,
-        "upstream_id" TEXT,
+        "upstream_id" int,
         "config_id" INT,
-		"profile_id" INT,
 		FOREIGN KEY (platform_id)
 			REFERENCES platform (id)
 		FOREIGN KEY (upstream_id)
 			REFERENCES upstream (id) 
 		FOREIGN KEY (config_id)
 			REFERENCES config (id)
-		FOREIGN KEY (profile_id)
-			REFERENCES profile (id) 
 		);`
 	stmt := fmt.Sprintf(s, tableName)
 	query, err := db.Prepare(stmt)
@@ -259,6 +260,7 @@ func (m Manifest) GetIDByDigest(dig string) (id int64, found bool, err error) {
 	if err != nil {
 		logrus.Error(err)
 	}
+	defer rows.Close()
 	if rows.Next() {
 		err = rows.Scan(&id)
 		found = true
@@ -287,6 +289,7 @@ func (m *Manifest) TypesManifest_GetByManifestListID(mlID int64) (manis []types.
 	if err != nil {
 		logrus.Error(err)
 	}
+	defer rows.Close()
 	for rows.Next() {
 		maniRes := maniRow{}
 		err = rows.Scan(

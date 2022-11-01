@@ -5,12 +5,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
 func Test_CacheLayers(t *testing.T) {
-	err := SetupTest("")
+	bs := utils.NewBootstrap()
+	err := SetupTest(bs)
 	assert.NoError(t, err)
-	defer TeardownTest("")
+	defer TeardownTest(bs)
 	// Test
 	mani := types.FT_arm_Manifest()
 	err = mag.CacheLayers(ctx, mani)

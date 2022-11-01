@@ -3,6 +3,7 @@ package sqlite
 import (
 	"fmt"
 
+	"github.com/docker/distribution"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 )
@@ -108,6 +109,22 @@ func (l Layer) Upsert(i *types.Layer) (err error) {
 		}
 	}
 	i.SqlID = id
+	return
+}
+
+func (l Layer) InsertDescriptor(i distribution.Descriptor) (lID int64, err error) {
+	q := `INSERT INTO layers (digest, media_type, size) VALUES (?, ?, ?)`
+	stmt, err := db.Prepare(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	res, err := stmt.Exec(i.Digest, i.MediaType, i.Size)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	lID, err = res.LastInsertId()
 	return
 }
 

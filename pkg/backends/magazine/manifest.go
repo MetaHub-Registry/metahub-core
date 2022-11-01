@@ -244,12 +244,13 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 		OS:      cfg.OS,
 		Variant: cfg.Variant,
 	}
-	err = mag.SQlite.InsertRelation(req, &plat)
+	/*err = mag.SQlite.InsertRelation(req, &plat)
 	if err != nil {
-		err = errors.Wrap(err, "failed to Platform.GetCreate")
+		err = errors.Wrap(err, "failed to SQlite.InsertRelation")
 		return
 	}
 	logrus.Warnf("Platform: %v", plat)
+	*/
 	mani.Platform = plat
 	// Add Manifest to SQLite
 	//// The Manifest is suffixed with the profile to make it unique
@@ -265,6 +266,7 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 		err = errors.Wrap(err, "failed to SQlite.Collection.GetInsertCollectionByRepoTag")
 		return
 	}
+	_ = col
 	/*// TODO: Augment ManifestList to collection
 	err = mag.AddMLtoCollection(&col)
 	if err != nil {
@@ -276,7 +278,7 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 		b := ml.ToOCIBytes()
 		logrus.Warnf("ManifestList: %s", string(b))
 	}*/
-	logrus.Fatalf("Col: %d // ManiID: %d", col.SqlID, mani.SqlID)
+	//logrus.Fatalf("Col: %d // ManiID: %d", col.SqlID, mani.SqlID)
 	//mani.SqlID
 	///// Once the Manifest is added it should also be added to a collection by the same name (without the suffix)
 	return
