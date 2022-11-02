@@ -56,7 +56,7 @@ func (bu BlobUpload) CreateTables() (err error) {
 }
 
 func (bu BlobUpload) Create(i *types.OCIBlobUpload) (err error) {
-	q := `INSERT INTO blob_uploads (uploaded_by, created_at, blob_id,blob_type, uuid, location) VALUES (?, ?, ?, ?,?,?)`
+	q := `INSERT INTO blob_uploads (uploaded_by, created_at, blob_id,blob_type, digest, uuid, location) VALUES (?, ?, ?, ?, ?, ?, ?)`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		logrus.Error(err)
@@ -64,12 +64,72 @@ func (bu BlobUpload) Create(i *types.OCIBlobUpload) (err error) {
 	}
 	i.UUID = uuid.New()
 	i.Location = fmt.Sprintf("/v2/%s/blobs/uploads/%s", i.Repo, i.UUID)
-	res, err := stmt.Exec(i.UploadedBy, time.Now(), i.BlobID, i.BlobType, i.UUID.String(), i.Location)
+	res, err := stmt.Exec(i.UploadedBy, time.Now(), i.BlobID, i.BlobType, i.Digest, i.UUID.String(), i.Location)
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
 	i.SqlID, err = res.LastInsertId()
+	return
+}
+
+func (bu BlobUpload) UpdateDigestByUUID(i *types.OCIBlobUpload) (err error) {
+	// Fetch layer ID from layers table
+	if i.Digest == "" {
+		return fmt.Errorf("digest is empty")
+	}
+	q := fmt.Sprintf(`SELECT id FROM layers WHERE digest = "%s"`, i.Digest)
+	rows, err := db.Query(q)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer rows.Close()
+	if rows.Next() {
+		err = rows.Scan(&i.BlobID)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+	} else {
+		err = fmt.Errorf("no layer with digest '%s' found", i.Digest)
+		return
+	}
+	rows.Close()
+	// Update blob_uploads table
+	q = `UPDATE blob_uploads SET digest = ?, blob_id = ? WHERE uuid = ?`
+	stmt, err := db.Prepare(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	defer stmt.Close()
+	if i.UUID.String() == "" {
+		return fmt.Errorf("UUID is empty")
+	}
+	_, err = stmt.Exec(i.Digest, i.BlobID, i.UUID)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	return
+}
+
+func (bu BlobUpload) CompleteByUUID(i *types.OCIBlobUpload) (err error) {
+	q := `UPDATE blob_uploads SET finished_at = ? WHERE uuid = ?`
+	stmt, err := db.Prepare(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	defer stmt.Close()
+	if i.UUID.String() == "" {
+		return fmt.Errorf("UUID is empty")
+	}
+	_, err = stmt.Exec(time.Now(), i.UUID)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
 	return
 }
 

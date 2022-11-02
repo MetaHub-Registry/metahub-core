@@ -54,9 +54,9 @@ func Test_BlobUpload_Create(t *testing.T) {
 	// PutResponse
 	rr = httptest.NewRecorder()
 	sq.BlobUpload.WriteOCIPutResponse(rr, &bu)
-	if status := rr.Code; status != http.StatusNoContent {
+	if status := rr.Code; status != http.StatusCreated {
 		t.Errorf("handler returned wrong status code: got %v want %v",
-			status, http.StatusNoContent)
+			status, http.StatusCreated)
 	}
 	assert.Equal(t, "0", rr.Header().Get("Content-Length"))
 	assert.Equal(t, bu.Digest, rr.Header().Get("Docker-Content-Digest"))
