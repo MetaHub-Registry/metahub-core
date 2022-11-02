@@ -102,9 +102,11 @@ func (u User) CreateTables() (err error) {
 
 // / That needs some improvement
 func (u *User) GetAccessToken(token string) (at *types.AccessToken, err error) {
-	return &types.AccessToken{
+
+	at = &types.AccessToken{
 		Token: token,
-	}, nil
+	}
+	return at, nil
 }
 
 // GetAll returns a slice of all users, sorted by last name
