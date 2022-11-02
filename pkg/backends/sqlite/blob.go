@@ -56,7 +56,7 @@ func (bu BlobUpload) CreateTables() (err error) {
 }
 
 func (bu BlobUpload) Create(i *types.OCIBlobUpload) (err error) {
-	q := `INSERT INTO blob_uploads (uploaded_by, created_at, blob_id,blob_type, digest, uuid, location) VALUES (?, ?, ?, ?, ?, ?, ?)`
+	q := `INSERT INTO blob_uploads (uploaded_by, created_at, blob_id, blob_type, digest, uuid, location) VALUES (?, ?, ?, ?, ?, ?, ?)`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		logrus.Error(err)
@@ -90,13 +90,30 @@ func (bu BlobUpload) UpdateDigestByUUID(i *types.OCIBlobUpload) (err error) {
 			logrus.Error(err)
 			return
 		}
+		i.BlobType = "layer"
 	} else {
-		err = fmt.Errorf("no layer with digest '%s' found", i.Digest)
-		return
+		rows.Close()
+		q := fmt.Sprintf(`SELECT id FROM configs WHERE digest = "%s"`, i.Digest)
+		rows, err = db.Query(q)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+		defer rows.Close()
+		if rows.Next() {
+			err = rows.Scan(&i.BlobID)
+			if err != nil {
+				logrus.Error(err)
+				return
+			}
+		} else {
+			return fmt.Errorf("could not find blob with digest '%s' in layers or configs", i.Digest)
+		}
+		i.BlobType = "config"
 	}
+
 	rows.Close()
 	// Update blob_uploads table
-	q = `UPDATE blob_uploads SET digest = ?, blob_id = ? WHERE uuid = ?`
+	q = `UPDATE blob_uploads SET digest = ?, blob_id = ?, blob_type = ? WHERE uuid = ?`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		logrus.Error(err)
@@ -106,7 +123,7 @@ func (bu BlobUpload) UpdateDigestByUUID(i *types.OCIBlobUpload) (err error) {
 	if i.UUID.String() == "" {
 		return fmt.Errorf("UUID is empty")
 	}
-	_, err = stmt.Exec(i.Digest, i.BlobID, i.UUID)
+	_, err = stmt.Exec(i.Digest, i.BlobID, i.BlobType, i.UUID)
 	if err != nil {
 		logrus.Error(err)
 		return

@@ -105,6 +105,7 @@ func (m Manifest) WriteWWWHeader(w http.ResponseWriter) {
 	w.Header().Set("Content-Length", fmt.Sprint(size))
 	w.Header().Set("Docker-Content-Digest", m.Digest)
 	w.Header().Set("Etag", m.Digest)
+
 }
 
 func (m Manifest) WriteWWWBody(w http.ResponseWriter) {
