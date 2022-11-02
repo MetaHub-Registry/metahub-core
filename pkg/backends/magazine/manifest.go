@@ -197,6 +197,7 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 		logrus.Fatal("request", err)
 	}
 	dig := digest.FromBytes(buf)
+	req.Digest = dig.String()
 	if req.Digest != "" && req.Digest != dig.String() {
 		err = fmt.Errorf("digest mismatch: %s != %s", req.Digest, dig.String())
 		return
@@ -206,7 +207,6 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 		logrus.Error(err)
 		return
 	}
-	logrus.Infof("Manifest: %v", ociMani)
 	mani = types.Manifest{
 		Digest:    dig.String(),
 		MediaType: ociMani.MediaType,
@@ -244,14 +244,19 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 		OS:      cfg.OS,
 		Variant: cfg.Variant,
 	}
-	/*err = mag.SQlite.InsertRelation(req, &plat)
+	err = mag.SQlite.Platform.Upsert(&plat)
 	if err != nil {
-		err = errors.Wrap(err, "failed to SQlite.InsertRelation")
+		err = errors.Wrap(err, "failed to SQlite.Platform.Upsert")
 		return
 	}
-	logrus.Warnf("Platform: %v", plat)
-	*/
 	mani.Platform = plat
+	err = mag.SQlite.UpdatePlatformFilter(plat)
+	if err != nil {
+		err = errors.Wrap(err, "failed to SQlite.UpdatePlatformFilter")
+		return
+	}
+	// INNER JOIN platform_filter ON platforms.id = platform_filter.platform_id
+
 	// Add Manifest to SQLite
 	//// The Manifest is suffixed with the profile to make it unique
 	err = mag.SQlite.Manifest.GetInsert(&mani)
@@ -267,7 +272,7 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 		return
 	}
 	_ = col
-	/*// TODO: Augment ManifestList to collection
+	// Augment ManifestList to collection
 	err = mag.AddMLtoCollection(&col)
 	if err != nil {
 		err = errors.Wrap(err, "failed to SQlite.Collection.GetInsertCollectionByRepoTag")
@@ -277,9 +282,27 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 	for _, ml := range col.ManifestLists {
 		b := ml.ToOCIBytes()
 		logrus.Warnf("ManifestList: %s", string(b))
-	}*/
-	//logrus.Fatalf("Col: %d // ManiID: %d", col.SqlID, mani.SqlID)
-	//mani.SqlID
-	///// Once the Manifest is added it should also be added to a collection by the same name (without the suffix)
+	}
+	ml := types.ManifestList{
+		SchemaVersion: 2,
+		MediaType:     "application/vnd.docker.distribution.manifest.list.v2+json",
+		Manifests: []types.Manifest{
+			mani,
+		},
+	}
+	ml.Digest = digest.FromBytes(ml.ToOCIBytes()).String()
+	// Add ML to SQLite
+	err = mag.SQlite.ManifestList.Insert(&ml)
+	if err != nil {
+		err = errors.Wrap(err, "failed to SQlite.ManifestList.Insert")
+		return
+	}
+	col.ManifestLists = append(col.ManifestLists, ml)
+	// Update Collection
+	err = mag.SQlite.Collection.InsertXTable(col.SqlID, ml.SqlID)
+	if err != nil {
+		err = errors.Wrap(err, "failed to SQlite.Collection.InsertXTable")
+		return
+	}
 	return
 }

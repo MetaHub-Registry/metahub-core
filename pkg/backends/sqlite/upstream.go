@@ -86,10 +86,9 @@ func (up Upstream) GetCreateByRequest(r types.Request) (u types.Upstream, err er
 		tag = fmt.Sprintf("%s-%s", r.Tag, r.Profile)
 	}
 	u = types.Upstream{
-		Reg:    "metahub-registry.org",
-		Repo:   r.Repo,
-		Tag:    tag,
-		Digest: digest.Digest(""),
+		Reg:  "metahub-registry.org",
+		Repo: r.Repo,
+		Tag:  tag,
 	}
 	if r.Digest != "" {
 		u.Digest = digest.Digest(r.Digest)

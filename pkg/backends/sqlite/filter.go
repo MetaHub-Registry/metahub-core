@@ -55,6 +55,36 @@ func (f Filter) createFilterTable() (err error) {
 	return
 }
 
+func (f Filter) GetAllFilters() (res []types.Filter, err error) {
+	q := `SELECT id,label FROM filters`
+	stmt, err := db.Prepare(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	rows, err := stmt.Query()
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	defer rows.Close()
+	res = make([]types.Filter, 0)
+	if rows.Next() {
+		var id int
+		var label string
+		err = rows.Scan(&id, &label)
+		if err != nil {
+			logrus.Error(err)
+		}
+		f := types.Filter{
+			SqlID: int64(id),
+			Label: label,
+		}
+		res = append(res, f)
+	}
+	return
+}
+
 func (f Filter) GetFilter(fltr types.Filter) (filterID int64, found bool, err error) {
 	q := `SELECT id FROM filters WHERE label = ?`
 	stmt, err := db.Prepare(q)

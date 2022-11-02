@@ -190,8 +190,10 @@ func (bu BlobUpload) WriteOCICreateResponse(w http.ResponseWriter, b *types.OCIB
 }
 
 func (bu BlobUpload) WriteOCIPatchResponse(w http.ResponseWriter, b *types.OCIBlobUpload) {
-	logrus.Infof("After PATH upload, location: %s", b.Location)
 	w.Header().Set("Location", b.Location)
+	w.Header().Set("Range", "10-10")
+	w.Header().Set("Docker-Upload-UUID", b.UUID.String())
+	w.Header().Set("Content-Length", "0")
 	w.WriteHeader(http.StatusAccepted)
 }
 

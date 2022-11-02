@@ -157,3 +157,46 @@ func (p Platform) InsertPlatformFilter(pfp types.ProfileFilterPlatform) (err err
 	}
 	return
 }
+
+// UpdatePlatformFilter checks if an existing filter matches and create a link if need be
+func (sq Sqlite) UpdatePlatformFilter(i types.Platform) (err error) {
+	// Get all filters
+	filters, err := sq.Filter.GetAllFilters()
+	if err != nil {
+		return
+	}
+	if i.Features == "" {
+		// If no features are set, we link with the generic filter
+		f := types.Filter{Label: "generic"}
+		fID, found, err := sq.Filter.GetFilter(f)
+		f.SqlID = fID
+		if err != nil {
+			return err
+		}
+		if !found {
+			return fmt.Errorf("'generic' filter not found")
+		}
+		err = sq.Platform.InsertPlatformFilter(types.ProfileFilterPlatform{
+			Platform: i,
+			Filter:   f,
+		})
+		if err != nil {
+			return err
+		}
+	} else {
+		// Check if a features filter matches
+		// TODO: Is that correct?
+		for _, f := range filters {
+			if f.Feature == i.Features {
+				err = sq.Platform.InsertPlatformFilter(types.ProfileFilterPlatform{
+					Platform: i,
+					Filter:   f,
+				})
+				if err != nil {
+					return
+				}
+			}
+		}
+	}
+	return
+}
