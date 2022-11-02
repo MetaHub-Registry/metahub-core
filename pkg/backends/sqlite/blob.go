@@ -124,5 +124,5 @@ func (bu BlobUpload) WriteOCIPutResponse(w http.ResponseWriter, b *types.OCIBlob
 	// TODO: What is the corect value for Range?
 	w.Header().Set("Range", "10-10")
 	w.Header().Set("Docker-Content-Digest", b.Digest)
-	w.WriteHeader(http.StatusNoContent)
+	w.WriteHeader(http.StatusCreated)
 }
