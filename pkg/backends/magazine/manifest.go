@@ -213,12 +213,6 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 		Data:      buf,
 		Size:      int64(len(buf)),
 	}
-	// Fetch/Create Upstream
-	mani.Upstream, err = mag.SQlite.Upstream.GetCreateByRequest(req)
-	if err != nil {
-		err = errors.Wrap(err, "failed to Upstream.GetCreateByRequest")
-		return
-	}
 	// Fetch Config
 	mani.Config, err = mag.SQlite.Config.GetCreateByRequest(ociMani)
 	if err != nil {
@@ -255,6 +249,14 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 		err = errors.Wrap(err, "failed to SQlite.UpdatePlatformFilter")
 		return
 	}
+	req.Platform = plat.GetTag()
+	// Fetch/Create Upstream
+	mani.Upstream, err = mag.SQlite.Upstream.GetCreateByRequest(req)
+	if err != nil {
+		err = errors.Wrap(err, "failed to Upstream.GetCreateByRequest")
+		return
+	}
+
 	// INNER JOIN platform_filter ON platforms.id = platform_filter.platform_id
 
 	// Add Manifest to SQLite

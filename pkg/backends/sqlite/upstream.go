@@ -82,8 +82,8 @@ func (up Upstream) GetByRequest(res *types.Upstream) (found bool, err error) {
 
 func (up Upstream) GetCreateByRequest(r types.Request) (u types.Upstream, err error) {
 	tag := r.Tag
-	if r.Profile != "" {
-		tag = fmt.Sprintf("%s-%s", r.Tag, r.Profile)
+	if r.Platform != "" {
+		tag = fmt.Sprintf("%s-%s", r.Tag, r.Platform)
 	}
 	u = types.Upstream{
 		Reg:  "metahub-registry.org",

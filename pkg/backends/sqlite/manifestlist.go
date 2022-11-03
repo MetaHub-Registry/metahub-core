@@ -188,7 +188,6 @@ func (ml ManifestList) GetTypesManifestListByRequest(req types.Request) (res typ
 	if req.Tag == "" {
 		q = fmt.Sprintf(`SELECT DISTINCT colID,colRepo,colTag,manifestlistDigest,manifestlistID FROM v_get_manifestlist WHERE colRepo="%s" AND manifestlistDigest="%s" AND profileName="%s"`, req.Repo, req.Digest, req.Profile)
 	}
-	logrus.Warn(q)
 	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Error(err)
