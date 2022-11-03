@@ -201,6 +201,7 @@ func (ml ManifestList) GetTypesManifestListByRequest(req types.Request) (res typ
 		Manifests:     []types.Manifest{},
 	}
 	for rows.Next() {
+		logrus.Warnf("Found manifestlist")
 		found = true
 		r := mlRes{}
 		err = rows.Scan(

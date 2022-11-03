@@ -56,7 +56,7 @@ func SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 		logrus.Errorf("SetupTest: %s", b)
 		switch b {
 		case "profiles":
-			err = Setup_Profiles(&sq, &br)
+			err = Setup_Profiles(&sq, &br, "../../../misc/yaml/profiles")
 			if err != nil {
 				return
 			}

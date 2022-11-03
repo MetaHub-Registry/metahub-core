@@ -207,10 +207,10 @@ func Setup_Manifest_QNIB_FeatureTest_arm(sq *Sqlite, br *utils.BootstrapResult) 
 	return
 }
 
-func Setup_Profiles(sqObj *Sqlite, br *utils.BootstrapResult) (err error) {
+func Setup_Profiles(sqObj *Sqlite, br *utils.BootstrapResult, d string) (err error) {
 	ctx := context.Background()
 	logrus.Warn("Setup_Profiles")
-	prfs, err := config.FindProfiles(ctx, "../../../misc/yaml/profiles")
+	prfs, err := config.FindProfiles(ctx, d)
 	if err != nil {
 		return err
 	}
@@ -231,7 +231,7 @@ func Setup_Profiles(sqObj *Sqlite, br *utils.BootstrapResult) (err error) {
 		if len(f.Feature) > 0 {
 			msg += fmt.Sprintf(" [%s]", f.Feature)
 		}
-		//logrus.Info(msg)
+		logrus.Info(msg)
 		fID, success, err := sqObj.Filter.GetFilter(f)
 		if err != nil {
 			return err
