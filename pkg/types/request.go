@@ -15,6 +15,7 @@ type Request struct {
 	Repo        string `json:"repo"`
 	Tag         string `json:"tag"`
 	Digest      string `json:"digest"`
+	Platform    string `json:"platform"`
 	User        string `json:"user"`
 	Profile     string `json:"profile"`
 	Length      int    `json:"length"`

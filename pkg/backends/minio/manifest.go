@@ -111,11 +111,11 @@ func (m Minio) NewManifestFromBytes(b []byte) (mani types.Manifest, err error) {
 	bInfo := cntMani.ConfigInfo()
 	// TODO: Is deriving digest from byte safe?
 	maniDig := digest.FromBytes(b)
-	l.Error("maniDig: ", maniDig)
 	mani = types.Manifest{
 		MediaType: mt,
 		Digest:    maniDig.String(),
 		Size:      bInfo.Size,
+		Data:      b,
 	}
 	imgInfo, err := cntMani.Inspect(m.configGetter)
 	if err != nil {
