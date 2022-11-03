@@ -152,7 +152,6 @@ func (bu BlobUpload) CompleteByUUID(i *types.OCIBlobUpload) (err error) {
 
 func (bu BlobUpload) GetByUUID(uid string) (b types.OCIBlobUpload, err error) {
 	q := fmt.Sprintf(`SELECT id, uploaded_by, created_at, blob_id, blob_type, location FROM blob_uploads WHERE uuid="%s"`, uid)
-	logrus.Warnf("Query: %s", q)
 	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Fatal(err)
@@ -171,7 +170,6 @@ func (bu BlobUpload) GetByUUID(uid string) (b types.OCIBlobUpload, err error) {
 			&b.Location,
 		)
 	}
-	logrus.Warnf("OCIBlobUpload: %v", b)
 	return
 }
 

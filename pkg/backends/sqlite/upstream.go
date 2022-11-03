@@ -106,10 +106,10 @@ func (up Upstream) GetCreateByRequest(r types.Request) (u types.Upstream, err er
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		err = errors.Wrap(err, "failed to db.Prepare")
-
 		logrus.Error(err)
 		return
 	}
+	defer stmt.Close()
 	res, err := stmt.Exec(u.Repo, u.Tag, u.Digest)
 	if err != nil {
 		err = errors.Wrap(err, "failed to stmt.Exec")

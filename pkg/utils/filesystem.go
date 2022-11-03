@@ -144,7 +144,6 @@ func WriteFile(path string, content string) error {
 
 // Find files in a directory based on a pattern
 func RecursiveFind(root string, pattern string, allowPrefix bool) ([]string, error) {
-
 	// Create a list of results to return
 	results := []string{}
 
