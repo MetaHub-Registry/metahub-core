@@ -214,7 +214,7 @@ func Setup_Profiles() {
 		if len(f.Feature) > 0 {
 			msg += fmt.Sprintf(" [%s]", f.Feature)
 		}
-		logrus.Info(msg)
+		//logrus.Info(msg)
 		fID, err := mag.SQliteInsertFilter(ctx, f)
 		if err != nil {
 			logrus.Fatal(err)
