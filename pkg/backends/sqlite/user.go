@@ -45,6 +45,23 @@ func (s Sqlite) InsertUser(ctx context.Context, u types.User) (userID int64, err
 	return
 }
 
+func (s Sqlite) LoginUserWithHash(username, pwhash string) (err error) {
+	logrus.Debug(">> LoginUser")
+	// check login and return token
+	u, err := s.User.GetByUsername(username)
+	if err != nil {
+		return fmt.Errorf("User not found: %s", err.Error())
+	}
+	match, err := u.PasswordHashMatches(pwhash)
+	if err != nil {
+		return fmt.Errorf("error when matching passwords")
+	}
+	if !match {
+		return fmt.Errorf("passwordhash does not match")
+	}
+	return
+}
+
 func (s Sqlite) LoginUser(username, password string) (err error) {
 	logrus.Debug(">> LoginUser")
 	// check login and return token
@@ -327,4 +344,11 @@ func (u *User) PasswordMatches(plainText string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (u *User) PasswordHashMatches(passwordHash string) (bool, error) {
+	if u.PasswordHash == passwordHash {
+		return true, nil
+	}
+	return false, nil
 }

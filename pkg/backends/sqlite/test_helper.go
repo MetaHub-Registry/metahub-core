@@ -299,10 +299,11 @@ func Setup_Users(sqObj *Sqlite, br *utils.BootstrapResult) (err error) {
 	}
 	for _, user := range usrs {
 		u := types.User{
-			Username:  user.Username,
-			FirstName: user.FirstName,
-			LastName:  user.LastName,
-			Email:     user.Email,
+			Username:     user.Username,
+			FirstName:    user.FirstName,
+			LastName:     user.LastName,
+			Email:        user.Email,
+			PasswordHash: "",
 		}
 		switch {
 		case (user.Hash != "") && (user.Password != ""):
@@ -324,6 +325,7 @@ func Setup_Users(sqObj *Sqlite, br *utils.BootstrapResult) (err error) {
 		}
 		bearerToken := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", u.Username, user.Password)))
 		br.Add(fmt.Sprintf("user:%s#bearer", u.Username), bearerToken)
+		br.Add(fmt.Sprintf("user:%s#hash", u.Username), u.PasswordHash)
 	}
 	return
 }

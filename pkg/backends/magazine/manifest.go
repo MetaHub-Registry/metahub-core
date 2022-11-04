@@ -194,7 +194,8 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 	ociMani := types.OCIManifest{}
 	err = json.Unmarshal(buf, &ociMani)
 	if err != nil {
-		logrus.Fatal("request", err)
+		err = errors.Wrapf(err, "failed to unmarshal OCI Manifest '%s'", string(buf))
+		return mani, err
 	}
 	dig := digest.FromBytes(buf)
 	req.Digest = dig.String()
