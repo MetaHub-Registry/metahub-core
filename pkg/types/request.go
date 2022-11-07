@@ -12,6 +12,7 @@ import (
 )
 
 type Request struct {
+	Host        string `json:"host"`
 	Repo        string `json:"repo"`
 	Tag         string `json:"tag"`
 	Digest      string `json:"digest"`
@@ -35,6 +36,7 @@ func NewRequest(r *http.Request) Request {
 	} else {
 		tag = parRef
 	}
+	host := strings.Split(r.Host, ":")[0]
 	repo := filepath.Join(parRepo, parImg)
 	user := "anonymous"
 	profile := "generic"
@@ -53,6 +55,7 @@ func NewRequest(r *http.Request) Request {
 	cntType := r.Header.Get("Content-Type")
 	cntLen, _ := strconv.Atoi(cntLenStr)
 	return Request{
+		Host:        host,
 		Repo:        repo,
 		Tag:         tag,
 		Digest:      dig,

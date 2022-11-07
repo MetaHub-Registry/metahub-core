@@ -202,7 +202,11 @@ func (m Manifest) Insert(i *types.Manifest) (err error) {
 func (m *Manifest) GetTypesManifestByRequest(req types.Request) (res types.Manifest, found bool, err error) {
 	q := `SELECT DISTINCT maniID,maniDigest,os,arch,variant,features,configDigest,configMediaType,configSize,`
 	q += `upstreamReg,upstreamRepo,upstreamTag FROM main.manifests_view`
-	q += fmt.Sprintf(` WHERE maniDigest="%s";`, req.Digest)
+	if req.Digest != "" {
+		q += fmt.Sprintf(` WHERE maniDigest="%s";`, req.Digest)
+	} else if req.Tag != "" {
+		q += fmt.Sprintf(` WHERE upstreamTag="%s";`, req.Tag)
+	}
 	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Error(err)
