@@ -267,6 +267,7 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 		err = errors.Wrap(err, "failed to SQlite.Manifest.Insert")
 		return
 	}
+
 	// Collection & ManifestList
 	//// Fetch current collection or create new one
 	col, err := mag.SQlite.Collection.GetInsertCollectionByRepoTag(req.Repo, req.Tag)
@@ -307,5 +308,6 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 		err = errors.Wrap(err, "failed to SQlite.Collection.InsertXTable")
 		return
 	}
+
 	return
 }

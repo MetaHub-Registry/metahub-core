@@ -82,11 +82,11 @@ func (up Upstream) GetByRequest(res *types.Upstream) (found bool, err error) {
 
 func (up Upstream) GetCreateByRequest(r types.Request) (u types.Upstream, err error) {
 	tag := r.Tag
-	if r.Platform != "" {
-		tag = fmt.Sprintf("%s-%s", r.Tag, r.Platform)
-	}
+	//if r.Platform != "" {
+	//	tag = fmt.Sprintf("%s-%s", r.Tag, r.Platform)
+	//}
 	u = types.Upstream{
-		Reg:  "metahub-registry.org",
+		Reg:  r.Host,
 		Repo: r.Repo,
 		Tag:  tag,
 	}
@@ -102,7 +102,7 @@ func (up Upstream) GetCreateByRequest(r types.Request) (u types.Upstream, err er
 		return u, err
 	}
 	// Create Upstream
-	q := `INSERT INTO main.upstreams (reg, repo, tag, digest) VALUES ("metahub-registry.org", ?, ?, ?);`
+	q := `INSERT INTO main.upstreams (reg, repo, tag, digest) VALUES (?, ?, ?, ?);`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		err = errors.Wrap(err, "failed to db.Prepare")
@@ -110,7 +110,7 @@ func (up Upstream) GetCreateByRequest(r types.Request) (u types.Upstream, err er
 		return
 	}
 	defer stmt.Close()
-	res, err := stmt.Exec(u.Repo, u.Tag, u.Digest)
+	res, err := stmt.Exec(u.Reg, u.Repo, u.Tag, u.Digest)
 	if err != nil {
 		err = errors.Wrap(err, "failed to stmt.Exec")
 		logrus.Error(err)
