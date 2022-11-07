@@ -21,6 +21,7 @@ type User struct {
 	Email     string `yaml:"email"`
 	Password  string `yaml:"password"`
 	Hash      string `yaml:"hash"`
+	Role      string `yaml:"role"`
 }
 
 // readUser reads a user config
@@ -35,6 +36,9 @@ func readUser(yamlStr []byte) User {
 	}
 	if err != nil {
 		log.Fatalf("Parsing Config: %v\n", err)
+	}
+	if u.Role == "" {
+		u.Role = "user"
 	}
 	return u
 }
