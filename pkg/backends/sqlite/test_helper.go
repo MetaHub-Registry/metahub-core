@@ -295,7 +295,8 @@ func Setup_Users(sqObj *Sqlite, br *utils.BootstrapResult) (err error) {
 	logrus.Warn("Setup Users")
 	ctx := context.Background()
 	usrs := []config.User{
-		{Username: "test", Email: "test@test.de", FirstName: "Max", LastName: "Mustermann", Password: "test"},
+		{Username: "test", Email: "test@test.de", FirstName: "Max", LastName: "Mustermann", Password: "test", Role: "user"},
+		{Username: "admin", Email: "admin@test.de", FirstName: "Admin", LastName: "Mustermann", Password: "admin", Role: "admin"},
 	}
 	for _, user := range usrs {
 		u := types.User{
@@ -304,6 +305,7 @@ func Setup_Users(sqObj *Sqlite, br *utils.BootstrapResult) (err error) {
 			LastName:     user.LastName,
 			Email:        user.Email,
 			PasswordHash: "",
+			Role:         user.Role,
 		}
 		switch {
 		case (user.Hash != "") && (user.Password != ""):

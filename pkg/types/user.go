@@ -8,4 +8,5 @@ type User struct {
 	Active       int    `yaml:"active"`
 	FirstName    string `yaml:"first_name,omitempty"`
 	LastName     string `yaml:"last_name,omitempty"`
+	Role         string `yaml:"role"`
 }

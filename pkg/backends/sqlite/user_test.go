@@ -14,10 +14,10 @@ func Test_User_Insert(t *testing.T) {
 	bs.SetSqlEmptyAll()
 	//bs.SetSqlite("Desktop/metahub.db")
 	br, err := SetupTest(bs)
-	_ = br
 	assert.NoError(t, err)
 	defer TeardownTest(bs)
 	// Test
+	_ = br
 	err = sq.LoginUser("test", "test")
 	assert.Error(t, err)
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("test"), 12)
@@ -75,5 +75,23 @@ func Test_User_Insert(t *testing.T) {
 	assert.NoError(t, err)
 	err = sq.User.DeleteByID(int(uID))
 	assert.NoError(t, err)
+}
+func Test_User_Roles(t *testing.T) {
+	bs := utils.NewBootstrap()
+	bs.SetSqlEmptyAll()
+	bs.AddBootstrap("users")
+	//bs.SetSqlite("Desktop/metahub.db")
+	br, err := SetupTest(bs)
+	assert.NoError(t, err)
+	defer TeardownTest(bs)
+	// Test
+	testToken, err := br.Get("user:test#bearer")
+	assert.NoError(t, err)
+	_ = testToken
+	adminToken, err := br.Get("user:admin#bearer")
+	assert.NoError(t, err)
+	_ = adminToken
+	_, err = br.Get("user:fake#bearer")
+	assert.Error(t, err)
 
 }
