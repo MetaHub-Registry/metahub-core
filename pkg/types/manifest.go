@@ -100,15 +100,15 @@ func (m Manifest) ToOCIBytes() (b []byte) {
 }
 
 func (m Manifest) WriteWWWHeader(w http.ResponseWriter) {
-	size := len(m.Data)
 	w.Header().Set("Content-Type", m.MediaType)
-	w.Header().Set("Content-Length", fmt.Sprint(size))
 	w.Header().Set("Docker-Content-Digest", m.Digest)
 	w.Header().Set("Etag", m.Digest)
 
 }
 
 func (m Manifest) WriteWWWBody(w http.ResponseWriter) {
+	size := len(m.Data)
+	w.Header().Set("Content-Length", fmt.Sprint(size))
 	b := m.Data
 	w.Write(b)
 }
