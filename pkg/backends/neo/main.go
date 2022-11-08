@@ -19,6 +19,7 @@ type NeoConfig struct {
 }
 
 type Neo struct {
+	Enabled   bool
 	neoDriver neo4j.Driver
 	neoConfig NeoConfig
 }
@@ -45,13 +46,21 @@ func New(cfgFile string) (Neo, error) {
 	if err != nil {
 		logrus.Fatalf("Error reading config file, %s", err)
 	}
+	n := Neo{}
+	nUrl := viper.GetString("neo4j.url")
+	if nUrl == "" {
+		logrus.Warnf("No neo4j.url set")
+		n.Enabled = false
+		return n, nil
+	}
 	ncfg := NeoConfig{
 		DbName: viper.GetString("neo4j.dbname"),
 		User:   viper.GetString("neo4j.user"),
 		Passwd: viper.GetString("neo4j.password"),
-		URL:    viper.GetString("neo4j.url"),
+		URL:    nUrl,
 	}
-	n := Neo{
+	n = Neo{
+		Enabled:   true,
 		neoConfig: ncfg,
 	}
 	return n, nil

@@ -51,11 +51,14 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, err error) {
 		err = errors.Wrapf(err, "failed to create neo4j backend")
 		logrus.Fatal(err)
 	}
-	m.Neo = neo4j
-	err = m.Neo.Setup()
-	if err != nil {
-		err = errors.Wrapf(err, "failed to setup neo4j backend")
-		logrus.Fatal(err)
+	if neo4j.Enabled {
+
+		m.Neo = neo4j
+		err = m.Neo.Setup()
+		if err != nil {
+			err = errors.Wrapf(err, "failed to setup neo4j backend")
+			logrus.Fatal(err)
+		}
 	}
 	return
 }
