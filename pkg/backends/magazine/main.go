@@ -37,7 +37,6 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, err error) {
 	m = Magazine{
 		Minio: min,
 	}
-
 	// SQLite
 	mhSqlFile, _ := cmd.Flags().GetString("metahub-db")
 	sqlite, err := sqlite.New(mhSqlFile, tables)
@@ -46,5 +45,17 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, err error) {
 		logrus.Fatal(err)
 	}
 	m.SQlite = sqlite
+	// Neo4j
+	neo4j, err := neo.New(cfgFile)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to create neo4j backend")
+		logrus.Fatal(err)
+	}
+	m.Neo = neo4j
+	err = m.Neo.Setup()
+	if err != nil {
+		err = errors.Wrapf(err, "failed to setup neo4j backend")
+		logrus.Fatal(err)
+	}
 	return
 }

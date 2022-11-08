@@ -115,7 +115,6 @@ func readManifestConfig(yamlStr []byte) (conf ManifestConfig, err error) {
 	})
 	// First unmarshall into generic structure
 	conf = ManifestConfig{}
-	l.Warnf("yamlStr:\n%s", yamlStr)
 	err = yaml.Unmarshal(yamlStr, &conf)
 	if err != nil {
 		l.Fatalf("Unmarshal: %v\n", err)
