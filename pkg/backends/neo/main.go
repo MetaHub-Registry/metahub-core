@@ -2,8 +2,10 @@ package neo
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
+	"github.com/mitchellh/go-homedir"
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -22,6 +24,27 @@ type Neo struct {
 }
 
 func New(cfgFile string) (Neo, error) {
+	viper.SetConfigType("yaml")
+	if cfgFile != "" {
+		// Use config file from the flag.
+		viper.SetConfigFile(cfgFile)
+	} else {
+		// Find home directory.
+		home, err := homedir.Dir()
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		// Search config in home directory with name ".cobra-example" (without extension).
+		viper.AddConfigPath(home)
+		viper.SetConfigName(".metahub-admin")
+		viper.SetConfigType("yaml")
+	}
+	err := viper.ReadInConfig()
+	if err != nil {
+		logrus.Fatalf("Error reading config file, %s", err)
+	}
 	ncfg := NeoConfig{
 		DbName: viper.GetString("neo4j.dbname"),
 		User:   viper.GetString("neo4j.user"),

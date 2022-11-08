@@ -37,9 +37,6 @@ func readUser(yamlStr []byte) User {
 	if err != nil {
 		log.Fatalf("Parsing Config: %v\n", err)
 	}
-	if u.Role == "" {
-		u.Role = "user"
-	}
 	return u
 }
 
