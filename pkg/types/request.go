@@ -15,6 +15,8 @@ import (
 )
 
 type Request struct {
+	Number      int    `json:"number"`
+	Last        string `json:"last"`
 	Host        string `json:"host"`
 	Repo        string `json:"repo"`
 	Tag         string `json:"tag"`
@@ -33,6 +35,9 @@ type Request struct {
 func NewRequest(r *http.Request) Request {
 	//dumpedReq, _ := httputil.DumpRequest(r, false)
 	//logrus.Errorf("Request:#### \n%s\n####", dumpedReq)
+	req := Request{
+		Number: 0,
+	}
 	parRepo, parImg, parRef := extractRepoName(r)
 	var tag string
 	dig := r.FormValue("digest")
@@ -41,6 +46,17 @@ func NewRequest(r *http.Request) Request {
 	} else {
 		tag = parRef
 	}
+	// ENable pagination (n=100&last=tag123)
+	nStr := r.URL.Query().Get("n")
+	if nStr != "" {
+		n, err := strconv.Atoi(nStr)
+		if err != nil {
+			logrus.Errorf("Failed to convert nStr: %s", err)
+		}
+		req.Number = n
+	}
+	req.Last = r.FormValue("last")
+
 	host := strings.Split(r.Host, ":")[0]
 	repo := filepath.Join(parRepo, parImg)
 	user := "anonymous"
@@ -86,20 +102,19 @@ func NewRequest(r *http.Request) Request {
 	default:
 		scope = "unknown"
 	}
-	return Request{
-		Method:      r.Method,
-		Scope:       scope,
-		Host:        host,
-		Repo:        repo,
-		Tag:         tag,
-		Digest:      dig,
-		User:        user,
-		Profile:     profile,
-		Length:      cntLen,
-		Range:       rnge,
-		UUID:        uid,
-		ContentType: cntType,
-	}
+	req.Method = r.Method
+	req.Scope = scope
+	req.Host = host
+	req.Repo = repo
+	req.Tag = tag
+	req.Digest = dig
+	req.User = user
+	req.Profile = profile
+	req.Length = cntLen
+	req.Range = rnge
+	req.UUID = uid
+	req.ContentType = cntType
+	return req
 }
 
 func (req Request) String() string {

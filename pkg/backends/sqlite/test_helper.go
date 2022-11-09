@@ -291,6 +291,27 @@ func Setup_Collection_QNIB_FeatureTest(sq *Sqlite, br *utils.BootstrapResult) (e
 	return
 }
 
+/*func Setup_Collection_QNIB_FeatureTest_amd64(sq *Sqlite, br *utils.BootstrapResult) (err error) {
+	//logrus.Info("> Setup_Collection_QNIB_FeatureTest")
+	// Create collection
+	c := types.FT_arm_Collection()
+	err = sq.Collection.Insert(&c)
+	if err != nil {
+		return
+	}
+	br.Add("collection:qnib/featuretest#id", fmt.Sprint(c.SqlID))
+	// Link Collection and ManifestList
+	mlID, err := br.GetInt64("manifestlist:qnib/featuretest-generic-amd64#id")
+	if err != nil {
+		return err
+	}
+	err = sq.Collection.InsertXTable(c.SqlID, mlID)
+	if err != nil {
+		return
+	}
+	return
+}*/
+
 func Setup_Users(sqObj *Sqlite, br *utils.BootstrapResult) (err error) {
 	logrus.Warn("Setup Users")
 	ctx := context.Background()

@@ -19,7 +19,7 @@ func Test_Layer_StoreBlobUpload(t *testing.T) {
 
 func Test_Config_StoreBlobUpload(t *testing.T) {
 	bs := utils.NewBootstrap()
-	err := SetupTest(bs)
+	_, err := SetupTest(bs)
 	assert.NoError(t, err)
 	defer TeardownTest(bs)
 	bu, b := types.FT_arm_BlobUpload_Config()
