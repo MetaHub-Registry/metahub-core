@@ -127,14 +127,49 @@ func TeardownTest(bs utils.Bootstrap) {
 	}
 }
 
-func SetupTest(bs utils.Bootstrap) (err error) {
+func SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 	logrus.Info("> SetupTest")
+	sq := mag.SQlite
+	br = utils.NewBootstrapResult()
 	for _, b := range bs.Bootstraps {
 		logrus.Errorf("SetupTest: %s", b)
 		switch b {
 		case "":
+		case "platforms":
+			err = Setup_Platforms(&br)
+			if err != nil {
+				return
+			}
+		case "manifest:qnib/featuretest-arm64":
+			err = sqlite.Setup_Manifest_QNIB_FeatureTest_arm(&sq, &br)
+			if err != nil {
+				return
+			}
+		case "config:qnib/featuretest-arm64":
+			err = sqlite.Setup_Config_FTarm(&sq, &br)
+			if err != nil {
+				return
+			}
+		case "upstreams:qnib/featuretest-arm64":
+			err = sqlite.Setup_Upstream_FTarm(&sq, &br)
+			if err != nil {
+				return
+			}
+		case "layers:qnib/featuretest-arm64":
+			err = sqlite.Setup_Layers_FTarm(&sq, &br)
+			if err != nil {
+				return
+			}
+		case "manifestlist:qnib/featuretest-generic-arm64":
+			err = sqlite.Setup_Manifestlist_FTarm(&sq, &br)
+			if err != nil {
+				return
+			}
 		case "collection:qnib/featuretest":
-			Setup_Collection_QNIB_FeatureTest()
+			err = sqlite.Setup_Collection_QNIB_FeatureTest(&sq, &br)
+			if err != nil {
+				return
+			}
 		case "users":
 			Setup_Profiles()
 		case "profiles":
@@ -143,7 +178,7 @@ func SetupTest(bs utils.Bootstrap) (err error) {
 			Setup_FTarm_Config()
 		default:
 			err = fmt.Errorf("No teardown for '%s'", b)
-			return err
+			return br, err
 		}
 	}
 	return
@@ -191,6 +226,56 @@ func Setup_Users() {
 	}
 }
 
+func Setup_Platforms(br *utils.BootstrapResult) (err error) {
+	//logrus.Info("> Setup_Platforms")
+	// Create platforms
+	plts := []types.Platform{
+		{Arch: "amd64", Variant: "", OS: "linux", Features: ""},
+		{Arch: "arm", Variant: "", OS: "linux", Features: ""},
+		{Arch: "arm", Variant: "v5", OS: "linux", Features: ""},
+		{Arch: "arm", Variant: "v6", OS: "linux", Features: ""},
+		{Arch: "arm", Variant: "v7", OS: "linux", Features: ""},
+		{Arch: "arm64", Variant: "v8", OS: "linux", Features: ""},
+	}
+	for _, p := range plts {
+		err := mag.SQlite.Platform.Insert(&p)
+		if err != nil {
+			return err
+		}
+		pStr := fmt.Sprintf("%s/%s", p.OS, p.Arch)
+		if p.Variant != "" {
+			pStr = fmt.Sprintf("%s/%s", pStr, p.Variant)
+		}
+		k := fmt.Sprintf("platform:%s#id", pStr)
+		br.Add(k, fmt.Sprint(p.SqlID))
+		// Check if filters are already there, if so link
+		f := types.Filter{
+			Label: "generic",
+		}
+		if p.Features != "" {
+			f.Label = strings.TrimPrefix(p.Features, "cpu:")
+		}
+		fID, found, err := mag.SQlite.Filter.GetFilter(f)
+		if err != nil {
+			return err
+		}
+		f.SqlID = fID
+		if found {
+			pfp := types.ProfileFilterPlatform{
+				Platform: p,
+				Filter:   f,
+			}
+			err = mag.SQlite.Platform.InsertPlatformFilter(pfp)
+			if err != nil {
+				return err
+			}
+		} else {
+			logrus.Warnf("No filter for platform '%s'", pStr)
+		}
+	}
+	return
+}
+
 func Setup_Profiles() {
 	logrus.Warn("Setup_Profiles")
 	prfs, err := config.FindProfiles(ctx, "../../../misc/yaml/profiles")
@@ -235,9 +320,4 @@ func Setup_Profiles() {
 			continue
 		}
 	}
-}
-
-func Setup_Collection_QNIB_FeatureTest() {
-	logrus.Warn("Setup_Collection_QNIB_FeatureTest")
-
 }

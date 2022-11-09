@@ -9,7 +9,7 @@ import (
 
 func Test_Collection(t *testing.T) {
 	bs := utils.NewBootstrap()
-	err := SetupTest(bs)
+	_, err := SetupTest(bs)
 	assert.NoError(t, err)
 	defer TeardownTest(bs)
 	// Test

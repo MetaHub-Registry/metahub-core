@@ -14,7 +14,7 @@ import (
 
 func Test_CachManifest(t *testing.T) {
 	bs := utils.NewBootstrap()
-	err := SetupTest(bs)
+	_, err := SetupTest(bs)
 	assert.NoError(t, err)
 	defer TeardownTest(bs)
 	// Test
@@ -48,7 +48,7 @@ func Test_StoreManifestUpload(t *testing.T) {
 	bs.AddBootstrap("cfg:generic")
 	bs.AddBootstrap("profiles")
 	//bs.SetSqlite("Desktop/magazine2.db")
-	err := SetupTest(bs)
+	_, err := SetupTest(bs)
 	assert.NoError(t, err)
 	defer TeardownTest(bs)
 	expCfg := types.FT_arm_Config()
