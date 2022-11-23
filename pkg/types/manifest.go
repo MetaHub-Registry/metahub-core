@@ -9,6 +9,7 @@ import (
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/manifest/manifestlist"
 	"github.com/opencontainers/go-digest"
+	"github.com/sirupsen/logrus"
 )
 
 type Manifest struct {
@@ -100,6 +101,9 @@ func (m Manifest) ToOCIBytes() (b []byte) {
 }
 
 func (m Manifest) WriteWWWHeader(w http.ResponseWriter) {
+	if m.MediaType == "" {
+		logrus.Fatal("Manifest.MediaType is empty")
+	}
 	w.Header().Set("Content-Length", "0")
 	w.Header().Set("Content-Type", m.MediaType)
 	w.Header().Set("Docker-Content-Digest", m.Digest)
@@ -111,5 +115,8 @@ func (m Manifest) WriteWWWBody(w http.ResponseWriter) {
 	size := len(m.Data)
 	w.Header().Set("Content-Length", fmt.Sprint(size))
 	b := m.Data
+	dig := digest.FromBytes(b)
+	logrus.Warnf("DIGEST.FromBytes: %s", dig.String())
+	logrus.Warnf("DIGEST.FromMani: %s", m.Digest)
 	w.Write(b)
 }

@@ -157,6 +157,9 @@ func (mag Magazine) NeoLinkManifestToPlatform(ctx context.Context, maniID, platI
 
 func (mag Magazine) Manifest_GetByHTTPRequest(r *http.Request) (m types.Manifest, found bool, err error) {
 	req := types.NewRequest(r)
+	if req.Profile == "" {
+		return
+	}
 	msg := fmt.Sprintf("%-5s ManifestHandler(%s, ", r.Method, req.Repo)
 	if req.Tag == "" {
 		msg += fmt.Sprintf("%s)", req.Digest)
@@ -174,7 +177,7 @@ func (mag Magazine) Manifest_GetByHTTPRequest(r *http.Request) (m types.Manifest
 	return
 }
 
-func (mag Magazine) Manifest_DeleteByHTTPRequest(r *http.Request) (found bool, err error) {
+func (mag Magazine) Manifest_DeleteByHTTPRequest(r *http.Request) (err error) {
 	req := types.NewRequest(r)
 	msg := fmt.Sprintf("%-5s DeleteManifestHandler(%s, ", r.Method, req.Repo)
 	if req.Tag == "" {
@@ -182,6 +185,7 @@ func (mag Magazine) Manifest_DeleteByHTTPRequest(r *http.Request) (found bool, e
 	} else {
 		msg += fmt.Sprintf("%s)", req.Tag)
 	}
+	logrus.Warn(msg)
 	err = mag.RemoveManifestByRequest(req)
 	if err != nil {
 		return
@@ -206,7 +210,9 @@ func (mag Magazine) Manifest_GetByRequest(req types.Request) (m types.Manifest, 
 
 func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani types.Manifest, err error) {
 	ctx := context.Background()
-	ociMani := types.OCIManifest{}
+	ociMani := types.OCIManifest{
+		MediaType: req.ContentType,
+	}
 	err = json.Unmarshal(buf, &ociMani)
 	if err != nil {
 		err = errors.Wrapf(err, "failed to unmarshal OCI Manifest '%s'", string(buf))
@@ -331,6 +337,17 @@ func (mag Magazine) RemoveManifestByRequest(req types.Request) (err error) {
 	m := types.Manifest{
 		Digest: req.Digest,
 	}
-	mag.SQlite.Manifest.Remove(m)
+	mlIDs, err := mag.SQlite.Manifest.Remove(m)
+	if err != nil {
+		err = errors.Wrap(err, "failed to SQlite.Manifest.Remove")
+		return
+	}
+	for _, mlID := range mlIDs {
+		err = mag.SQlite.Collection.ScrubCollectionsByManifestListID(mlID)
+		if err != nil {
+			err = errors.Wrap(err, "failed to SQlite.Collection.ScrubCollectionsByManifestListID")
+			return
+		}
+	}
 	return
 }
