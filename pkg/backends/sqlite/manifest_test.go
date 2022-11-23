@@ -40,11 +40,14 @@ func Test_Manifest_GetInsert(t *testing.T) {
 	_, found, err := sq.Manifest.GetIDByDigest(man1.Digest)
 	assert.NoError(t, err)
 	assert.True(t, found)
-	err = sq.Manifest.Remove(man1)
+	mlIDs, err := sq.Manifest.Remove(man1)
 	assert.NoError(t, err)
+	assert.Len(t, mlIDs, 0)
 	_, found, err = sq.Manifest.GetIDByDigest(man1.Digest)
 	assert.NoError(t, err)
 	assert.False(t, found)
+	_, err = sq.Manifest.Remove(man1)
+	assert.Error(t, err)
 
 }
 
@@ -97,8 +100,9 @@ func Test_Manifest_GetView(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, gotManis, 1)
 	// Delete Manifest
-	err = sq.Manifest.Remove(got)
+	mlIDs, err := sq.Manifest.Remove(got)
 	assert.NoError(t, err)
+	assert.Len(t, mlIDs, 1)
 	_, found, err = sq.Manifest.GetIDByDigest(got.Digest)
 	assert.NoError(t, err)
 	assert.False(t, found)

@@ -529,3 +529,57 @@ func (c Collection) GetTagsListByRepo(repo string) (res types.TagResponse, err e
 	}
 	return
 }
+func (c Collection) ScrubCollectionsByManifestListID(mlID int64) (err error) {
+	q := fmt.Sprintf(`DELETE FROM collection_xtable WHERE manifestlist_id=%d RETURNING collection_id;`, mlID)
+	rows, err := db.Query(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	defer rows.Close()
+	colIDs := []int64{}
+	for rows.Next() {
+		var colID int64
+		err = rows.Scan(&colID)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		colIDs = append(colIDs, colID)
+	}
+	rows.Close()
+	delColID := []int64{}
+	for _, colID := range colIDs {
+		// Check if the collection is empty
+		q = fmt.Sprintf(`SELECT COUNT(*) FROM collection_xtable WHERE collection_id=%d;`, colID)
+		rows, err := db.Query(q)
+		if err != nil {
+			logrus.Error(err)
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var cnt int64
+			err = rows.Scan(&cnt)
+			if err != nil {
+				logrus.Error(err)
+				return err
+			}
+			if cnt == 0 {
+				delColID = append(delColID, colID)
+			}
+		}
+	}
+	rows.Close()
+	for _, colID := range delColID {
+		// Collection is empty, thus we delete it
+		q = fmt.Sprintf(`DELETE FROM collections WHERE id=%d;`, colID)
+		_, err = db.Exec(q)
+		if err != nil {
+			logrus.Error(err)
+			return err
+		}
+	}
+
+	return
+}

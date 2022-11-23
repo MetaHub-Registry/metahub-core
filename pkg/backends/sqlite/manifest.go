@@ -341,13 +341,14 @@ func (m *Manifest) TypesManifest_GetByManifestListID(mlID int64) (manis []types.
 	return
 }
 
-func (m Manifest) Remove(i types.Manifest) (err error) {
+func (m Manifest) Remove(i types.Manifest) (mlIDs []int64, err error) {
 	id, found, err := m.GetIDByDigest(i.Digest)
 	if err != nil {
 		return
 	}
 	if !found {
-		return fmt.Errorf("manifest not found")
+		err = fmt.Errorf("manifest not found")
+		return
 	}
 	q := fmt.Sprintf(`DELETE FROM main.manifests WHERE id=%d`, id)
 	//logrus.Warnf("Query to delete: %s", q)
@@ -357,14 +358,22 @@ func (m Manifest) Remove(i types.Manifest) (err error) {
 		return
 	}
 	// Remove
-	q = fmt.Sprintf(`DELETE FROM main.manifestlist_xtable WHERE manifest_id=%d`, id)
+	q = fmt.Sprintf(`DELETE FROM main.manifestlist_xtable WHERE manifest_id=%d RETURNING manifestlist_id`, id)
 	//logrus.Warnf("Query to delete: %s", q)
-	_, err = db.Exec(q)
+	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
-	// Remove
-
+	defer rows.Close()
+	for rows.Next() {
+		var mlID int64
+		err = rows.Scan(&mlID)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		mlIDs = append(mlIDs, mlID)
+	}
 	return
 }
