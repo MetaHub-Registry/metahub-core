@@ -287,7 +287,7 @@ func (m Manifest) GetInsert(i *types.Manifest) (err error) {
 func (m *Manifest) TypesManifest_GetByManifestListID(mlID int64) (manis []types.Manifest, err error) {
 	manis = []types.Manifest{}
 	q := `SELECT maniID,maniDigest,maniListID,os,arch,variant,features,configDigest,configMediaType,configSize,`
-	q += `upstreamReg,upstreamRepo,upstreamTag	FROM main.manifests_view`
+	q += `upstreamReg,upstreamRepo,upstreamTag FROM main.manifests_view`
 	q += fmt.Sprintf(` WHERE maniListID=%d;`, mlID)
 	rows, err := db.Query(q)
 	if err != nil {
@@ -338,5 +338,33 @@ func (m *Manifest) TypesManifest_GetByManifestListID(mlID int64) (manis []types.
 		}
 		manis = append(manis, mani)
 	}
+	return
+}
+
+func (m Manifest) Remove(i types.Manifest) (err error) {
+	id, found, err := m.GetIDByDigest(i.Digest)
+	if err != nil {
+		return
+	}
+	if !found {
+		return fmt.Errorf("manifest not found")
+	}
+	q := fmt.Sprintf(`DELETE FROM main.manifests WHERE id=%d`, id)
+	//logrus.Warnf("Query to delete: %s", q)
+	_, err = db.Exec(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	// Remove
+	q = fmt.Sprintf(`DELETE FROM main.manifestlist_xtable WHERE manifest_id=%d`, id)
+	//logrus.Warnf("Query to delete: %s", q)
+	_, err = db.Exec(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	// Remove
+
 	return
 }

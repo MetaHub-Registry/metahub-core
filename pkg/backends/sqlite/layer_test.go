@@ -27,6 +27,7 @@ func Test_Layer_InsertDescriptor(t *testing.T) {
 }
 func Test_Layer_Insert(t *testing.T) {
 	bs := utils.NewBootstrap()
+	//bs.SetSqlite("Desktop/metahub.mb")
 	defer TeardownTest(bs)
 	l1 := testLayer
 	err := sq.Layer.Insert(&l1)
@@ -43,4 +44,9 @@ func Test_Layer_Insert(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, l1.Digest, l.Digest)
+	err = sq.Layer.Remove(l1)
+	assert.NoError(t, err)
+	_, found, err = sq.Layer.LayerGetByDigest(l1.Digest)
+	assert.NoError(t, err)
+	assert.False(t, found)
 }

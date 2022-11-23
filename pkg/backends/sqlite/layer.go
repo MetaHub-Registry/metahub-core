@@ -95,7 +95,6 @@ func (l Layer) GetID(digest string) (id int64, err error) {
 		return
 	}
 	return 0, fmt.Errorf("no ID found for digest '%s'", digest)
-
 }
 
 func (l Layer) Upsert(i *types.Layer) (err error) {
@@ -141,5 +140,12 @@ func (l Layer) Insert(i *types.Layer) (err error) {
 		return
 	}
 	i.SqlID, err = res.LastInsertId()
+	return
+}
+
+func (l Layer) Remove(i types.Layer) (err error) {
+	q := fmt.Sprintf(`DELETE FROM layers WHERE digest="%s"`, i.Digest)
+	//logrus.Warnf("Query to delete: %s", q)
+	_, err = db.Exec(q)
 	return
 }
