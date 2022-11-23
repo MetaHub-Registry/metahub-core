@@ -174,6 +174,21 @@ func (mag Magazine) Manifest_GetByHTTPRequest(r *http.Request) (m types.Manifest
 	return
 }
 
+func (mag Magazine) Manifest_DeleteByHTTPRequest(r *http.Request) (found bool, err error) {
+	req := types.NewRequest(r)
+	msg := fmt.Sprintf("%-5s DeleteManifestHandler(%s, ", r.Method, req.Repo)
+	if req.Tag == "" {
+		msg += fmt.Sprintf("%s)", req.Digest)
+	} else {
+		msg += fmt.Sprintf("%s)", req.Tag)
+	}
+	err = mag.RemoveManifestByRequest(req)
+	if err != nil {
+		return
+	}
+	return
+}
+
 func (mag Magazine) Manifest_GetByRequest(req types.Request) (m types.Manifest, found bool, err error) {
 	ctx := context.Background()
 	// Fetch Manifest from SQLite
@@ -309,5 +324,13 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 		return
 	}
 
+	return
+}
+
+func (mag Magazine) RemoveManifestByRequest(req types.Request) (err error) {
+	m := types.Manifest{
+		Digest: req.Digest,
+	}
+	mag.SQlite.Manifest.Remove(m)
 	return
 }

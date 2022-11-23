@@ -37,6 +37,15 @@ func Test_Manifest_GetInsert(t *testing.T) {
 	err = sq.Manifest.GetInsert(&man1)
 	assert.NoError(t, err)
 	assert.NotEqual(t, int64(-1), man1.SqlID)
+	_, found, err := sq.Manifest.GetIDByDigest(man1.Digest)
+	assert.NoError(t, err)
+	assert.True(t, found)
+	err = sq.Manifest.Remove(man1)
+	assert.NoError(t, err)
+	_, found, err = sq.Manifest.GetIDByDigest(man1.Digest)
+	assert.NoError(t, err)
+	assert.False(t, found)
+
 }
 
 func Test_Manifest_GetView(t *testing.T) {
@@ -84,4 +93,17 @@ func Test_Manifest_GetView(t *testing.T) {
 	gotManis2, err := sq.Manifest.TypesManifest_GetByManifestListID(expMlID)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(gotManis2))
+	gotManis, err := sq.Manifest.TypesManifest_GetByManifestListID(expMlID)
+	assert.NoError(t, err)
+	assert.Len(t, gotManis, 1)
+	// Delete Manifest
+	err = sq.Manifest.Remove(got)
+	assert.NoError(t, err)
+	_, found, err = sq.Manifest.GetIDByDigest(got.Digest)
+	assert.NoError(t, err)
+	assert.False(t, found)
+	gotManis, err = sq.Manifest.TypesManifest_GetByManifestListID(expMlID)
+	assert.NoError(t, err)
+	assert.Len(t, gotManis, 0, "Manifest should be deleted. Manifest list has no manifests anymore")
+
 }
