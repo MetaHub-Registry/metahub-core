@@ -149,3 +149,10 @@ func (l Layer) Remove(i types.Layer) (err error) {
 	_, err = db.Exec(q)
 	return
 }
+
+func (l Layer) DeleteLayerByID(layerID int64) (err error) {
+	q := fmt.Sprintf(`DELETE FROM layers WHERE id=%d`, layerID)
+	//logrus.Warnf("Query to delete: %s", q)
+	_, err = db.Exec(q)
+	return
+}

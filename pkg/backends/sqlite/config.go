@@ -134,3 +134,36 @@ func (c Config) GetCreateByRequest(ociMani types.OCIManifest) (cfg types.Config,
 	cfg.SqlID, err = res.LastInsertId()
 	return
 }
+
+func (c Config) ConfigGetByDigest(dig string) (cfg types.Config, found bool, err error) {
+	q := fmt.Sprintf(`SELECT id, digest, label, media_type, size FROM main.configs WHERE digest="%s";`, dig)
+	rows, err := db.Query(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	defer rows.Close()
+	cfg = types.Config{}
+	for rows.Next() {
+		found = true
+		err = rows.Scan(&cfg.SqlID, &cfg.Digest, &cfg.Label, &cfg.MediaType, &cfg.Size)
+	}
+	return
+}
+
+func (c Config) RemoveByID(id int64) (err error) {
+	q := fmt.Sprintf(`SELECT id FROM main.configs WHERE id=%d;`, id)
+	rows, err := db.Query(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return fmt.Errorf("no config with id '%d' found", id)
+	}
+	rows.Close()
+	q = fmt.Sprintf(`DELETE FROM main.configs WHERE id=%d;`, id)
+	_, err = db.Exec(q)
+	return
+}

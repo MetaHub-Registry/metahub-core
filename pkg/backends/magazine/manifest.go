@@ -334,12 +334,23 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 }
 
 func (mag Magazine) RemoveManifestByRequest(req types.Request) (err error) {
+	ctx := context.Background()
 	m := types.Manifest{
+		Upstream: types.Upstream{
+			Repo: req.Repo,
+			Tag:  req.Tag,
+		},
 		Digest: req.Digest,
 	}
-	mlIDs, err := mag.SQlite.Manifest.Remove(m)
+	mlIDs, maniDigest, err := mag.SQlite.Manifest.Remove(m)
 	if err != nil {
 		err = errors.Wrap(err, "failed to SQlite.Manifest.Remove")
+		return
+	}
+	// Remove Manifest Blob
+	err = mag.Minio.ManifestRemoveObj(ctx, maniDigest)
+	if err != nil {
+		err = errors.Wrap(err, "failed to Minio.ManifestRemoveObj")
 		return
 	}
 	for _, mlID := range mlIDs {

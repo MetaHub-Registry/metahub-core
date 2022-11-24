@@ -86,4 +86,17 @@ func Test_Config_gets(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, expCfgID, fmt.Sprint(cfg.SqlID))
+	// Test GetByDigest
+	cfg2, found, err := sq.Config.ConfigGetByDigest(expDig)
+	assert.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, expCfgID, fmt.Sprint(cfg2.SqlID))
+	err = sq.Config.RemoveByID(cfg2.SqlID)
+	assert.NoError(t, err)
+	_, found, err = sq.Config.ConfigGetByDigest(expDig)
+	assert.NoError(t, err)
+	assert.False(t, found)
+	err = sq.Config.RemoveByID(cfg2.SqlID)
+	assert.Error(t, err)
+
 }
