@@ -27,3 +27,36 @@ func (mag Magazine) StoreBlobUpload(ctx context.Context, bu *types.OCIBlobUpload
 		return err
 	}
 }
+
+func (mag Magazine) BlobDelete(ctx context.Context, req types.Request) (err error) {
+	layerId, found, err := mag.SQlite.Layer.LayerGetByDigest(req.Digest)
+	if err != nil {
+		return err
+	}
+	if found {
+		err = mag.SQlite.Layer.DeleteLayerByID(layerId.SqlID)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		// Remove Blob
+		err = mag.Minio.LayerRemoveObj(ctx, req.Digest)
+		return err
+	}
+	// Not a layer, so it must be a config
+	cfg, found, err := mag.SQlite.Config.ConfigGetByDigest(req.Digest)
+	if err != nil {
+		return err
+	}
+	if found {
+		err = mag.SQlite.Config.RemoveByID(cfg.SqlID)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		// Remove Blob
+		err = mag.Minio.ConfigRemoveObj(ctx, req.Digest)
+		return err
+	}
+	return
+}

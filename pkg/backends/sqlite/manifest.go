@@ -341,25 +341,9 @@ func (m *Manifest) TypesManifest_GetByManifestListID(mlID int64) (manis []types.
 	return
 }
 
-func (m Manifest) Remove(i types.Manifest) (mlIDs []int64, err error) {
-	id, found, err := m.GetIDByDigest(i.Digest)
-	if err != nil {
-		return
-	}
-	if !found {
-		err = fmt.Errorf("manifest not found")
-		return
-	}
-	q := fmt.Sprintf(`DELETE FROM main.manifests WHERE id=%d`, id)
-	//logrus.Warnf("Query to delete: %s", q)
-	_, err = db.Exec(q)
-	if err != nil {
-		logrus.Error(err)
-		return
-	}
+func (m Manifest) DeleteXTableByManifestID(maniID int64) (mlIDs []int64, err error) {
 	// Remove
-	q = fmt.Sprintf(`DELETE FROM main.manifestlist_xtable WHERE manifest_id=%d RETURNING manifestlist_id`, id)
-	//logrus.Warnf("Query to delete: %s", q)
+	q := fmt.Sprintf(`DELETE FROM main.manifestlist_xtable WHERE manifest_id=%d RETURNING manifestlist_id`, maniID)
 	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Error(err)
@@ -375,5 +359,115 @@ func (m Manifest) Remove(i types.Manifest) (mlIDs []int64, err error) {
 		}
 		mlIDs = append(mlIDs, mlID)
 	}
+	return
+}
+func (m Manifest) RemoveByID(id int64) (mlIDs []int64, err error) {
+	q := fmt.Sprintf(`DELETE FROM main.manifests WHERE id=%d RETURNING upstream_id, config_id`, id)
+	rows, err := db.Query(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	defer rows.Close()
+	var upstreamID, configID int64
+	found := false
+	if rows.Next() {
+		found = true
+		err = rows.Scan(&upstreamID, &configID)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+	}
+	rows.Close()
+	if !found {
+		err = fmt.Errorf("Manifest with id %d not found", id)
+		return
+	}
+	mlIDs, err = m.DeleteXTableByManifestID(id)
+	// ScrubUpstream
+	// TODO: Move me into Magazin
+	q = fmt.Sprintf(`SELECT COUNT(id) FROM main.manifests WHERE upstream_id=%d`, upstreamID)
+	rows, err = db.Query(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	defer rows.Close()
+	var count int64
+	if rows.Next() {
+		err = rows.Scan(&count)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+	}
+	rows.Close()
+	if count == 0 {
+		q = fmt.Sprintf(`DELETE FROM main.upstreams WHERE id=%d`, upstreamID)
+		_, err = db.Exec(q)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+	}
+	// ScrubConfig
+	// TODO: Move me into Magazin
+	q = fmt.Sprintf(`SELECT COUNT(id) FROM main.manifests WHERE config_id=%d`, configID)
+	rows, err = db.Query(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	defer rows.Close()
+	var cfgCount int64
+
+	if rows.Next() {
+		err = rows.Scan(&cfgCount)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+	}
+	rows.Close()
+	return
+}
+
+func (m Manifest) Remove(i types.Manifest) (mlIDs []int64, maniDigest string, err error) {
+	id, found, err := m.GetIDByDigest(i.Digest)
+	if err != nil {
+		return
+	}
+	if found {
+		maniDigest = i.Digest
+		mlIDs, err = m.RemoveByID(id)
+		return
+	}
+	// By Tag
+	//id, found, err = m.GetIDByTag(i.Upstream.Tag)
+	q := `SELECT DISTINCT maniID,maniDigest FROM main.manifests_view`
+	q += fmt.Sprintf(` WHERE upstreamRepo="%s" AND upstreamTag="%s";`, i.Upstream.Repo, i.Upstream.Tag)
+	rows, err := db.Query(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	defer rows.Close()
+	var maniID int64
+	found = false
+	if rows.Next() {
+		found = true
+		err = rows.Scan(&maniID, &maniDigest)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+	}
+	rows.Close()
+	if found {
+		mlIDs, err = m.RemoveByID(maniID)
+		return
+	}
+	err = fmt.Errorf("manifest not found")
 	return
 }

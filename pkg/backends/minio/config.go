@@ -168,11 +168,11 @@ func (m Minio) configGetter(bi imgTypes.BlobInfo) (b []byte, err error) {
 func (m Minio) ConfigRemoveObj(ctx context.Context, object string) (err error) {
 	cli := m.BucketConfig[configsBucketKey].Client
 	_, err = cli.StatObject(ctx, m.GetConfigsBucketName(), object, minio.StatObjectOptions{})
-	//if err != nil && err.Error() == "The specified key does not exist." {
 	if err != nil {
 		return
 	}
-	return cli.RemoveObject(ctx, m.GetConfigsBucketName(), object, minio.RemoveObjectOptions{})
+	err = cli.RemoveObject(ctx, m.GetConfigsBucketName(), object, minio.RemoveObjectOptions{})
+	return
 }
 
 func (m Minio) ConfigsStatObj(ctx context.Context, object string) (obj minio.ObjectInfo, err error) {
