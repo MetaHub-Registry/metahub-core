@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
@@ -14,6 +15,24 @@ var (
 	sq  Sqlite
 	ctx = context.Background()
 )
+
+func Test_SetupTeardown(t *testing.T) {
+	bs := utils.NewBootstrap()
+	bs.AddBootstrap("profiles")
+	bs.AddBootstrap("platforms")
+	bs.AddBootstrap("users")
+	bs.AddBootstrap("config:qnib/featuretest-arm64")
+	bs.AddBootstrap("upstreams:qnib/featuretest-arm64")
+	bs.AddBootstrap("layers:qnib/featuretest-arm64")
+	bs.AddBootstrap("manifest:qnib/featuretest-arm64")
+	bs.AddBootstrap("manifestlist:qnib/featuretest-generic-arm64")
+	bs.AddBootstrap("collection:qnib/featuretest")
+	bs.AddBootstrap("filter:generic")
+	br, err := SetupTest(bs)
+	_ = br
+	assert.NoError(t, err)
+	defer TeardownTest(bs)
+}
 
 func TestMain(m *testing.M) {
 	f, err := os.CreateTemp("", "sqlite-test")
@@ -47,6 +66,7 @@ func TeardownTest(bs utils.Bootstrap) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
+	logrus.Info("> FINISHED")
 }
 
 func SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {

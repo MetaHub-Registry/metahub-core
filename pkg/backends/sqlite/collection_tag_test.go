@@ -1,0 +1,41 @@
+package sqlite
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
+)
+
+func Test_CollectionTag_CRUD(t *testing.T) {
+	bs := utils.NewBootstrap()
+	//bs.SetSqlite("Desktop/metahub.db")
+	br, err := SetupTest(bs)
+	assert.NoError(t, err)
+	defer TeardownTest(bs)
+	_ = br
+	// Tests
+	colTag := types.CollectionTag_Latest()
+	err = sq.CollectionTag.Insert(&colTag)
+	assert.NoError(t, err)
+	assert.NotEqual(t, -1, colTag.SqlID)
+	gotColTag, found, err := sq.CollectionTag.GetByTag("latest")
+	assert.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, "latest", gotColTag.Tag)
+	assert.Equal(t, colTag.SqlID, gotColTag.SqlID)
+	err = sq.CollectionTag.RemoveByID(gotColTag.SqlID)
+	assert.NoError(t, err)
+	_, found, err = sq.CollectionTag.GetByTag("latest")
+	assert.NoError(t, err)
+	assert.False(t, found)
+	gotTag, err := sq.CollectionTag.GetCreateByRequest(types.Request{Tag: "latest"})
+	assert.NoError(t, err)
+	assert.Equal(t, "latest", gotTag.Tag)
+	assert.NotEqual(t, -1, gotTag.SqlID)
+	gotTag2, err := sq.CollectionTag.GetCreateByRequest(types.Request{Tag: "latest"})
+	assert.NoError(t, err)
+	assert.Equal(t, "latest", gotTag2.Tag)
+	assert.Equal(t, gotTag.SqlID, gotTag2.SqlID)
+}

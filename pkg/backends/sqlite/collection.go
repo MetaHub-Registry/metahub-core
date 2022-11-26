@@ -10,7 +10,7 @@ import (
 type Collection struct {
 	ID            int64               `json:"id"`
 	Repo          string              `json:"repo"`
-	Tag           string              `json:"tag"`
+	Tag           CollectionTag       `json:"tag"`
 	Manifests     map[string]Manifest `json:"manifests"`
 	ManifestCount int64               `json:"manifest_count"`
 }
@@ -18,6 +18,7 @@ type Collection struct {
 type colRes struct {
 	ColID    int    `json:"collection_id"`
 	ColRepo  string `json:"collection_repo"`
+	ColTagID int    `json:"collection_tag_id"`
 	ColTag   string `json:"collection_tag"`
 	ManiID   int    `json:"manifest_id"`
 	UpReg    string `json:"upstream_reg"`
@@ -32,17 +33,16 @@ type colRes struct {
 
 func (c *Collection) GetAll() (cols []Collection, err error) {
 	q := `SELECT 
-		colID, colRepo, colTag, maniID, upstreamReg, upstreamRepo, upstreamTag 
-	FROM main.v_get_collections`
+			colID, colRepo, colTag, colTagID, maniID, upstreamReg, upstreamRepo, upstreamTag 
+		FROM main.v_get_collections`
 	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Error(err)
-	}
-	if err != nil {
-		logrus.Error(err)
+		return
 	}
 	col := Collection{
-		ID: 0,
+		ID:        0,
+		Manifests: map[string]Manifest{},
 	}
 	for rows.Next() {
 		cRes := colRes{}
@@ -50,6 +50,7 @@ func (c *Collection) GetAll() (cols []Collection, err error) {
 			&cRes.ColID,
 			&cRes.ColRepo,
 			&cRes.ColTag,
+			&cRes.ColTagID,
 			&cRes.ManiID,
 			&cRes.UpReg,
 			&cRes.UpRepo,
@@ -63,10 +64,14 @@ func (c *Collection) GetAll() (cols []Collection, err error) {
 				// In case it is not 0 it holds the previous collection, thus we add it
 				cols = append(cols, col)
 			}
+			tag := CollectionTag{
+				ID:  int64(cRes.ColTagID),
+				Tag: cRes.ColTag,
+			}
 			col = Collection{
 				ID:            int64(cRes.ColID),
 				Repo:          cRes.ColRepo,
-				Tag:           cRes.ColTag,
+				Tag:           tag,
 				Manifests:     map[string]Manifest{},
 				ManifestCount: 0,
 			}
@@ -90,7 +95,21 @@ func (c *Collection) GetAll() (cols []Collection, err error) {
 }
 
 func (c *Collection) GetCollectionByID(colID int64) (col Collection, err error) {
-	q := fmt.Sprintf(`SELECT * FROM main.v_get_collection WHERE colID = %d`, colID)
+	q := fmt.Sprintf(`SELECT 
+		colID,	
+		colRepo,
+		colTagID,
+		colTag,
+		maniID,
+		upstreamReg,
+		upstreamRepo,
+		upstreamTag,
+		os,
+		arch,
+		variant,
+		features,
+		profile
+	FROM main.v_get_collections WHERE colID = %d`, colID)
 	logrus.Errorf("q: %s", q)
 	rows, err := db.Query(q)
 	if err != nil {
@@ -106,6 +125,7 @@ func (c *Collection) GetCollectionByID(colID int64) (col Collection, err error) 
 		err = rows.Scan(
 			&cRes.ColID,
 			&cRes.ColRepo,
+			&cRes.ColTagID,
 			&cRes.ColTag,
 			&cRes.ManiID,
 			&cRes.UpReg,
@@ -123,7 +143,10 @@ func (c *Collection) GetCollectionByID(colID int64) (col Collection, err error) 
 		if col.ManifestCount == 0 {
 			col.ID = int64(cRes.ColID)
 			col.Repo = cRes.ColRepo
-			col.Tag = cRes.ColTag
+			col.Tag = CollectionTag{
+				ID:  int64(cRes.ColTagID),
+				Tag: cRes.ColTag,
+			}
 		}
 		// Add the manifest to the collection
 		m := Manifest{
@@ -151,7 +174,7 @@ func (c *Collection) GetCollectionByID(colID int64) (col Collection, err error) 
 func (c *Collection) GetCollectionsByRepo(repo string) (cols []Collection, err error) {
 	cols = []Collection{}
 	q := fmt.Sprintf(`SELECT 
-		colID, colRepo, colTag, maniID, upstreamReg, upstreamRepo, upstreamTag
+		colID, colRepo, colTagID, colTag, maniID, upstreamReg, upstreamRepo, upstreamTag
 	FROM main.v_get_collections WHERE colRepo LIKE '%s%%';`, repo)
 	rows, err := db.Query(q)
 	if err != nil {
@@ -167,6 +190,7 @@ func (c *Collection) GetCollectionsByRepo(repo string) (cols []Collection, err e
 		err = rows.Scan(
 			&cRes.ColID,
 			&cRes.ColRepo,
+			&cRes.ColTagID,
 			&cRes.ColTag,
 			&cRes.ManiID,
 			&cRes.UpReg,
@@ -182,9 +206,12 @@ func (c *Collection) GetCollectionsByRepo(repo string) (cols []Collection, err e
 				cols = append(cols, col)
 			}
 			col = Collection{
-				ID:            int64(cRes.ColID),
-				Repo:          cRes.ColRepo,
-				Tag:           cRes.ColTag,
+				ID:   int64(cRes.ColID),
+				Repo: cRes.ColRepo,
+				Tag: CollectionTag{
+					ID:  int64(cRes.ColTagID),
+					Tag: cRes.ColTag,
+				},
 				Manifests:     map[string]Manifest{},
 				ManifestCount: 0,
 			}
@@ -226,7 +253,8 @@ func (c *Collection) CreateCollectionView() (err error) {
 	SELECT
 		collections.id AS colID,
 		collections.repo AS colRepo,
-		collections.tag AS colTag,
+		collection_tags.tag AS colTag,
+		collection_tags.id AS colTagID,
 		manifests.id AS maniID,
 		upstreams.reg AS upstreamReg,
 		upstreams.repo AS upstreamRepo,
@@ -237,24 +265,16 @@ func (c *Collection) CreateCollectionView() (err error) {
 		platforms.features AS features,
 		profiles.name	 AS profile
 	FROM collections
-	INNER JOIN collection_xtable
-		ON collections.id = collection_xtable.collection_id
-	INNER JOIN manifestlists
-		ON collection_xtable.manifestlist_id = manifestlists.id
-	INNER JOIN manifestlist_xtable
-		ON manifestlists.id = manifestlist_xtable.manifestlist_id
-	INNER JOIN manifests
-		ON manifestlist_xtable.manifest_id = manifests.id
-	INNER JOIN upstreams
-		ON manifests.upstream_id = upstreams.id
-	INNER JOIN platforms
-		ON manifests.platform_id = platforms.id
-	INNER JOIN platform_filter
-		ON platforms.id = platform_filter.platform_id
-	INNER JOIN profile_filter
-		ON platform_filter.filter_id = profile_filter.filter_id
-	INNER JOIN profiles
-		ON profiles.id = profile_filter.profile_id`
+	INNER JOIN collection_xtable ON collections.id = collection_xtable.collection_id 
+	INNER JOIN collection_tags ON collection_tags.id = collection_xtable.collection_tag_id
+	INNER JOIN manifestlists ON collection_xtable.manifestlist_id = manifestlists.id
+	INNER JOIN manifestlist_xtable ON manifestlists.id = manifestlist_xtable.manifestlist_id
+	INNER JOIN manifests ON manifestlist_xtable.manifest_id = manifests.id
+	INNER JOIN upstreams ON manifests.upstream_id = upstreams.id
+	INNER JOIN platforms ON manifests.platform_id = platforms.id
+	INNER JOIN platform_filter ON platforms.id = platform_filter.platform_id
+	INNER JOIN profile_filter ON platform_filter.filter_id = profile_filter.filter_id
+	INNER JOIN profiles ON profiles.id = profile_filter.profile_id`
 	_, err = db.Exec(q)
 	return
 }
@@ -264,7 +284,8 @@ func (c *Collection) CreateCollectionsView() (err error) {
 	SELECT
 		collections.id AS colID,
 		collections.repo AS colRepo,
-		collections.tag AS colTag,
+		collection_tags.tag AS colTag,
+		collection_tags.id AS colTagID,
 		manifests.id AS maniID,
 		manifestlists.digest AS manifestlistDigest,
 		upstreams.reg AS upstreamReg,
@@ -278,6 +299,7 @@ func (c *Collection) CreateCollectionsView() (err error) {
 	FROM
 		collections
 		INNER JOIN collection_xtable ON collections.id = collection_xtable.collection_id
+		INNER JOIN collection_tags ON collection_tags.id = collection_xtable.collection_tag_id
 		INNER JOIN manifestlists ON collection_xtable.manifestlist_id = manifestlists.id
 		INNER JOIN manifestlist_xtable ON manifestlists.id = manifestlist_xtable.manifestlist_id
 		INNER JOIN manifests ON manifestlist_xtable.manifest_id = manifests.id
@@ -296,6 +318,7 @@ func (c Collection) createCollectionTable() (err error) {
 	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Fatal(err)
+		return
 	}
 	defer rows.Close()
 	if rows.Next() {
@@ -304,8 +327,7 @@ func (c Collection) createCollectionTable() (err error) {
 	}
 	s := `CREATE TABLE IF NOT EXISTS %s (
 		    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-        "repo" TEXT,
-		"tag" int
+        "repo" TEXT
 		);`
 	stmt := fmt.Sprintf(s, tableName)
 	query, err := db.Prepare(stmt)
@@ -335,9 +357,12 @@ func (c Collection) createCollectionXTable() (err error) {
 	s := `CREATE TABLE IF NOT EXISTS %s (
 		    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
         "collection_id" INT, 
+		"collection_tag_id" INT, 
 		"manifestlist_id" INT,
 		FOREIGN KEY (collection_id)
 			REFERENCES collection (id)
+		FOREIGN KEY (collection_tag_id)
+			REFERENCES collection_tags (id)
 		FOREIGN KEY (manifestlist_id)
 			REFERENCES manifestlist (id)
 		);`
@@ -367,13 +392,13 @@ func (c Collection) CreateTables() (err error) {
 }
 
 func (c Collection) Insert(i *types.Collection) (err error) {
-	q := `INSERT INTO collections (repo, tag) VALUES (?, ?)`
+	q := `INSERT INTO collections (repo) VALUES (?)`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
-	res, err := stmt.Exec(i.Repo, i.Tag)
+	res, err := stmt.Exec(i.Repo)
 	if err != nil {
 		logrus.Error(err)
 		return
@@ -382,14 +407,14 @@ func (c Collection) Insert(i *types.Collection) (err error) {
 	return
 }
 
-func (c Collection) InsertXTable(colID, mlID int64) (err error) {
-	q := `INSERT INTO collection_xtable (collection_id, manifestlist_id) VALUES (?, ?)`
+func (c Collection) InsertXTable(colID, tagID, mlID int64) (err error) {
+	q := `INSERT INTO collection_xtable (collection_id, collection_tag_id, manifestlist_id) VALUES (?, ?, ?)`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
-	_, err = stmt.Exec(colID, mlID)
+	_, err = stmt.Exec(colID, tagID, mlID)
 	if err != nil {
 		logrus.Error(err)
 		return
@@ -397,12 +422,21 @@ func (c Collection) InsertXTable(colID, mlID int64) (err error) {
 	return
 }
 
-func (c *Collection) GetInsertCollectionByRepoTag(repo, tag string) (col types.Collection, err error) {
-	col, err = c.GetCollectionByRepoTag(repo, tag)
-	if col.SqlID == -1 {
+func (sq Sqlite) GetInsertCollectionByRepoTag(repo, tag string) (col types.Collection, err error) {
+	col, found, err := sq.Collection.GetCollectionByRepoTag(repo, tag)
+	if !found {
+		// add tag
+		ct := types.NewCollectionTag(tag)
+		err = sq.CollectionTag.Insert(&ct)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		col.Tag = ct
 		// Collection does not exist, thus we create it
-		err = c.Insert(&col)
+		err = sq.Collection.Insert(&col)
 	}
+	// Add
 	return
 }
 
@@ -411,6 +445,7 @@ func (c *Collection) GetCollectionsByRepoLike(repo string) (cols []Collection, e
 	q := fmt.Sprintf(`SELECT
 		colID,
 		colRepo,
+		colTagID,
 		colTag,
 		maniID,
 		upstreamReg,
@@ -436,6 +471,7 @@ func (c *Collection) GetCollectionsByRepoLike(repo string) (cols []Collection, e
 		err = rows.Scan(
 			&cRes.ColID,
 			&cRes.ColRepo,
+			&cRes.ColTagID,
 			&cRes.ColTag,
 			&cRes.ManiID,
 			&cRes.UpReg,
@@ -456,9 +492,12 @@ func (c *Collection) GetCollectionsByRepoLike(repo string) (cols []Collection, e
 				cols = append(cols, col)
 			}
 			col = Collection{
-				ID:            int64(cRes.ColID),
-				Repo:          cRes.ColRepo,
-				Tag:           cRes.ColTag,
+				ID:   int64(cRes.ColID),
+				Repo: cRes.ColRepo,
+				Tag: CollectionTag{
+					ID:  int64(cRes.ColTagID),
+					Tag: cRes.ColTag,
+				},
 				Manifests:     map[string]Manifest{},
 				ManifestCount: 0,
 			}
@@ -482,8 +521,8 @@ func (c *Collection) GetCollectionsByRepoLike(repo string) (cols []Collection, e
 	return
 }
 
-func (c *Collection) GetCollectionByRepoTag(repo, tag string) (col types.Collection, err error) {
-	q := fmt.Sprintf(`SELECT id FROM collections WHERE repo = '%s' AND tag = "%s";`, repo, tag)
+func (c *Collection) GetCollectionByRepoTag(repo, tag string) (col types.Collection, found bool, err error) {
+	q := fmt.Sprintf(`SELECT DISTINCT colID, colTagID FROM main.v_get_collections WHERE colRepo="%s" AND colTag="%s"`, repo, tag)
 	rows, err := db.Query(q)
 	if err != nil {
 		return
@@ -492,17 +531,20 @@ func (c *Collection) GetCollectionByRepoTag(repo, tag string) (col types.Collect
 	col = types.Collection{
 		SqlID:         -1,
 		Repo:          repo,
-		Tag:           tag,
+		Tag:           types.CollectionTag{SqlID: -1, Tag: tag},
 		ManifestLists: []types.ManifestList{},
 	}
-	var id int64
+	var colID, tagID int64
 	if rows.Next() {
-		err = rows.Scan(&id)
+		found = true
+		err = rows.Scan(&colID, &tagID)
 		if err != nil {
 			logrus.Error(err)
 		}
-		col.SqlID = id
+		col.SqlID = colID
+		col.Tag.SqlID = tagID
 	}
+	defer rows.Close()
 	return
 }
 
@@ -529,29 +571,34 @@ func (c Collection) GetTagsListByRepo(repo string) (res types.TagResponse, err e
 	}
 	return
 }
+
 func (c Collection) ScrubCollectionsByManifestListID(mlID int64) (err error) {
-	q := fmt.Sprintf(`DELETE FROM collection_xtable WHERE manifestlist_id=%d RETURNING collection_id;`, mlID)
+	q := fmt.Sprintf(`DELETE FROM collection_xtable WHERE manifestlist_id=%d RETURNING collection_id, collection_tag_id;`, mlID)
 	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
+	type ColTag struct {
+		ColID int64
+		TagID int64
+	}
+	var colTags []ColTag
 	defer rows.Close()
-	colIDs := []int64{}
 	for rows.Next() {
-		var colID int64
-		err = rows.Scan(&colID)
+		var colID, colTagID int64
+		err = rows.Scan(&colID, colTagID)
 		if err != nil {
 			logrus.Error(err)
 			return
 		}
-		colIDs = append(colIDs, colID)
+		colTags = append(colTags, ColTag{ColID: colID, TagID: colTagID})
 	}
 	rows.Close()
-	delColID := []int64{}
-	for _, colID := range colIDs {
+	delColTags := []ColTag{}
+	for _, colTag := range colTags {
 		// Check if the collection is empty
-		q = fmt.Sprintf(`SELECT COUNT(*) FROM collection_xtable WHERE collection_id=%d;`, colID)
+		q = fmt.Sprintf(`SELECT COUNT(*) FROM collection_xtable WHERE collection_id=%d AND collection_tag_id=%d;`, colTag.ColID, colTag.TagID)
 		rows, err := db.Query(q)
 		if err != nil {
 			logrus.Error(err)
@@ -566,14 +613,14 @@ func (c Collection) ScrubCollectionsByManifestListID(mlID int64) (err error) {
 				return err
 			}
 			if cnt == 0 {
-				delColID = append(delColID, colID)
+				delColTags = append(delColTags, colTag)
 			}
 		}
 	}
 	rows.Close()
-	for _, colID := range delColID {
+	for _, colTag := range delColTags {
 		// Collection is empty, thus we delete it
-		q = fmt.Sprintf(`DELETE FROM collections WHERE id=%d;`, colID)
+		q = fmt.Sprintf(`DELETE FROM collection_tags WHERE id=%d;`, colTag.TagID)
 		_, err = db.Exec(q)
 		if err != nil {
 			logrus.Error(err)

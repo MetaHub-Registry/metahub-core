@@ -74,10 +74,15 @@ func FT_arm_Upstream() Upstream {
 		Digest: digest.Digest("sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5"),
 	}
 }
+
+func CollectionTag_Latest() CollectionTag {
+	return CollectionTag{Tag: "latest"}
+}
+
 func FT_arm_Collection() Collection {
 	return Collection{
 		Repo: "qnib/featuretest",
-		Tag:  "latest",
+		Tag:  CollectionTag_Latest(),
 		ManifestLists: []ManifestList{
 			FT_generic_arm_Manifestlist(),
 		},

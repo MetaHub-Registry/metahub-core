@@ -289,18 +289,26 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 		return
 	}
 
-	// Collection & ManifestList
+	// Tag && Collection & ManifestList
+	/*
+		tag, err := mag.SQlite.CollectionTag.GetCreateByRequest(req)
+		if err != nil {
+			err = errors.Wrap(err, "failed to SQlite.CollectionTag.GetCreateByRequest")
+			return
+		}
+		_ = tag
+	*/
 	//// Fetch current collection or create new one
-	col, err := mag.SQlite.Collection.GetInsertCollectionByRepoTag(req.Repo, req.Tag)
+	col, err := mag.SQlite.GetInsertCollectionByRepoTag(req.Repo, req.Tag)
 	if err != nil {
-		err = errors.Wrap(err, "failed to SQlite.Collection.GetInsertCollectionByRepoTag")
+		err = errors.Wrap(err, "failed to SQlite.GetInsertCollectionByRepo")
 		return
 	}
-	_ = col
+	//logrus.Fatalf("col.Tag: %v", col.Tag)
 	// Augment ManifestList to collection
 	err = mag.AddMLtoCollection(&col)
 	if err != nil {
-		err = errors.Wrap(err, "failed to SQlite.Collection.GetInsertCollectionByRepoTag")
+		err = errors.Wrap(err, "failed to AddMLtoCollection")
 		return
 	}
 	// TODO: Add Manifest to ManifestList (which is linked to Collection)
@@ -324,7 +332,7 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 	}
 	col.ManifestLists = append(col.ManifestLists, ml)
 	// Update Collection
-	err = mag.SQlite.Collection.InsertXTable(col.SqlID, ml.SqlID)
+	err = mag.SQlite.Collection.InsertXTable(col.SqlID, col.Tag.SqlID, ml.SqlID)
 	if err != nil {
 		err = errors.Wrap(err, "failed to SQlite.Collection.InsertXTable")
 		return

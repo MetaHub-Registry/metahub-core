@@ -54,7 +54,8 @@ func (ml ManifestList) CreateManifestListView() (err error) {
 	SELECT DISTINCT
 		collections.id AS colID,
 		collections.repo AS colRepo,
-		collections.tag AS colTag,
+		collection_tags.id AS colTagID,
+		collection_tags.tag AS colTag,
 		profiles.id AS profileID,
 		profiles.name AS profileName,
 		manifestlists.digest AS manifestlistDigest,
@@ -62,6 +63,7 @@ func (ml ManifestList) CreateManifestListView() (err error) {
 	FROM
 		collections
 	INNER JOIN collection_xtable ON collections.id = collection_xtable.collection_id
+	INNER JOIN collection_tags ON collection_xtable.collection_tag_id = collection_tags.id
 	INNER JOIN manifestlists ON collection_xtable.manifestlist_id = manifestlists.id
 	INNER JOIN manifestlist_xtable ON manifestlists.id = manifestlist_xtable.manifestlist_id
 	INNER JOIN manifests ON manifestlist_xtable.manifest_id = manifests.id

@@ -14,38 +14,40 @@ var db *sql.DB
 
 type Sqlite struct {
 	// File is the path to the sqlite database file
-	MhFile       string
-	UsrFile      string
-	Sql          *sql.DB
-	BlobUpload   BlobUpload
-	User         User
-	Token        Token
-	Profile      Profile
-	Config       Config
-	Layer        Layer
-	Platform     Platform
-	Filter       Filter
-	Upstream     Upstream
-	Manifest     Manifest
-	Collection   Collection
-	ManifestList ManifestList
+	MhFile        string
+	UsrFile       string
+	Sql           *sql.DB
+	BlobUpload    BlobUpload
+	User          User
+	Token         Token
+	Profile       Profile
+	Config        Config
+	Layer         Layer
+	Platform      Platform
+	Filter        Filter
+	Upstream      Upstream
+	Manifest      Manifest
+	Collection    Collection
+	CollectionTag CollectionTag
+	ManifestList  ManifestList
 }
 
 func New(mhFile string, tables string) (s Sqlite, err error) {
 	s = Sqlite{
-		MhFile:       mhFile,
-		BlobUpload:   BlobUpload{},
-		User:         User{},
-		Token:        Token{},
-		Config:       Config{},
-		Profile:      Profile{},
-		Filter:       Filter{},
-		Platform:     Platform{},
-		Upstream:     Upstream{},
-		Layer:        Layer{},
-		Manifest:     Manifest{},
-		Collection:   Collection{},
-		ManifestList: ManifestList{},
+		MhFile:        mhFile,
+		BlobUpload:    BlobUpload{},
+		User:          User{},
+		Token:         Token{},
+		Config:        Config{},
+		Profile:       Profile{},
+		Filter:        Filter{},
+		Platform:      Platform{},
+		Upstream:      Upstream{},
+		Layer:         Layer{},
+		Manifest:      Manifest{},
+		Collection:    Collection{},
+		CollectionTag: CollectionTag{},
+		ManifestList:  ManifestList{},
 	}
 	err = s.createDB(mhFile, tables)
 	if err != nil {
@@ -68,7 +70,6 @@ func (s Sqlite) ReOpenDB() (err error) {
 
 func (s Sqlite) Close() {
 	db.Close()
-
 }
 
 func (s Sqlite) Query(q string) (*sql.Rows, error) {
@@ -198,6 +199,10 @@ func (s *Sqlite) createDB(mhFile string, tables string) (err error) {
 	}
 	if len(tables) == 0 || t.Has("collections") {
 		err = s.Collection.CreateTables()
+		checkErr(err, "")
+	}
+	if len(tables) == 0 || t.Has("collection_tags") {
+		err = s.CollectionTag.CreateTables()
 		checkErr(err, "")
 	}
 	if len(tables) == 0 || t.Has("manifestlists") {

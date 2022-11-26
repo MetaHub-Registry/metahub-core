@@ -272,19 +272,27 @@ func Setup_Profiles(sqObj *Sqlite, br *utils.BootstrapResult, d string) (err err
 
 func Setup_Collection_QNIB_FeatureTest(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	//logrus.Info("> Setup_Collection_QNIB_FeatureTest")
+	cTag := types.CollectionTag_Latest()
+	err = sq.CollectionTag.Insert(&cTag)
+	if err != nil {
+		return
+	}
+	br.Add("collection_tag:latest#id", fmt.Sprint(cTag.SqlID))
 	// Create collection
 	c := types.FT_arm_Collection()
+	c.Tag.SqlID = cTag.SqlID
 	err = sq.Collection.Insert(&c)
 	if err != nil {
 		return
 	}
 	br.Add("collection:qnib/featuretest#id", fmt.Sprint(c.SqlID))
+
 	// Link Collection and ManifestList
 	mlID, err := br.GetInt64("manifestlist:qnib/featuretest-generic-arm64#id")
 	if err != nil {
 		return err
 	}
-	err = sq.Collection.InsertXTable(c.SqlID, mlID)
+	err = sq.Collection.InsertXTable(c.SqlID, cTag.SqlID, mlID)
 	if err != nil {
 		return
 	}
