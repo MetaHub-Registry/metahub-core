@@ -110,6 +110,9 @@ func (m Manifest) CreateManifestView() (err error) {
 	q := `CREATE VIEW IF NOT EXISTS manifests_view AS
 	SELECT
 		collections.id AS colID,
+		collections.repo AS colRepo,
+		collection_tags.tag AS colTag,
+		collection_tags.id AS colTagID,
 		manifests.id AS maniID,
 		manifests.digest AS maniDigest,
 		manifestlists.digest AS maniListDigest,
@@ -129,6 +132,7 @@ func (m Manifest) CreateManifestView() (err error) {
 	FROM
 		collections
 		INNER JOIN collection_xtable ON collections.id = collection_xtable.collection_id
+		INNER JOIN collection_tags ON collection_tags.id = collection_xtable.collection_tag_id
 		INNER JOIN manifestlists ON collection_xtable.manifestlist_id = manifestlists.id
 		INNER JOIN manifestlist_xtable ON manifestlists.id = manifestlist_xtable.manifestlist_id
 		INNER JOIN manifests ON manifestlist_xtable.manifest_id = manifests.id

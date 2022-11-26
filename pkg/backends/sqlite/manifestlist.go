@@ -185,11 +185,12 @@ func (ml ManifestList) Insert(i *types.ManifestList) (err error) {
 	return
 }
 
-func (ml ManifestList) GetTypesManifestListByRequest(req types.Request) (res types.ManifestList, found bool, err error) {
-	q := fmt.Sprintf(`SELECT DISTINCT colID,colRepo,colTag,manifestlistDigest,manifestlistID FROM v_get_manifestlist WHERE colRepo="%s" AND colTag="%s" AND profileName="%s"`, req.Repo, req.Tag, req.Profile)
+func (sq Sqlite) GetTypesManifestListByRequest(req types.Request) (res types.ManifestList, found bool, err error) {
+	q := fmt.Sprintf(`SELECT DISTINCT colID,colRepo,colTag,manifestlistDigest,manifestlistID,profileName FROM v_get_manifestlist WHERE colRepo="%s" AND colTag="%s" AND profileName="%s"`, req.Repo, req.Tag, req.Profile)
 	if req.Tag == "" {
-		q = fmt.Sprintf(`SELECT DISTINCT colID,colRepo,colTag,manifestlistDigest,manifestlistID FROM v_get_manifestlist WHERE colRepo="%s" AND manifestlistDigest="%s" AND profileName="%s"`, req.Repo, req.Digest, req.Profile)
+		q = fmt.Sprintf(`SELECT DISTINCT colID,colRepo,colTag,manifestlistDigest,manifestlistID,profileName FROM v_get_manifestlist WHERE colRepo="%s" AND manifestlistDigest="%s" AND profileName="%s"`, req.Repo, req.Digest, req.Profile)
 	}
+	logrus.Warnf("Query: %s", q)
 	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Error(err)
@@ -212,6 +213,7 @@ func (ml ManifestList) GetTypesManifestListByRequest(req types.Request) (res typ
 			&r.ColTag,
 			&r.MlDigest,
 			&r.MlID,
+			&r.Profile,
 		)
 		if err != nil {
 			logrus.Error(err)
@@ -222,6 +224,13 @@ func (ml ManifestList) GetTypesManifestListByRequest(req types.Request) (res typ
 			// First row
 			res.Digest = r.MlDigest
 		}
+	}
+	rows.Close()
+	/// Add Manifests to List
+	res.Manifests, err = sq.Manifest.TypesManifest_GetByManifestListID(res.SqlID)
+	if err != nil {
+		logrus.Error(err)
+		return
 	}
 	return
 }
