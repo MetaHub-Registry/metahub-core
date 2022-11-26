@@ -33,6 +33,6 @@ func Test_Manifestlist_Get(t *testing.T) {
 	ml, found, err := sq.GetTypesManifestListByRequest(req)
 	assert.NoError(t, err)
 	assert.True(t, found)
-	assert.Equal(t, 1, len(ml.Manifests))
+	assert.Equal(t, 0, len(ml.Manifests))
 
 }

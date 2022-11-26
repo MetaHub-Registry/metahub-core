@@ -226,11 +226,5 @@ func (sq Sqlite) GetTypesManifestListByRequest(req types.Request) (res types.Man
 		}
 	}
 	rows.Close()
-	/// Add Manifests to List
-	res.Manifests, err = sq.Manifest.TypesManifest_GetByManifestListID(res.SqlID)
-	if err != nil {
-		logrus.Error(err)
-		return
-	}
 	return
 }
