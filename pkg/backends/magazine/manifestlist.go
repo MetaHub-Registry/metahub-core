@@ -19,7 +19,7 @@ func (mag Magazine) ComputeManifestlists() (err error) {
 		colID := colFilPair.Collection.NeoID
 		filterID := colFilPair.Filter.NeoID
 		_ = filterID
-		logrus.Warnf("Collection %s:%s - %s", colFilPair.Collection.Repo, colFilPair.Collection.Tag, colFilPair.Filter.Label)
+		logrus.Warnf("Collection %s:%s - %s", colFilPair.Collection.Repo, colFilPair.Collection.Tag.Tag, colFilPair.Filter.Label)
 		ml := types.ManifestList{
 			SchemaVersion: 2,
 			MediaType:     "application/vnd.docker.distribution.manifest.list.v2+json",

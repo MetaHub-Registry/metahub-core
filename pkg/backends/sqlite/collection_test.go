@@ -3,6 +3,7 @@ package sqlite
 import (
 	"testing"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
@@ -10,6 +11,7 @@ import (
 
 func Test_Collection_Insert(t *testing.T) {
 	bs := utils.NewBootstrap()
+	bs.SetSqlEmptyAll()
 	br, err := SetupTest(bs)
 	_ = br
 	assert.NoError(t, err)
@@ -18,7 +20,7 @@ func Test_Collection_Insert(t *testing.T) {
 	assert.NoError(t, err)
 	c := types.Collection{
 		Repo: "qnib/test",
-		Tag:  "1.0",
+		Tag:  types.NewCollectionTag("1.0"),
 	}
 	err = sq.Collection.Insert(&c)
 	assert.NoError(t, err)
@@ -30,6 +32,7 @@ func Test_Collection_Insert(t *testing.T) {
 
 func Test_Collection_Get(t *testing.T) {
 	bs := utils.NewBootstrap()
+	bs.SetSqlEmptyAll()
 	bs.AddBootstrap("users")
 	bs.AddBootstrap("profiles")
 	bs.AddBootstrap("platforms")
@@ -39,6 +42,7 @@ func Test_Collection_Get(t *testing.T) {
 	bs.AddBootstrap("manifest:qnib/featuretest-arm64")
 	bs.AddBootstrap("manifestlist:qnib/featuretest-generic-arm64")
 	bs.AddBootstrap("collection:qnib/featuretest")
+	//bs.SetSqlite("Desktop/metahub.db")
 	br, err := SetupTest(bs)
 	_ = br
 	assert.NoError(t, err)
@@ -48,6 +52,7 @@ func Test_Collection_Get(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(cols))
 	col := cols[0]
+	logrus.Warnf("col.ID: %#v", col.ID)
 	gotCol, err := sq.Collection.GetCollectionByID(col.ID)
 	assert.NoError(t, err)
 	assert.Equal(t, "qnib/featuretest", gotCol.Repo)
@@ -63,8 +68,9 @@ func Test_Collection_Get(t *testing.T) {
 	gotCols4, err := sq.Collection.GetCollectionsByRepoLike("qnib/featuretest")
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(gotCols4))
-	gotCol1, err := sq.Collection.GetCollectionByRepoTag("qnib/featuretest", "latest")
+	gotCol1, found, err := sq.Collection.GetCollectionByRepoTag("qnib/featuretest", "latest")
 	assert.NoError(t, err)
+	assert.True(t, found)
 	assert.Equal(t, "qnib/featuretest", gotCol1.Repo)
 	gotTags, err := sq.Collection.GetTagsListByRepo("qnib/featuretest")
 	assert.NoError(t, err)

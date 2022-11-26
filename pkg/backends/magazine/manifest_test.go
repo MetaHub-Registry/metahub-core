@@ -47,7 +47,7 @@ func Test_StoreManifestUpload(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.AddBootstrap("cfg:generic")
 	bs.AddBootstrap("profiles")
-	//bs.SetSqlite("Desktop/magazine2.db")
+	//bs.SetSqlite("Desktop/metahub.db")
 	_, err := SetupTest(bs)
 	assert.NoError(t, err)
 	defer TeardownTest(bs)

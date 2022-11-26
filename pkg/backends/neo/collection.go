@@ -116,7 +116,8 @@ func CollectionFromRecord(res neo4j.Result) (c types.Collection, err error) {
 		err = fmt.Errorf("no collectionTag found in record: %v", r)
 		return
 	}
-	c.Tag = v.(string)
+	tagStr := v.(string)
+	c.Tag = types.NewCollectionTag(tagStr)
 	c.ManifestLists = make([]types.ManifestList, 0)
 	return
 }
@@ -235,7 +236,7 @@ func (n Neo) GetCollectionFilterPairs() (cfps []types.CollectionFilterPair, err 
 			Collection: types.Collection{
 				NeoID: t.collectionID,
 				Repo:  t.colRepo,
-				Tag:   t.colTag,
+				Tag:   types.NewCollectionTag(t.colTag),
 			},
 			Filter: types.Filter{
 				NeoID: t.filterID,
