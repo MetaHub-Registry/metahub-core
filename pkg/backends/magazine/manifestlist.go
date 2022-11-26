@@ -90,7 +90,7 @@ func (mag Magazine) ManifestListGetByRequest(req types.Request) (ml types.Manife
 	logrus.Debugf("ManifestListGetByReqest: %v", req)
 	ctx := context.Background()
 	// Fetch ML from SQLite
-	ml, found, err = mag.SQlite.ManifestList.GetTypesManifestListByRequest(req)
+	ml, found, err = mag.SQlite.GetTypesManifestListByRequest(req)
 	if err != nil {
 		logrus.Errorf("Failed to get ManifestList from SQLite: %v", err)
 		return

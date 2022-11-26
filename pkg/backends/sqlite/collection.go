@@ -240,42 +240,6 @@ func (c *Collection) CreateViews() (err error) {
 		logrus.Error(err)
 		return
 	}
-	err = c.CreateCollectionView()
-	if err != nil {
-		logrus.Error(err)
-		return
-	}
-	return
-}
-
-func (c *Collection) CreateCollectionView() (err error) {
-	q := `CREATE VIEW IF NOT EXISTS v_get_collection AS
-	SELECT
-		collections.id AS colID,
-		collections.repo AS colRepo,
-		collection_tags.tag AS colTag,
-		collection_tags.id AS colTagID,
-		manifests.id AS maniID,
-		upstreams.reg AS upstreamReg,
-		upstreams.repo AS upstreamRepo,
-		upstreams.tag AS upstreamTag,
-		platforms.os AS os,
-		platforms.arch AS arch,
-		platforms.variant AS variant,
-		platforms.features AS features,
-		profiles.name	 AS profile
-	FROM collections
-	INNER JOIN collection_xtable ON collections.id = collection_xtable.collection_id 
-	INNER JOIN collection_tags ON collection_tags.id = collection_xtable.collection_tag_id
-	INNER JOIN manifestlists ON collection_xtable.manifestlist_id = manifestlists.id
-	INNER JOIN manifestlist_xtable ON manifestlists.id = manifestlist_xtable.manifestlist_id
-	INNER JOIN manifests ON manifestlist_xtable.manifest_id = manifests.id
-	INNER JOIN upstreams ON manifests.upstream_id = upstreams.id
-	INNER JOIN platforms ON manifests.platform_id = platforms.id
-	INNER JOIN platform_filter ON platforms.id = platform_filter.platform_id
-	INNER JOIN profile_filter ON platform_filter.filter_id = profile_filter.filter_id
-	INNER JOIN profiles ON profiles.id = profile_filter.profile_id`
-	_, err = db.Exec(q)
 	return
 }
 
