@@ -66,4 +66,14 @@ func Test_StoreManifestUpload(t *testing.T) {
 	assert.Equal(t, inMani.Digest, mani.Digest)
 	assert.Equal(t, expCfg.Digest, mani.Config.Digest)
 	assert.Equal(t, expUpstream.Digest, mani.Upstream.Digest)
+	// 2022-11-28: Had an issue where the tag_id was not set
+	q := "SELECT collection_tag_id FROM collection_xtable"
+	rows, err := mag.SQlite.Query(q)
+	assert.NoError(t, err)
+	defer rows.Close()
+	assert.True(t, rows.Next())
+	var colTagID int64
+	err = rows.Scan(&colTagID)
+	assert.NoError(t, err)
+	assert.NotEqual(t, int64(0), colTagID)
 }
