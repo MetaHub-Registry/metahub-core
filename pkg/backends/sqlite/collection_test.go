@@ -30,18 +30,37 @@ func Test_Collection_Insert(t *testing.T) {
 	assert.Equal(t, 1, len(cols))
 }
 
+func Test_Collection_GetInsert(t *testing.T) {
+	bs := utils.NewBootstrap()
+	bs.SetSqlEmptyAll()
+	br, err := SetupTest(bs)
+	_ = br
+	assert.NoError(t, err)
+	defer TeardownTest(bs)
+	err = sq.Collection.CreateViews()
+	assert.NoError(t, err)
+	col, err := sq.GetInsertCollectionByRepoTag("qnib/test", "1.0")
+	assert.NoError(t, err)
+	assert.NotEqual(t, int64(-1), col.SqlID)
+	assert.Equal(t, "qnib/test", col.Repo)
+	assert.Equal(t, "1.0", col.Tag.Tag)
+	cols, err := sq.Collection.GetAll()
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(cols))
+}
+
 func Test_Collection_Get(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetSqlEmptyAll()
 	bs.AddBootstrap("users")
 	bs.AddBootstrap("profiles")
 	bs.AddBootstrap("platforms")
-	bs.AddBootstrap("upstreams:qnib/featuretest-arm64")
-	bs.AddBootstrap("layers:qnib/featuretest-arm64")
-	bs.AddBootstrap("config:qnib/featuretest-arm64")
-	bs.AddBootstrap("manifest:qnib/featuretest-arm64")
-	bs.AddBootstrap("manifestlist:qnib/featuretest-generic-arm64")
-	bs.AddBootstrap("collection:qnib/featuretest")
+	bs.AddBootstrap("upstreams:qnib/featuretest:arm64")
+	bs.AddBootstrap("layers:qnib/featuretest:arm64")
+	bs.AddBootstrap("config:qnib/featuretest:arm64")
+	bs.AddBootstrap("manifest:qnib/featuretest:arm64")
+	bs.AddBootstrap("manifestlist:qnib/featuretest:arm64")
+	bs.AddBootstrap("collection:qnib/featuretest:arm64")
 	//bs.SetSqlite("Desktop/metahub.db")
 	br, err := SetupTest(bs)
 	_ = br
@@ -68,11 +87,41 @@ func Test_Collection_Get(t *testing.T) {
 	gotCols4, err := sq.Collection.GetCollectionsByRepoLike("qnib/featuretest")
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(gotCols4))
-	gotCol1, found, err := sq.Collection.GetCollectionByRepoTag("qnib/featuretest", "latest")
+	gotCol1, found, err := sq.Collection.GetCollectionByRepoTag("qnib/featuretest", "arm64")
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, "qnib/featuretest", gotCol1.Repo)
 	gotTags, err := sq.Collection.GetTagsListByRepo("qnib/featuretest")
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(gotTags.Tags))
+}
+
+func Test_Collection_ScrubCollectionsByManifestListID(t *testing.T) {
+	bs := utils.NewBootstrap()
+	bs.SetSqlEmptyAll()
+	bs.AddBootstrap("users")
+	bs.AddBootstrap("profiles")
+	bs.AddBootstrap("platforms")
+	bs.AddBootstrap("upstreams:qnib/featuretest:arm64")
+	bs.AddBootstrap("layers:qnib/featuretest:arm64")
+	bs.AddBootstrap("config:qnib/featuretest:arm64")
+	bs.AddBootstrap("manifest:qnib/featuretest:arm64")
+	bs.AddBootstrap("manifest:qnib/featuretest:amd64")
+	bs.AddBootstrap("manifestlist:qnib/featuretest:arm64")
+	//bs.AddBootstrap("manifestlist:qnib/featuretest:amd64")
+	bs.AddBootstrap("collection:qnib/featuretest:arm64")
+	//bs.AddBootstrap("collection:qnib/featuretest:amd64")
+	if testing.Short() {
+		//bs.SetSqlite("Desktop/metahub.db")
+	}
+	br, err := SetupTest(bs)
+	_ = br
+	assert.NoError(t, err)
+	defer TeardownTest(bs)
+	// Tests
+	mlId, err := br.GetInt64("manifestlist:qnib/featuretest:arm64#id")
+	_ = mlId
+	assert.NoError(t, err)
+	err = sq.Collection.ScrubCollectionsByManifestListID(mlId)
+	assert.NoError(t, err)
 }

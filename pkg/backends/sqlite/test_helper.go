@@ -14,12 +14,32 @@ import (
 )
 
 func Setup_Manifestlist_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
-	ml := types.FT_generic_arm_Manifestlist()
+	ml := types.FT_arm_Manifestlist()
 	err = sq.ManifestList.Insert(&ml)
 	if err != nil {
 		return
 	}
-	br.Add("manifestlist:qnib/featuretest-generic-arm64#id", fmt.Sprint(ml.SqlID))
+	br.Add("manifestlist:qnib/featuretest:arm64#id", fmt.Sprint(ml.SqlID))
+	return
+}
+
+func Setup_Manifestlist_FT_generic(sq *Sqlite, br *utils.BootstrapResult) (err error) {
+	ml := types.FT_generic_Manifestlist()
+	err = sq.ManifestList.Insert(&ml)
+	if err != nil {
+		return
+	}
+	br.Add("manifestlist:qnib/featuretest:arm64#id", fmt.Sprint(ml.SqlID))
+	return
+}
+
+func Setup_Manifestlist_FTamd64(sq *Sqlite, br *utils.BootstrapResult) (err error) {
+	ml := types.FT_amd_Manifestlist()
+	err = sq.ManifestList.Insert(&ml)
+	if err != nil {
+		return
+	}
+	br.Add("manifestlist:qnib/featuretest:amd64#id", fmt.Sprint(ml.SqlID))
 	return
 }
 
@@ -31,17 +51,17 @@ func Setup_Layers_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	if err != nil {
 		return
 	}
-	br.Add("layer:qnib/featuretest-arm64#id0", fmt.Sprint(l0ID))
-	br.Add("layer:qnib/featuretest-arm64#digest0", l0.Digest.String())
-	br.Add("layer:qnib/featuretest-arm64#size0", fmt.Sprint(l0.Size))
+	br.Add("layer:qnib/featuretest:arm64#id0", fmt.Sprint(l0ID))
+	br.Add("layer:qnib/featuretest:arm64#digest0", l0.Digest.String())
+	br.Add("layer:qnib/featuretest:arm64#size0", fmt.Sprint(l0.Size))
 	l1 := types.FT_arm_Layer1Reference()
 	l1ID, err := sq.Layer.InsertDescriptor(l1)
 	if err != nil {
 		return
 	}
-	br.Add("layer:qnib/featuretest-arm64#id1", fmt.Sprint(l1ID))
-	br.Add("layer:qnib/featuretest-arm64#digest1", l1.Digest.String())
-	br.Add("layer:qnib/featuretest-arm64#size1", fmt.Sprint(l1.Size))
+	br.Add("layer:qnib/featuretest:arm64#id1", fmt.Sprint(l1ID))
+	br.Add("layer:qnib/featuretest:arm64#digest1", l1.Digest.String())
+	br.Add("layer:qnib/featuretest:arm64#size1", fmt.Sprint(l1.Size))
 	return
 }
 
@@ -103,7 +123,7 @@ func Setup_Upstream_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	if err != nil {
 		return
 	}
-	br.Add("upstream:qnib/featuretest-arm64#id", fmt.Sprint(up.SqlID))
+	br.Add("upstream:qnib/featuretest:arm64#id", fmt.Sprint(up.SqlID))
 	return
 }
 
@@ -128,9 +148,17 @@ func Setup_Config_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	if err != nil {
 		return
 	}
-	br.Add("config:qnib/featuretest-arm64#id", fmt.Sprint(cfg.SqlID))
-	br.Add("config:qnib/featuretest-arm64#digest", cfg.Digest)
-	br.Add("config:qnib/featuretest-arm64#size", fmt.Sprint(cfg.Size))
+	br.Add("config:qnib/featuretest:arm64#id", fmt.Sprint(cfg.SqlID))
+	br.Add("config:qnib/featuretest:arm64#digest", cfg.Digest)
+	br.Add("config:qnib/featuretest:arm64#size", fmt.Sprint(cfg.Size))
+	return
+}
+
+func Setup_Manifest_QNIB_FeatureTest_amd(sq *Sqlite, br *utils.BootstrapResult) (err error) {
+	logrus.Warn("Setup_Maniest_QNIB_FeatureTest_arm")
+	// Create cmanifest for qnib/featuretest
+	mani := types.FT_amd_Manifest()
+	_ = mani
 	return
 }
 
@@ -139,13 +167,13 @@ func Setup_Manifest_QNIB_FeatureTest_arm(sq *Sqlite, br *utils.BootstrapResult) 
 	// Create cmanifest for qnib/featuretest
 	mani := types.FT_arm_Manifest()
 	// Upstream ID
-	upID, err := br.GetInt64("upstream:qnib/featuretest-arm64#id")
+	upID, err := br.GetInt64("upstream:qnib/featuretest:arm64#id")
 	if err != nil {
 		return err
 	}
 	mani.Upstream.SqlID = upID
 	// ConfigID
-	cfgID, err := br.GetInt64("config:qnib/featuretest-arm64#id")
+	cfgID, err := br.GetInt64("config:qnib/featuretest:arm64#id")
 	if err != nil {
 		return err
 	}
@@ -153,17 +181,17 @@ func Setup_Manifest_QNIB_FeatureTest_arm(sq *Sqlite, br *utils.BootstrapResult) 
 	// Layers
 	/// L0
 	l0 := types.Layer{}
-	if loID, err := br.GetInt64("layer:qnib/featuretest-arm64#id0"); err != nil {
+	if loID, err := br.GetInt64("layer:qnib/featuretest:arm64#id0"); err != nil {
 		return err
 	} else {
 		l0.SqlID = loID
 	}
-	if v, err := br.Get("layer:qnib/featuretest-arm64#digest0"); err != nil {
+	if v, err := br.Get("layer:qnib/featuretest:arm64#digest0"); err != nil {
 		return err
 	} else {
 		l0.Digest = v
 	}
-	if v, err := br.GetInt64("layer:qnib/featuretest-arm64#size0"); err != nil {
+	if v, err := br.GetInt64("layer:qnib/featuretest:arm64#size0"); err != nil {
 		return err
 	} else {
 		l0.Size = v
@@ -171,17 +199,17 @@ func Setup_Manifest_QNIB_FeatureTest_arm(sq *Sqlite, br *utils.BootstrapResult) 
 	mani.Layers = append(mani.Layers, l0)
 	// / L0
 	l1 := types.Layer{}
-	if v, err := br.GetInt64("layer:qnib/featuretest-arm64#id1"); err != nil {
+	if v, err := br.GetInt64("layer:qnib/featuretest:arm64#id1"); err != nil {
 		return err
 	} else {
 		l1.SqlID = v
 	}
-	if v, err := br.Get("layer:qnib/featuretest-arm64#digest1"); err != nil {
+	if v, err := br.Get("layer:qnib/featuretest:arm64#digest1"); err != nil {
 		return err
 	} else {
 		l1.Digest = v
 	}
-	if v, err := br.GetInt64("layer:qnib/featuretest-arm64#size1"); err != nil {
+	if v, err := br.GetInt64("layer:qnib/featuretest:arm64#size1"); err != nil {
 		return err
 	} else {
 		l1.Size = v
@@ -202,8 +230,8 @@ func Setup_Manifest_QNIB_FeatureTest_arm(sq *Sqlite, br *utils.BootstrapResult) 
 	if err != nil {
 		return
 	}
-	br.Add("manifest:qnib/featuretest-arm64#id", fmt.Sprint(mani.SqlID))
-	br.Add("manifest:qnib/featuretest-arm64#digest", mani.Digest)
+	br.Add("manifest:qnib/featuretest:arm64#id", fmt.Sprint(mani.SqlID))
+	br.Add("manifest:qnib/featuretest:arm64#digest", mani.Digest)
 	return
 }
 
@@ -269,15 +297,73 @@ func Setup_Profiles(sqObj *Sqlite, br *utils.BootstrapResult, d string) (err err
 	}
 	return
 }
-
-func Setup_Collection_QNIB_FeatureTest(sq *Sqlite, br *utils.BootstrapResult) (err error) {
-	//logrus.Info("> Setup_Collection_QNIB_FeatureTest")
-	cTag := types.CollectionTag_Latest()
+func Setup_Collection_QNIB_FeatureTest_Generic(sq *Sqlite, br *utils.BootstrapResult) (err error) {
+	cTag := types.CollectionTag_Generic()
 	err = sq.CollectionTag.Insert(&cTag)
 	if err != nil {
 		return
 	}
-	br.Add("collection_tag:latest#id", fmt.Sprint(cTag.SqlID))
+	br.Add("collection_tag:generic#id", fmt.Sprint(cTag.SqlID))
+	// Create collection
+	c := types.FT_generic_Collection()
+	c.Tag.SqlID = cTag.SqlID
+	err = sq.Collection.Insert(&c)
+	if err != nil {
+		return
+	}
+	br.Add("collection:qnib/featuretest:generic#id", fmt.Sprint(c.SqlID))
+
+	// Link Collection and ManifestList
+	mlID, err := br.GetInt64("manifestlist:qnib/featuretest:arm64#id")
+	if err != nil {
+		return err
+	}
+	err = sq.Collection.InsertXTable(c.SqlID, cTag.SqlID, mlID)
+	if err != nil {
+		return
+	}
+	return
+}
+
+/*
+	func Setup_Collection_QNIB_FeatureTestLatest(sq *Sqlite, br *utils.BootstrapResult) (err error) {
+		//logrus.Info("> Setup_Collection_QNIB_FeatureTest")
+		cTag := types.CollectionTag_Latest()
+		err = sq.CollectionTag.Insert(&cTag)
+		if err != nil {
+			return
+		}
+		br.Add("collection_tag:latest#id", fmt.Sprint(cTag.SqlID))
+		// Create collection
+		c := types.FT_arm_Collection()
+		c.Tag.SqlID = cTag.SqlID
+		err = sq.Collection.Insert(&c)
+		if err != nil {
+			return
+		}
+		br.Add("collection:qnib/featuretest:latest#id", fmt.Sprint(c.SqlID))
+
+		// Link Collection and ManifestList
+		mlID, err := br.GetInt64("manifestlist:qnib/featuretest:arm64#id")
+		if err != nil {
+			return err
+		}
+		err = sq.Collection.InsertXTable(c.SqlID, cTag.SqlID, mlID)
+		if err != nil {
+			return
+		}
+		return
+	}
+*/
+
+func Setup_Collection_QNIB_FeatureTest_arm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
+	//logrus.Info("> Setup_Collection_QNIB_FeatureTest")
+	cTag := types.CollectionTag_arm()
+	err = sq.CollectionTag.Insert(&cTag)
+	if err != nil {
+		return
+	}
+	br.Add("collection_tag:arm64#id", fmt.Sprint(cTag.SqlID))
 	// Create collection
 	c := types.FT_arm_Collection()
 	c.Tag.SqlID = cTag.SqlID
@@ -285,10 +371,10 @@ func Setup_Collection_QNIB_FeatureTest(sq *Sqlite, br *utils.BootstrapResult) (e
 	if err != nil {
 		return
 	}
-	br.Add("collection:qnib/featuretest#id", fmt.Sprint(c.SqlID))
+	br.Add("collection:qnib/featuretest:arm64#id", fmt.Sprint(c.SqlID))
 
 	// Link Collection and ManifestList
-	mlID, err := br.GetInt64("manifestlist:qnib/featuretest-generic-arm64#id")
+	mlID, err := br.GetInt64("manifestlist:qnib/featuretest:arm64#id")
 	if err != nil {
 		return err
 	}
@@ -307,9 +393,9 @@ func Setup_Collection_QNIB_FeatureTest(sq *Sqlite, br *utils.BootstrapResult) (e
 	if err != nil {
 		return
 	}
-	br.Add("collection:qnib/featuretest#id", fmt.Sprint(c.SqlID))
+	br.Add("collection:qnib/featuretest:latest#id", fmt.Sprint(c.SqlID))
 	// Link Collection and ManifestList
-	mlID, err := br.GetInt64("manifestlist:qnib/featuretest-generic-amd64#id")
+	mlID, err := br.GetInt64("manifestlist:qnib/featuretest:amd64#id")
 	if err != nil {
 		return err
 	}

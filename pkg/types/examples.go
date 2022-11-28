@@ -10,21 +10,6 @@ import (
 //go:embed data/*
 var f embed.FS
 
-func ManifestReferenceByte_FT_arm() []byte {
-	return []byte(`{
-		"reg": "registry.gitlab.com",
-		"repo": "qnib-pub-containers/qnib/plain-featuretest",
-		"tag": "20220715-arm64-generic",
-		"mediaType": "",
-		"size": 735,
-		"digest": "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5",
-		"platform": {
-		  "architecture": "amd64",
-		  "os": "linux"
-		}
-	  }`)
-}
-
 func Example_Platform_amd64() Platform {
 	return Platform{
 		Arch:     "amd64",
@@ -52,8 +37,22 @@ func FT_arm_ConfigByte() []byte {
 	return dat
 }
 
+func FT_amd_ConfigByte() []byte {
+	// read file and return bytes
+	dat, err := f.ReadFile("data/cfg/83fdbde95f56beb69853240df571a7f085c561b4f8d914c5cc5e0f171dcb86df.dat")
+	if err != nil {
+		panic(err)
+	}
+	return dat
+}
+
 func FT_arm_Config() Config {
 	cfg, _ := NewConfigFromBytes(FT_arm_ConfigByte())
+	return cfg
+}
+
+func FT_amd_Config() Config {
+	cfg, _ := NewConfigFromBytes(FT_amd_ConfigByte())
 	return cfg
 }
 
@@ -66,17 +65,44 @@ func FT_arm_Upstream_Generic() Upstream {
 	}
 }
 
+func FT_amd_Upstream() Upstream {
+	return Upstream{
+		Reg:    "registry.gitlab.com",
+		Repo:   "qnib-pub-containers/qnib/plain-featuretest",
+		Tag:    "20220715-amd64-generic",
+		Digest: digest.Digest("sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5"),
+	}
+}
+
 func FT_arm_Upstream() Upstream {
 	return Upstream{
 		Reg:    "registry.gitlab.com",
 		Repo:   "qnib-pub-containers/qnib/plain-featuretest",
 		Tag:    "20220715-arm64-generic",
-		Digest: digest.Digest("sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5"),
+		Digest: digest.Digest("sha256:5bf8eee20fde14eb6e3e924c18fafa4d816e131f315810875136f0438ff7beed"),
 	}
+}
+func CollectionTag_arm() CollectionTag {
+	return CollectionTag{Tag: "arm64"}
 }
 
 func CollectionTag_Latest() CollectionTag {
 	return CollectionTag{Tag: "latest"}
+}
+
+func CollectionTag_Generic() CollectionTag {
+	return CollectionTag{Tag: "generic"}
+}
+
+func FT_generic_Collection() Collection {
+	return Collection{
+		Repo: "qnib/featuretest",
+		Tag:  CollectionTag_Generic(),
+		ManifestLists: []ManifestList{
+			FT_arm_Manifestlist(),
+			FT_amd_Manifestlist(),
+		},
+	}
 }
 
 func FT_arm_Collection() Collection {
@@ -84,58 +110,25 @@ func FT_arm_Collection() Collection {
 		Repo: "qnib/featuretest",
 		Tag:  CollectionTag_Latest(),
 		ManifestLists: []ManifestList{
-			FT_generic_arm_Manifestlist(),
+			FT_arm_Manifestlist(),
 		},
 	}
 }
 
-func FT_generic_arm_Manifestlist() ManifestList {
-	dat, err := f.ReadFile("data/manifestlists/d46f2503b600eac6066ba46c034425096087875de9480334b3471347d14bf227.dat")
-	if err != nil {
-		panic(err)
-	}
-	dig := digest.FromBytes(dat).String()
-	if dig != "sha256:d46f2503b600eac6066ba46c034425096087875de9480334b3471347d14bf227" {
-		panic("digest mismatch")
-	}
-	return ManifestList{
-		SchemaVersion: 2,
-		Digest:        dig,
-		MediaType:     "application/vnd.docker.distribution.manifest.list.v2+json",
-		Manifests: []Manifest{
-			FT_arm_Manifest(),
-		},
+func FT_amd_Layer0Reference() distribution.Descriptor {
+	return distribution.Descriptor{
+		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
+		Size:      2796496,
+		Digest:    "sha256:88ecf269dec31566a8e6b05147732fe34d32bc608de0d636dffaba659230a515",
 	}
 }
 
-func FT_arm_Manifest() Manifest {
-	dat, err := f.ReadFile("data/manifests/ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5.dat")
-	if err != nil {
-		panic(err)
+func FT_amd_Layer1Reference() distribution.Descriptor {
+	return distribution.Descriptor{
+		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
+		Size:      304,
+		Digest:    "sha256:a2f2473b6a7e9b3d17c9873e41d04808b4c0310e0d4f7c13e03fa3f9a3a14bcc",
 	}
-	cfg := FT_arm_Config()
-	l0 := FT_arm_Layer0Reference()
-	l1 := FT_arm_Layer1Reference()
-	up := FT_arm_Upstream()
-	mani := Manifest{
-		Digest:    string(digest.FromBytes(dat)),
-		Size:      735,
-		MediaType: "application/vnd.docker.distribution.manifest.v2+json",
-		Data:      dat,
-		Config:    cfg,
-		Upstream:  up,
-		Platform: Platform{
-			Arch:    cfg.Cfg.Architecture,
-			OS:      cfg.Cfg.OS,
-			Variant: cfg.Cfg.Variant,
-		},
-
-		Layers: []Layer{
-			{Digest: l0.Digest.String(), Size: l0.Size, MediaType: l0.MediaType, Data: FT_arm_Layer0Byte()},
-			{Digest: l1.Digest.String(), Size: l1.Size, MediaType: l1.MediaType, Data: FT_arm_Layer1Byte()},
-		},
-	}
-	return mani
 }
 
 // Layer

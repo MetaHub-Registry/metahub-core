@@ -21,12 +21,12 @@ func Test_SetupTeardown(t *testing.T) {
 	bs.AddBootstrap("profiles")
 	bs.AddBootstrap("platforms")
 	bs.AddBootstrap("users")
-	bs.AddBootstrap("config:qnib/featuretest-arm64")
-	bs.AddBootstrap("upstreams:qnib/featuretest-arm64")
-	bs.AddBootstrap("layers:qnib/featuretest-arm64")
-	bs.AddBootstrap("manifest:qnib/featuretest-arm64")
-	bs.AddBootstrap("manifestlist:qnib/featuretest-generic-arm64")
-	bs.AddBootstrap("collection:qnib/featuretest")
+	bs.AddBootstrap("config:qnib/featuretest:arm64")
+	bs.AddBootstrap("upstreams:qnib/featuretest:arm64")
+	bs.AddBootstrap("layers:qnib/featuretest:arm64")
+	bs.AddBootstrap("manifest:qnib/featuretest:arm64")
+	bs.AddBootstrap("manifestlist:qnib/featuretest:arm64")
+	bs.AddBootstrap("collection:qnib/featuretest:arm64")
 	bs.AddBootstrap("filter:generic")
 	br, err := SetupTest(bs)
 	_ = br
@@ -90,33 +90,51 @@ func SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 			if err != nil {
 				return
 			}
-		case "manifest:qnib/featuretest-arm64":
+		case "manifest:qnib/featuretest:arm64":
 			err = Setup_Manifest_QNIB_FeatureTest_arm(&sq, &br)
 			if err != nil {
 				return
 			}
-		case "config:qnib/featuretest-arm64":
+		case "manifest:qnib/featuretest:amd64":
+			err = Setup_Manifest_QNIB_FeatureTest_amd(&sq, &br)
+			if err != nil {
+				return
+			}
+		case "config:qnib/featuretest:arm64":
 			err = Setup_Config_FTarm(&sq, &br)
 			if err != nil {
 				return
 			}
-		case "upstreams:qnib/featuretest-arm64":
+		case "upstreams:qnib/featuretest:arm64":
 			err = Setup_Upstream_FTarm(&sq, &br)
 			if err != nil {
 				return
 			}
-		case "layers:qnib/featuretest-arm64":
+		case "layers:qnib/featuretest:arm64":
 			err = Setup_Layers_FTarm(&sq, &br)
 			if err != nil {
 				return
 			}
-		case "manifestlist:qnib/featuretest-generic-arm64":
+		/*
+			case "manifestlist:qnib/featuretest:amd64":
+				err = Setup_Manifestlist_FTamd(&sq, &br)
+				if err != nil {
+					return
+				}
+		*/
+		case "manifestlist:qnib/featuretest:arm64":
 			err = Setup_Manifestlist_FTarm(&sq, &br)
 			if err != nil {
 				return
 			}
-		case "collection:qnib/featuretest":
-			err = Setup_Collection_QNIB_FeatureTest(&sq, &br)
+		case "collection:qnib/featuretest:arm64":
+			err = Setup_Collection_QNIB_FeatureTest_arm(&sq, &br)
+			if err != nil {
+				return
+			}
+
+		case "collection:qnib/featuretest:generic":
+			err = Setup_Collection_QNIB_FeatureTest_Generic(&sq, &br)
 			if err != nil {
 				return
 			}
@@ -126,7 +144,7 @@ func SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 				return
 			}
 		default:
-			err = fmt.Errorf("No teardown for '%s'", b)
+			err = fmt.Errorf("No Setup for '%s'", b)
 			return br, err
 		}
 	}

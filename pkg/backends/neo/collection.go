@@ -31,12 +31,11 @@ func (n Neo) GetCollection(col yamlCfg.ManifestCollection) (colId int64, success
 func (n Neo) GetAllCollections() (collections []types.Collection, err error) {
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
-	//q := `MATCH (c:Collection)--(m:Manifest)--(p:Platform)--(f:Filter)--(pro:Profile)`
-	//q += ` MATCH (c)<-[:SERVES]-(ml:ManifestList)-[:IMPLEMENTS]->(f)`
 	q := `MATCH (c:Collection)<-[:SERVES]-(ml:ManifestList)-[:IMPLEMENTS]->(f) WHERE ml.label IS NOT NULL`
 	q += ` RETURN id(c) AS collectionID, id(ml) AS manifestListID, id(f) AS filterID,`
 	q += ` c.repo AS collectionRepo, c.tag AS collectionTag,`
 	q += ` ml.digest AS manifestListDigest, ml.mediaType AS manifestListMediaType, ml.size AS manifestListSize`
+	logrus.Warnf("query: %s", q)
 	input := map[string]interface{}{}
 	result, err := session.Run(q, input)
 	if err != nil {
@@ -166,7 +165,7 @@ func (n Neo) GetCollectionFilterPairs() (cfps []types.CollectionFilterPair, err 
 	q := `MATCH (c:Collection)-[:UPSTREAM]-(Manifest)-[:IS]->(Platform)<-[:USES]-(f:Filter)`
 	q += ` RETURN DISTINCT id(c) AS collectionID, c.repo AS colRepo, c.tag AS colTag,`
 	q += ` id(f) AS filterID, f.label AS filterLabel`
-	//logrus.Infof("query: %s", q)
+	logrus.Infof("query: %s", q)
 	result, err := session.Run(q, map[string]interface{}{})
 	if err != nil {
 		logrus.Errorf("failed to get collection-filter pairs: %v", err)
