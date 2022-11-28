@@ -190,7 +190,7 @@ func (sq Sqlite) GetTypesManifestListByRequest(req types.Request) (res types.Man
 	if req.Tag == "" {
 		q = fmt.Sprintf(`SELECT DISTINCT colID,colRepo,colTag,manifestlistDigest,manifestlistID,profileName FROM v_get_manifestlist WHERE colRepo="%s" AND manifestlistDigest="%s" AND profileName="%s"`, req.Repo, req.Digest, req.Profile)
 	}
-	logrus.Warnf("Query: %s", q)
+	//logrus.Warnf("Query: %s", q)
 	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Error(err)

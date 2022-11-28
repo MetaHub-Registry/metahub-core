@@ -140,36 +140,37 @@ func SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 			if err != nil {
 				return
 			}
-		case "manifest:qnib/featuretest-arm64":
+		case "manifest:qnib/featuretest:arm64":
 			err = sqlite.Setup_Manifest_QNIB_FeatureTest_arm(&sq, &br)
 			if err != nil {
 				return
 			}
-		case "config:qnib/featuretest-arm64":
+		case "config:qnib/featuretest:arm64":
 			err = sqlite.Setup_Config_FTarm(&sq, &br)
 			if err != nil {
 				return
 			}
-		case "upstreams:qnib/featuretest-arm64":
+		case "upstreams:qnib/featuretest:arm64":
 			err = sqlite.Setup_Upstream_FTarm(&sq, &br)
 			if err != nil {
 				return
 			}
-		case "layers:qnib/featuretest-arm64":
+		case "layers:qnib/featuretest:arm64":
 			err = sqlite.Setup_Layers_FTarm(&sq, &br)
 			if err != nil {
 				return
 			}
-		case "manifestlist:qnib/featuretest-generic-arm64":
+		case "manifestlist:qnib/featuretest:arm64":
 			err = sqlite.Setup_Manifestlist_FTarm(&sq, &br)
 			if err != nil {
 				return
 			}
-		case "collection:qnib/featuretest":
-			err = sqlite.Setup_Collection_QNIB_FeatureTest(&sq, &br)
+		case "collection:qnib/featuretest:arm64":
+			err = sqlite.Setup_Collection_QNIB_FeatureTest_arm(&sq, &br)
 			if err != nil {
 				return
 			}
+
 		case "users":
 			Setup_Profiles()
 		case "profiles":
@@ -177,7 +178,7 @@ func SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 		case "cfg:generic":
 			Setup_FTarm_Config()
 		default:
-			err = fmt.Errorf("No teardown for '%s'", b)
+			err = fmt.Errorf("No Setup for '%s'", b)
 			return br, err
 		}
 	}

@@ -387,7 +387,12 @@ func (c Collection) InsertXTable(colID, tagID, mlID int64) (err error) {
 }
 
 func (sq Sqlite) GetInsertCollectionByRepoTag(repo, tag string) (col types.Collection, err error) {
-	col, found, err := sq.Collection.GetCollectionByRepoTag(repo, tag)
+	// Fetch CollectionTag only
+	ct, found, err := sq.CollectionTag.GetByTag(tag)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
 	if !found {
 		// add tag
 		ct := types.NewCollectionTag(tag)
@@ -396,11 +401,21 @@ func (sq Sqlite) GetInsertCollectionByRepoTag(repo, tag string) (col types.Colle
 			logrus.Error(err)
 			return
 		}
-		col.Tag = ct
-		// Collection does not exist, thus we create it
-		err = sq.Collection.Insert(&col)
 	}
-	// Add
+	// Fetch Collection only
+	col, found, err = sq.Collection.GetCollectionByRepo(repo)
+	col.Tag = ct
+	if !found {
+		// add collection
+		col = types.NewCollection()
+		col.Repo = repo
+		col.Tag = ct
+		err = sq.Collection.Insert(&col)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+	}
 	return
 }
 
@@ -485,6 +500,31 @@ func (c *Collection) GetCollectionsByRepoLike(repo string) (cols []Collection, e
 	return
 }
 
+func (c *Collection) GetCollectionByRepo(repo string) (col types.Collection, found bool, err error) {
+	q := fmt.Sprintf(`SELECT id FROM main.collections WHERE repo="%s"`, repo)
+	rows, err := db.Query(q)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	col = types.Collection{
+		SqlID:         -1,
+		Repo:          repo,
+		ManifestLists: []types.ManifestList{},
+	}
+	var colID int64
+	if rows.Next() {
+		found = true
+		err = rows.Scan(&colID)
+		if err != nil {
+			logrus.Error(err)
+		}
+		col.SqlID = colID
+	}
+	defer rows.Close()
+	return
+}
+
 func (c *Collection) GetCollectionByRepoTag(repo, tag string) (col types.Collection, found bool, err error) {
 	q := fmt.Sprintf(`SELECT DISTINCT colID, colTagID FROM main.v_get_collections WHERE colRepo="%s" AND colTag="%s"`, repo, tag)
 	rows, err := db.Query(q)
@@ -551,7 +591,7 @@ func (c Collection) ScrubCollectionsByManifestListID(mlID int64) (err error) {
 	defer rows.Close()
 	for rows.Next() {
 		var colID, colTagID int64
-		err = rows.Scan(&colID, colTagID)
+		err = rows.Scan(&colID, &colTagID)
 		if err != nil {
 			logrus.Error(err)
 			return

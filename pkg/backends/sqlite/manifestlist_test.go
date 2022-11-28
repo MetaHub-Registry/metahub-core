@@ -13,12 +13,12 @@ func Test_Manifestlist_Get(t *testing.T) {
 	bs.AddBootstrap("users")
 	bs.AddBootstrap("profiles")
 	bs.AddBootstrap("platforms")
-	bs.AddBootstrap("upstreams:qnib/featuretest-arm64")
-	bs.AddBootstrap("layers:qnib/featuretest-arm64")
-	bs.AddBootstrap("config:qnib/featuretest-arm64")
-	bs.AddBootstrap("manifest:qnib/featuretest-arm64")
-	bs.AddBootstrap("manifestlist:qnib/featuretest-generic-arm64")
-	bs.AddBootstrap("collection:qnib/featuretest")
+	bs.AddBootstrap("upstreams:qnib/featuretest:arm64")
+	bs.AddBootstrap("layers:qnib/featuretest:arm64")
+	bs.AddBootstrap("config:qnib/featuretest:arm64")
+	bs.AddBootstrap("manifest:qnib/featuretest:arm64")
+	bs.AddBootstrap("manifestlist:qnib/featuretest:arm64")
+	bs.AddBootstrap("collection:qnib/featuretest:arm64")
 	//bs.SetSqlite("Desktop/metahub.db")
 	br, err := SetupTest(bs)
 	_ = br
@@ -27,7 +27,7 @@ func Test_Manifestlist_Get(t *testing.T) {
 	// Tests
 	req := types.Request{
 		Repo:    "qnib/featuretest",
-		Tag:     "latest",
+		Tag:     "arm64",
 		Profile: "generic",
 	}
 	ml, found, err := sq.GetTypesManifestListByRequest(req)
