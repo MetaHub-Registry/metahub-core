@@ -395,7 +395,7 @@ func (sq Sqlite) GetInsertCollectionByRepoTag(repo, tag string) (col types.Colle
 	}
 	if !found {
 		// add tag
-		ct := types.NewCollectionTag(tag)
+		ct = types.NewCollectionTag(tag)
 		err = sq.CollectionTag.Insert(&ct)
 		if err != nil {
 			logrus.Error(err)

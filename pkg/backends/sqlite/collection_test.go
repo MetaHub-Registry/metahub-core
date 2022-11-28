@@ -111,9 +111,7 @@ func Test_Collection_ScrubCollectionsByManifestListID(t *testing.T) {
 	//bs.AddBootstrap("manifestlist:qnib/featuretest:amd64")
 	bs.AddBootstrap("collection:qnib/featuretest:arm64")
 	//bs.AddBootstrap("collection:qnib/featuretest:amd64")
-	if testing.Short() {
-		//bs.SetSqlite("Desktop/metahub.db")
-	}
+	//bs.SetSqlite("Desktop/metahub.db")
 	br, err := SetupTest(bs)
 	_ = br
 	assert.NoError(t, err)
