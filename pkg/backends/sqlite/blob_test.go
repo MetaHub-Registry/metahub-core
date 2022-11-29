@@ -14,7 +14,9 @@ import (
 func Test_BlobUpload_Create(t *testing.T) {
 	bs := utils.NewBootstrap()
 	defer TeardownTest(bs)
-	bu, _ := types.FT_arm_BlobUpload_Layer0()
+	bu, l0Buf := types.FT_arm_BlobUpload_Layer0()
+	bu.RangeStart = 0
+	bu.RangeStop = int64(len(l0Buf) - 1)
 	err := sq.BlobUpload.Create(&bu)
 	assert.NoError(t, err)
 	assert.NotEqual(t, 0, bu.SqlID)

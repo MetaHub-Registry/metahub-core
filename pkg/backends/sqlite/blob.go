@@ -20,7 +20,30 @@ type BlobUpload struct {
 	BlobType   string    `json:"blob_type"` //
 }
 
+type BlobChunks struct {
+	ID           int64     `json:"id"`
+	BlobUploadID int64     `json:"blob_upload_id"`
+	CreatedAt    time.Time `json:"created_at"`
+	FinishedAt   time.Time `json:"finished_at"`
+	StartByte    int64     `json:"start_byte"`
+	Bytes        int64     `json:"bytes"`
+}
+
 func (bu BlobUpload) CreateTables() (err error) {
+	err = bu.CreateBUTables()
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	err = bu.CreateChunkTables()
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	return
+}
+
+func (bu BlobUpload) CreateBUTables() (err error) {
 	tableName := "blob_uploads"
 	q := fmt.Sprintf(`PRAGMA table_info(%s)`, tableName)
 	rows, err := db.Query(q)
@@ -42,6 +65,41 @@ func (bu BlobUpload) CreateTables() (err error) {
         "blob_id" INTEGER,
 		"location" TEXT,
 		"blob_type" TEXT);`
+	stmt := fmt.Sprintf(s, tableName)
+	query, err := db.Prepare(stmt)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	_, err = query.Exec()
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	logrus.Debugf("Table '%s' created successfully!", tableName)
+	return
+}
+
+func (bu BlobUpload) CreateChunkTables() (err error) {
+	tableName := "blob_upload_chunks"
+	q := fmt.Sprintf(`PRAGMA table_info(%s)`, tableName)
+	rows, err := db.Query(q)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer rows.Close()
+	if rows.Next() {
+		//logrus.Infof("Table '%s' already exists!", tableName)
+		return
+	}
+	s := `CREATE TABLE IF NOT EXISTS %s (
+        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		blob_upload_id INTEGER,
+		created_at TIMESTAMP,
+		finished_at TIMESTAMP,
+		start_byte INTEGER,
+		bytes INTEGER,
+        FOREIGN KEY (blob_upload_id)
+			REFERENCES blob_uploads (id)
+		);`
 	stmt := fmt.Sprintf(s, tableName)
 	query, err := db.Prepare(stmt)
 	if err != nil {
@@ -146,6 +204,27 @@ func (bu BlobUpload) CompleteByUUID(i *types.OCIBlobUpload) (err error) {
 	if err != nil {
 		logrus.Error(err)
 		return
+	}
+	return
+}
+
+func (bu BlobUpload) GetChunkUploadsByUUID(buID int64) (bcs []BlobChunks, err error) {
+	q := fmt.Sprintf(`SELECT id, created_at, finished_at, start_byte, bytes FROM blob_upload_chunks WHERE blob_upload_id=%d ORDER BY start_byte`, buID)
+	rows, err := db.Query(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	defer rows.Close()
+	bcs = []BlobChunks{}
+	for rows.Next() {
+		var bc BlobChunks
+		err = rows.Scan(&bc.ID, &bc.CreatedAt, &bc.FinishedAt, &bc.StartByte, &bc.Bytes)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		bcs = append(bcs, bc)
 	}
 	return
 }
