@@ -53,7 +53,6 @@ func TestMain(m *testing.M) {
 }
 
 func TeardownTest(bs utils.Bootstrap) {
-	logrus.Debug("> TeardownTest")
 	if bs.CopySqlite != "" {
 		logrus.Infof("Copy SQlite DB to '%s'", bs.CopySqlite)
 		sq.Close()
@@ -67,6 +66,7 @@ func TeardownTest(bs utils.Bootstrap) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
+
 }
 
 func SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {

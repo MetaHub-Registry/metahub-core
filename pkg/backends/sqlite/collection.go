@@ -559,7 +559,13 @@ func (c *Collection) GetCollectionByRepoTag(repo, tag string) (col types.Collect
 }
 
 func (c Collection) GetTagsListByRepo(repo string) (res types.TagResponse, err error) {
-	q := fmt.Sprintf(`SELECT DISTINCT colTag FROM main.v_get_collections WHERE colRepo="%s" ORDER BY colTag;`, repo)
+	q := fmt.Sprintf(`
+	SELECT
+		DISTINCT collection_tags.Tag
+	FROM
+		collections
+	INNER JOIN collection_xtable ON collections.id = collection_xtable.collection_id
+	INNER JOIN collection_tags ON collection_xtable.collection_tag_id = collection_tags.id WHERE collections.repo="%s" ORDER BY collection_tags.Tag;`, repo)
 	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Error(err)

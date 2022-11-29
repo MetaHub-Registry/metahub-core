@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/backends/minio"
 	"github.com/metahub-registry/metahub-core/pkg/backends/sqlite"
@@ -133,20 +134,30 @@ func SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 	br = utils.NewBootstrapResult()
 	for _, b := range bs.Bootstraps {
 		switch b {
-		case "":
+
+		// Users/Profile/Platforms
+		case "users":
+			err = sqlite.Setup_Users(&sq, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Users")
+				return
+			}
+		case "profiles":
+			err = sqlite.Setup_Profiles(&sq, &br, "../../../misc/yaml/profiles/library")
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Profiles")
+				return
+			}
 		case "platforms":
-			err = Setup_Platforms(&br)
+			err = sqlite.Setup_Platforms(&sq, &br)
 			if err != nil {
 				return
 			}
-		case "manifest:qnib/featuretest:arm64":
-			err = sqlite.Setup_Manifest_QNIB_FeatureTest_arm(&sq, &br)
+		// Upstream
+		case "upstreams:qnib/featuretest:amd64":
+			err = sqlite.Setup_Upstream_FT_amd64(&sq, &br)
 			if err != nil {
-				return
-			}
-		case "config:qnib/featuretest:arm64":
-			err = sqlite.Setup_Config_FTarm(&sq, &br)
-			if err != nil {
+				err = errors.Wrap(err, "Setup_Upstream_FT_amd64")
 				return
 			}
 		case "upstreams:qnib/featuretest:arm64":
@@ -154,9 +165,47 @@ func SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 			if err != nil {
 				return
 			}
+		// Layers
+		case "layers:qnib/featuretest:amd64":
+			err = sqlite.Setup_Layers_FT_amd64(&sq, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Layers_FT_amd64")
+				return
+			}
 		case "layers:qnib/featuretest:arm64":
 			err = sqlite.Setup_Layers_FTarm(&sq, &br)
 			if err != nil {
+				return
+			}
+		/// CONFIG
+		case "config:qnib/featuretest:amd64":
+			err = sqlite.Setup_Config_FT_amd64(&sq, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Config_FT_amd64")
+				return
+			}
+		case "config:qnib/featuretest:arm64":
+			err = sqlite.Setup_Config_FTarm(&sq, &br)
+			if err != nil {
+				return
+			}
+		/// Manifests
+		case "manifest:qnib/featuretest:arm64":
+			err = sqlite.Setup_Manifest_QNIB_FeatureTest_arm(&sq, &br)
+			if err != nil {
+				return
+			}
+		case "manifest:qnib/featuretest:amd64":
+			err = sqlite.Setup_Manifest_QNIB_FeatureTest_amd(&sq, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Manifest_QNIB_FeatureTest_amd")
+				return
+			}
+		/// ManifestLists
+		case "manifestlist:qnib/featuretest:amd64":
+			err = sqlite.Setup_Manifestlist_FTamd64(&sq, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Manifestlist_FTamd64")
 				return
 			}
 		case "manifestlist:qnib/featuretest:arm64":
@@ -164,15 +213,31 @@ func SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 			if err != nil {
 				return
 			}
+		/// Collections
+		case "collection:qnib/featuretest:amd64":
+			err = sqlite.Setup_Collection_QNIB_FeatureTest_amd64(&sq, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Collection_QNIB_FeatureTest_amd64")
+				return
+			}
+		case "collection:qnib/featuretest:generic":
+			err = sqlite.Setup_Collection_QNIB_FeatureTest_Generic(&sq, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Collection_QNIB_FeatureTest_Generic")
+				return
+			}
+
 		case "collection:qnib/featuretest:arm64":
 			err = sqlite.Setup_Collection_QNIB_FeatureTest_arm(&sq, &br)
 			if err != nil {
 				return
 			}
-		case "users":
-			Setup_Profiles()
-		case "profiles":
-			Setup_Profiles()
+		case "filter:generic":
+			err = sqlite.Setup_Filter_Generic(&sq, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Filter_Generic")
+				return
+			}
 		case "cfg:generic":
 			Setup_FTarm_Config()
 		default:
@@ -225,6 +290,7 @@ func Setup_Users() {
 	}
 }
 
+/*
 func Setup_Platforms(br *utils.BootstrapResult) (err error) {
 	//logrus.Info("> Setup_Platforms")
 	// Create platforms
@@ -274,6 +340,7 @@ func Setup_Platforms(br *utils.BootstrapResult) (err error) {
 	}
 	return
 }
+*/
 
 func Setup_Profiles() {
 	//logrus.Warn("Setup_Profiles")

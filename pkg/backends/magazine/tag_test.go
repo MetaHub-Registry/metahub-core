@@ -13,12 +13,20 @@ func Test_TagList(t *testing.T) {
 	bs.AddBootstrap("users")
 	bs.AddBootstrap("profiles")
 	bs.AddBootstrap("platforms")
+	/// ARM
 	bs.AddBootstrap("upstreams:qnib/featuretest:arm64")
 	bs.AddBootstrap("layers:qnib/featuretest:arm64")
 	bs.AddBootstrap("config:qnib/featuretest:arm64")
 	bs.AddBootstrap("manifest:qnib/featuretest:arm64")
 	bs.AddBootstrap("manifestlist:qnib/featuretest:arm64")
 	bs.AddBootstrap("collection:qnib/featuretest:arm64")
+	/// AMD64
+	bs.AddBootstrap("upstreams:qnib/featuretest:amd64")
+	bs.AddBootstrap("layers:qnib/featuretest:amd64")
+	bs.AddBootstrap("config:qnib/featuretest:amd64")
+	bs.AddBootstrap("manifest:qnib/featuretest:amd64")
+	bs.AddBootstrap("manifestlist:qnib/featuretest:amd64")
+	bs.AddBootstrap("collection:qnib/featuretest:amd64")
 	//bs.SetSqlite("Desktop/metahub.db")
 	br, err := SetupTest(bs)
 	assert.NoError(t, err)
@@ -32,11 +40,11 @@ func Test_TagList(t *testing.T) {
 	// pure SQLite
 	res, err := mag.SQlite.Collection.GetTagsListByRepo(req.Repo)
 	assert.NoError(t, err)
-	assert.Equal(t, 1, len(res.Tags))
+	assert.Equal(t, 2, len(res.Tags))
 	res, err = mag.Tags_GetList(req)
 	assert.NoError(t, err)
 	// TODO: add setup collection to make this work
-	assert.Equal(t, 1, len(res.Tags))
+	assert.Equal(t, 2, len(res.Tags))
 	reqPage := types.Request{
 		Repo:   "qnib/featuretest",
 		Number: 1,
@@ -46,7 +54,7 @@ func Test_TagList(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(res.Tags))
 	// Remove Manifests and expect the collection to stick around with 0 tags
-	m := types.Manifest{
+	/*m := types.Manifest{
 		Upstream: types.Upstream{
 			Repo: "qnib-pub-containers/qnib/plain-featuretest",
 			Tag:  "20220715-arm64-generic",
@@ -58,5 +66,5 @@ func Test_TagList(t *testing.T) {
 	res, err = mag.Tags_GetList(req)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(res.Tags))
-
+	*/
 }
