@@ -122,7 +122,6 @@ func (s Sqlite) LoginUser(username, password string) (err error) {
 
 // / User specific methods
 func (u User) CreateTables() (err error) {
-	logrus.Warn("CreateTables")
 	tableName := "users"
 	q := fmt.Sprintf(`PRAGMA table_info(%s)`, tableName)
 	rows, err := db.Query(q)
@@ -155,7 +154,7 @@ func (u User) CreateTables() (err error) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	logrus.Infof("Table '%s' created successfully!", tableName)
+	logrus.Debugf("Table '%s' created successfully!", tableName)
 	return
 }
 

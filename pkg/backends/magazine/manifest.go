@@ -325,7 +325,7 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 	}
 	ml.Digest = digest.FromBytes(ml.ToOCIBytes()).String()
 	// Add ML to SQLite
-	err = mag.SQlite.ManifestList.Insert(&ml)
+	err = mag.SQlite.InsertManifestList(&ml)
 	if err != nil {
 		err = errors.Wrap(err, "failed to SQlite.ManifestList.Insert")
 		return

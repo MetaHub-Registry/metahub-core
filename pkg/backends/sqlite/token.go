@@ -19,7 +19,6 @@ type Token struct {
 }
 
 func (t Token) CreateTables() (err error) {
-	logrus.Warn("CreateTables")
 	tableName := "tokens"
 	q := fmt.Sprintf(`PRAGMA table_info(%s)`, tableName)
 	rows, err := db.Query(q)
@@ -51,6 +50,6 @@ func (t Token) CreateTables() (err error) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	logrus.Infof("Table '%s' created successfully!", tableName)
+	logrus.Debugf("Table '%s' created successfully!", tableName)
 	return
 }

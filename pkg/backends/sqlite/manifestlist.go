@@ -107,7 +107,7 @@ func (ml ManifestList) createManifestListXTable() (err error) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	logrus.Infof("Table '%s' created successfully!", tableName)
+	logrus.Debugf("Table '%s' created successfully!", tableName)
 	return
 }
 
@@ -138,10 +138,36 @@ func (ml ManifestList) createManifestlistTable() (err error) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	logrus.Infof("Table '%s' created successfully!", tableName)
+	logrus.Debugf("Table '%s' created successfully!", tableName)
 	return
 }
 
+func (sq Sqlite) InsertManifestList(i *types.ManifestList) (err error) {
+	q := `INSERT INTO manifestlists (digest, media_type) VALUES (?, ?)`
+	stmt, err := db.Prepare(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	res, err := stmt.Exec(i.Digest, i.MediaType)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	i.SqlID, err = res.LastInsertId()
+	stmt.Close()
+	for _, m := range i.Manifests {
+		err = sq.Manifest.GetInsert(&m)
+		if err != nil {
+			logrus.Error(err)
+			continue
+		}
+		err = sq.ManifestList.InsertManifestListXTable(i.SqlID, m.SqlID)
+	}
+	return
+}
+
+/*
 func (ml ManifestList) Insert(i *types.ManifestList) (err error) {
 	q := `INSERT INTO manifestlists (digest, media_type) VALUES (?, ?)`
 	stmt, err := db.Prepare(q)
@@ -155,21 +181,29 @@ func (ml ManifestList) Insert(i *types.ManifestList) (err error) {
 		return
 	}
 	i.SqlID, err = res.LastInsertId()
+	stmt.Close()
 	for _, m := range i.Manifests {
 		// Get SqlID of manifest
-		q := `SELECT id FROM manifests WHERE digest=?`
-		stmt, err = db.Prepare(q)
-		if err != nil {
+		q := fmt.Sprintf(`SELECT id FROM manifests WHERE digest="%s"`, m.Digest)
+		rows, e := db.Query(q)
+		if e != nil {
+			err = errors.Wrapf(e, "Failed to query: %s", q)
 			logrus.Error(err)
 			return err
 		}
+		defer rows.Close()
 		var maniSqlID int64
-		err = stmt.QueryRow(m.Digest).Scan(&maniSqlID)
-		if err != nil {
+		if rows.Next() {
+			err = rows.Scan(&maniSqlID)
+			if err != nil {
+				logrus.Error(err)
+				return
+			}
+		} else {
+			err = errors.Errorf("Manifest not found: %s", m.Digest)
 			logrus.Error(err)
-			return err
+			return
 		}
-
 		q = `INSERT INTO manifestlist_xtable (manifest_id, manifestlist_id) VALUES (?, ?)`
 		stmt, err = db.Prepare(q)
 		if err != nil {
@@ -181,7 +215,26 @@ func (ml ManifestList) Insert(i *types.ManifestList) (err error) {
 			logrus.Error(err)
 			return
 		}
+		stmt.Close()
+		rows.Close()
 	}
+	return
+}
+*/
+
+func (ml ManifestList) InsertManifestListXTable(manifestlistID, manifestID int64) (err error) {
+	q := `INSERT INTO manifestlist_xtable (manifest_id, manifestlist_id) VALUES (?, ?)`
+	stmt, err := db.Prepare(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	_, err = stmt.Exec(manifestID, manifestlistID)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	stmt.Close()
 	return
 }
 

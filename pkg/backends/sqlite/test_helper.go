@@ -15,7 +15,7 @@ import (
 
 func Setup_Manifestlist_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	ml := types.FT_arm_Manifestlist()
-	err = sq.ManifestList.Insert(&ml)
+	err = sq.InsertManifestList(&ml)
 	if err != nil {
 		return
 	}
@@ -25,7 +25,7 @@ func Setup_Manifestlist_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error)
 
 func Setup_Manifestlist_FT_generic(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	ml := types.FT_generic_Manifestlist()
-	err = sq.ManifestList.Insert(&ml)
+	err = sq.InsertManifestList(&ml)
 	if err != nil {
 		return
 	}
@@ -35,11 +35,33 @@ func Setup_Manifestlist_FT_generic(sq *Sqlite, br *utils.BootstrapResult) (err e
 
 func Setup_Manifestlist_FTamd64(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	ml := types.FT_amd_Manifestlist()
-	err = sq.ManifestList.Insert(&ml)
+	err = sq.InsertManifestList(&ml)
 	if err != nil {
 		return
 	}
 	br.Add("manifestlist:qnib/featuretest:amd64#id", fmt.Sprint(ml.SqlID))
+	return
+}
+
+func Setup_Layers_FT_amd64(sq *Sqlite, br *utils.BootstrapResult) (err error) {
+	//logrus.Warn("Setup_Layers_FT_amd64")
+	// Create layers
+	l0 := types.FT_amd_Layer0Reference()
+	l0ID, err := sq.Layer.InsertDescriptor(l0)
+	if err != nil {
+		return
+	}
+	br.Add("layer:qnib/featuretest:amd64#id0", fmt.Sprint(l0ID))
+	br.Add("layer:qnib/featuretest:amd64#digest0", l0.Digest.String())
+	br.Add("layer:qnib/featuretest:amd64#size0", fmt.Sprint(l0.Size))
+	l1 := types.FT_amd_Layer1Reference()
+	l1ID, err := sq.Layer.InsertDescriptor(l1)
+	if err != nil {
+		return
+	}
+	br.Add("layer:qnib/featuretest:amd64#id1", fmt.Sprint(l1ID))
+	br.Add("layer:qnib/featuretest:amd64#digest1", l1.Digest.String())
+	br.Add("layer:qnib/featuretest:amd64#size1", fmt.Sprint(l1.Size))
 	return
 }
 
@@ -114,9 +136,20 @@ func Setup_Platforms(sqObj *Sqlite, br *utils.BootstrapResult) (err error) {
 	}
 	return
 }
+func Setup_Upstream_FT_amd64(sq *Sqlite, br *utils.BootstrapResult) (err error) {
+	//logrus.Warn("Setup_Upstream_FT_amd64")
+	// Create upstream for qnib/featuretest
+	up := types.FT_amd64_Upstream()
+	err = sq.Upstream.Insert(&up)
+	if err != nil {
+		return
+	}
+	br.Add("upstream:qnib/featuretest:amd64#id", fmt.Sprint(up.SqlID))
+	return
+}
 
 func Setup_Upstream_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
-	logrus.Warn("Setup_Upstream_FTarm")
+	//logrus.Warn("Setup_Upstream_FTarm")
 	// Create upstream for qnib/featuretest
 	up := types.FT_arm_Upstream()
 	err = sq.Upstream.Insert(&up)
@@ -141,6 +174,19 @@ func Setup_Filter_Generic(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	return
 }
 
+func Setup_Config_FT_amd64(sq *Sqlite, br *utils.BootstrapResult) (err error) {
+	//logrus.Warn("Setup_Config_FTarm")
+	cfg := types.FT_amd64_Config()
+	err = sq.Config.Insert(&cfg)
+	if err != nil {
+		return
+	}
+	br.Add("config:qnib/featuretest:amd64#id", fmt.Sprint(cfg.SqlID))
+	br.Add("config:qnib/featuretest:amd64#digest", cfg.Digest)
+	br.Add("config:qnib/featuretest:amd64#size", fmt.Sprint(cfg.Size))
+	return
+
+}
 func Setup_Config_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	//logrus.Warn("Setup_Config_FTarm")
 	cfg := types.FT_arm_Config()
@@ -155,15 +201,80 @@ func Setup_Config_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 }
 
 func Setup_Manifest_QNIB_FeatureTest_amd(sq *Sqlite, br *utils.BootstrapResult) (err error) {
-	logrus.Warn("Setup_Maniest_QNIB_FeatureTest_arm")
+	//logrus.Warn("Setup_Maniest_QNIB_FeatureTest_arm")
 	// Create cmanifest for qnib/featuretest
 	mani := types.FT_amd_Manifest()
-	_ = mani
+	// Upstream ID
+	upID, err := br.GetInt64("upstream:qnib/featuretest:amd64#id")
+	if err != nil {
+		return err
+	}
+	mani.Upstream.SqlID = upID
+	// ConfigID
+	cfgID, err := br.GetInt64("config:qnib/featuretest:amd64#id")
+	if err != nil {
+		return err
+	}
+	mani.Config.SqlID = cfgID
+	// Layers
+	/// L0
+	l0 := types.Layer{}
+	if loID, err := br.GetInt64("layer:qnib/featuretest:amd64#id0"); err != nil {
+		return err
+	} else {
+		l0.SqlID = loID
+	}
+	if v, err := br.Get("layer:qnib/featuretest:amd64#digest0"); err != nil {
+		return err
+	} else {
+		l0.Digest = v
+	}
+	if v, err := br.GetInt64("layer:qnib/featuretest:amd64#size0"); err != nil {
+		return err
+	} else {
+		l0.Size = v
+	}
+	mani.Layers = append(mani.Layers, l0)
+	// / L0
+	l1 := types.Layer{}
+	if v, err := br.GetInt64("layer:qnib/featuretest:amd64#id1"); err != nil {
+		return err
+	} else {
+		l1.SqlID = v
+	}
+	if v, err := br.Get("layer:qnib/featuretest:amd64#digest1"); err != nil {
+		return err
+	} else {
+		l1.Digest = v
+	}
+	if v, err := br.GetInt64("layer:qnib/featuretest:amd64#size1"); err != nil {
+		return err
+	} else {
+		l1.Size = v
+	}
+	mani.Layers = append(mani.Layers, l1)
+	// Profile
+	mani.Platform = types.Platform{
+		Arch:    "amd64",
+		OS:      "linux",
+		Variant: "",
+	}
+	if v, err := br.GetInt64("platform:linux/amd64#id"); err != nil {
+		return err
+	} else {
+		mani.Platform.SqlID = v
+	}
+	err = sq.Manifest.Insert(&mani)
+	if err != nil {
+		return
+	}
+	br.Add("manifest:qnib/featuretest:amd64#id", fmt.Sprint(mani.SqlID))
+	br.Add("manifest:qnib/featuretest:amd64#digest", mani.Digest)
 	return
 }
 
 func Setup_Manifest_QNIB_FeatureTest_arm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
-	logrus.Warn("Setup_Maniest_QNIB_FeatureTest_arm")
+	//logrus.Warn("Setup_Maniest_QNIB_FeatureTest_arm")
 	// Create cmanifest for qnib/featuretest
 	mani := types.FT_arm_Manifest()
 	// Upstream ID
@@ -237,7 +348,7 @@ func Setup_Manifest_QNIB_FeatureTest_arm(sq *Sqlite, br *utils.BootstrapResult) 
 
 func Setup_Profiles(sqObj *Sqlite, br *utils.BootstrapResult, d string) (err error) {
 	ctx := context.Background()
-	logrus.Warn("Setup_Profiles")
+	//logrus.Warn("Setup_Profiles")
 	prfs, err := config.FindProfiles(ctx, d)
 	if err != nil {
 		return err
@@ -259,7 +370,7 @@ func Setup_Profiles(sqObj *Sqlite, br *utils.BootstrapResult, d string) (err err
 		if len(f.Feature) > 0 {
 			msg += fmt.Sprintf(" [%s]", f.Feature)
 		}
-		logrus.Info(msg)
+		//logrus.Info(msg)
 		fID, success, err := sqObj.Filter.GetFilter(f)
 		if err != nil {
 			return err
@@ -366,48 +477,53 @@ func Setup_Collection_QNIB_FeatureTest_arm(sq *Sqlite, br *utils.BootstrapResult
 	br.Add("collection_tag:arm64#id", fmt.Sprint(cTag.SqlID))
 	// Create collection
 	c := types.FT_arm_Collection()
-	c.Tag.SqlID = cTag.SqlID
-	err = sq.Collection.Insert(&c)
+	col, err := sq.GetInsertCollectionByRepoTag(c.Repo, cTag.Tag)
 	if err != nil {
 		return
 	}
-	br.Add("collection:qnib/featuretest:arm64#id", fmt.Sprint(c.SqlID))
+	br.Add("collection:qnib/featuretest:arm64#id", fmt.Sprint(col.SqlID))
 
 	// Link Collection and ManifestList
 	mlID, err := br.GetInt64("manifestlist:qnib/featuretest:arm64#id")
 	if err != nil {
 		return err
 	}
-	err = sq.Collection.InsertXTable(c.SqlID, cTag.SqlID, mlID)
+	err = sq.Collection.InsertXTable(col.SqlID, cTag.SqlID, mlID)
 	if err != nil {
 		return
 	}
 	return
 }
 
-/*func Setup_Collection_QNIB_FeatureTest_amd64(sq *Sqlite, br *utils.BootstrapResult) (err error) {
-	//logrus.Info("> Setup_Collection_QNIB_FeatureTest")
-	// Create collection
-	c := types.FT_arm_Collection()
-	err = sq.Collection.Insert(&c)
+func Setup_Collection_QNIB_FeatureTest_amd64(sq *Sqlite, br *utils.BootstrapResult) (err error) {
+	cTag := types.CollectionTag_amd64()
+	err = sq.CollectionTag.Insert(&cTag)
 	if err != nil {
 		return
 	}
-	br.Add("collection:qnib/featuretest:latest#id", fmt.Sprint(c.SqlID))
+	br.Add("collection_tag:amd64#id", fmt.Sprint(cTag.SqlID))
+	// Create collection
+	c := types.FT_amd64_Collection()
+	col, err := sq.GetInsertCollectionByRepoTag(c.Repo, cTag.Tag)
+	if err != nil {
+		return
+	}
+	br.Add("collection:qnib/featuretest:amd64#id", fmt.Sprint(col.SqlID))
+
 	// Link Collection and ManifestList
 	mlID, err := br.GetInt64("manifestlist:qnib/featuretest:amd64#id")
 	if err != nil {
 		return err
 	}
-	err = sq.Collection.InsertXTable(c.SqlID, mlID)
+	err = sq.Collection.InsertXTable(col.SqlID, cTag.SqlID, mlID)
 	if err != nil {
 		return
 	}
 	return
-}*/
+}
 
 func Setup_Users(sqObj *Sqlite, br *utils.BootstrapResult) (err error) {
-	logrus.Warn("Setup Users")
+	//logrus.Warn("Setup Users")
 	ctx := context.Background()
 	usrs := []config.User{
 		{Username: "test", Email: "test@test.de", FirstName: "Max", LastName: "Mustermann", Password: "test", Role: "user"},

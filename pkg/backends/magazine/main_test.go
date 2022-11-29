@@ -132,7 +132,6 @@ func SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 	sq := mag.SQlite
 	br = utils.NewBootstrapResult()
 	for _, b := range bs.Bootstraps {
-		logrus.Errorf("SetupTest: %s", b)
 		switch b {
 		case "":
 		case "platforms":
@@ -170,7 +169,6 @@ func SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 			if err != nil {
 				return
 			}
-
 		case "users":
 			Setup_Profiles()
 		case "profiles":
@@ -194,7 +192,7 @@ func Setup_FTarm_Config() {
 }
 
 func Setup_Users() {
-	logrus.Warn("Setup Users")
+	//logrus.Warn("Setup Users")
 	usrs, err := config.FindUsers(ctx, "../../../misc/yaml/users")
 	if err != nil {
 		logrus.Fatal(err)
@@ -278,7 +276,7 @@ func Setup_Platforms(br *utils.BootstrapResult) (err error) {
 }
 
 func Setup_Profiles() {
-	logrus.Warn("Setup_Profiles")
+	//logrus.Warn("Setup_Profiles")
 	prfs, err := config.FindProfiles(ctx, "../../../misc/yaml/profiles")
 	if err != nil {
 		logrus.Fatal(err)

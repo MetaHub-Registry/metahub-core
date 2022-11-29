@@ -11,23 +11,30 @@ import (
 
 func Test_Collection_Insert(t *testing.T) {
 	bs := utils.NewBootstrap()
+	//bs.SetSqlite("Desktop/metahub.db")
 	bs.SetSqlEmptyAll()
 	br, err := SetupTest(bs)
 	_ = br
 	assert.NoError(t, err)
 	defer TeardownTest(bs)
+	/// Tests
+	colTag := types.NewCollectionTag("1.0")
+	err = sq.CollectionTag.Insert(&colTag)
+	assert.NoError(t, err)
+	// Collection
 	err = sq.Collection.CreateViews()
 	assert.NoError(t, err)
 	c := types.Collection{
 		Repo: "qnib/test",
-		Tag:  types.NewCollectionTag("1.0"),
+		Tag:  colTag,
 	}
 	err = sq.Collection.Insert(&c)
 	assert.NoError(t, err)
 	assert.NotEqual(t, int64(-1), c.SqlID)
-	cols, err := sq.Collection.GetAll()
+	colRows, err := sq.Query("SELECT * FROM collections")
 	assert.NoError(t, err)
-	assert.Equal(t, 1, len(cols))
+	assert.True(t, colRows.Next())
+	colRows.Close()
 }
 
 func Test_Collection_GetInsert(t *testing.T) {
@@ -44,9 +51,10 @@ func Test_Collection_GetInsert(t *testing.T) {
 	assert.NotEqual(t, int64(-1), col.SqlID)
 	assert.Equal(t, "qnib/test", col.Repo)
 	assert.Equal(t, "1.0", col.Tag.Tag)
-	cols, err := sq.Collection.GetAll()
+	colRows, err := sq.Query("SELECT * FROM collections")
 	assert.NoError(t, err)
-	assert.Equal(t, 1, len(cols))
+	assert.True(t, colRows.Next())
+	colRows.Close()
 }
 
 func Test_Collection_Get(t *testing.T) {
@@ -102,24 +110,44 @@ func Test_Collection_ScrubCollectionsByManifestListID(t *testing.T) {
 	bs.AddBootstrap("users")
 	bs.AddBootstrap("profiles")
 	bs.AddBootstrap("platforms")
+	/// ARM
 	bs.AddBootstrap("upstreams:qnib/featuretest:arm64")
 	bs.AddBootstrap("layers:qnib/featuretest:arm64")
 	bs.AddBootstrap("config:qnib/featuretest:arm64")
 	bs.AddBootstrap("manifest:qnib/featuretest:arm64")
-	bs.AddBootstrap("manifest:qnib/featuretest:amd64")
 	bs.AddBootstrap("manifestlist:qnib/featuretest:arm64")
-	//bs.AddBootstrap("manifestlist:qnib/featuretest:amd64")
 	bs.AddBootstrap("collection:qnib/featuretest:arm64")
-	//bs.AddBootstrap("collection:qnib/featuretest:amd64")
+	/// AMD64
+	bs.AddBootstrap("upstreams:qnib/featuretest:amd64")
+	bs.AddBootstrap("layers:qnib/featuretest:amd64")
+	bs.AddBootstrap("config:qnib/featuretest:amd64")
+	bs.AddBootstrap("manifest:qnib/featuretest:amd64")
+	bs.AddBootstrap("manifestlist:qnib/featuretest:amd64")
+	bs.AddBootstrap("collection:qnib/featuretest:amd64")
 	//bs.SetSqlite("Desktop/metahub.db")
 	br, err := SetupTest(bs)
-	_ = br
 	assert.NoError(t, err)
 	defer TeardownTest(bs)
+	_ = br
 	// Tests
+	cols, err := sq.Collection.GetAll()
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(cols))
 	mlId, err := br.GetInt64("manifestlist:qnib/featuretest:arm64#id")
-	_ = mlId
 	assert.NoError(t, err)
 	err = sq.Collection.ScrubCollectionsByManifestListID(mlId)
 	assert.NoError(t, err)
+	// One less collection to be found
+	cols, err = sq.Collection.GetAll()
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(cols))
+	// Scrub the last one
+	mlId, err = br.GetInt64("manifestlist:qnib/featuretest:amd64#id")
+	assert.NoError(t, err)
+	err = sq.Collection.ScrubCollectionsByManifestListID(mlId)
+	assert.NoError(t, err)
+	cols, err = sq.Collection.GetAll()
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(cols))
+
 }
