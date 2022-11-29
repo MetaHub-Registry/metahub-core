@@ -323,11 +323,13 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 		err = errors.Wrap(err, "failed to AddMLtoCollection")
 		return
 	}
-	// TODO: Add Manifest to ManifestList (which is linked to Collection)
-	for _, ml := range col.ManifestLists {
-		b := ml.ToOCIBytes()
-		logrus.Warnf("ManifestList: %s", string(b))
-	}
+	/*
+		// TODO: Add Manifest to ManifestList (which is linked to Collection)
+		for _, ml := range col.ManifestLists {
+			b := ml.ToOCIBytes()
+			logrus.Warnf("ManifestList: %s", string(b))
+		}
+	*/
 	ml := types.ManifestList{
 		SchemaVersion: 2,
 		MediaType:     "application/vnd.docker.distribution.manifest.list.v2+json",
