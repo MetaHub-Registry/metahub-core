@@ -41,7 +41,7 @@ func (l Layer) CreateTables() (err error) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	logrus.Infof("Table '%s' created successfully!", tableName)
+	logrus.Debugf("Table '%s' created successfully!", tableName)
 	return
 }
 

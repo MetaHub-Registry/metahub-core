@@ -80,7 +80,7 @@ func (s Sqlite) createViews(tables string) (err error) {
 	if tables == "none" {
 		return
 	}
-	logrus.Info(">> Create sqlite3 views")
+	logrus.Debug(">> Create sqlite3 views")
 	tbls := []string{}
 	for _, ele := range strings.Split(tables, ",") {
 		if ele != "" {
@@ -111,7 +111,7 @@ func (s Sqlite) EmptyData(all bool) (err error) {
 	if all {
 		skipTable = set.FromSlice([]string{})
 	}
-	logrus.Infof("Empty SQlite DB (except %s)", strings.Join(skipTable.Values(), "/"))
+	logrus.Debugf("Empty SQlite DB (except %s)", strings.Join(skipTable.Values(), "/"))
 	q := `SELECT name FROM  sqlite_schema WHERE type ='table' AND name NOT LIKE 'sqlite_%';`
 	rows, err := db.Query(q)
 	if err != nil {
@@ -145,7 +145,7 @@ func (s *Sqlite) createDB(mhFile string, tables string) (err error) {
 	if tables == "none" {
 		return
 	}
-	logrus.Infof(">> Create User databases: %s", mhFile)
+	logrus.Debugf(">> Create User databases: %s", mhFile)
 	db, err = sql.Open("sqlite3", mhFile)
 	checkErr(err, "while opening user-sqlite3")
 	tbls := []string{}

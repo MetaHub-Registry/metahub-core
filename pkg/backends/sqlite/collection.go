@@ -40,11 +40,14 @@ func (c *Collection) GetAll() (cols []Collection, err error) {
 		logrus.Error(err)
 		return
 	}
+	defer rows.Close()
+	found := false
 	col := Collection{
 		ID:        0,
 		Manifests: map[string]Manifest{},
 	}
 	for rows.Next() {
+		found = true
 		cRes := colRes{}
 		err = rows.Scan(
 			&cRes.ColID,
@@ -58,8 +61,9 @@ func (c *Collection) GetAll() (cols []Collection, err error) {
 		)
 		if err != nil {
 			logrus.Error(err)
+			continue
 		}
-		if col.ID != int64(cRes.ColID) {
+		if col.ID != int64(cRes.ColID) || col.Tag.ID != int64(cRes.ColTagID) {
 			if col.ID != 0 {
 				// In case it is not 0 it holds the previous collection, thus we add it
 				cols = append(cols, col)
@@ -90,7 +94,9 @@ func (c *Collection) GetAll() (cols []Collection, err error) {
 		col.ManifestCount++
 		//fmt.Printf("%+v\n", cRes)
 	}
-	cols = append(cols, col)
+	if found {
+		cols = append(cols, col)
+	}
 	return
 }
 
@@ -302,7 +308,7 @@ func (c Collection) createCollectionTable() (err error) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	logrus.Infof("Table '%s' created successfully!", tableName)
+	logrus.Debugf("Table '%s' created successfully!", tableName)
 	return
 }
 
@@ -339,7 +345,7 @@ func (c Collection) createCollectionXTable() (err error) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	logrus.Infof("Table '%s' created successfully!", tableName)
+	logrus.Debugf("Table '%s' created successfully!", tableName)
 	return
 }
 
@@ -578,6 +584,7 @@ func (c Collection) GetTagsListByRepo(repo string) (res types.TagResponse, err e
 
 func (c Collection) ScrubCollectionsByManifestListID(mlID int64) (err error) {
 	q := fmt.Sprintf(`DELETE FROM collection_xtable WHERE manifestlist_id=%d RETURNING collection_id, collection_tag_id;`, mlID)
+
 	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Error(err)

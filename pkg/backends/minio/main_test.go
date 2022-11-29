@@ -122,7 +122,7 @@ func TeardownTest(bootstrap string) {
 }
 
 func SetupTest(bootstrap string) (err error) {
-	logrus.Info("> SetupTest")
+	logrus.Debug("> SetupTest")
 	switch bootstrap {
 	case "":
 	case "cfg:generic":
