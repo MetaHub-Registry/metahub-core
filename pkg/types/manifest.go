@@ -9,6 +9,8 @@ import (
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/manifest/manifestlist"
 	"github.com/opencontainers/go-digest"
+	imgspecv1 "github.com/opencontainers/image-spec/specs-go/v1"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -80,7 +82,7 @@ type OCIManifest struct {
 	// MediaType is the media type of this schema.
 	MediaType string `json:"mediaType,omitempty"`
 	// Config references the image configuration as a blob.
-	Config distribution.Descriptor `json:"config"`
+	Config imgspecv1.Descriptor `json:"config"`
 	// Layers lists descriptors for the layers referenced by the
 	// configuration.
 	Layers []distribution.Descriptor `json:"layers"`
@@ -104,6 +106,7 @@ func (m Manifest) WriteWWWHeader(w http.ResponseWriter) {
 	if m.MediaType == "" {
 		logrus.Fatal("Manifest.MediaType is empty")
 	}
+	//w.Header().Set("Location", fmt.Sprintf("%s/v2/%s/manifests/%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag))
 	w.Header().Set("Content-Length", "0")
 	w.Header().Set("Content-Type", m.MediaType)
 	w.Header().Set("Docker-Content-Digest", m.Digest)

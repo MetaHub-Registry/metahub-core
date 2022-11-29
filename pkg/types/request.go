@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/base64"
 	"encoding/json"
+	"net"
 	"net/http"
 	"path/filepath"
 	"regexp"
@@ -18,6 +19,7 @@ type Request struct {
 	Number      int    `json:"number"`
 	Last        string `json:"last"`
 	Host        string `json:"host"`
+	Protocol    string `json:"protocol"`
 	Repo        string `json:"repo"`
 	Tag         string `json:"tag"`
 	Digest      string `json:"digest"`
@@ -56,8 +58,17 @@ func NewRequest(r *http.Request) Request {
 		req.Number = n
 	}
 	req.Last = r.FormValue("last")
-
-	host := strings.Split(r.Host, ":")[0]
+	switch r.Proto {
+	case "HTTP/1.0":
+		req.Protocol = "http"
+	case "HTTP/1.1":
+		req.Protocol = "http"
+	case "HTTP/2.0":
+		req.Protocol = "https"
+	}
+	ctx := r.Context()
+	srvAddr := ctx.Value(http.LocalAddrContextKey).(net.Addr)
+	req.Host = srvAddr.String()
 	repo := filepath.Join(parRepo, parImg)
 	user := "anonymous"
 	profile := "generic"
@@ -104,7 +115,6 @@ func NewRequest(r *http.Request) Request {
 	}
 	req.Method = r.Method
 	req.Scope = scope
-	req.Host = host
 	req.Repo = repo
 	req.Tag = tag
 	req.Digest = dig

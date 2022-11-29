@@ -247,7 +247,19 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 		err = errors.Wrap(err, "failed to get Config from Minio")
 		return
 	}
-	if !found {
+	switch {
+	case !found && len(mani.Config.Data) > 0:
+		err = json.Unmarshal(mani.Config.Data, &cfg)
+		if err != nil {
+			err = errors.Wrap(err, "failed to unmarshal config")
+			return
+		}
+		err = mag.Minio.PutConfig(ctx, mani.Config.Data, mani.Config.Digest)
+		if err != nil {
+			err = errors.Wrap(err, "failed to put Config to Minio")
+			return
+		}
+	case !found:
 		err = errors.New("config not found")
 		return
 	}

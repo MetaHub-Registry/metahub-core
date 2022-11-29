@@ -3,6 +3,7 @@ package magazine
 import (
 	"testing"
 
+	"github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/platform"
 	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/types"
@@ -76,4 +77,42 @@ func Test_StoreManifestUpload(t *testing.T) {
 	err = rows.Scan(&colTagID)
 	assert.NoError(t, err)
 	assert.NotEqual(t, int64(0), colTagID)
+}
+
+func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer(t *testing.T) {
+	bs := utils.NewBootstrap()
+	bs.AddBootstrap("users")
+	bs.AddBootstrap("profiles")
+	//bs.SetSqlite("Desktop/metahub.db")
+	_, err := SetupTest(bs)
+	assert.NoError(t, err)
+	defer TeardownTest(bs)
+	// Tests
+
+	buf := []byte(`{
+			"schemaVersion": 2,
+			"config": {
+				"mediaType": "application/vnd.oci.image.config.v1+json",
+				"digest": "sha256:65b1de14a76de70a46ff0839ab79775aceb96ee12069fb6ed45bc35f958fdbcb",
+				"size": 129,
+				"data": "ewoJImF1dGhvciI6ICJkbkljNHRjODBPNUxwNTk4IiwKCSJhcmNoaXRlY3R1cmUiOiAiYW1kNjQiLAoJIm9zIjogImxpbnV4IiwKCSJyb290ZnMiOiB7CgkJInR5cGUiOiAibGF5ZXJzIiwKCQkiZGlmZl9pZHMiOiBbXQoJfQp9",
+				"newUnspecifiedField": "aGVsbG8gd29ybGQ="
+			},
+			"layers": []
+			}`)
+	bufDig := digest.FromBytes(buf)
+	req := types.Request{
+		Repo: "oci/conformance",
+		Tag:  "test0",
+	}
+	// Upload Manifest with Embedded Config
+	mani, err := mag.StoreManifestUpload(req, buf)
+	assert.NoError(t, err)
+	assert.Equal(t, bufDig.String(), mani.Digest)
+	// Check if config is in DB
+	cfg, found, err := mag.SQlite.Config.ConfigGetByDigest("sha256:65b1de14a76de70a46ff0839ab79775aceb96ee12069fb6ed45bc35f958fdbcb")
+	assert.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, "application/vnd.oci.image.config.v1+json", cfg.MediaType)
+
 }

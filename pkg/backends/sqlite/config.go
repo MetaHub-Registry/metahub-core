@@ -110,6 +110,7 @@ func (c Config) GetCreateByRequest(ociMani types.OCIManifest) (cfg types.Config,
 		Digest:    ociMani.Config.Digest.String(),
 		Size:      ociMani.Config.Size,
 		MediaType: ociMani.Config.MediaType,
+		Data:      ociMani.Config.Data,
 	}
 
 	found, err := c.GetByRequest(&cfg)
@@ -120,7 +121,7 @@ func (c Config) GetCreateByRequest(ociMani types.OCIManifest) (cfg types.Config,
 		return cfg, err
 	}
 	// Create Upstream
-	q := `INSERT INTO main.configs (digest, media_type, size) VALUES (?, ?, ?);`
+	q := `INSERT INTO main.configs (digest, label, media_type, size) VALUES (?, "", ?, ?);`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		logrus.Error(err)
