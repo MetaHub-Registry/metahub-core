@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/opencontainers/go-digest"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
 const (
@@ -71,4 +74,20 @@ func NewBucketConfig(bucket, url string) BucketConfig {
 		Bucket:   bucket,
 	}
 	return bc
+}
+
+func Setup_Config_FT_arm64(min *Minio, br *utils.BootstrapResult) (err error) {
+	ctx := context.Background()
+	cfgByte := types.FT_arm_ConfigByte()
+	cfgDig := digest.FromBytes(cfgByte)
+	err = min.ConfigPutObj(ctx, cfgDig.String(), cfgByte)
+	return
+}
+
+func Setup_Config_FT_amd64(min *Minio, br *utils.BootstrapResult) (err error) {
+	ctx := context.Background()
+	cfgByte := types.FT_amd64_ConfigByte()
+	cfgDig := digest.FromBytes(cfgByte)
+	err = min.ConfigPutObj(ctx, cfgDig.String(), cfgByte)
+	return
 }
