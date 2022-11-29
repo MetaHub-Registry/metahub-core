@@ -67,8 +67,15 @@ func NewRequest(r *http.Request) Request {
 		req.Protocol = "https"
 	}
 	ctx := r.Context()
-	srvAddr := ctx.Value(http.LocalAddrContextKey).(net.Addr)
-	req.Host = srvAddr.String()
+	srvAddrVal := ctx.Value(http.LocalAddrContextKey)
+	srvAddr := ""
+	if srvAddrVal != nil {
+		srvAddr = srvAddrVal.(net.Addr).String()
+	} else {
+		logrus.Debugf("Not able to derive the server address from the context")
+		srvAddr = r.Host
+	}
+	req.Host = srvAddr
 	repo := filepath.Join(parRepo, parImg)
 	user := "anonymous"
 	profile := "generic"
