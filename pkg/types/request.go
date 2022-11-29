@@ -16,22 +16,24 @@ import (
 )
 
 type Request struct {
-	Number      int    `json:"number"`
-	Last        string `json:"last"`
-	Host        string `json:"host"`
-	Protocol    string `json:"protocol"`
-	Repo        string `json:"repo"`
-	Tag         string `json:"tag"`
-	Digest      string `json:"digest"`
-	Platform    string `json:"platform"`
-	User        string `json:"user"`
-	Profile     string `json:"profile"`
-	Length      int    `json:"length"`
-	Range       string `json:"range"`
-	UUID        string `json:"uuid"`
-	Method      string `json:"method"`
-	Scope       string `json:"scope"`
-	ContentType string `json:"content-type"`
+	Number         int    `json:"number"`
+	Last           string `json:"last"`
+	Host           string `json:"host"`
+	Protocol       string `json:"protocol"`
+	Repo           string `json:"repo"`
+	Tag            string `json:"tag"`
+	Digest         string `json:"digest"`
+	Platform       string `json:"platform"`
+	User           string `json:"user"`
+	Profile        string `json:"profile"`
+	Length         int    `json:"length"`
+	Range          string `json:"range"`
+	RangeStartByte int64  `json:"start_byte"`
+	RangeBytes     int64  `json:"bytes"`
+	UUID           string `json:"uuid"`
+	Method         string `json:"method"`
+	Scope          string `json:"scope"`
+	ContentType    string `json:"content-type"`
 }
 
 func NewRequest(r *http.Request) Request {
@@ -103,6 +105,24 @@ func NewRequest(r *http.Request) Request {
 		profile = vP.(string)
 	}
 	rnge := r.Header.Get("Content-Range")
+	req.RangeStartByte = -1
+	req.RangeBytes = -1
+	if rnge != "" {
+		req.Range = rnge
+		s := strings.Split(rnge, "-")
+		if len(s) == 2 {
+			i, err := strconv.Atoi(s[0])
+			if err != nil {
+				logrus.Errorf("Failed to convert range: %s", err)
+			}
+			req.RangeStartByte = int64(i)
+			iB, err := strconv.Atoi(s[1])
+			if err != nil {
+				logrus.Errorf("Failed to convert range: %s", err)
+			}
+			req.RangeBytes = int64(iB)
+		}
+	}
 	uid := chi.URLParam(r, "uuid")
 	cntLenStr := r.Header.Get("Content-Length")
 	cntType := r.Header.Get("Content-Type")
