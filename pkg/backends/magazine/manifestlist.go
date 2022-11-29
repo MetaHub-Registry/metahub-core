@@ -87,7 +87,6 @@ func (mag Magazine) NeoLinkManifestListToManifests(mlID int64, manifests []types
 }
 
 func (mag Magazine) ManifestListGetByRequest(req types.Request) (ml types.ManifestList, found bool, err error) {
-	logrus.Warnf("ManifestListGetByReqest: %v", req)
 	ctx := context.Background()
 	// Fetch ML from SQLite
 	ml, found, err = mag.SQlite.GetTypesManifestListByRequest(req)
