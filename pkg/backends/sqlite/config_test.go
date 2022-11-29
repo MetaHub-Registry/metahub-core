@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/docker/distribution"
 	"github.com/opencontainers/go-digest"
+	imgspecv1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
@@ -48,7 +48,7 @@ func Test_Config_GetCreateByRequest(t *testing.T) {
 	// Tests
 	expCfg := types.FT_arm_Config()
 	ociMani := types.OCIManifest{
-		Config: distribution.Descriptor{
+		Config: imgspecv1.Descriptor{
 			Digest:    digest.Digest(expCfg.Digest),
 			MediaType: expCfg.MediaType,
 			Size:      expCfg.Size,

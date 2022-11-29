@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/docker/distribution"
 	"github.com/opencontainers/go-digest"
+	imgspecv1 "github.com/opencontainers/image-spec/specs-go/v1"
 	v1 "github.com/regclient/regclient/types/oci/v1"
 	"github.com/sirupsen/logrus"
 )
@@ -51,11 +51,12 @@ func NewConfigFromBytes(data []byte) (res Config, err error) {
 	return
 }
 
-func (c Config) ToDescriptor() distribution.Descriptor {
-	return distribution.Descriptor{
+func (c Config) ToDescriptor() imgspecv1.Descriptor {
+	return imgspecv1.Descriptor{
 		Digest:    digest.Digest(c.Digest),
 		MediaType: c.MediaType,
 		Size:      c.Size,
+		Data:      c.Data,
 	}
 }
 
@@ -71,4 +72,45 @@ func (c Config) WriteWWWHeader(w http.ResponseWriter) {
 
 func (c Config) WriteWWWBody(w http.ResponseWriter) {
 	w.Write(c.Data)
+}
+
+func ConfigFromOCISpecV1Image(v1Img imgspecv1.Image) (res Config) {
+	res.MediaType = "application/vnd.docker.container.image.v1+json"
+	v1ImageConfig := v1.ImageConfig{
+		User:         v1Img.Config.User,
+		ExposedPorts: v1Img.Config.ExposedPorts,
+		Env:          v1Img.Config.Env,
+		Entrypoint:   v1Img.Config.Entrypoint,
+		Cmd:          v1Img.Config.Cmd,
+		Volumes:      v1Img.Config.Volumes,
+		WorkingDir:   v1Img.Config.WorkingDir,
+		Labels:       v1Img.Config.Labels,
+		StopSignal:   v1Img.Config.StopSignal,
+	}
+	v1History := []v1.History{}
+	for _, h := range v1Img.History {
+		v1History = append(v1History, v1.History{
+			Created:    h.Created,
+			CreatedBy:  h.CreatedBy,
+			Author:     h.Author,
+			Comment:    h.Comment,
+			EmptyLayer: h.EmptyLayer,
+		})
+	}
+	res.Cfg = v1.Image{
+		Created:      v1Img.Created,
+		Author:       v1Img.Author,
+		Architecture: v1Img.Architecture,
+		OS:           v1Img.OS,
+		Variant:      v1Img.Variant,
+		OSVersion:    v1Img.OSVersion,
+		OSFeatures:   v1Img.OSFeatures,
+		Config:       v1ImageConfig,
+		RootFS: v1.RootFS{
+			Type:    v1Img.RootFS.Type,
+			DiffIDs: v1Img.RootFS.DiffIDs,
+		},
+		History: v1History,
+	}
+	return
 }

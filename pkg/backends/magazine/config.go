@@ -106,7 +106,6 @@ func (mag Magazine) ConfigBlob_GetByHTTPRequest(r *http.Request) (cfg types.Conf
 
 func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUpload, buf []byte) (err error) {
 	// TODO: Wait; we are getting the actual config, not only the descriptor
-
 	// Store Blob
 	err = mag.Minio.PutConfig(ctx, buf, bu.Digest)
 	if err != nil {
@@ -118,11 +117,13 @@ func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUplo
 		Digest:    bu.Digest,
 		MediaType: "application/vnd.docker.container.image.v1+json",
 		Size:      int64(len(buf)),
+		Data:      buf,
 	}
 	err = mag.SQlite.Config.Upsert(&l)
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
+	err = mag.Minio.ConfigPutObj(ctx, bu.Digest, buf)
 	return
 }
