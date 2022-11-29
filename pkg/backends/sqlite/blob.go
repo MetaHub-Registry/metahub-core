@@ -209,7 +209,7 @@ func (bu BlobUpload) CompleteByUUID(i *types.OCIBlobUpload) (err error) {
 }
 
 func (bu BlobUpload) GetChunkUploadsByUUID(buID int64) (bcs []BlobChunks, err error) {
-	q := fmt.Sprintf(`SELECT id, created_at, finished_at, start_byte, bytes FROM blob_upload_chunks WHERE blob_upload_id=%d ORDER BY start_byte`, buID)
+	q := fmt.Sprintf(`SELECT id, start_byte, bytes FROM blob_upload_chunks WHERE blob_upload_id=%d ORDER BY start_byte`, buID)
 	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Error(err)
@@ -219,7 +219,7 @@ func (bu BlobUpload) GetChunkUploadsByUUID(buID int64) (bcs []BlobChunks, err er
 	bcs = []BlobChunks{}
 	for rows.Next() {
 		var bc BlobChunks
-		err = rows.Scan(&bc.ID, &bc.CreatedAt, &bc.FinishedAt, &bc.StartByte, &bc.Bytes)
+		err = rows.Scan(&bc.ID, &bc.StartByte, &bc.Bytes)
 		if err != nil {
 			logrus.Error(err)
 			return
@@ -228,9 +228,32 @@ func (bu BlobUpload) GetChunkUploadsByUUID(buID int64) (bcs []BlobChunks, err er
 	}
 	return
 }
+func (bu BlobUpload) CreateUploadChunk(buID, startByte, lenBytes int64) (bc BlobChunks, err error) {
+	bc = BlobChunks{
+		BlobUploadID: buID,
+		CreatedAt:    time.Now(),
+		StartByte:    startByte,
+		Bytes:        lenBytes,
+	}
+	// TODO: Add create_at
+	q := fmt.Sprintf(`INSERT INTO blob_upload_chunks (blob_upload_id,start_byte, bytes) VALUES (%d,%d,%d)`, buID, startByte, lenBytes)
+	stmt, err := db.Prepare(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	defer stmt.Close()
+	res, err := stmt.Exec()
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	bc.ID, err = res.LastInsertId()
+	return
+}
 
 func (bu BlobUpload) GetByUUID(uid string) (b types.OCIBlobUpload, err error) {
-	q := fmt.Sprintf(`SELECT id, uploaded_by, digest, created_at, blob_id, blob_type, location FROM blob_uploads WHERE uuid="%s"`, uid)
+	q := fmt.Sprintf(`SELECT id, uploaded_by, digest, blob_id, blob_type, location FROM blob_uploads WHERE uuid="%s"`, uid)
 	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Fatal(err)
@@ -244,7 +267,6 @@ func (bu BlobUpload) GetByUUID(uid string) (b types.OCIBlobUpload, err error) {
 			&b.SqlID,
 			&b.UploadedBy,
 			&b.Digest,
-			&b.CreatedAt,
 			&b.BlobID,
 			&b.BlobType,
 			&b.Location,
