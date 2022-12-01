@@ -103,9 +103,11 @@ func CollectionTag_Generic() CollectionTag {
 }
 
 func FT_generic_Collection() Collection {
+	ct := CollectionTag_Generic()
 	return Collection{
-		Repo: "qnib/featuretest",
-		Tag:  CollectionTag_Generic(),
+		Repo:   "qnib/featuretest",
+		Tag:    ct.Tag,
+		ColTag: ct,
 		ManifestLists: []ManifestList{
 			FT_arm_Manifestlist(),
 			FT_amd_Manifestlist(),
@@ -114,9 +116,11 @@ func FT_generic_Collection() Collection {
 }
 
 func FT_arm_Collection() Collection {
+	ct := CollectionTag_arm()
 	return Collection{
-		Repo: "qnib/featuretest",
-		Tag:  CollectionTag_arm(),
+		Repo:   "qnib/featuretest",
+		Tag:    ct.Tag,
+		ColTag: ct,
 		ManifestLists: []ManifestList{
 			FT_arm_Manifestlist(),
 		},
@@ -124,9 +128,11 @@ func FT_arm_Collection() Collection {
 }
 
 func FT_amd64_Collection() Collection {
+	ct := CollectionTag_amd64()
 	return Collection{
-		Repo: "qnib/featuretest",
-		Tag:  CollectionTag_amd64(),
+		Repo:   "qnib/featuretest",
+		Tag:    ct.Tag,
+		ColTag: ct,
 		ManifestLists: []ManifestList{
 			FT_amd_Manifestlist(),
 		},

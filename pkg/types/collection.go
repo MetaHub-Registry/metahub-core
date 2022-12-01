@@ -4,7 +4,8 @@ type Collection struct {
 	NeoID         int64          `json:"neo_id"`
 	SqlID         int64          `json:"sql_id"`
 	Repo          string         `json:"repo"`
-	Tag           CollectionTag  `json:"tag"`
+	Tag           string         `json:"tag"`
+	ColTag        CollectionTag  `json:"-"`
 	ManifestLists []ManifestList `json:"manifest_list"`
 }
 

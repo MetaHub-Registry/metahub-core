@@ -93,6 +93,7 @@ func NewMinio(cfgFile string) (m Minio, err error) {
 		Redirect: viper.GetBool("minio.redirect"),
 		Ssl:      viper.GetBool("minio.ssl"),
 	}
+
 	for _, v := range reflect.ValueOf(m.BucketConfig).MapKeys() {
 		b := fmt.Sprintf("%s", v)
 		bCfg := BucketConfig{

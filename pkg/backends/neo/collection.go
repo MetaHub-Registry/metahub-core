@@ -116,7 +116,8 @@ func CollectionFromRecord(res neo4j.Result) (c types.Collection, err error) {
 		return
 	}
 	tagStr := v.(string)
-	c.Tag = types.NewCollectionTag(tagStr)
+	c.ColTag = types.NewCollectionTag(tagStr)
+	c.Tag = tagStr
 	c.ManifestLists = make([]types.ManifestList, 0)
 	return
 }
@@ -233,9 +234,10 @@ func (n Neo) GetCollectionFilterPairs() (cfps []types.CollectionFilterPair, err 
 		}
 		cfp := types.CollectionFilterPair{
 			Collection: types.Collection{
-				NeoID: t.collectionID,
-				Repo:  t.colRepo,
-				Tag:   types.NewCollectionTag(t.colTag),
+				NeoID:  t.collectionID,
+				Repo:   t.colRepo,
+				Tag:    t.colTag,
+				ColTag: types.NewCollectionTag(t.colTag),
 			},
 			Filter: types.Filter{
 				NeoID: t.filterID,

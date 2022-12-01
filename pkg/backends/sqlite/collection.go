@@ -10,7 +10,8 @@ import (
 type Collection struct {
 	ID            int64               `json:"id"`
 	Repo          string              `json:"repo"`
-	Tag           CollectionTag       `json:"tag"`
+	Tag           string              `json:"tag"`
+	ColTag        CollectionTag       `json:"-"`
 	Manifests     map[string]Manifest `json:"manifests"`
 	ManifestCount int64               `json:"manifest_count"`
 }
@@ -63,7 +64,7 @@ func (c *Collection) GetAll() (cols []Collection, err error) {
 			logrus.Error(err)
 			continue
 		}
-		if col.ID != int64(cRes.ColID) || col.Tag.ID != int64(cRes.ColTagID) {
+		if col.ID != int64(cRes.ColID) || col.ColTag.ID != int64(cRes.ColTagID) {
 			if col.ID != 0 {
 				// In case it is not 0 it holds the previous collection, thus we add it
 				cols = append(cols, col)
@@ -75,7 +76,8 @@ func (c *Collection) GetAll() (cols []Collection, err error) {
 			col = Collection{
 				ID:            int64(cRes.ColID),
 				Repo:          cRes.ColRepo,
-				Tag:           tag,
+				ColTag:        tag,
+				Tag:           tag.Tag,
 				Manifests:     map[string]Manifest{},
 				ManifestCount: 0,
 			}
@@ -149,7 +151,8 @@ func (c *Collection) GetCollectionByID(colID int64) (col Collection, err error) 
 		if col.ManifestCount == 0 {
 			col.ID = int64(cRes.ColID)
 			col.Repo = cRes.ColRepo
-			col.Tag = CollectionTag{
+			col.Tag = cRes.ColTag
+			col.ColTag = CollectionTag{
 				ID:  int64(cRes.ColTagID),
 				Tag: cRes.ColTag,
 			}
@@ -214,7 +217,8 @@ func (c *Collection) GetCollectionsByRepo(repo string) (cols []Collection, err e
 			col = Collection{
 				ID:   int64(cRes.ColID),
 				Repo: cRes.ColRepo,
-				Tag: CollectionTag{
+				Tag:  cRes.ColTag,
+				ColTag: CollectionTag{
 					ID:  int64(cRes.ColTagID),
 					Tag: cRes.ColTag,
 				},
@@ -410,12 +414,14 @@ func (sq Sqlite) GetInsertCollectionByRepoTag(repo, tag string) (col types.Colle
 	}
 	// Fetch Collection only
 	col, found, err = sq.Collection.GetCollectionByRepo(repo)
-	col.Tag = ct
+	col.ColTag = ct
+	col.Tag = ct.Tag
 	if !found {
 		// add collection
 		col = types.NewCollection()
 		col.Repo = repo
-		col.Tag = ct
+		col.ColTag = ct
+		col.Tag = ct.Tag
 		err = sq.Collection.Insert(&col)
 		if err != nil {
 			logrus.Error(err)
@@ -479,7 +485,8 @@ func (c *Collection) GetCollectionsByRepoLike(repo string) (cols []Collection, e
 			col = Collection{
 				ID:   int64(cRes.ColID),
 				Repo: cRes.ColRepo,
-				Tag: CollectionTag{
+				Tag:  cRes.ColTag,
+				ColTag: CollectionTag{
 					ID:  int64(cRes.ColTagID),
 					Tag: cRes.ColTag,
 				},
@@ -541,7 +548,8 @@ func (c *Collection) GetCollectionByRepoTag(repo, tag string) (col types.Collect
 	col = types.Collection{
 		SqlID:         -1,
 		Repo:          repo,
-		Tag:           types.CollectionTag{SqlID: -1, Tag: tag},
+		ColTag:        types.CollectionTag{SqlID: -1, Tag: tag},
+		Tag:           tag,
 		ManifestLists: []types.ManifestList{},
 	}
 	var colID, tagID int64
@@ -552,7 +560,7 @@ func (c *Collection) GetCollectionByRepoTag(repo, tag string) (col types.Collect
 			logrus.Error(err)
 		}
 		col.SqlID = colID
-		col.Tag.SqlID = tagID
+		col.ColTag.SqlID = tagID
 	}
 	defer rows.Close()
 	return

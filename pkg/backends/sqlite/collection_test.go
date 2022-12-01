@@ -25,8 +25,9 @@ func Test_Collection_Insert(t *testing.T) {
 	err = sq.Collection.CreateViews()
 	assert.NoError(t, err)
 	c := types.Collection{
-		Repo: "qnib/test",
-		Tag:  colTag,
+		Repo:   "qnib/test",
+		ColTag: colTag,
+		Tag:    colTag.Tag,
 	}
 	err = sq.Collection.Insert(&c)
 	assert.NoError(t, err)
@@ -50,7 +51,7 @@ func Test_Collection_GetInsert(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEqual(t, int64(-1), col.SqlID)
 	assert.Equal(t, "qnib/test", col.Repo)
-	assert.Equal(t, "1.0", col.Tag.Tag)
+	assert.Equal(t, "1.0", col.Tag)
 	colRows, err := sq.Query("SELECT * FROM collections")
 	assert.NoError(t, err)
 	assert.True(t, colRows.Next())

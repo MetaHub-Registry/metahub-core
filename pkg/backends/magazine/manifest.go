@@ -346,7 +346,7 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 	}
 	col.ManifestLists = append(col.ManifestLists, ml)
 	// Update Collection
-	err = mag.SQlite.Collection.InsertXTable(col.SqlID, col.Tag.SqlID, ml.SqlID)
+	err = mag.SQlite.Collection.InsertXTable(col.SqlID, col.ColTag.SqlID, ml.SqlID)
 	if err != nil {
 		err = errors.Wrap(err, "failed to SQlite.Collection.InsertXTable")
 		return

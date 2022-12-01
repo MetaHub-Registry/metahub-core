@@ -417,7 +417,7 @@ func Setup_Collection_QNIB_FeatureTest_Generic(sq *Sqlite, br *utils.BootstrapRe
 	br.Add("collection_tag:generic#id", fmt.Sprint(cTag.SqlID))
 	// Create collection
 	c := types.FT_generic_Collection()
-	c.Tag.SqlID = cTag.SqlID
+	c.ColTag.SqlID = cTag.SqlID
 	err = sq.Collection.Insert(&c)
 	if err != nil {
 		return
