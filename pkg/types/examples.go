@@ -4,10 +4,38 @@ import (
 	"embed"
 
 	"github.com/opencontainers/go-digest"
+	imgspecv1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 //go:embed data/*
 var f embed.FS
+
+var (
+	Example_PlatformAMD64 = []Platform{
+		{Arch: "amd64", Variant: "", OS: "linux", Features: "cpu:broadwell"},
+		{Arch: "amd64", Variant: "", OS: "linux", Features: "cpu:cascadelake"},
+		{Arch: "amd64", Variant: "", OS: "linux", Features: "cpu:skylake"},
+		{Arch: "amd64", Variant: "", OS: "linux", Features: "cpu:skylake_avx512"},
+		{Arch: "amd64", Variant: "", OS: "linux", Features: "cpu:icelake"},
+		{Arch: "amd64", Variant: "", OS: "linux", Features: "cpu:zen"},
+		{Arch: "amd64", Variant: "", OS: "linux", Features: "cpu:zen2"},
+		{Arch: "amd64", Variant: "", OS: "linux", Features: "cpu:zen3"},
+		{Arch: "amd64", Variant: "", OS: "linux", Features: "cpu:zen4"},
+	}
+	Example_PlatformGeneric = []Platform{
+		{Arch: "amd64", Variant: "", OS: "linux", Features: ""},
+		{Arch: "arm", Variant: "v6", OS: "linux", Features: ""},
+		{Arch: "arm", Variant: "v7", OS: "linux", Features: ""},
+		{Arch: "arm64", Variant: "", OS: "linux", Features: ""},
+		{Arch: "arm64", Variant: "v8", OS: "linux", Features: ""},
+		{Arch: "riscv64", Variant: "", OS: "linux", Features: ""},
+	}
+	Example_PlatformARM64 = []Platform{
+		{Arch: "arm64", Variant: "v8", OS: "linux", Features: "cpu:a64fx"},
+		{Arch: "arm64", Variant: "v8", OS: "linux", Features: "cpu:graviton3"},
+		{Arch: "arm64", Variant: "v8", OS: "linux", Features: "cpu:graviton3e"},
+	}
+)
 
 func Example_Platform_amd64() Platform {
 	return Platform{
@@ -48,6 +76,27 @@ func FT_amd64_ConfigByte() []byte {
 func FT_amd64_Config() Config {
 	cfg, _ := NewConfigFromBytes(FT_amd64_ConfigByte())
 	return cfg
+}
+
+func FT_amd64_OCIManifest() OCIManifest {
+	cfg := FT_amd64_Config()
+	return OCIManifest{
+		SchemaVersion: 2,
+		MediaType:     "application/vnd.oci.image.manifest.v1+json",
+		Config: imgspecv1.Descriptor{
+			MediaType: cfg.MediaType,
+			Digest:    digest.Digest(cfg.Digest),
+			Size:      cfg.Size,
+			Data:      cfg.Data,
+			Platform: &imgspecv1.Platform{
+				Architecture: cfg.Cfg.Architecture,
+				OS:           cfg.Cfg.OS,
+				OSVersion:    cfg.Cfg.OSVersion,
+				OSFeatures:   cfg.Cfg.OSFeatures,
+				Variant:      cfg.Cfg.Variant,
+			},
+		},
+	}
 }
 
 func FT_arm_Config() Config {

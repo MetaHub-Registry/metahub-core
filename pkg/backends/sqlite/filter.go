@@ -77,7 +77,7 @@ func (f Filter) GetAllFilters() (res []types.Filter, err error) {
 			logrus.Error(err)
 		}
 		f := types.Filter{
-			SqlID: int64(id),
+			ID:    int64(id),
 			Label: label,
 		}
 		res = append(res, f)
@@ -99,11 +99,11 @@ func (f Filter) GetFilter(fltr types.Filter) (filterID int64, found bool, err er
 	}
 	defer rows.Close()
 	if rows.Next() {
-		err = rows.Scan(&fltr.SqlID)
+		err = rows.Scan(&fltr.ID)
 		if err != nil {
 			logrus.Error(err)
 		}
-		filterID = fltr.SqlID
+		filterID = fltr.ID
 		found = true
 	}
 	return
@@ -153,7 +153,7 @@ func (f Filter) InsertFilter(fltr *types.Filter) (err error) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	fltr.SqlID, err = res.LastInsertId()
+	fltr.ID, err = res.LastInsertId()
 	return
 
 }
@@ -163,7 +163,7 @@ func (f Filter) InsertProfileFilter(pfp types.ProfileFilterPlatform) (err error)
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	_, err = stmt.Exec(pfp.Profile.SqlID, pfp.Filter.SqlID)
+	_, err = stmt.Exec(pfp.Profile.ID, pfp.Filter.ID)
 	if err != nil {
 		logrus.Fatal(err)
 	}

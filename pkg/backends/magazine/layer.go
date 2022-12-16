@@ -46,18 +46,12 @@ func (mag Magazine) CacheLayers(ctx context.Context, mani types.Manifest) (err e
 	return
 }
 
+func (mag Magazine) Layer_PlainInsert(ctx context.Context, layer types.Layer) (layerID int64, err error) {
+	return mag.Database.Layer_PlainInsert(ctx, layer)
+}
+
 func (mag Magazine) NeoInsertLayer(ctx context.Context, layer types.Layer) (layerID int64, err error) {
-	layerID, success, err := mag.Neo.GetLayer(layer)
-	if err != nil {
-		return
-	}
-	if !success {
-		layerID, err = mag.Neo.CreateLayer(layer)
-		if err != nil {
-			return
-		}
-	}
-	return
+	return mag.Layer_PlainInsert(ctx, layer)
 }
 
 func (mag Magazine) StoreLayerUpload(ctx context.Context, bu *types.OCIBlobUpload, buf []byte) (err error) {
@@ -73,7 +67,8 @@ func (mag Magazine) StoreLayerUpload(ctx context.Context, bu *types.OCIBlobUploa
 		MediaType: "application/vnd.oci.image.layer.v1.tar+gzip",
 		Size:      int64(len(buf)),
 	}
-	err = mag.SQlite.Layer.Upsert(&l)
+	//err = mag.SQlite.Layer.Upsert(&l)
+	_, err = mag.Database.Layer_PlainInsert(ctx, l)
 	if err != nil {
 		logrus.Error(err)
 		return
@@ -91,7 +86,7 @@ func (mag Magazine) Layer_GetByHTTPRequest(r *http.Request) (layer types.Layer, 
 	ctx := context.Background()
 	req := types.NewRequest(r)
 	// Fetch Layer from SQLite
-	layer, found, err = mag.SQlite.Layer.LayerGetByDigest(req.Digest)
+	layer, found, err = mag.Database.LayerGetByDigest(req.Digest)
 	if err != nil {
 		logrus.Errorf("failed to fetch layer from SQLite: %v", err)
 		return
@@ -119,7 +114,7 @@ func (mag Magazine) Layer_GetByHTTPRequest(r *http.Request) (layer types.Layer, 
 func (mag Magazine) GetLayerByOCIManifest(oMani types.OCIManifest) (layers []types.Layer, err error) {
 	ctx := context.Background()
 	for _, l := range oMani.Layers {
-		layer, found, err := mag.SQlite.Layer.LayerGetByDigest(l.Digest.String())
+		layer, found, err := mag.Database.LayerGetByDigest(l.Digest.String())
 		if err != nil {
 			logrus.Errorf("failed to fetch layer from SQLite: %v", err)
 			return layers, err

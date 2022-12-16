@@ -10,25 +10,27 @@ import (
 
 func Test_TagList(t *testing.T) {
 	bs := utils.NewBootstrap()
-	bs.AddBootstrap("users")
+	bs.AddBootstrap("filter")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("platforms:amd64")
+	bs.AddBootstrap("platforms:arm64")
 	bs.AddBootstrap("profiles")
-	bs.AddBootstrap("platforms")
-	/// ARM
-	bs.AddBootstrap("upstreams:qnib/featuretest:arm64")
-	bs.AddBootstrap("layers:qnib/featuretest:arm64")
-	bs.AddBootstrap("config:qnib/featuretest:arm64")
-	bs.AddBootstrap("manifest:qnib/featuretest:arm64")
-	bs.AddBootstrap("manifestlist:qnib/featuretest:arm64")
-	bs.AddBootstrap("collection:qnib/featuretest:arm64")
-	/// AMD64
-	bs.AddBootstrap("upstreams:qnib/featuretest:amd64")
-	bs.AddBootstrap("layers:qnib/featuretest:amd64")
-	bs.AddBootstrap("config:qnib/featuretest:amd64")
-	bs.AddBootstrap("manifest:qnib/featuretest:amd64")
-	bs.AddBootstrap("manifestlist:qnib/featuretest:amd64")
-	bs.AddBootstrap("collection:qnib/featuretest:amd64")
-	//bs.SetSqlite("Desktop/metahub.db")
-	br, err := SetupTest(bs)
+	bs.AddBootstrap("config:ft_arm")
+	bs.AddBootstrap("config:ft_amd64")
+	bs.AddBootstrap("upstream:ft_arm64")
+	bs.AddBootstrap("upstream:ft_amd64")
+	bs.AddBootstrap("layer0:ft_arm64")
+	bs.AddBootstrap("layer1:ft_arm64")
+	bs.AddBootstrap("layer0:ft_amd64")
+	bs.AddBootstrap("layer1:ft_amd64")
+	bs.AddBootstrap("manifest:ft_arm64")
+	bs.AddBootstrap("manifest:ft_amd64")
+	bs.AddBootstrap("manifest:ft_amd64")
+	bs.AddBootstrap("collection:ft_generic")
+	bs.AddBootstrap("collection:ft_arm64")
+	bs.SetEmptyAll()
+	//bs.PostTestSleep = 300
+	br, err := mag.SetupTest(bs)
 	assert.NoError(t, err)
 	defer TeardownTest(bs)
 	_ = br
@@ -38,7 +40,7 @@ func Test_TagList(t *testing.T) {
 		Repo: "qnib/featuretest",
 	}
 	// pure SQLite
-	res, err := mag.SQlite.Collection.GetTagsListByRepo(req.Repo)
+	res, err := mag.Database.Collection_GetTagsListByRepo(req.Repo)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(res.Tags))
 	res, err = mag.Tags_GetList(req)

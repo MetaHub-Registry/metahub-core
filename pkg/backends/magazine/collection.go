@@ -6,13 +6,13 @@ import (
 	yamlCfg "github.com/metahub-registry/metahub-core/pkg/yaml/config"
 )
 
-func (mag Magazine) CreateCollection(col yamlCfg.ManifestCollection) (colId int64, err error) {
-	colId, success, err := mag.Neo.GetCollection(col)
+func (mag Magazine) CreateCollection(col yamlCfg.ManifestCollection) (colId, colTagID int64, err error) {
+	colId, colTagID, success, err := mag.Database.Collection_GetID_ByYaml(col)
 	if err != nil {
 		return
 	}
 	if !success {
-		colId, err = mag.Neo.CreateCollection(col)
+		colId, colTagID, err = mag.Database.Collection_Create_ByYaml(col)
 		if err != nil {
 			return
 		}
@@ -20,6 +20,11 @@ func (mag Magazine) CreateCollection(col yamlCfg.ManifestCollection) (colId int6
 	return
 }
 
-func (mag Magazine) NeoLinkCollectionToManifest(ctx context.Context, colID, maniID int64) (err error) {
-	return mag.Neo.LinkCollectionToManifest(ctx, colID, maniID)
+func (mag Magazine) NeoLinkCollectionToManifest(ctx context.Context, colID, colTagID, maniID int64) (err error) {
+	err = mag.Database.LinkCollectionToManifest(ctx, colID, maniID)
+	if err != nil {
+		return
+	}
+	err = mag.Database.LinkCollectionTagToManifest(ctx, colTagID, maniID)
+	return
 }

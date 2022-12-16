@@ -1,8 +1,7 @@
 package types
 
 type Collection struct {
-	NeoID         int64          `json:"neo_id"`
-	SqlID         int64          `json:"sql_id"`
+	ID            int64          `json:"id"`
 	Repo          string         `json:"repo"`
 	Tag           string         `json:"tag"`
 	ColTag        CollectionTag  `json:"-"`
@@ -11,8 +10,7 @@ type Collection struct {
 
 func NewCollection() Collection {
 	return Collection{
-		NeoID:         -1,
-		SqlID:         -1,
+		ID:            -1,
 		ManifestLists: []ManifestList{},
 	}
 }

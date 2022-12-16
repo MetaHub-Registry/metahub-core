@@ -9,8 +9,8 @@ import (
 )
 
 type ManifestList struct {
-	NeoID         int64      `json:"neo_id"`
-	SqlID         int64      `json:"sql_id"`
+	ID            int64      `json:"id"`
+	Size          int        `json:"size"`
 	Digest        string     `json:"digest"`
 	SchemaVersion int        `json:"schema_version"`
 	MediaType     string     `json:"media_type"`

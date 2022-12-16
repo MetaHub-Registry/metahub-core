@@ -29,12 +29,13 @@ func (mag Magazine) StoreBlobUpload(ctx context.Context, bu *types.OCIBlobUpload
 }
 
 func (mag Magazine) BlobDelete(ctx context.Context, req types.Request) (err error) {
-	layerId, found, err := mag.SQlite.Layer.LayerGetByDigest(req.Digest)
+	_, found, err := mag.Database.LayerGetByDigest(req.Digest)
 	if err != nil {
 		return err
 	}
 	if found {
-		err = mag.SQlite.Layer.DeleteLayerByID(layerId.SqlID)
+		err = mag.Database.LayerDeleteByDigest(req.Digest)
+
 		if err != nil {
 			logrus.Error(err)
 			return
@@ -44,12 +45,12 @@ func (mag Magazine) BlobDelete(ctx context.Context, req types.Request) (err erro
 		return err
 	}
 	// Not a layer, so it must be a config
-	cfg, found, err := mag.SQlite.Config.ConfigGetByDigest(req.Digest)
+	_, found, err = mag.Database.ConfigGetByDigest(req.Digest)
 	if err != nil {
 		return err
 	}
 	if found {
-		err = mag.SQlite.Config.RemoveByID(cfg.SqlID)
+		err = mag.Database.ConfigDeleteByDigest(req.Digest)
 		if err != nil {
 			logrus.Error(err)
 			return

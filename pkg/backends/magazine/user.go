@@ -7,6 +7,6 @@ import (
 )
 
 func (mag Magazine) InsertUser(ctx context.Context, user types.User) (err error) {
-	_, err = mag.SQlite.InsertUser(ctx, user)
+	_, err = mag.UserManagement.InsertUser(ctx, user)
 	return err
 }

@@ -10,21 +10,23 @@ import (
 )
 
 type Bootstrap struct {
-	CopySqlite  string
-	Bootstraps  []string
-	SqlEmptyAll bool
+	CopySqlite    string
+	Bootstraps    []string
+	EmptyAll      bool
+	PostTestSleep int
 }
 
 func NewBootstrap() Bootstrap {
 	return Bootstrap{
-		CopySqlite:  "",
-		Bootstraps:  []string{},
-		SqlEmptyAll: false,
+		CopySqlite:    "",
+		Bootstraps:    []string{},
+		EmptyAll:      false,
+		PostTestSleep: 0,
 	}
 }
 
-func (bs *Bootstrap) SetSqlEmptyAll() {
-	bs.SqlEmptyAll = true
+func (bs *Bootstrap) SetEmptyAll() {
+	bs.EmptyAll = true
 }
 
 func (bs *Bootstrap) SetSqlite(p string) {
@@ -52,7 +54,15 @@ func NewBootstrapResult() BootstrapResult {
 
 func (bs *BootstrapResult) Add(k, v string) {
 	//logrus.Infof("Add %-40s: '%s'", k, v)
-	bs.Dict[k] = v
+	if _, ok := bs.Dict[k]; ok {
+		if bs.Dict[k] != v {
+			logrus.Warnf("Overwrite key '%s' : '%s' with '%s'", k, bs.Dict[k], v)
+			bs.Dict[k] = v
+		}
+		// Else is skipped as the value is the same
+	} else {
+		bs.Dict[k] = v
+	}
 }
 
 func (bs *BootstrapResult) Get(k string) (string, error) {

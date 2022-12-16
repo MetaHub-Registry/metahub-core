@@ -9,6 +9,43 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 )
 
+func (n Neo) Profile_GetInsert(ctx context.Context, p *types.Profile) (err error) {
+	prfID, success, err := n.GetProfile(*p)
+	if err != nil {
+		return
+	}
+	if !success {
+		prfID, err = n.CreateProfile(*p)
+		if err != nil {
+			return
+		}
+	}
+	p.ID = prfID
+	return
+}
+
+func (n Neo) Profile_Get_ByName(ctx context.Context, name string) (p types.Profile, found bool, err error) {
+	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close()
+	q := fmt.Sprintf(`MATCH (prf:Profile) WHERE prf.name = "%s" RETURN id(prf) AS id`, name)
+	input := map[string]interface{}{}
+	result, err := session.Run(q, input)
+	if err != nil {
+		return
+	}
+	for result.Next() {
+		found = true
+		record := result.Record()
+		id, ok := record.Get("id")
+		if !ok {
+			logrus.Errorf("No id found in record: %v", record)
+			continue
+		}
+		p.ID = id.(int64)
+	}
+	return
+}
+
 func (n Neo) GetProfiles() (ps []types.Profile, err error) {
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
@@ -27,7 +64,7 @@ func (n Neo) GetProfiles() (ps []types.Profile, err error) {
 			logrus.Errorf("No id found in record: %v", record)
 			continue
 		}
-		p.NeoID = id.(int64)
+		p.ID = id.(int64)
 		v, ok := record.Get("name")
 		if !ok {
 			logrus.Errorf("No name found in record: %v", record)
@@ -61,7 +98,7 @@ func (n Neo) GetProfileFilterPlatformPairs() (pfs []types.ProfileFilterPlatform,
 			logrus.Errorf("No profileID found in record: %v", record)
 			continue
 		}
-		p.NeoID = v.(int64)
+		p.ID = v.(int64)
 		v, ok = record.Get("profileName")
 		if !ok {
 			logrus.Errorf("No profileName found in record: %v", record)
@@ -73,7 +110,7 @@ func (n Neo) GetProfileFilterPlatformPairs() (pfs []types.ProfileFilterPlatform,
 			logrus.Errorf("No filterID found in record: %v", record)
 			continue
 		}
-		f.NeoID = v.(int64)
+		f.ID = v.(int64)
 		v, ok = record.Get("filterLabel")
 		if !ok {
 			logrus.Errorf("No filterLabel found in record: %v", record)
@@ -86,7 +123,7 @@ func (n Neo) GetProfileFilterPlatformPairs() (pfs []types.ProfileFilterPlatform,
 			logrus.Errorf("No platformID found in record: %v", record)
 			continue
 		}
-		plat.NeoID = v.(int64)
+		plat.ID = v.(int64)
 		v, ok = record.Get("platformOS")
 		if !ok {
 			logrus.Errorf("No platformOS found in record: %v", record)
@@ -129,7 +166,7 @@ func (n Neo) GetProfile(prf types.Profile) (prfID int64, success bool, err error
 	if result.Next() {
 		v, ok := result.Record().Get("ID")
 		if !ok {
-			err = fmt.Errorf("failed to get ID")
+			err = fmt.Errorf("GetProfile: failed to get ID")
 			return
 		}
 		prfID = v.(int64)
@@ -151,7 +188,7 @@ func (n Neo) CreateProfile(prf types.Profile) (prfID int64, err error) {
 	if result.Next() {
 		v, ok := result.Record().Get("ID")
 		if !ok {
-			err = fmt.Errorf("failed to get ID")
+			err = fmt.Errorf("CreateProfile: failed to get ID")
 			return
 		}
 		prfID = v.(int64)

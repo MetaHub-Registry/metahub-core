@@ -88,9 +88,9 @@ func TestMain(m *testing.M) {
 
 	logrus.Warnf("Minio: %v", min)
 	bc := map[string]BucketConfig{
-		configsBucketKey:   NewBucketConfig(configsBucketKey, minioC.HttpURI),
-		layersBucketKey:    NewBucketConfig(layersBucketKey, minioC.HttpURI),
-		manifestsBucketKey: NewBucketConfig(manifestsBucketKey, minioC.HttpURI),
+		configsBucketKey:   NewBucketConfig(configsBucketKey, minioC.HttpURI, minioC.ConsoleURI),
+		layersBucketKey:    NewBucketConfig(layersBucketKey, minioC.HttpURI, minioC.ConsoleURI),
+		manifestsBucketKey: NewBucketConfig(manifestsBucketKey, minioC.HttpURI, minioC.ConsoleURI),
 	}
 	min, err = NewMiniWithCfg(bc)
 	if err != nil {

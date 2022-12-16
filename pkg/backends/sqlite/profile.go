@@ -77,7 +77,7 @@ func (p Profile) Insert(prf *types.Profile) (err error) {
 	if err != nil {
 		return
 	}
-	prf.SqlID, err = res.LastInsertId()
+	prf.ID, err = res.LastInsertId()
 	return
 }
 

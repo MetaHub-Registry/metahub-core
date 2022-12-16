@@ -21,4 +21,5 @@ type OCIBlobUpload struct {
 	BlobID     int64     `json:"blob_id"`   // blob is either a layer or a config
 	BlobType   string    `json:"blob_type"` //
 	Digest     string    `json:"digest"`
+	MediaType  string    `json:"media_type"`
 }

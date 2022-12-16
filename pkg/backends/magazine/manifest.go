@@ -122,37 +122,32 @@ func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani typ
 	return
 }
 
-func (mag Magazine) NeoInsertManifest(ctx context.Context, m types.Manifest) (maniID int64, err error) {
+func (mag Magazine) InsertManifest(ctx context.Context, m types.Manifest) (maniID int64, err error) {
 	if m.Digest == m.Config.Digest {
 		logrus.Fatalf("NeoInsertManifest: Manifest.Digest and Manifest.Config.Digest are equal - something went wrong\n Digest:    %s\n ConfigDig: %s ", m.Digest, m.Config.Digest)
 	}
-	maniID, success, err := mag.Neo.GetManifest(m)
-	if err != nil {
-		return
-	}
-	if !success {
-		maniID, err = mag.Neo.CreateManifest(m)
-		if err != nil {
-			return
-		}
-	}
-	return
+
+	return mag.Database.Manifest_Insert(ctx, m)
+}
+
+func (mag Magazine) NeoInsertManifest(ctx context.Context, m types.Manifest) (maniID int64, err error) {
+	return mag.InsertManifest(ctx, m)
 }
 
 func (mag Magazine) NeoLinkManifestToUpstream(ctx context.Context, maniID, upID int64) (err error) {
-	return mag.Neo.LinkManifestToUpstream(ctx, maniID, upID)
+	return mag.Database.LinkManifestToUpstream(ctx, maniID, upID)
 }
 
 func (mag Magazine) NeoLinkManifestToConfig(ctx context.Context, maniID, cfgID int64) (err error) {
-	return mag.Neo.LinkManifestToConfig(ctx, maniID, cfgID)
+	return mag.Database.LinkManifestToConfig(ctx, maniID, cfgID)
 }
 
 func (mag Magazine) NeoLinkManifestToLayer(ctx context.Context, maniID, lID int64, idx int) (err error) {
-	return mag.Neo.LinkManifestToLayer(ctx, maniID, lID, idx)
+	return mag.Database.LinkManifestToLayer(ctx, maniID, lID, idx)
 }
 
 func (mag Magazine) NeoLinkManifestToPlatform(ctx context.Context, maniID, platID int64) (err error) {
-	return mag.Neo.LinkManifestToPlatform(ctx, maniID, platID)
+	return mag.Database.LinkManifestToPlatform(ctx, maniID, platID)
 }
 
 func (mag Magazine) Manifest_GetByHTTPRequest(r *http.Request) (m types.Manifest, found bool, err error) {
@@ -196,9 +191,9 @@ func (mag Magazine) Manifest_DeleteByHTTPRequest(r *http.Request) (err error) {
 func (mag Magazine) Manifest_GetByRequest(req types.Request) (m types.Manifest, found bool, err error) {
 	ctx := context.Background()
 	// Fetch Manifest from SQLite
-	m, found, err = mag.SQlite.Manifest.GetTypesManifestByRequest(req)
+	m, found, err = mag.Database.Manifest_GetTypes_ByRequest(req)
 	if err != nil {
-		err = errors.Wrap(err, "failed to get Manifest from SQLite")
+		err = errors.Wrap(err, "failed to get Manifest from Database")
 		return
 	}
 	if !found {
@@ -208,15 +203,15 @@ func (mag Magazine) Manifest_GetByRequest(req types.Request) (m types.Manifest, 
 	return
 }
 
-func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani types.Manifest, err error) {
-	ctx := context.Background()
-	ociMani := types.OCIManifest{
+// storeManifestUpload_OCIManifest
+func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req types.Request, buf []byte) (mani types.Manifest, ociMani types.OCIManifest, err error) {
+	ociMani = types.OCIManifest{
 		MediaType: req.ContentType,
 	}
 	err = json.Unmarshal(buf, &ociMani)
 	if err != nil {
 		err = errors.Wrapf(err, "failed to unmarshal OCI Manifest '%s'", string(buf))
-		return mani, err
+		return mani, ociMani, err
 	}
 	dig := digest.FromBytes(buf)
 	req.Digest = dig.String()
@@ -235,123 +230,96 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 		Data:      buf,
 		Size:      int64(len(buf)),
 	}
+	err = mag.Database.Manifest_GetInsert(ctx, &mani)
+	return
+}
+
+func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani types.Manifest, err error) {
+	/// TODO: Can this be dratically simplified?
+	ctx := context.Background()
+	var ociMani types.OCIManifest
+	// Put Manifest Blob into Minio
+	mani, ociMani, err = mag.storeManifestUpload_OCIManifest(ctx, req, buf)
+	if err != nil {
+		err = errors.Wrap(err, "failed to mag.storeManifestUpload_OCIManifest")
+		return
+	}
 	// Fetch Config
-	mani.Config, err = mag.SQlite.Config.GetCreateByRequest(ociMani)
+	cfg, v1Img, found, err := mag.Config_Get_ByManifest(ctx, req, ociMani)
 	if err != nil {
-		err = errors.Wrap(err, "failed to Config.GetCreateByRequest")
+		err = errors.Wrap(err, "failed to mag.Config_Get_ByManifest")
 		return
 	}
-	/// Extract Platform
-	cfg, found, err := mag.Minio.GetConfig(ctx, mani.Config.Digest)
+	if !found {
+		err = fmt.Errorf("failed to find config for manifest")
+		return
+	}
+	err = mag.Database.LinkManifestToConfig(ctx, mani.ID, cfg.ID)
 	if err != nil {
-		err = errors.Wrap(err, "failed to get Config from Minio")
+		err = errors.Wrap(err, "failed to mag.LinkManifestToConfig")
 		return
 	}
-	switch {
-	case !found && len(mani.Config.Data) > 0:
-		err = json.Unmarshal(mani.Config.Data, &cfg)
-		if err != nil {
-			err = errors.Wrap(err, "failed to unmarshal config")
-			return
-		}
-		err = mag.Minio.PutConfig(ctx, mani.Config.Data, mani.Config.Digest)
-		if err != nil {
-			err = errors.Wrap(err, "failed to put Config to Minio")
-			return
-		}
-	case !found:
-		err = errors.New("config not found")
-		return
-	}
-	if cfg.Architecture == "" {
+	/// Extract Platform (Will be put in by Config_GetInsert_ByOCIManifest in case it is embedded)
+	if v1Img.Architecture == "" {
 		logrus.Infof("cfg: %v", cfg)
 		logrus.Fatal("architecture should not be empty")
 	}
 	plat := types.Platform{
-		Arch:    cfg.Architecture,
-		OS:      cfg.OS,
-		Variant: cfg.Variant,
+		Arch:    v1Img.Architecture,
+		OS:      v1Img.OS,
+		Variant: v1Img.Variant,
 	}
-	err = mag.SQlite.Platform.Upsert(&plat)
+	err = mag.Database.Platform_GetInsert(&plat)
 	if err != nil {
-		err = errors.Wrap(err, "failed to SQlite.Platform.Upsert")
+		err = errors.Wrap(err, "failed to Database.Platform_GetInsert")
+		return
+	}
+	err = mag.Database.LinkManifestToPlatform(ctx, mani.ID, plat.ID)
+	if err != nil {
+		err = errors.Wrap(err, "failed to Database.LinkManifestToPlatform")
 		return
 	}
 	mani.Platform = plat
-	err = mag.SQlite.UpdatePlatformFilter(plat)
+	err = mag.Database.Filter_UpdatePlatform(ctx, plat)
 	if err != nil {
 		err = errors.Wrap(err, "failed to SQlite.UpdatePlatformFilter")
 		return
 	}
 	req.Platform = plat.GetTag()
 	// Fetch/Create Upstream
-	mani.Upstream, err = mag.SQlite.Upstream.GetCreateByRequest(req)
+	up, _, err := mag.Database.Upstream_GetInsert_ByRequest(req)
 	if err != nil {
 		err = errors.Wrap(err, "failed to Upstream.GetCreateByRequest")
 		return
 	}
-
-	// INNER JOIN platform_filter ON platforms.id = platform_filter.platform_id
-
-	// Add Manifest to SQLite
-	//// The Manifest is suffixed with the profile to make it unique
-	err = mag.SQlite.Manifest.GetInsert(&mani)
+	mani.Upstream = up
+	err = mag.Database.LinkManifestToUpstream(ctx, mani.ID, up.ID)
 	if err != nil {
-		err = errors.Wrap(err, "failed to SQlite.Manifest.Insert")
+		err = errors.Wrap(err, "failed to LinkManifestToUpstream")
 		return
 	}
-
-	// Tag && Collection & ManifestList
-	/*
-		tag, err := mag.SQlite.CollectionTag.GetCreateByRequest(req)
-		if err != nil {
-			err = errors.Wrap(err, "failed to SQlite.CollectionTag.GetCreateByRequest")
-			return
-		}
-		_ = tag
-	*/
-	//// Fetch current collection or create new one
-	col, err := mag.SQlite.GetInsertCollectionByRepoTag(req.Repo, req.Tag)
+	col, colFound, err := mag.Database.Collection_GetCreate_ByRepoTag(ctx, req.Repo, req.Tag)
 	if err != nil {
-		err = errors.Wrap(err, "failed to SQlite.GetInsertCollectionByRepo")
+		err = errors.Wrap(err, "failed to Collection.GetCreateByRepoTag")
 		return
 	}
-	//logrus.Fatalf("col.Tag: %v", col.Tag)
-	// Augment ManifestList to collection
-	err = mag.AddMLtoCollection(&col)
+	_ = colFound
+	err = mag.Database.LinkCollectionToManifest(ctx, col.ID, mani.ID)
 	if err != nil {
-		err = errors.Wrap(err, "failed to AddMLtoCollection")
+		err = errors.Wrap(err, "failed to LinkCollectionToManifest")
 		return
 	}
-	/*
-		// TODO: Add Manifest to ManifestList (which is linked to Collection)
-		for _, ml := range col.ManifestLists {
-			b := ml.ToOCIBytes()
-			logrus.Warnf("ManifestList: %s", string(b))
-		}
-	*/
-	ml := types.ManifestList{
-		SchemaVersion: 2,
-		MediaType:     "application/vnd.docker.distribution.manifest.list.v2+json",
-		Manifests: []types.Manifest{
-			mani,
-		},
-	}
-	ml.Digest = digest.FromBytes(ml.ToOCIBytes()).String()
-	// Add ML to SQLite
-	err = mag.SQlite.InsertManifestList(&ml)
+	err = mag.Database.LinkCollectionTagToManifest(ctx, col.ColTag.ID, mani.ID)
 	if err != nil {
-		err = errors.Wrap(err, "failed to SQlite.ManifestList.Insert")
+		err = errors.Wrap(err, "failed to LinkCollectionTagToManifest")
 		return
 	}
-	col.ManifestLists = append(col.ManifestLists, ml)
-	// Update Collection
-	err = mag.SQlite.Collection.InsertXTable(col.SqlID, col.ColTag.SqlID, ml.SqlID)
+	// Compute Manifest List
+	err = mag.Database.ComputeManifestlists_ForCollection(ctx, col)
 	if err != nil {
-		err = errors.Wrap(err, "failed to SQlite.Collection.InsertXTable")
+		err = errors.Wrap(err, "failed to ComputeManifestlists_ForCollection")
 		return
 	}
-
 	return
 }
 
@@ -364,23 +332,18 @@ func (mag Magazine) RemoveManifestByRequest(req types.Request) (err error) {
 		},
 		Digest: req.Digest,
 	}
-	mlIDs, maniDigest, err := mag.SQlite.Manifest.Remove(m)
+	//mlIDs, maniDigest, err := mag.SQlite.Manifest.Remove(m)
+	err = mag.Database.Manifest_Remove(ctx, m)
 	if err != nil {
 		err = errors.Wrap(err, "failed to SQlite.Manifest.Remove")
 		return
 	}
 	// Remove Manifest Blob
-	err = mag.Minio.ManifestRemoveObj(ctx, maniDigest)
+	err = mag.Minio.ManifestRemoveObj(ctx, m.Digest)
 	if err != nil {
 		err = errors.Wrap(err, "failed to Minio.ManifestRemoveObj")
 		return
 	}
-	for _, mlID := range mlIDs {
-		err = mag.SQlite.Collection.ScrubCollectionsByManifestListID(mlID)
-		if err != nil {
-			err = errors.Wrap(err, "failed to SQlite.Collection.ScrubCollectionsByManifestListID")
-			return
-		}
-	}
+
 	return
 }

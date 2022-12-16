@@ -48,6 +48,7 @@ func FT_arm_Manifestlist() ManifestList {
 	if err != nil {
 		panic(err)
 	}
+
 	dig := digest.FromBytes(dat).String()
 	if dig != "sha256:15e01c3caff37bd3e6e4c77d7fa1d1a5afad482d50400b31d20458b792dcb61d" {
 		panic("digest mismatch")
@@ -55,6 +56,7 @@ func FT_arm_Manifestlist() ManifestList {
 	return ManifestList{
 		SchemaVersion: 2,
 		Digest:        dig,
+		Size:          len(dat),
 		MediaType:     "application/vnd.docker.distribution.manifest.list.v2+json",
 		Manifests: []Manifest{
 			FT_arm_Manifest(),

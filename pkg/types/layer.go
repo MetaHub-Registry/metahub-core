@@ -11,6 +11,7 @@ import (
 )
 
 type Layer struct {
+	ID        int64  `json:"id"`
 	NeoID     int64  `json:"neo_id"`
 	SqlID     int64  `json:"sql_id"`
 	Data      []byte `json:"-"`

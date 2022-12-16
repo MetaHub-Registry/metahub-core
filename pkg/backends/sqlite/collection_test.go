@@ -12,7 +12,7 @@ import (
 func Test_Collection_Insert(t *testing.T) {
 	bs := utils.NewBootstrap()
 	//bs.SetSqlite("Desktop/metahub.db")
-	bs.SetSqlEmptyAll()
+	bs.SetEmptyAll()
 	br, err := SetupTest(bs)
 	_ = br
 	assert.NoError(t, err)
@@ -31,7 +31,7 @@ func Test_Collection_Insert(t *testing.T) {
 	}
 	err = sq.Collection.Insert(&c)
 	assert.NoError(t, err)
-	assert.NotEqual(t, int64(-1), c.SqlID)
+	assert.NotEqual(t, int64(-1), c.ID)
 	colRows, err := sq.Query("SELECT * FROM collections")
 	assert.NoError(t, err)
 	assert.True(t, colRows.Next())
@@ -40,7 +40,7 @@ func Test_Collection_Insert(t *testing.T) {
 
 func Test_Collection_GetInsert(t *testing.T) {
 	bs := utils.NewBootstrap()
-	bs.SetSqlEmptyAll()
+	bs.SetEmptyAll()
 	br, err := SetupTest(bs)
 	_ = br
 	assert.NoError(t, err)
@@ -49,7 +49,7 @@ func Test_Collection_GetInsert(t *testing.T) {
 	assert.NoError(t, err)
 	col, err := sq.GetInsertCollectionByRepoTag("qnib/test", "1.0")
 	assert.NoError(t, err)
-	assert.NotEqual(t, int64(-1), col.SqlID)
+	assert.NotEqual(t, int64(-1), col.ID)
 	assert.Equal(t, "qnib/test", col.Repo)
 	assert.Equal(t, "1.0", col.Tag)
 	colRows, err := sq.Query("SELECT * FROM collections")
@@ -60,7 +60,7 @@ func Test_Collection_GetInsert(t *testing.T) {
 
 func Test_Collection_Get(t *testing.T) {
 	bs := utils.NewBootstrap()
-	bs.SetSqlEmptyAll()
+	bs.SetEmptyAll()
 	bs.AddBootstrap("users")
 	bs.AddBootstrap("profiles")
 	bs.AddBootstrap("platforms")
@@ -107,7 +107,7 @@ func Test_Collection_Get(t *testing.T) {
 
 func Test_Collection_ScrubCollectionsByManifestListID(t *testing.T) {
 	bs := utils.NewBootstrap()
-	bs.SetSqlEmptyAll()
+	bs.SetEmptyAll()
 	bs.AddBootstrap("users")
 	bs.AddBootstrap("profiles")
 	bs.AddBootstrap("platforms")

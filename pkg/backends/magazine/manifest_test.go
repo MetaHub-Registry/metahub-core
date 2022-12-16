@@ -1,6 +1,7 @@
 package magazine
 
 import (
+	"context"
 	"testing"
 
 	"github.com/opencontainers/go-digest"
@@ -15,7 +16,7 @@ import (
 
 func Test_CachManifest(t *testing.T) {
 	bs := utils.NewBootstrap()
-	_, err := SetupTest(bs)
+	_, err := mag.SetupTest(bs)
 	assert.NoError(t, err)
 	defer TeardownTest(bs)
 	// Test
@@ -44,16 +45,22 @@ func Test_CachManifest(t *testing.T) {
 
 }
 
-func Test_StoreManifestUpload(t *testing.T) {
+func Test_StoreManifestUpload_OCIManifest(t *testing.T) {
 	bs := utils.NewBootstrap()
-	bs.AddBootstrap("cfg:generic")
+	bs.SetEmptyAll()
+	bs.AddBootstrap("users")
+	bs.AddBootstrap("filter")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("platforms:amd64")
+	bs.AddBootstrap("platforms:arm64")
 	bs.AddBootstrap("profiles")
-	//bs.SetSqlite("Desktop/metahub.db")
-	_, err := SetupTest(bs)
+	bs.AddBootstrap("config:ft_arm")
+	bs.AddBootstrap("config:ft_amd64")
+	_, err := mag.SetupTest(bs)
 	assert.NoError(t, err)
 	defer TeardownTest(bs)
-	expCfg := types.FT_arm_Config()
-	expUpstream := types.FT_arm_Upstream_Generic()
+	// Tests
+	ctx := context.Background()
 	inMani := types.FT_arm_Manifest()
 	req := types.Request{
 		Repo:    "qnib/plain-featuretest",
@@ -62,29 +69,26 @@ func Test_StoreManifestUpload(t *testing.T) {
 		Profile: "generic",
 		Digest:  inMani.Digest,
 	}
-	mani, err := mag.StoreManifestUpload(req, inMani.Data)
+	mani, ociMani, err := mag.storeManifestUpload_OCIManifest(ctx, req, inMani.Data)
 	assert.NoError(t, err)
-	assert.Equal(t, inMani.Digest, mani.Digest)
-	assert.Equal(t, expCfg.Digest, mani.Config.Digest)
-	assert.Equal(t, expUpstream.Digest, mani.Upstream.Digest)
-	// 2022-11-28: Had an issue where the tag_id was not set
-	q := "SELECT collection_tag_id FROM collection_xtable"
-	rows, err := mag.SQlite.Query(q)
+	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mani.Digest)
+	assert.Equal(t, "sha256:cf5c26263929e84d7373d23b2692222cceceb3175b3325b183ead2ab6b5a5ce3", ociMani.Config.Digest.String())
+	minMani, err := mag.Minio.ManifestGetObj(ctx, mani.Digest)
 	assert.NoError(t, err)
-	defer rows.Close()
-	assert.True(t, rows.Next())
-	var colTagID int64
-	err = rows.Scan(&colTagID)
-	assert.NoError(t, err)
-	assert.NotEqual(t, int64(0), colTagID)
+	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", minMani.Digest)
 }
 
 func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer(t *testing.T) {
 	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
 	bs.AddBootstrap("users")
+	bs.AddBootstrap("filter")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("platforms:amd64")
+	bs.AddBootstrap("platforms:arm64")
 	bs.AddBootstrap("profiles")
-	//bs.SetSqlite("Desktop/metahub.db")
-	_, err := SetupTest(bs)
+	//bs.PostTestSleep = 300
+	_, err := mag.SetupTest(bs)
 	assert.NoError(t, err)
 	defer TeardownTest(bs)
 	// Tests
@@ -102,17 +106,26 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer(t *testing.T) {
 			}`)
 	bufDig := digest.FromBytes(buf)
 	req := types.Request{
-		Repo: "oci/conformance",
-		Tag:  "test0",
+		Repo:        "oci/conformance",
+		Tag:         "test0",
+		ContentType: "application/vnd.oci.image.manifest.v1+json",
 	}
 	// Upload Manifest with Embedded Config
 	mani, err := mag.StoreManifestUpload(req, buf)
 	assert.NoError(t, err)
 	assert.Equal(t, bufDig.String(), mani.Digest)
 	// Check if config is in DB
-	cfg, found, err := mag.SQlite.Config.ConfigGetByDigest("sha256:65b1de14a76de70a46ff0839ab79775aceb96ee12069fb6ed45bc35f958fdbcb")
+	cfg, found, err := mag.Database.ConfigGetByDigest("sha256:65b1de14a76de70a46ff0839ab79775aceb96ee12069fb6ed45bc35f958fdbcb")
+	assert.Equal(t, "sha256:65b1de14a76de70a46ff0839ab79775aceb96ee12069fb6ed45bc35f958fdbcb", cfg.Digest)
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, "application/vnd.oci.image.config.v1+json", cfg.MediaType)
-
+	// Check for config in Minio
+	cfgObj, err := mag.Minio.ConfigGetObj(ctx, cfg.Digest)
+	assert.NoError(t, err)
+	assert.Equal(t, "sha256:65b1de14a76de70a46ff0839ab79775aceb96ee12069fb6ed45bc35f958fdbcb", cfgObj.Digest)
+	// Check Collections
+	cols, err := mag.Database.CollectionGetAll()
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(cols))
 }

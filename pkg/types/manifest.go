@@ -15,8 +15,7 @@ import (
 )
 
 type Manifest struct {
-	NeoID     int64    `json:"neo_id"`
-	SqlID     int64    `json:"sql_id"`
+	ID        int64    `json:"id"`
 	Digest    string   `json:"digest"`
 	Data      []byte   `json:"data,omitempty"`
 	MediaType string   `json:"media_type"`

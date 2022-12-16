@@ -11,11 +11,18 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/backends/minio"
+	"github.com/metahub-registry/metahub-core/pkg/backends/neo"
 	"github.com/metahub-registry/metahub-core/pkg/backends/sqlite"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"github.com/metahub-registry/metahub-core/pkg/yaml/config"
 	"golang.org/x/crypto/bcrypt"
+)
+
+const (
+	neoDb     = "test"
+	neoUser   = "neo4j"
+	neoPasswd = "test"
 )
 
 var mag Magazine
@@ -63,6 +70,28 @@ var (
 func TestMain(m *testing.M) {
 	logrus.Info("Start TestMain")
 	ctx := context.Background()
+	/// Neo4j
+	neoC, err := neo.SetupNeo4j(ctx)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer neoC.Terminate(ctx)
+	ncfg := neo.NeoConfig{
+		DbName: neoDb,
+		User:   neoUser,
+		Passwd: neoPasswd,
+		URL:    neoC.BoltURI,
+		HTTP:   neoC.HttpURI,
+	}
+	gdb := neo.NewNeo(ncfg)
+	err = gdb.Connect()
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	err = gdb.Setup()
+	if err != nil {
+		logrus.Fatal(err)
+	}
 	/// Minio
 	minioC, err := minio.SetupMinio(ctx)
 	if err != nil {
@@ -73,9 +102,9 @@ func TestMain(m *testing.M) {
 	layersBucketKey := minio.GetLayersBucketKey()
 	manifestsBucketKey := minio.GetManifestsBucketKey()
 	bc := map[string]minio.BucketConfig{
-		configsBucketKey:   minio.NewBucketConfig(configsBucketKey, minioC.HttpURI),
-		layersBucketKey:    minio.NewBucketConfig(layersBucketKey, minioC.HttpURI),
-		manifestsBucketKey: minio.NewBucketConfig(manifestsBucketKey, minioC.HttpURI),
+		configsBucketKey:   minio.NewBucketConfig(configsBucketKey, minioC.HttpURI, minioC.ConsoleURI),
+		layersBucketKey:    minio.NewBucketConfig(layersBucketKey, minioC.HttpURI, minioC.ConsoleURI),
+		manifestsBucketKey: minio.NewBucketConfig(manifestsBucketKey, minioC.HttpURI, minioC.ConsoleURI),
 	}
 	min, err := minio.NewMiniWithCfg(bc)
 	if err != nil {
@@ -99,8 +128,9 @@ func TestMain(m *testing.M) {
 		logrus.Fatal(err)
 	}
 	mag = Magazine{
-		Minio:  min,
-		SQlite: sq,
+		Minio:          min,
+		Database:       gdb,
+		UserManagement: sq,
 	}
 	code := m.Run()
 	os.Exit(code)
@@ -109,140 +139,42 @@ func TestMain(m *testing.M) {
 
 func TeardownTest(bs utils.Bootstrap) {
 	logrus.Info("> TeardownTest")
-	if bs.CopySqlite != "" {
-		logrus.Infof("Copy SQlite DB to '%s'", bs.CopySqlite)
-		mag.SQlite.Close()
-		utils.CopyFile(mag.SQlite.MhFile, bs.CopySqlite)
-		err := mag.SQlite.ReOpenDB()
-		if err != nil {
-			logrus.Fatal(err)
-		}
-	}
+	mag.Minio.PreTearDown(bs)
+	mag.Database.TeardownTest(bs)
 	err := mag.Minio.EmptyAll()
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	err = mag.SQlite.EmptyData(bs.SqlEmptyAll)
+	err = mag.UserManagement.EmptyData(bs.EmptyAll)
 	if err != nil {
 		logrus.Fatal(err)
 	}
 }
 
-func SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
+func (mag Magazine) SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 	logrus.Info("> SetupTest")
-	sq := mag.SQlite
+	//return
 	br = utils.NewBootstrapResult()
 	for _, b := range bs.Bootstraps {
 		switch b {
-
 		// Users/Profile/Platforms
 		case "users":
-			err = sqlite.Setup_Users(&sq, &br)
+			err = sqlite.Setup_Users(&mag.UserManagement, &br)
 			if err != nil {
 				err = errors.Wrap(err, "Setup_Users")
 				return
 			}
-		case "profiles":
-			err = sqlite.Setup_Profiles(&sq, &br, "../../../misc/yaml/profiles/library")
-			if err != nil {
-				err = errors.Wrap(err, "Setup_Profiles")
-				return
-			}
-		case "platforms":
-			err = sqlite.Setup_Platforms(&sq, &br)
-			if err != nil {
-				return
-			}
-		// Upstream
-		case "upstreams:qnib/featuretest:amd64":
-			err = sqlite.Setup_Upstream_FT_amd64(&sq, &br)
-			if err != nil {
-				err = errors.Wrap(err, "Setup_Upstream_FT_amd64")
-				return
-			}
-		case "upstreams:qnib/featuretest:arm64":
-			err = sqlite.Setup_Upstream_FTarm(&sq, &br)
-			if err != nil {
-				return
-			}
-		// Layers
-		case "layers:qnib/featuretest:amd64":
-			err = sqlite.Setup_Layers_FT_amd64(&sq, &br)
-			if err != nil {
-				err = errors.Wrap(err, "Setup_Layers_FT_amd64")
-				return
-			}
-		case "layers:qnib/featuretest:arm64":
-			err = sqlite.Setup_Layers_FTarm(&sq, &br)
-			if err != nil {
-				return
-			}
-		/// CONFIG
-		case "config:qnib/featuretest:amd64":
-			err = sqlite.Setup_Config_FT_amd64(&sq, &br)
-			if err != nil {
-				err = errors.Wrap(err, "Setup_Config_FT_amd64")
-				return
-			}
-		case "config:qnib/featuretest:arm64":
-			err = sqlite.Setup_Config_FTarm(&sq, &br)
-			if err != nil {
-				return
-			}
-		/// Manifests
-		case "manifest:qnib/featuretest:arm64":
-			err = sqlite.Setup_Manifest_QNIB_FeatureTest_arm(&sq, &br)
-			if err != nil {
-				return
-			}
-		case "manifest:qnib/featuretest:amd64":
-			err = sqlite.Setup_Manifest_QNIB_FeatureTest_amd(&sq, &br)
-			if err != nil {
-				err = errors.Wrap(err, "Setup_Manifest_QNIB_FeatureTest_amd")
-				return
-			}
-		/// ManifestLists
-		case "manifestlist:qnib/featuretest:amd64":
-			err = sqlite.Setup_Manifestlist_FTamd64(&sq, &br)
-			if err != nil {
-				err = errors.Wrap(err, "Setup_Manifestlist_FTamd64")
-				return
-			}
-		case "manifestlist:qnib/featuretest:arm64":
-			err = sqlite.Setup_Manifestlist_FTarm(&sq, &br)
-			if err != nil {
-				return
-			}
-		/// Collections
-		case "collection:qnib/featuretest:amd64":
-			err = sqlite.Setup_Collection_QNIB_FeatureTest_amd64(&sq, &br)
-			if err != nil {
-				err = errors.Wrap(err, "Setup_Collection_QNIB_FeatureTest_amd64")
-				return
-			}
-		case "collection:qnib/featuretest:generic":
-			err = sqlite.Setup_Collection_QNIB_FeatureTest_Generic(&sq, &br)
-			if err != nil {
-				err = errors.Wrap(err, "Setup_Collection_QNIB_FeatureTest_Generic")
-				return
-			}
-
-		case "collection:qnib/featuretest:arm64":
-			err = sqlite.Setup_Collection_QNIB_FeatureTest_arm(&sq, &br)
-			if err != nil {
-				return
-			}
-		case "filter:generic":
-			err = sqlite.Setup_Filter_Generic(&sq, &br)
-			if err != nil {
-				err = errors.Wrap(err, "Setup_Filter_Generic")
-				return
-			}
-		case "cfg:generic":
-			Setup_FTarm_Config()
 		default:
-			err = fmt.Errorf("No Setup for '%s'", b)
-			return br, err
+			err = mag.Database.BootstrapTestWithBR(b, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Users in Database")
+				return
+			}
+			err = mag.Minio.BootstrapTestWithBR(b, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Users in Minio")
+				return
+			}
 		}
 	}
 	return
