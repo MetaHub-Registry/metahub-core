@@ -75,6 +75,10 @@ func New(cfgFile string) (Neo, error) {
 		Enabled:   true,
 		neoConfig: ncfg,
 	}
+	err = n.Connect()
+	if err != nil {
+		logrus.Fatal(err)
+	}
 	return n, nil
 }
 
