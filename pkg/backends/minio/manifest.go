@@ -35,7 +35,6 @@ func (m Minio) GetManifest(ctx context.Context, up upstream.UpstreamTriple) (res
 	)
 	defer span.End()
 	aliasPath := filepath.Join(aliasPrefix, up.GetObjPath())
-	l.Warnf("aliasPath: %s", aliasPath)
 	_, err = m.ManifestsStatObj(ctx, aliasPath)
 	if err != nil {
 		if err.Error() == "The specified key does not exist." {
@@ -70,7 +69,6 @@ func (m Minio) PutManifest(ctx context.Context, b []byte, up upstream.UpstreamTr
 	)
 	defer span.End()
 	aliasPath := filepath.Join(aliasPrefix, up.GetObjPath())
-	l.Warnf("aliasPath: %s", aliasPath)
 	err = m.ManifestsPutObj(ctx, aliasPath, up.ToBytes())
 	if err != nil {
 		l.Error(err)
