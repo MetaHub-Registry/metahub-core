@@ -7,15 +7,17 @@ import (
 )
 
 func (mag Magazine) NeoInsertUpstream(ctx context.Context, up types.Upstream) (upID int64, err error) {
-	upID, success, err := mag.Neo.GetUpstream(up)
+	req := types.Request{
+		Host:   up.Reg,
+		Repo:   up.Repo,
+		Tag:    up.Tag,
+		Digest: up.Digest.String(),
+	}
+
+	res, _, err := mag.Database.Upstream_GetInsert_ByRequest(req)
 	if err != nil {
 		return
 	}
-	if !success {
-		upID, err = mag.Neo.CreateUpstream(up)
-		if err != nil {
-			return
-		}
-	}
+	upID = res.ID
 	return
 }

@@ -9,7 +9,7 @@ import (
 
 func (mag Magazine) Collections_GetCatalog(req types.Request) (res types.CatalogResponse, err error) {
 	// Fetch Layer from SQLite
-	cols, err := mag.SQlite.Collection.GetAll()
+	cols, err := mag.Database.CollectionGetAll()
 	if err != nil {
 		return
 	}

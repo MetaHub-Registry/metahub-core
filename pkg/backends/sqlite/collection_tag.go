@@ -24,7 +24,7 @@ func (c CollectionTag) Insert(i *types.CollectionTag) (err error) {
 		logrus.Error(err)
 		return
 	}
-	i.SqlID, err = res.LastInsertId()
+	i.ID, err = res.LastInsertId()
 	return
 }
 
@@ -41,7 +41,7 @@ func (c CollectionTag) GetByTag(tag string) (i types.CollectionTag, found bool, 
 	defer rows.Close()
 	if rows.Next() {
 		found = true
-		err = rows.Scan(&i.SqlID)
+		err = rows.Scan(&i.ID)
 		if err != nil {
 			logrus.Error(err)
 		}

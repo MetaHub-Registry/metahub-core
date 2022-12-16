@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/opencontainers/go-digest"
+	"github.com/pkg/errors"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/metahub-registry/metahub-core/pkg/types"
@@ -63,15 +64,16 @@ func SetupMinio(ctx context.Context) (*MinioContainer, error) {
 	return &MinioContainer{Container: container, HttpURI: httpUri, ConsoleURI: consoleUri}, nil
 }
 
-func NewBucketConfig(bucket, url string) BucketConfig {
+func NewBucketConfig(bucket, url, console string) BucketConfig {
 	bc := BucketConfig{
-		URL:      url,
-		Region:   "us-east-1",
-		User:     minioAccessKey,
-		Password: minioSecretKey,
-		Redirect: false,
-		Ssl:      false,
-		Bucket:   bucket,
+		URL:        url,
+		ConsoleURL: console,
+		Region:     "us-east-1",
+		User:       minioAccessKey,
+		Password:   minioSecretKey,
+		Redirect:   false,
+		Ssl:        false,
+		Bucket:     bucket,
 	}
 	return bc
 }
@@ -89,5 +91,23 @@ func Setup_Config_FT_amd64(min *Minio, br *utils.BootstrapResult) (err error) {
 	cfgByte := types.FT_amd64_ConfigByte()
 	cfgDig := digest.FromBytes(cfgByte)
 	err = min.ConfigPutObj(ctx, cfgDig.String(), cfgByte)
+	return
+}
+
+func (m Minio) BootstrapTestWithBR(b string, br *utils.BootstrapResult) (err error) {
+	switch b {
+	case "config:ft_arm":
+		err = Setup_Config_FT_arm64(&m, br)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "config:ft_amd64":
+		err = Setup_Config_FT_amd64(&m, br)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	}
 	return
 }

@@ -7,19 +7,14 @@ import (
 )
 
 func (mag Magazine) NeoInsertPlatform(ctx context.Context, plat types.Platform) (platID int64, err error) {
-	platID, success, err := mag.Neo.GetPlatform(plat)
+	err = mag.Database.Platform_GetInsert(&plat)
 	if err != nil {
 		return
 	}
-	if !success {
-		platID, err = mag.Neo.CreatePlatform(plat)
-		if err != nil {
-			return
-		}
-	}
+	platID = plat.ID
 	return
 }
 
-func (mag Magazine) NeoLinkPlatformToFilter(ctx context.Context, platID int64, plat types.Platform) (err error) {
-	return mag.Neo.LinkPlatformToFilter(ctx, platID, plat)
+func (mag Magazine) NeoLinkPlatformIDToFilter(ctx context.Context, platID int64, fltr types.Filter) (err error) {
+	return mag.Database.LinkPlatformIDToFilter(ctx, platID, fltr)
 }

@@ -5,8 +5,7 @@ import (
 )
 
 func (mag Magazine) Tags_GetList(req types.Request) (res types.TagResponse, err error) {
-	// Fetch Layer from SQLite
-	res, err = mag.SQlite.Collection.GetTagsListByRepo(req.Repo)
+	res, err = mag.Database.Collection_GetTagsListByRepo(req.Repo)
 	if err != nil {
 		return
 	}

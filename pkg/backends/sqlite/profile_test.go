@@ -10,7 +10,7 @@ import (
 
 func Test_Profiles_Insert(t *testing.T) {
 	bs := utils.NewBootstrap()
-	bs.SetSqlEmptyAll()
+	bs.SetEmptyAll()
 	br, err := SetupTest(bs)
 	_ = br
 	assert.NoError(t, err)

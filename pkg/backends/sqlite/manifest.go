@@ -193,13 +193,13 @@ func (m Manifest) Insert(i *types.Manifest) (err error) {
 		logrus.Error(err)
 		return
 	}
-	res, err := stmt.Exec(i.Digest, i.MediaType, i.Size, i.Platform.SqlID, i.Upstream.SqlID, i.Config.SqlID)
+	res, err := stmt.Exec(i.Digest, i.MediaType, i.Size, i.Platform.ID, i.Upstream.ID, i.Config.SqlID)
 	if err != nil {
 		err = errors.Wrap(err, "failed to insert manifest")
 		logrus.Error(err)
 		return
 	}
-	i.SqlID, err = res.LastInsertId()
+	i.ID, err = res.LastInsertId()
 	return
 }
 
@@ -237,7 +237,7 @@ func (m *Manifest) GetTypesManifestByRequest(req types.Request) (res types.Manif
 		}
 		found = true
 		res = types.Manifest{
-			SqlID:     maniRes.maniID,
+			ID:        maniRes.maniID,
 			Digest:    maniRes.maniDigest,
 			MediaType: "application/vnd.docker.distribution.manifest.v2+json",
 			Platform: types.Platform{
@@ -282,7 +282,7 @@ func (m Manifest) GetIDByDigest(dig string) (id int64, found bool, err error) {
 func (m Manifest) GetInsert(i *types.Manifest) (err error) {
 	id, found, err := m.GetIDByDigest(i.Digest)
 	if found {
-		i.SqlID = id
+		i.ID = id
 		return
 	}
 	return m.Insert(i)
@@ -319,7 +319,7 @@ func (m *Manifest) TypesManifest_GetByManifestListID(mlID int64) (manis []types.
 			logrus.Error(err)
 		}
 		mani := types.Manifest{
-			SqlID:     maniRes.maniID,
+			ID:        maniRes.maniID,
 			Digest:    maniRes.maniDigest,
 			MediaType: "application/vnd.docker.distribution.manifest.v2+json",
 			Platform: types.Platform{
@@ -365,6 +365,7 @@ func (m Manifest) DeleteXTableByManifestID(maniID int64) (mlIDs []int64, err err
 	}
 	return
 }
+
 func (m Manifest) RemoveByID(id int64) (mlIDs []int64, err error) {
 	q := fmt.Sprintf(`DELETE FROM main.manifests WHERE id=%d RETURNING upstream_id, config_id`, id)
 	rows, err := db.Query(q)

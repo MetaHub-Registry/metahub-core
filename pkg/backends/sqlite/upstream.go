@@ -59,7 +59,7 @@ func (u Upstream) Insert(i *types.Upstream) (err error) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	i.SqlID, err = res.LastInsertId()
+	i.ID, err = res.LastInsertId()
 	return
 }
 
@@ -75,7 +75,7 @@ func (up Upstream) GetByRequest(res *types.Upstream) (found bool, err error) {
 	}
 	for rows.Next() {
 		found = true
-		err = rows.Scan(&res.SqlID)
+		err = rows.Scan(&res.ID)
 	}
 	return
 }
@@ -116,6 +116,13 @@ func (up Upstream) GetCreateByRequest(r types.Request) (u types.Upstream, err er
 		logrus.Error(err)
 		return
 	}
-	u.SqlID, err = res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		err = errors.Wrap(err, "while res.LastInsertId()")
+		logrus.Error(err)
+		return
+	}
+	u.ID = id
+	u.ID = id
 	return
 }

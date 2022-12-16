@@ -3,8 +3,7 @@ package types
 import "fmt"
 
 type Platform struct {
-	NeoID    int64  `json:"neo_id"`
-	SqlID    int64  `json:"sql_id"`
+	ID       int64  `json:"id"`
 	Arch     string `json:"architecture"`
 	OS       string `json:"os"`
 	Variant  string `json:"variant"`

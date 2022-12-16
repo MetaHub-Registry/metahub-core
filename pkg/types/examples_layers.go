@@ -4,6 +4,42 @@ import (
 	"github.com/docker/distribution"
 )
 
+func FT_arm64_Layer1() Layer {
+	ref := FT_arm_Layer1Reference()
+	return Layer{
+		Digest:    ref.Digest.String(),
+		Size:      ref.Size,
+		MediaType: ref.MediaType,
+	}
+}
+
+func FT_arm64_Layer0() Layer {
+	l0ref := FT_arm_Layer0Reference()
+	return Layer{
+		Digest:    l0ref.Digest.String(),
+		Size:      l0ref.Size,
+		MediaType: l0ref.MediaType,
+	}
+}
+
+func FT_amd64_Layer0() Layer {
+	ref := FT_amd_Layer0Reference()
+	return Layer{
+		Digest:    ref.Digest.String(),
+		Size:      ref.Size,
+		MediaType: ref.MediaType,
+	}
+}
+
+func FT_amd64_Layer1() Layer {
+	ref := FT_amd_Layer1Reference()
+	return Layer{
+		Digest:    ref.Digest.String(),
+		Size:      ref.Size,
+		MediaType: ref.MediaType,
+	}
+}
+
 func FT_amd_Layer0Reference() distribution.Descriptor {
 	return distribution.Descriptor{
 		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",

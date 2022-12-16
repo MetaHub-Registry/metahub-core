@@ -106,7 +106,7 @@ func (p Platform) Insert(i *types.Platform) (err error) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	i.SqlID, err = res.LastInsertId()
+	i.ID, err = res.LastInsertId()
 	return
 }
 
@@ -130,7 +130,7 @@ func (p Platform) Upsert(i *types.Platform) (err error) {
 			logrus.Error(err)
 			return
 		}
-		i.SqlID = id
+		i.ID = id
 		return
 	}
 	// Not present, insert new Platform
@@ -138,10 +138,10 @@ func (p Platform) Upsert(i *types.Platform) (err error) {
 }
 
 func (p Platform) InsertPlatformFilter(pfp types.ProfileFilterPlatform) (err error) {
-	if pfp.Platform.SqlID == 0 {
+	if pfp.Platform.ID == 0 {
 		return fmt.Errorf("Platform.SqlID is 0")
 	}
-	if pfp.Filter.SqlID == 0 {
+	if pfp.Filter.ID == 0 {
 		return fmt.Errorf("Filter.SqlID is 0")
 	}
 
@@ -151,7 +151,7 @@ func (p Platform) InsertPlatformFilter(pfp types.ProfileFilterPlatform) (err err
 	if err != nil {
 		return err
 	}
-	_, err = stmt.Exec(pfp.Platform.SqlID, pfp.Filter.SqlID)
+	_, err = stmt.Exec(pfp.Platform.ID, pfp.Filter.ID)
 	if err != nil {
 		return err
 	}
@@ -169,7 +169,7 @@ func (sq Sqlite) UpdatePlatformFilter(i types.Platform) (err error) {
 		// If no features are set, we link with the generic filter
 		f := types.Filter{Label: "generic"}
 		fID, found, err := sq.Filter.GetFilter(f)
-		f.SqlID = fID
+		f.ID = fID
 		if err != nil {
 			return err
 		}

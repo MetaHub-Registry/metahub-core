@@ -10,7 +10,7 @@ import (
 
 func Test_Manifest_Insert(t *testing.T) {
 	bs := utils.NewBootstrap()
-	bs.SetSqlEmptyAll()
+	bs.SetEmptyAll()
 	br, err := SetupTest(bs)
 	_ = br
 	assert.NoError(t, err)
@@ -19,11 +19,11 @@ func Test_Manifest_Insert(t *testing.T) {
 	man1 := types.FT_arm_Manifest()
 	err = sq.Manifest.Insert(&man1)
 	assert.NoError(t, err)
-	assert.NotEqual(t, int64(-1), man1.SqlID)
+	assert.NotEqual(t, int64(-1), man1.ID)
 }
 func Test_Manifest_GetInsert(t *testing.T) {
 	bs := utils.NewBootstrap()
-	bs.SetSqlEmptyAll()
+	bs.SetEmptyAll()
 	//bs.SetSqlite("Desktop/metahub.db")
 	br, err := SetupTest(bs)
 	_ = br
@@ -33,10 +33,10 @@ func Test_Manifest_GetInsert(t *testing.T) {
 	man1 := types.FT_arm_Manifest()
 	err = sq.Manifest.GetInsert(&man1)
 	assert.NoError(t, err)
-	assert.NotEqual(t, int64(-1), man1.SqlID)
+	assert.NotEqual(t, int64(-1), man1.ID)
 	err = sq.Manifest.GetInsert(&man1)
 	assert.NoError(t, err)
-	assert.NotEqual(t, int64(-1), man1.SqlID)
+	assert.NotEqual(t, int64(-1), man1.ID)
 	_, found, err := sq.Manifest.GetIDByDigest(man1.Digest)
 	assert.NoError(t, err)
 	assert.True(t, found)
@@ -63,7 +63,7 @@ func Test_Manifest_GetView(t *testing.T) {
 	bs.AddBootstrap("manifest:qnib/featuretest:arm64")
 	bs.AddBootstrap("manifestlist:qnib/featuretest:arm64")
 	bs.AddBootstrap("collection:qnib/featuretest:arm64")
-	bs.SetSqlEmptyAll()
+	bs.SetEmptyAll()
 	//bs.SetSqlite("Desktop/metahub.db")
 	br, err := SetupTest(bs)
 	_ = br
@@ -87,7 +87,7 @@ func Test_Manifest_GetView(t *testing.T) {
 	got, found, err := sq.Manifest.GetTypesManifestByRequest(req)
 	assert.NoError(t, err)
 	assert.True(t, found)
-	assert.Equal(t, expManiID, got.SqlID)
+	assert.Equal(t, expManiID, got.ID)
 	gotManiID, found, err := sq.Manifest.GetIDByDigest(expManiDigest)
 	assert.NoError(t, err)
 	assert.True(t, found)

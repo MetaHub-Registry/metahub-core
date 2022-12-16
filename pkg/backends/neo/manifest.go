@@ -11,16 +11,16 @@ import (
 )
 
 func (n Neo) GetManifestsForManifestList(mlID int64) (manifests []types.Manifest, err error) {
-	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
-	defer session.Close()
-	q := `MATCH (p:Platform)-[:USES]-(f:Filter)<-[:IMPLEMENTS]-(ml:ManifestList)-[:SERVES]->(c:Collection)-[:UPSTREAM]->(m:Manifest)-[:UPSTREAM]->(u:Upstream) WHERE id(ml) = %d`
-	q += ` MATCH (cfg:Config)<-[:USES]-(m)-[:IS]-(p)`
+	q := `MATCH (ml:ManifestList)-[:INCLUDES]-(m:Manifest)-[:IS]->(p:Platform) WHERE id(ml) = %d`
+	q += ` MATCH (cfg:Config)<-[:USES]-(m)-[:UPSTREAM]->(u:Upstream)`
 	q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant, p.features AS platformFeatures,`
 	q += ` id(m) AS manifestID, m.digest AS manifestDigest, m.mediaType AS manifestMediaType, m.size AS manifestSize,`
 	q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag,`
 	q += ` id(cfg) AS configID, cfg.digest AS configDigest, cfg.mediaType AS configMediaType, cfg.size AS configSize`
 	input := map[string]interface{}{}
 	query := fmt.Sprintf(q, mlID)
+	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close()
 	result, err := session.Run(query, input)
 	if err != nil {
 		return
@@ -52,6 +52,34 @@ func (n Neo) GetManifestsForManifestList(mlID int64) (manifests []types.Manifest
 		m.Upstream = u
 		manifests = append(manifests, m)
 	}
+	return
+}
+
+func (n Neo) Manifest_GetInsert(ctx context.Context, mani *types.Manifest) (err error) {
+	m, found, err := n.Manifest_Get_ByDigest(mani.Digest)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	if found {
+		mani.ID = m.ID
+		return
+	}
+	maniID, err := n.createManifest(*mani)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	mani.ID = maniID
+	return
+}
+
+func (n Neo) Manifest_Insert(ctx context.Context, m types.Manifest) (maniID int64, err error) {
+	err = n.Manifest_GetInsert(ctx, &m)
+	if err != nil {
+		return
+	}
+	maniID = m.ID
 	return
 }
 
@@ -99,6 +127,24 @@ func (n Neo) GetAllManifests() (manifests []types.Manifest, err error) {
 	return
 }
 
+func ManifestFromResult(res Result) (m types.Manifest, err error) {
+	err = res.CheckKeys("manifestID", "manifestDigest", "manifestMediaType", "manifestSize")
+	if err != nil {
+		return
+	}
+	maniID, _ := res.GetInt64("manifestID")
+	manifestDigest, _ := res.GetStr("manifestDigest")
+	manifestMediaType, _ := res.GetStr("manifestMediaType")
+	manifestSize, _ := res.GetInt64("manifestSize")
+	m = types.Manifest{
+		ID:        maniID,
+		Digest:    manifestDigest,
+		MediaType: manifestMediaType,
+		Size:      manifestSize,
+	}
+	return
+}
+
 func ManifestFromRecord(res neo4j.Result) (m types.Manifest, err error) {
 	r := res.Record()
 	v, ok := r.Get("manifestID")
@@ -106,7 +152,7 @@ func ManifestFromRecord(res neo4j.Result) (m types.Manifest, err error) {
 		err = fmt.Errorf("no manifestID found in record: %v", r)
 		return
 	}
-	m.NeoID = v.(int64)
+	m.ID = v.(int64)
 	v, ok = r.Get("manifestDigest")
 	if !ok {
 		err = fmt.Errorf("no manifestDigest found in record: %v", r)
@@ -164,7 +210,7 @@ func PlatformFromRecord(res neo4j.Result) (p types.Platform, err error) {
 		err = fmt.Errorf("no configID found in record: %v", r)
 		return
 	}
-	p.NeoID = v.(int64)
+	p.ID = v.(int64)
 	v, ok = r.Get("platformArch")
 	if !ok {
 		err = fmt.Errorf("no platformArch found in record: %v", r)
@@ -192,32 +238,61 @@ func PlatformFromRecord(res neo4j.Result) (p types.Platform, err error) {
 	return
 }
 
-func UpstreamFromRecord(res neo4j.Result) (u types.Upstream, err error) {
-	r := res.Record()
-	v, ok := r.Get("platformID")
-	if !ok {
-		err = fmt.Errorf("no configID found in record: %v", r)
+func (n Neo) Manifest_GetID_ByDigest(dig string) (maniID int64, found bool, err error) {
+	m, found, err := n.Manifest_Get_ByDigest(dig)
+	if err != nil || !found {
 		return
 	}
-	u.NeoID = v.(int64)
-	v, ok = r.Get("upstreamReg")
-	if !ok {
-		err = fmt.Errorf("no upstreamReg found in record: %v", r)
+	maniID = m.ID
+	return
+}
+
+func (n Neo) Manifest_Get_ByUpstream(up types.Upstream) (m types.Manifest, found bool, err error) {
+	q := `MATCH (m:Manifest)-[:UPSTREAM]->(u:Upstream) WHERE u.reg = "%s" AND u.repo = "%s" AND u.tag = "%s"`
+	q += ` RETURN id(m) AS manifestID, m.digest AS manifestDigest, m.mediaType AS manifestMediaType, m.size AS manifestSize`
+	query := fmt.Sprintf(q, up.Reg, up.Repo, up.Tag)
+	//fmt.Printf("Query: %s\n", query)
+	res, found, err := n.QueryOne(query)
+	if err != nil {
+		logrus.Errorf("Failed to run query: %s", err)
 		return
 	}
-	u.Reg = v.(string)
-	v, ok = r.Get("upstreamRepo")
-	if !ok {
-		err = fmt.Errorf("no upstreamRepo found in record: %v", r)
+	if !found {
 		return
 	}
-	u.Repo = v.(string)
-	v, ok = r.Get("upstreamTag")
-	if !ok {
-		err = fmt.Errorf("no upstreamTag found in record: %v", r)
+	m, err = ManifestFromResult(res)
+	if err != nil {
+		err = errors.Wrap(err, "failed to get manifest from result")
 		return
 	}
-	u.Tag = v.(string)
+	m.Upstream = up
+	return
+}
+
+func (n Neo) Manifest_Get_ByDigest(dig string) (m types.Manifest, found bool, err error) {
+	q := `MATCH (m:Manifest)-[:UPSTREAM]->(u:Upstream) WHERE m.digest = "%s"`
+	q += ` RETURN id(m) AS manifestID, m.digest AS manifestDigest, m.mediaType AS manifestMediaType, m.size AS manifestSize,`
+	q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag`
+	query := fmt.Sprintf(q, dig)
+	//fmt.Printf("Q: %s\n", query)
+	res, found, err := n.QueryOne(query)
+	if err != nil {
+		return
+	}
+	if !found {
+		return
+	}
+	m, err = ManifestFromResult(res)
+	if err != nil {
+		err = errors.Wrap(err, "failed to get manifest from result")
+		return
+	}
+	up, err := UpstreamFromResult(res)
+	m.Upstream = up
+	if err != nil {
+		err = errors.Wrap(err, "failed to get upstream from result")
+		return
+	}
 	return
 }
 
@@ -232,29 +307,31 @@ func (n Neo) GetManifest(mani types.Manifest) (maniID int64, success bool, err e
 		return
 	}
 	if result.Next() {
-		maniID = result.Record().GetByIndex(0).(int64)
+		v, ok := result.Record().Get("maniID")
+		if !ok {
+			err = fmt.Errorf("failed to get maniID")
+			return
+		}
+		maniID = v.(int64)
 		success = true
 	}
 	return
 }
 
-func (n Neo) CreateManifest(mani types.Manifest) (maniID int64, err error) {
+func (n Neo) createManifest(mani types.Manifest) (maniID int64, err error) {
 	q := `CREATE (m:Manifest {digest: "%s", mediaType: "%s", size: %d}) RETURN id(m) AS manifestID`
 	query := fmt.Sprintf(q, mani.Digest, mani.MediaType, mani.Size)
-	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
-	defer session.Close()
-	result, err := session.Run(query, map[string]interface{}{})
+	//fmt.Printf("QUery: \n%s\n", query)
+	res, err := n.Execute(query)
 	if err != nil {
 		logrus.Errorf("failed to create manifest: %v", err)
 		return
 	}
-	if result.Next() {
-		v, ok := result.Record().Get("manifestID")
-		if !ok {
-			err = fmt.Errorf("failed to get manifestID")
-			return
-		}
-		maniID = v.(int64)
+	maniID, err = res.GetInt64("manifestID")
+	if err != nil {
+		logrus.Errorf("failed to create manifestID from result")
+		fmt.Printf("Query: \n%s\n", query)
+		return
 	}
 	return
 }
@@ -263,6 +340,7 @@ func (n Neo) LinkManifestToUpstream(ctx context.Context, maniID, upID int64) (er
 	q := `MATCH (m:Manifest),(u:Upstream) WHERE id(m) = %d AND id(u) = %d`
 	q += ` MERGE (m)-[:UPSTREAM]->(u)`
 	query := fmt.Sprintf(q, maniID, upID)
+	//fmt.Printf("Query: \n%s\n", query)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	_, err = session.Run(query, map[string]interface{}{})
@@ -291,6 +369,7 @@ func (n Neo) LinkManifestToPlatform(ctx context.Context, maniID, platID int64) (
 	q := `MATCH (m:Manifest),(p:Platform) WHERE id(m) = %d AND id(p) = %d`
 	q += ` MERGE (m)-[:IS]->(p)`
 	query := fmt.Sprintf(q, maniID, platID)
+	//fmt.Printf("query: %s\n", query)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	_, err = session.Run(query, map[string]interface{}{})
@@ -313,4 +392,35 @@ func (n Neo) LinkManifestToLayer(ctx context.Context, maniID, layerID int64, idx
 		return
 	}
 	return
+}
+
+func (n Neo) Manifest_GetTypes_ByRequest(req types.Request) (res types.Manifest, found bool, err error) {
+	if req.Digest != "" {
+		return n.Manifest_Get_ByDigest(req.Digest)
+	} else if req.Tag != "" {
+		up := types.Upstream{
+			Reg:  req.Host,
+			Repo: req.Repo,
+			Tag:  req.Tag,
+		}
+		return n.Manifest_Get_ByUpstream(up)
+	}
+	return
+}
+
+func (n Neo) Manifest_Remove(ctx context.Context, mani types.Manifest) (err error) {
+	q := `MATCH (m:Manifest) WHERE id(m) = %d DETACH DELETE m`
+	query := fmt.Sprintf(q, mani.ID)
+	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close()
+	_, err = session.Run(query, map[string]interface{}{})
+	if err != nil {
+		err = errors.Wrap(err, "failed to delete (m:Manifest)")
+		return
+	}
+	return
+}
+
+func (n Neo) Manifest_GetManifests_ByManifestListID(mlID int64) (manis []types.Manifest, err error) {
+	return manis, fmt.Errorf("'Manifest_GetManifests_ByManifestListID' not implemented")
 }

@@ -11,7 +11,7 @@ import (
 
 func Test_User_Insert(t *testing.T) {
 	bs := utils.NewBootstrap()
-	bs.SetSqlEmptyAll()
+	bs.SetEmptyAll()
 	//bs.SetSqlite("Desktop/metahub.db")
 	br, err := SetupTest(bs)
 	assert.NoError(t, err)
@@ -78,7 +78,7 @@ func Test_User_Insert(t *testing.T) {
 }
 func Test_User_Roles(t *testing.T) {
 	bs := utils.NewBootstrap()
-	bs.SetSqlEmptyAll()
+	bs.SetEmptyAll()
 	bs.AddBootstrap("users")
 	//bs.SetSqlite("Desktop/metahub.db")
 	br, err := SetupTest(bs)

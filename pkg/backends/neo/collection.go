@@ -11,19 +11,68 @@ import (
 	yamlCfg "github.com/metahub-registry/metahub-core/pkg/yaml/config"
 )
 
-func (n Neo) GetCollection(col yamlCfg.ManifestCollection) (colId int64, success bool, err error) {
-	q := `MATCH (c:Collection) WHERE c.repo = "%s" AND c.tag = "%s" RETURN id(c) AS collectionID`
+func (n Neo) Collection_GetID_ByYaml(ycol yamlCfg.ManifestCollection) (colID, colTagID int64, found bool, err error) {
+	col, found, err := n.GetCollection(ycol)
+	if err != nil || !found {
+		return 0, 0, false, err
+	}
+	colID = col.ID
+	colTagID = col.ColTag.ID
+	return
+}
+
+func (n Neo) Collection_Create_ByYaml(ycol yamlCfg.ManifestCollection) (colID, colTagID int64, err error) {
+	return n.CreateCollection(ycol)
+}
+
+func (n Neo) GetCollection(col yamlCfg.ManifestCollection) (resCol types.Collection, found bool, err error) {
+	q := `MATCH (c:Collection)-[:HAS_TAG]->(t) WHERE c.repo = "%s" AND t.name = "%s" RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
 	query := fmt.Sprintf(q, col.Name, col.Tag)
+	res, found, err := n.QueryOne(query)
+	if err != nil || !found {
+		return resCol, found, err
+	}
+	resCol, err = CollectionFromResult(res)
+
+	return
+}
+
+func (n Neo) CollectionGetAll() (collections []types.Collection, err error) {
+	return n.GetAllCollections()
+}
+
+func (n Neo) Collection_Get_ByRepoTag(repo, tag string) (c types.Collection, found bool, err error) {
+	q := `MATCH (c:Collection)-[:HAS_TAG]->(t:Tag)-[:REF]->(ml:ManifestList)-[:IMPLEMENTS]->(f) WHERE c.repo = "%s" AND t.name = "%s"`
+	q += ` RETURN id(c) AS collectionID, id(ml) AS manifestListID, id(f) AS filterID,`
+	q += ` c.repo AS collectionRepo, t.name AS tagName, id(t) AS tagID,`
+	q += ` ml.digest AS manifestListDigest, ml.mediaType AS manifestListMediaType, ml.size AS manifestListSize`
+	query := fmt.Sprintf(q, repo, tag)
+	//fmt.Printf("Query: %s\n", query)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
-	result, err := session.Run(query, map[string]interface{}{})
+	input := map[string]interface{}{}
+	result, err := session.Run(query, input)
 	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
 		return
 	}
-	if result.Next() {
-		colId = result.Record().GetByIndex(0).(int64)
-		success = true
+	for result.Next() {
+		found = true
+		c, err = CollectionFromRecord(result)
+		if err != nil {
+			return
+		}
+		ml, e := ManifestListFromRecord(result)
+		if e != nil {
+			err = e
+			return
+		}
+		// Get all manifests for this manifestList
+		ml.Manifests, err = n.GetManifestsForManifestList(ml.ID)
+		if err != nil {
+			return
+		}
+		c.ManifestLists = append(c.ManifestLists, ml)
+
 	}
 	return
 }
@@ -31,11 +80,12 @@ func (n Neo) GetCollection(col yamlCfg.ManifestCollection) (colId int64, success
 func (n Neo) GetAllCollections() (collections []types.Collection, err error) {
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
-	q := `MATCH (c:Collection)<-[:SERVES]-(ml:ManifestList)-[:IMPLEMENTS]->(f) WHERE ml.label IS NOT NULL`
+	q := `MATCH (c:Collection)-[:HAS_TAG]->(t:Tag)-[:REF]->(ml:ManifestList)-[:IMPLEMENTS]->(f) WHERE ml.label IS NOT NULL`
+	q += ` MATCH (c)-[:REF]->(ml:ManifestList)`
 	q += ` RETURN id(c) AS collectionID, id(ml) AS manifestListID, id(f) AS filterID,`
-	q += ` c.repo AS collectionRepo, c.tag AS collectionTag,`
+	q += ` c.repo AS collectionRepo, t.name AS tagName, id(t) AS tagID,`
 	q += ` ml.digest AS manifestListDigest, ml.mediaType AS manifestListMediaType, ml.size AS manifestListSize`
-	logrus.Warnf("query: %s", q)
+	fmt.Printf("Query: GetAllCollections \n%s\n", q)
 	input := map[string]interface{}{}
 	result, err := session.Run(q, input)
 	if err != nil {
@@ -55,17 +105,17 @@ func (n Neo) GetAllCollections() (collections []types.Collection, err error) {
 			return
 		}
 		// Get all manifests for this manifestList
-		ml.Manifests, err = n.GetManifestsForManifestList(ml.NeoID)
+		ml.Manifests, err = n.GetManifestsForManifestList(ml.ID)
 		if err != nil {
 			return
 		}
-		col, ok := cols[c.NeoID]
+		col, ok := cols[c.ID]
 		if !ok {
 			c.ManifestLists = append(c.ManifestLists, ml)
-			cols[c.NeoID] = c
+			cols[c.ID] = c
 		} else {
-			col.ManifestLists = append(cols[c.NeoID].ManifestLists, ml)
-			cols[c.NeoID] = col
+			col.ManifestLists = append(cols[c.ID].ManifestLists, ml)
+			cols[c.ID] = col
 		}
 	}
 	for _, c := range cols {
@@ -74,25 +124,84 @@ func (n Neo) GetAllCollections() (collections []types.Collection, err error) {
 	return
 }
 
-func (n Neo) CreateCollection(col yamlCfg.ManifestCollection) (colId int64, err error) {
-	q := `CREATE (c:Collection {repo: "%s", tag: "%s", label: "%s"}) RETURN id(c) AS collectionID`
-	label := fmt.Sprintf("%s:%s", col.Name, col.Tag)
-	query := fmt.Sprintf(q, col.Name, col.Tag, label)
-	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
-	defer session.Close()
-	result, err := session.Run(query, map[string]interface{}{})
+func (n Neo) Collection_Create_ByRequest(req types.Request) (col types.Collection, err error) {
+	ctx := context.Background()
+	col, _, err = n.Collection_GetCreate_ByRepoTag(ctx, req.Repo, req.Tag)
+	return
+}
+
+func (n Neo) Collection_GetCreate_ByRepoTag(ctx context.Context, repo, tag string) (c types.Collection, found bool, err error) {
+	ct, err := n.CollectionTag_GetCreate(tag)
 	if err != nil {
-		logrus.Errorf("failed to create collection: %v", err)
 		return
 	}
-	if result.Next() {
-		v, ok := result.Record().Get("collectionID")
-		if !ok {
-			err = fmt.Errorf("failed to get collectionID")
-			return
-		}
-		colId = v.(int64)
+	c, found, err = n.Collection_GetCreate_ByRepo(repo)
+	if err != nil {
+		return
 	}
+	c.ColTag = ct
+	c.Tag = tag
+	q := `MATCH (c:Collection), (t:Tag) WHERE id(c) = %d AND id(t) = %d`
+	q += ` MERGE (c)-[:HAS_TAG]->(t)`
+	query := fmt.Sprintf(q, c.ID, ct.ID)
+	_, err = n.Execute(query)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func (n Neo) Collection_Get_ByRepo(repo string) (c types.Collection, found bool, err error) {
+	q := `MATCH (c:Collection {repo: "%s"}) RETURN id(c) AS collectionID`
+	query := fmt.Sprintf(q, repo)
+	res, found, err := n.QueryOne(query)
+	if err != nil {
+		return
+	}
+	if found {
+		colId, e := res.GetInt64("collectionID")
+		if e != nil {
+			err = errors.Wrap(e, "failed to get collectionID from result")
+			return c, found, err
+		}
+		c.ID = colId
+		c.Repo = repo
+		return
+	}
+	return
+}
+
+func (n Neo) Collection_GetCreate_ByRepo(repo string) (c types.Collection, found bool, err error) {
+	c, found, err = n.Collection_Get_ByRepo(repo)
+	if err != nil {
+		return
+	}
+	if !found {
+		q := `CREATE (c:Collection {repo: "%s"}) RETURN id(c) AS collectionID`
+		query := fmt.Sprintf(q, repo)
+		res, err := n.Execute(query)
+		if err != nil {
+			return c, found, err
+		}
+		colId, e := res.GetInt64("collectionID")
+		if e != nil {
+			err = errors.Wrap(e, "failed to get collectionID from result")
+			return c, found, err
+		}
+		c.ID = colId
+		c.Repo = repo
+	}
+	return
+}
+
+func (n Neo) CreateCollection(col yamlCfg.ManifestCollection) (colId, colTagId int64, err error) {
+	ctx := context.Background()
+	c, _, err := n.Collection_GetCreate_ByRepoTag(ctx, col.Name, col.Tag)
+	if err != nil {
+		return
+	}
+	colId = c.ID
+	colTagId = c.ColTag.ID
 	return
 }
 
@@ -103,20 +212,27 @@ func CollectionFromRecord(res neo4j.Result) (c types.Collection, err error) {
 		err = fmt.Errorf("no manifestListID found in record: %v", r)
 		return
 	}
-	c.NeoID = v.(int64)
+	c.ID = v.(int64)
 	v, ok = r.Get("collectionRepo")
 	if !ok {
 		err = fmt.Errorf("no collectionRepo found in record: %v", r)
 		return
 	}
 	c.Repo = v.(string)
-	v, ok = r.Get("collectionTag")
+	v, ok = r.Get("tagName")
 	if !ok {
-		err = fmt.Errorf("no collectionTag found in record: %v", r)
+		err = fmt.Errorf("no tagName found in record: %v", r)
 		return
 	}
 	tagStr := v.(string)
+	v, ok = r.Get("tagID")
+	if !ok {
+		err = fmt.Errorf("no tagName found in record: %v", r)
+		return
+	}
+	tagID := v.(int64)
 	c.ColTag = types.NewCollectionTag(tagStr)
+	c.ColTag.ID = tagID
 	c.Tag = tagStr
 	c.ManifestLists = make([]types.ManifestList, 0)
 	return
@@ -129,7 +245,7 @@ func ManifestListFromRecord(res neo4j.Result) (ml types.ManifestList, err error)
 		err = fmt.Errorf("no manifestListID found in record: %v", r)
 		return
 	}
-	ml.NeoID = v.(int64)
+	ml.ID = v.(int64)
 	v, ok = r.Get("manifestListDigest")
 	if !ok {
 		err = fmt.Errorf("no manifestListDigest found in record: %v", r)
@@ -154,19 +270,26 @@ func (n Neo) LinkCollectionToManifest(ctx context.Context, colID, maniID int64) 
 	defer session.Close()
 	_, err = session.Run(query, map[string]interface{}{})
 	if err != nil {
-		logrus.Errorf("failed to create link collection-manifest: %v", err)
+		logrus.Errorf("failed to create link collection->manifest: %v", err)
 		return
 	}
 	return
 }
 
-func (n Neo) GetCollectionFilterPairs() (cfps []types.CollectionFilterPair, err error) {
+func (n Neo) GetCollectionFilterPairs_ForCollection(col types.Collection) (cfps []types.CollectionFilterPair, err error) {
+	q := `MATCH (t:Tag)-[:UPSTREAM]-(m:Manifest)-[:IS]->(Platform)<-[:USES]-(f:Filter)`
+	q += ` MATCH (c:Collection)-[:UPSTREAM]->(m)`
+	q += ` WHERE c.repo = "%s" AND t.name = "%s"`
+	query := fmt.Sprintf(q, col.Repo, col.ColTag.Tag)
+	//fmt.Printf("Query GetCollectionFilterPairs_ForCollection: \n%s\n", query)
+	return n.getCollectionFilterPairs(query)
+}
+
+func (n Neo) getCollectionFilterPairs(q string) (cfps []types.CollectionFilterPair, err error) {
+	q += ` RETURN DISTINCT id(c) AS collectionID, c.repo AS colRepo, id(t) AS tagID, t.name AS tagName,`
+	q += ` id(f) AS filterID, f.label AS filterLabel`
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
 	defer session.Close()
-	q := `MATCH (c:Collection)-[:UPSTREAM]-(Manifest)-[:IS]->(Platform)<-[:USES]-(f:Filter)`
-	q += ` RETURN DISTINCT id(c) AS collectionID, c.repo AS colRepo, c.tag AS colTag,`
-	q += ` id(f) AS filterID, f.label AS filterLabel`
-	logrus.Infof("query: %s", q)
 	result, err := session.Run(q, map[string]interface{}{})
 	if err != nil {
 		logrus.Errorf("failed to get collection-filter pairs: %v", err)
@@ -175,7 +298,8 @@ func (n Neo) GetCollectionFilterPairs() (cfps []types.CollectionFilterPair, err 
 	type tupel struct {
 		collectionID int64
 		colRepo      string
-		colTag       string
+		tagID        int64
+		tagName      string
 		filterID     int64
 		filterLabel  string
 	}
@@ -195,12 +319,18 @@ func (n Neo) GetCollectionFilterPairs() (cfps []types.CollectionFilterPair, err 
 			return
 		}
 		t.colRepo = v.(string)
-		v, ok = r.Get("colTag")
+		v, ok = r.Get("tagID")
+		if !ok {
+			err = fmt.Errorf("no collectionID found in record: %v", r)
+			return
+		}
+		t.tagID = v.(int64)
+		v, ok = r.Get("tagName")
 		if !ok {
 			err = fmt.Errorf("no colTag found in record: %v", r)
 			return
 		}
-		t.colTag = v.(string)
+		t.tagName = v.(string)
 		v, ok = r.Get("filterID")
 		if !ok {
 			err = fmt.Errorf("no filterID found in record: %v", r)
@@ -218,29 +348,31 @@ func (n Neo) GetCollectionFilterPairs() (cfps []types.CollectionFilterPair, err 
 	// Create CollectionFilterPairs
 	cfps = make([]types.CollectionFilterPair, 0)
 	for _, t := range tupels {
-		q := `MATCH (c:Collection)-[:UPSTREAM]-(m:Manifest)-[:IS]->(p:Platform)<-[:USES]-(f:Filter)`
+		q := `MATCH (c:Collection)-[:HAS_TAG]->(t:Tag)-[:UPSTREAM]-(m:Manifest)-[:IS]->(p:Platform)<-[:USES]-(f:Filter)`
 		q += ` MATCH (cfg:Config)<-[:USES]-(m)-[:UPSTREAM]->(u:Upstream)`
-		q += ` WHERE id(c) = %d AND id(f) = %d`
+		q += ` WHERE id(c) = %d AND id(f) = %d AND id(t) = %d`
 		q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant, p.features AS platformFeatures,`
 		q += ` id(m) AS manifestID, m.digest AS manifestDigest, m.mediaType AS manifestMediaType, m.size AS manifestSize,`
 		q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag,`
 		q += ` id(cfg) AS configID, cfg.digest AS configDigest, cfg.mediaType AS configMediaType, cfg.size AS configSize`
-		query := fmt.Sprintf(q, t.collectionID, t.filterID)
+		query := fmt.Sprintf(q, t.collectionID, t.filterID, t.tagID)
 		//logrus.Warnf("query: %s", query)
 		result, err := session.Run(query, map[string]interface{}{})
 		if err != nil {
 			logrus.Errorf("failed to get collection-filter pairs: %v", err)
 			return nil, err
 		}
+		ct := types.NewCollectionTag(t.tagName)
+		ct.ID = t.tagID
 		cfp := types.CollectionFilterPair{
 			Collection: types.Collection{
-				NeoID:  t.collectionID,
+				ID:     t.collectionID,
 				Repo:   t.colRepo,
-				Tag:    t.colTag,
-				ColTag: types.NewCollectionTag(t.colTag),
+				Tag:    t.tagName,
+				ColTag: ct,
 			},
 			Filter: types.Filter{
-				NeoID: t.filterID,
+				ID:    t.filterID,
 				Label: t.filterLabel,
 			},
 			Manifests: make([]types.Manifest, 0),
@@ -272,6 +404,167 @@ func (n Neo) GetCollectionFilterPairs() (cfps []types.CollectionFilterPair, err 
 			cfp.Manifests = append(cfp.Manifests, m)
 		}
 		cfps = append(cfps, cfp)
+	}
+	return
+}
+
+func (n Neo) GetCollectionFilterPairs() (cfps []types.CollectionFilterPair, err error) {
+	q := `MATCH (c:Collection)-[:HAS_TAG]->(t:Tag)-[:UPSTREAM]-(Manifest)-[:IS]->(Platform)<-[:USES]-(f:Filter)`
+	q += ` MATCH (c)-[:UPSTREAM]->(m:Manifest)`
+	//logrus.Infof("query: %s", q)
+	return n.getCollectionFilterPairs(q)
+}
+
+func (n Neo) Collection_GetInsert_ByRequest(req types.Request) (col types.Collection, err error) {
+	col, found, err := n.Collection_Get_ByRepoTag(req.Repo, req.Tag)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	if found {
+		return col, nil
+	}
+	col, err = n.Collection_Create_ByRequest(req)
+	return
+}
+
+func (n Neo) CollectionManifest_ByRequest(req types.Request, mani types.Manifest) (err error) {
+	ctx := context.Background()
+	// Add Manifest
+	err = n.Manifest_GetInsert(ctx, &mani)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	// Config
+	cfgID, err := n.Config_Insert(ctx, mani.Config)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	err = n.LinkManifestToConfig(ctx, mani.ID, cfgID)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+
+	// Platform
+	err = n.Platform_GetInsert(&mani.Platform)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	err = n.LinkManifestToPlatform(ctx, mani.ID, mani.Platform.ID)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	// TODO: Deal with upstream / collection
+	/******
+	 * 1. create upstream that is unique to the repo:tag-profile */
+	maniUp := mani.Upstream
+	if maniUp != (types.Upstream{}) {
+		// Let's only do upstream if the manifest provides one
+		maniUp.Tag = fmt.Sprintf("%s-%s", req.Tag, mani.Platform.GetTag())
+		found, err := n.Upstream_GetInsert(&maniUp)
+		if err != nil {
+			err = errors.Wrap(err, "failed to Upstream_GetInsert")
+			logrus.Error(err)
+			return err
+		}
+		if found {
+			//TODO: Do we need to create a new upstream?
+			logrus.Warnf("Upstream already exists: %s/%s:%s", maniUp.Reg, maniUp.Repo, maniUp.Tag)
+		}
+	} else {
+		// TODO: Manifest does not come with upstream, we'll create a fake one with the current profile
+		// -> <repo>:<tag>-<PlatformTag>
+		maniUp = types.Upstream{
+			Reg:  req.Host,
+			Repo: req.Repo,
+			Tag:  fmt.Sprintf("%s-%s", req.Tag, mani.Platform.GetTag()),
+		}
+		found, err := n.Upstream_GetInsert(&maniUp)
+		if err != nil {
+			err = errors.Wrap(err, "failed to Upstream_GetInsert")
+			logrus.Error(err)
+			return err
+		}
+		if found {
+			//TODO: Do we need to create a new upstream?
+			logrus.Warnf("Upstream already exists: %s/%s:%s", maniUp.Reg, maniUp.Repo, maniUp.Tag)
+		}
+	}
+	// 1.1 Link Manifest To Upstream
+	err = n.LinkManifestToUpstream(ctx, mani.ID, maniUp.ID)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	/* 2. create collection for the repo:tag */
+	// Collection and Tag
+	colTag, foundColTag, err := n.CollectionTag_GetByTag(req.Tag)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	if !foundColTag {
+		colTag, err = n.CollectionTag_Create(req.Tag)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+	}
+	col, foundCol, err := n.Collection_Get_ByRepo(req.Repo)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	if !foundCol {
+		col, err = n.Collection_Create_ByRequest(req)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+	}
+	col.ColTag = colTag
+	// 2.1 Link Collection to Tag
+	err = n.LinkCollectionTagToManifest(ctx, colTag.ID, mani.ID)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	err = n.LinkCollectionToManifest(ctx, col.ID, mani.ID)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	/* 3. create/update manifestlist for given collection with additional manifest in it */
+	err = n.ComputeManifestlists_ForCollection(ctx, col)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	return
+}
+
+func CollectionFromResult(res Result) (col types.Collection, err error) {
+	err = res.CheckKeys("tagID", "tagName", "collectionID", "collectionRepo")
+	if err != nil {
+		return
+	}
+	tagName, _ := res.GetStr("tagName")
+	colId, _ := res.GetInt64("collectionID")
+	colRepo, _ := res.GetStr("collectionRepo")
+	ct, err := CollectionTagFromResult(res)
+	if err != nil {
+		return
+	}
+	col = types.Collection{
+		ID:     colId,
+		Repo:   colRepo,
+		Tag:    tagName,
+		ColTag: ct,
 	}
 	return
 }

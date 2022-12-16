@@ -6,12 +6,14 @@ import (
 	"log"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/mitchellh/go-homedir"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
 const (
@@ -32,14 +34,27 @@ func GetConfigsBucketKey() string {
 }
 
 type BucketConfig struct {
-	Client   *minio.Client
-	URL      string
-	Region   string
-	Bucket   string
-	User     string
-	Password string
-	Redirect bool
-	Ssl      bool
+	Client     *minio.Client
+	ConsoleURL string
+	URL        string
+	Region     string
+	Bucket     string
+	User       string
+	Password   string
+	Redirect   bool
+	Ssl        bool
+}
+
+func (m Minio) BucketConfigString() string {
+	res := []string{}
+	for k, v := range m.BucketConfig {
+		if v.Ssl {
+			res = append(res, fmt.Sprintf("%s: https://%s", k, v.ConsoleURL))
+		} else {
+			res = append(res, fmt.Sprintf("%s: http://%s", k, v.ConsoleURL))
+		}
+	}
+	return strings.Join(res, " | ")
 }
 
 type Minio struct {
@@ -195,6 +210,9 @@ func (m Minio) BucketCheck() (err error) {
 	return
 }
 
+func (m Minio) PreTearDown(bs utils.Bootstrap) {
+	logrus.Warnf("Minio: %s", m.BucketConfigString())
+}
 func (m Minio) EmptyAll() (err error) {
 	logrus.Info("Emptying all buckets")
 	for _, bc := range m.BucketConfig {

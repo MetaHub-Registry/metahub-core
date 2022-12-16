@@ -97,6 +97,7 @@ func RawManifestFromBlob(b []byte) (mani manifest.Manifest, err error) {
 	}
 	return
 }
+
 func (m Minio) NewManifestFromBytes(b []byte) (mani types.Manifest, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"packrusage": "backend/minio/manifest.go",

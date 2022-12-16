@@ -12,9 +12,14 @@ import (
 
 func Test_Config_StoreConfigUpload(t *testing.T) {
 	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
 	bs.AddBootstrap("users")
+	bs.AddBootstrap("filter")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("platforms:amd64")
+	bs.AddBootstrap("platforms:arm64")
 	bs.AddBootstrap("profiles")
-	_, err := SetupTest(bs)
+	_, err := mag.SetupTest(bs)
 	assert.NoError(t, err)
 	defer TeardownTest(bs)
 	// Tests
@@ -31,11 +36,12 @@ func Test_Config_StoreConfigUpload(t *testing.T) {
 
 	bufDig := digest.FromBytes(buf)
 	bu := types.OCIBlobUpload{
-		Digest: bufDig.String(),
-		Data:   []byte(bufEnc),
+		Digest:    bufDig.String(),
+		Data:      []byte(bufEnc),
+		MediaType: "application/vnd.docker.container.image.v1+json",
 	}
 	// Check if config is NOT in DB
-	_, found, err := mag.SQlite.Config.ConfigGetByDigest(bufDig.String())
+	_, found, err := mag.Database.ConfigGetByDigest(bufDig.String())
 	assert.NoError(t, err)
 	assert.False(t, found)
 	// Check if config is NOT in Minio
@@ -46,7 +52,7 @@ func Test_Config_StoreConfigUpload(t *testing.T) {
 	err = mag.StoreConfigUpload(ctx, &bu, buf)
 	assert.NoError(t, err)
 	// Check if config is in DB
-	cfg, found, err := mag.SQlite.Config.ConfigGetByDigest(bufDig.String())
+	cfg, found, err := mag.Database.ConfigGetByDigest(bufDig.String())
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, "application/vnd.docker.container.image.v1+json", cfg.MediaType)
@@ -54,5 +60,4 @@ func Test_Config_StoreConfigUpload(t *testing.T) {
 	_, found, err = mag.Minio.GetConfig(ctx, bufDig.String())
 	assert.NoError(t, err)
 	assert.True(t, found)
-
 }

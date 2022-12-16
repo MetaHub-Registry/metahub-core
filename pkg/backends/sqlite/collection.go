@@ -377,7 +377,7 @@ func (c Collection) Insert(i *types.Collection) (err error) {
 		logrus.Error(err)
 		return
 	}
-	i.SqlID, err = res.LastInsertId()
+	i.ID, err = res.LastInsertId()
 	return
 }
 
@@ -521,7 +521,7 @@ func (c *Collection) GetCollectionByRepo(repo string) (col types.Collection, fou
 	}
 	defer rows.Close()
 	col = types.Collection{
-		SqlID:         -1,
+		ID:            -1,
 		Repo:          repo,
 		ManifestLists: []types.ManifestList{},
 	}
@@ -532,7 +532,7 @@ func (c *Collection) GetCollectionByRepo(repo string) (col types.Collection, fou
 		if err != nil {
 			logrus.Error(err)
 		}
-		col.SqlID = colID
+		col.ID = colID
 	}
 	defer rows.Close()
 	return
@@ -546,9 +546,9 @@ func (c *Collection) GetCollectionByRepoTag(repo, tag string) (col types.Collect
 	}
 	defer rows.Close()
 	col = types.Collection{
-		SqlID:         -1,
+		ID:            -1,
 		Repo:          repo,
-		ColTag:        types.CollectionTag{SqlID: -1, Tag: tag},
+		ColTag:        types.CollectionTag{ID: -1, Tag: tag},
 		Tag:           tag,
 		ManifestLists: []types.ManifestList{},
 	}
@@ -559,8 +559,8 @@ func (c *Collection) GetCollectionByRepoTag(repo, tag string) (col types.Collect
 		if err != nil {
 			logrus.Error(err)
 		}
-		col.SqlID = colID
-		col.ColTag.SqlID = tagID
+		col.ID = colID
+		col.ColTag.ID = tagID
 	}
 	defer rows.Close()
 	return

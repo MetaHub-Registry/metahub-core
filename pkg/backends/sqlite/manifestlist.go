@@ -154,7 +154,7 @@ func (sq Sqlite) InsertManifestList(i *types.ManifestList) (err error) {
 		logrus.Error(err)
 		return
 	}
-	i.SqlID, err = res.LastInsertId()
+	i.ID, err = res.LastInsertId()
 	stmt.Close()
 	for _, m := range i.Manifests {
 		err = sq.Manifest.GetInsert(&m)
@@ -162,7 +162,7 @@ func (sq Sqlite) InsertManifestList(i *types.ManifestList) (err error) {
 			logrus.Error(err)
 			continue
 		}
-		err = sq.ManifestList.InsertManifestListXTable(i.SqlID, m.SqlID)
+		err = sq.ManifestList.InsertManifestListXTable(i.ID, m.ID)
 	}
 	return
 }
@@ -272,7 +272,7 @@ func (sq Sqlite) GetTypesManifestListByRequest(req types.Request) (res types.Man
 			logrus.Error(err)
 			continue
 		}
-		res.SqlID = int64(r.MlID)
+		res.ID = int64(r.MlID)
 		if res.Digest == "" {
 			// First row
 			res.Digest = r.MlDigest

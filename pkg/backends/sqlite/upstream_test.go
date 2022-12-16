@@ -10,7 +10,7 @@ import (
 
 func Test_Upstream_Insert(t *testing.T) {
 	bs := utils.NewBootstrap()
-	bs.SetSqlEmptyAll()
+	bs.SetEmptyAll()
 	//bs.SetSqlite("Desktop/metahub.db")
 	br, err := SetupTest(bs)
 	_ = br
@@ -33,16 +33,16 @@ func Test_Upstream_Insert(t *testing.T) {
 	}
 	err = sq.Upstream.Insert(&up1)
 	assert.NoError(t, err)
-	assert.NotEqual(t, int64(-1), up1.SqlID)
+	assert.NotEqual(t, int64(-1), up1.ID)
 	found, err = sq.Upstream.GetByRequest(&up2)
 	assert.NoError(t, err)
 	assert.True(t, found)
-	assert.Equal(t, up1.SqlID, up2.SqlID)
+	assert.Equal(t, up1.ID, up2.ID)
 }
 
 func Test_Upstream_GetCreateByRequest(t *testing.T) {
 	bs := utils.NewBootstrap()
-	bs.SetSqlEmptyAll()
+	bs.SetEmptyAll()
 	//bs.SetSqlite("Desktop/metahub.db")
 	br, err := SetupTest(bs)
 	_ = br
@@ -57,5 +57,5 @@ func Test_Upstream_GetCreateByRequest(t *testing.T) {
 	}
 	up, err := sq.Upstream.GetCreateByRequest(req)
 	assert.NoError(t, err)
-	assert.NotEqual(t, int64(-1), up.SqlID)
+	assert.NotEqual(t, int64(-1), up.ID)
 }

@@ -11,9 +11,11 @@ import (
 )
 
 type Magazine struct {
-	Neo    neo.Neo
-	Minio  minio.Minio
-	SQlite sqlite.Sqlite
+	Minio          minio.Minio
+	Database       Database
+	UserManagement sqlite.Sqlite
+	//SQlite sqlite.Sqlite
+	//Neo    neo.Neo
 }
 
 func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, err error) {
@@ -37,28 +39,25 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, err error) {
 	m = Magazine{
 		Minio: min,
 	}
-	// SQLite
-	mhSqlFile, _ := cmd.Flags().GetString("metahub-db")
-	sqlite, err := sqlite.New(mhSqlFile, tables)
+	// user
+	userSqlFile, _ := cmd.Flags().GetString("user-db")
+	m.UserManagement, err = sqlite.New(userSqlFile, "users,tokens")
 	if err != nil {
-		err = errors.Wrapf(err, "failed to create sqlite backend")
+		err = errors.Wrapf(err, "failed to create sqlite backend for users")
 		logrus.Fatal(err)
 	}
-	m.SQlite = sqlite
 	// Neo4j
 	neo4j, err := neo.New(cfgFile)
 	if err != nil {
 		err = errors.Wrapf(err, "failed to create neo4j backend")
 		logrus.Fatal(err)
 	}
-	if neo4j.Enabled {
+	m.Database = neo4j
+	err = m.Database.Setup()
+	if err != nil {
+		err = errors.Wrapf(err, "failed to setup neo4j backend")
+		logrus.Fatal(err)
 
-		m.Neo = neo4j
-		err = m.Neo.Setup()
-		if err != nil {
-			err = errors.Wrapf(err, "failed to setup neo4j backend")
-			logrus.Fatal(err)
-		}
 	}
 	return
 }

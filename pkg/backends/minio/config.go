@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 
 	"github.com/docker/distribution"
 	"github.com/minio/minio-go/v7"
+	"github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -113,7 +115,6 @@ func (m Minio) ConfigGetObj(ctx context.Context, path string) (cfg types.Config,
 		l.Error(err)
 		return cfg, err
 	}
-
 	return ConfigFromCfgBlob(b)
 }
 
@@ -157,6 +158,24 @@ func ConfigFromCfgBlob(blob []byte) (cfg types.Config, err error) {
 		Size:      desc.Size,
 		MediaType: desc.MediaType,
 		Data:      blob,
+	}
+	if cfg.Digest == "" {
+		cfg.Digest = digest.FromBytes(blob).String()
+	} else {
+		if cfg.Digest != digest.FromBytes(blob).String() {
+			err = fmt.Errorf("digest mismatch: %s != %s", cfg.Digest, digest.FromBytes(blob).String())
+			l.Error(err)
+			return
+		}
+	}
+	if cfg.Size == 0 {
+		cfg.Size = int64(len(blob))
+	} else {
+		if cfg.Size != int64(len(blob)) {
+			err = fmt.Errorf("size mismatch: %d != %d", cfg.Size, len(blob))
+			l.Error(err)
+			return
+		}
 	}
 	return
 }

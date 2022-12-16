@@ -3,6 +3,7 @@ package magazine
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/opencontainers/go-digest"
@@ -84,24 +85,36 @@ func (mag Magazine) CachImageConfig(ctx context.Context, mani *types.Manifest) (
 	return
 }
 
-func (mag Magazine) NeoInsertConfig(ctx context.Context, cfg types.Config, up types.Upstream) (cfgID int64, err error) {
-	cfgID, success, err := mag.Neo.GetConfig(cfg)
-	if err != nil {
-		return
-	}
-	if !success {
-		cfgID, err = mag.Neo.CreateConfig(cfg, up)
-		if err != nil {
-			return
-		}
-	}
-	return
+func (mag Magazine) InsertConfig(ctx context.Context, cfg types.Config, up types.Upstream) (cfgID int64, err error) {
+	return mag.Database.Config_Insert(ctx, cfg)
+
 }
 
 func (mag Magazine) ConfigBlob_GetByHTTPRequest(r *http.Request) (cfg types.Config, found bool, err error) {
 	ctx := context.Background()
 	req := types.NewRequest(r)
 	return mag.Minio.GetTypesConfig(ctx, req.Digest)
+}
+
+// Take in a manifest with a config DIGEST and return the config from Blob Storage
+func (mag Magazine) Config_Get_ByManifest(ctx context.Context, req types.Request, oMani types.OCIManifest) (cfg types.Config, v1Img v1.Image, found bool, err error) {
+	label := fmt.Sprintf("%s/%s:%s", req.Host, req.Repo, req.Tag)
+	cfg, cfgFound, err := mag.Config_GetInsert_ByOCIManifest(oMani, label)
+	if err != nil {
+		err = errors.Wrap(err, "failed to Config.GetCreateByRequest")
+		return
+	}
+	if !cfgFound {
+		logrus.Errorf("Config '%s' not found: %s - is that a problem?", utils.ShortenDigest(cfg.Digest), label)
+	}
+	v1Img, v1Found, err := mag.Minio.GetConfig(ctx, oMani.Config.Digest.String())
+	if err != nil {
+		err = errors.Wrap(err, "failed to get Config from Minio")
+		return
+	}
+	found = v1Found
+	//fmt.Printf("v1Img: \n%v\n", v1Img)
+	return
 }
 
 func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUpload, buf []byte) (err error) {
@@ -112,18 +125,46 @@ func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUplo
 		logrus.Error(err)
 		return
 	}
-	// Insert Layer into SQLite
-	l := types.Config{
+	// Insert Config into Backend
+	cfg := types.Config{
 		Digest:    bu.Digest,
-		MediaType: "application/vnd.docker.container.image.v1+json",
+		MediaType: bu.MediaType, //"application/vnd.docker.container.image.v1+json",
 		Size:      int64(len(buf)),
 		Data:      buf,
 	}
-	err = mag.SQlite.Config.Upsert(&l)
+	/// WHat if config is already there?
+	_, err = mag.Database.Config_Insert(ctx, cfg)
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
 	err = mag.Minio.ConfigPutObj(ctx, bu.Digest, buf)
+	return
+}
+
+func (mag Magazine) Config_GetInsert_ByOCIManifest(ociMani types.OCIManifest, label string) (cfg types.Config, found bool, err error) {
+	ctx := context.Background()
+	/// OCI Manifest might embed the config as Data
+	if len(ociMani.Config.Data) > 0 {
+		/*
+			logrus.Warnf("Config embedded in OCI Manifest: %s", label)
+			fmt.Printf("Data: \n%s\n", ociMani.Config.Data)
+			dig := digest.FromBytes(ociMani.Config.Data)
+			if dig.String() != ociMani.Config.Digest.String() {
+				logrus.Errorf("Digest mismatch: %s != %s", dig, ociMani.Config.Digest)
+			}
+		*/
+		bu := types.OCIBlobUpload{
+			Digest:    ociMani.Config.Digest.String(),
+			Data:      ociMani.Config.Data,
+			MediaType: ociMani.Config.MediaType,
+		}
+		err = mag.StoreConfigUpload(ctx, &bu, ociMani.Config.Data)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+	}
+	cfg, found, err = mag.Database.Config_GetInsert_ByOCIManifest(ociMani, label)
 	return
 }
