@@ -12,6 +12,7 @@ import (
 func Test_Profile_CRUD(t *testing.T) {
 	ctx := context.Background()
 	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 60
 	br, err := SetupTest(bs)
@@ -62,6 +63,7 @@ func Test_GetProfileFilterPlatformPairs(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("filter")
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("platforms:amd64")

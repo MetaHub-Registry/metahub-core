@@ -68,6 +68,7 @@ func (n Neo) Collection_GetTagsListByRepo(repo string) (tags types.TagResponse, 
 	q := `MATCH (c:Collection)-[:HAS_TAG]->(t:Tag) WHERE c.repo = "%s"`
 	q += ` RETURN id(t) AS tagID, t.name AS tagName`
 	query := fmt.Sprintf(q, repo)
+	//fmt.Printf("Query: \n%s\n", query)
 	res, err := n.Query(query)
 	if err != nil {
 		logrus.Error(err)
@@ -75,7 +76,7 @@ func (n Neo) Collection_GetTagsListByRepo(repo string) (tags types.TagResponse, 
 	}
 	tags = types.TagResponse{
 		Name: repo,
-		Tags: make([]string, 0),
+		Tags: []string{},
 	}
 	for _, r := range res {
 		var ct types.CollectionTag

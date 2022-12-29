@@ -61,7 +61,7 @@ func FindProfiles(ctx context.Context, cacheDir string) (prfs map[string]Profile
 		"cacheDir": cacheDir,
 	})
 	tr := otel.Tracer("config")
-	ctx, span := tr.Start(ctx, "FindManifestCollections")
+	_, span := tr.Start(ctx, "FindManifestCollections")
 	span.SetAttributes(attribute.Key("path").String(cacheDir))
 	defer span.End()
 	prfs = make(map[string]Profile)
@@ -73,8 +73,8 @@ func FindProfiles(ctx context.Context, cacheDir string) (prfs map[string]Profile
 			l.Errorf("Warning, issue looking for profiles %s: %x\n", ext, err)
 			continue
 		}
-		//l.Debugf("Add %d files with extension %s\n", len(files), newFiles)
 		files = append(files, newFiles...)
+		//l.Warnf("Add %d files with extension %s\n", len(files), newFiles)
 	}
 	// Read in each manifest config
 	for _, pfile := range files {

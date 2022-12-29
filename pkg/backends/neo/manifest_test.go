@@ -73,7 +73,6 @@ func Test_Manifest_CRUD(t *testing.T) {
 	arm_mani_got6, err := db.Manifest_Insert(ctx, arm_mani)
 	assert.NoError(t, err)
 	assert.NotEqual(t, arm_mani_got4.ID, arm_mani_got6)
-
 }
 
 func Test_Manifest_Links(t *testing.T) {
@@ -139,7 +138,6 @@ func Test_Manifest_Links(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, arm_mani_id, arm_mani_got2)
-
 }
 
 func Test_Manifest_MultiManifest(t *testing.T) {

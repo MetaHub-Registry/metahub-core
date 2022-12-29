@@ -5,12 +5,76 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+)
+
+var (
+	featureTestGenericManiDigest = "sha256:9a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b"
+	featureTestGenericMani       = []byte(`{
+		"schemaVersion": 2,
+		"mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+		"config": {
+		   "mediaType": "application/vnd.docker.container.image.v1+json",
+		   "size": 1639,
+		   "digest": "sha256:b109e1dac65af00234a8a7f817dcb1e18bc18ca97a5b805283995ebf1137e471"
+		},
+		"layers": [
+		   {
+			  "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+			  "size": 2818413,
+			  "digest": "sha256:59bf1c3509f33515622619af21ed55bbe26d24913cedbca106468a5fb37a50c3"
+		   },
+		   {
+			  "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+			  "size": 304,
+			  "digest": "sha256:c1ac79912c878f2697b915c7df8741867e64b1d42a644befe65af041078b748b"
+		   }
+		]
+	 }`)
+	featureTestGenericCfgDigest = "sha256:f70ce6a20a96d310e32c1f5a005b24dc8b225f949a69e1ec46dc5b7c12779dc9"
+	featureTestGenericCfg       = []byte(`{
+		"architecture":"amd64",
+		"config":{
+			"Env":[
+				"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+				"SKIP_ENTRYPOINTS=true",
+				"PLATFORM_FEATURES=arch:cascadelake"
+			],
+			"Cmd":["/usr/bin/entry.sh"],
+			"Labels":{"platform.features":"arch:cascadelake"},
+			"ArgsEscaped":true,
+			"OnBuild":null
+		},
+		"created":"2022-05-05T11:21:27.783635915Z",
+		"history":[
+			{"created":"2021-11-24T20:19:40.199700946Z","created_by":"/bin/sh -c #(nop) ADD file:9233f6f2237d79659a9521f7e390df217cec49f1a8aa3a12147bbca1956acdb9 in / "},
+			{"created":"2021-11-24T20:19:40.483367546Z","created_by":"/bin/sh -c #(nop)  CMD [\"/bin/sh\"]","empty_layer":true},
+			{"created":"2022-05-05T11:21:27.783635915Z","created_by":"ARG PLATFORM_FEATURES=test","comment":"buildkit.dockerfile.v0","empty_layer":true},
+			{"created":"2022-05-05T11:21:27.783635915Z","created_by":"LABEL platform.features=arch:cascadelake","comment":"buildkit.dockerfile.v0","empty_layer":true},
+			{"created":"2022-05-05T11:21:27.783635915Z","created_by":"COPY bin/entry.sh /usr/bin/entry.sh # buildkit","comment":"buildkit.dockerfile.v0"},
+			{"created":"2022-05-05T11:21:27.783635915Z","created_by":"CMD [\"/usr/bin/entry.sh\"]","comment":"buildkit.dockerfile.v0","empty_layer":true},
+			{"created":"2022-05-05T11:21:27.783635915Z","created_by":"ENV SKIP_ENTRYPOINTS=true","comment":"buildkit.dockerfile.v0","empty_layer":true},
+			{"created":"2022-05-05T11:21:27.783635915Z","created_by":"ENV PLATFORM_FEATURES=arch:cascadelake","comment":"buildkit.dockerfile.v0","empty_layer":true}
+		],
+		"os":"linux",
+		"rootfs":{
+			"type":"layers",
+			"diff_ids":["sha256:8d3ac3489996423f53d6087c81180006263b79f206d3fdec9e66f0e27ceb8759","sha256:aff8eba572d7cf1d51ae8245ac42189a896b0d0f069ad5f130795916ade7587a"]}}`)
+	BlobUp_FeaturetestGeneric = types.OCIBlobUpload{
+		Digest:     featureTestGenericCfgDigest,
+		UUID:       uuid.New(),
+		UploadedBy: "test",
+		Repo:       "qnib/featuretest",
+		BlobType:   "config",
+		Data:       featureTestGenericCfg,
+	}
 )
 
 const (
@@ -85,6 +149,13 @@ func Setup_Config_FT_arm64(min *Minio, br *utils.BootstrapResult) (err error) {
 	err = min.ConfigPutObj(ctx, cfgDig.String(), cfgByte)
 	return
 }
+func Setup_Config_FT_amd64_b109(min *Minio, br *utils.BootstrapResult) (err error) {
+	ctx := context.Background()
+	cfgByte := types.FT_amd64_b109_ConfigByte()
+	cfgDig := digest.FromBytes(cfgByte)
+	err = min.ConfigPutObj(ctx, cfgDig.String(), cfgByte)
+	return
+}
 
 func Setup_Config_FT_amd64(min *Minio, br *utils.BootstrapResult) (err error) {
 	ctx := context.Background()
@@ -94,7 +165,26 @@ func Setup_Config_FT_amd64(min *Minio, br *utils.BootstrapResult) (err error) {
 	return
 }
 
+func (m Minio) Setup_Layer(br *utils.BootstrapResult, layer types.Layer, b string) (err error) {
+	ctx := context.Background()
+	err = m.LayerPutObj(ctx, layer.Digest, layer.Data)
+	return
+}
+
+func (m Minio) SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
+	br = utils.NewBootstrapResult()
+	for _, b := range bs.Bootstraps {
+		err = m.BootstrapTestWithBR(b, &br)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	}
+	return
+}
+
 func (m Minio) BootstrapTestWithBR(b string, br *utils.BootstrapResult) (err error) {
+	ctx := context.Background()
 	switch b {
 	case "config:ft_arm":
 		err = Setup_Config_FT_arm64(&m, br)
@@ -108,6 +198,43 @@ func (m Minio) BootstrapTestWithBR(b string, br *utils.BootstrapResult) (err err
 			err = errors.Wrapf(err, "while '%s'", b)
 			return
 		}
+	case "config:ft_amd64_b109":
+		err = Setup_Config_FT_amd64_b109(&m, br)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "layer0:ft_arm64":
+		err = m.Setup_Layer(br, types.FT_arm64_Layer0(), b)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "layer1:ft_arm64":
+		err = m.Setup_Layer(br, types.FT_arm64_Layer1(), b)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "layer0:ft_amd64":
+		err = m.Setup_Layer(br, types.FT_amd64_Layer0(), b)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "layer1:ft_amd64":
+		err = m.Setup_Layer(br, types.FT_amd64_Layer1(), b)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "cfg:generic":
+		err := m.PutConfig(ctx, featureTestGenericCfg, featureTestGenericCfgDigest)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+	default:
+		logrus.Warnf("unknown MinIO bootstrap '%s'", b)
 	}
 	return
 }

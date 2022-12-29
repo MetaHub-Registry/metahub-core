@@ -72,6 +72,7 @@ func Test_Collection_ComputeML(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("filter")
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("platforms:amd64")
@@ -175,6 +176,7 @@ func Test_Collection_ByRequest_MetahubUpstream(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("filter")
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("platforms:amd64")

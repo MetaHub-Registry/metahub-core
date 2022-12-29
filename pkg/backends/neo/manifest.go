@@ -127,6 +127,52 @@ func (n Neo) GetAllManifests() (manifests []types.Manifest, err error) {
 	return
 }
 
+func (n Neo) Manifest_GetByCollectionTag(colID, colTagID int64) (manis []types.Manifest, err error) {
+	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close()
+	q := `MATCH (p:Platform)-[]-(m:Manifest)-[]-(u:Upstream)`
+	q += ` MATCH (c:Collection)-[:UPSTREAM]->(m)-[]-(c:Config) WHERE id(c) = %d`
+	q += ` MATCH (t:Tag)-[:UPSTREAM]->(m) WHERE id(t) = %d`
+	q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant, p.features AS platformFeatures,`
+	q += ` id(m) AS manifestID, m.digest AS manifestDigest, m.mediaType AS manifestMediaType, m.size AS manifestSize,`
+	q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag,`
+	q += ` id(c) AS configID, c.digest AS configDigest, c.mediaType AS configMediaType, c.size AS configSize`
+	query := fmt.Sprintf(q, colID, colTagID)
+	input := map[string]interface{}{}
+	result, err := session.Run(query, input)
+	if err != nil {
+		return
+	}
+	manis = make([]types.Manifest, 0)
+	for result.Next() {
+		p, e := PlatformFromRecord(result)
+		if e != nil {
+			err = e
+			return
+		}
+		c, e := ConfigFromRecord(result)
+		if e != nil {
+			err = e
+			return
+		}
+		u, e := UpstreamFromRecord(result)
+		if e != nil {
+			err = e
+			return
+		}
+		m, e := ManifestFromRecord(result)
+		if e != nil {
+			err = e
+			return
+		}
+		m.Config = c
+		m.Platform = p
+		m.Upstream = u
+		manis = append(manis, m)
+	}
+	return
+}
+
 func ManifestFromResult(res Result) (m types.Manifest, err error) {
 	err = res.CheckKeys("manifestID", "manifestDigest", "manifestMediaType", "manifestSize")
 	if err != nil {
@@ -422,5 +468,19 @@ func (n Neo) Manifest_Remove(ctx context.Context, mani types.Manifest) (err erro
 }
 
 func (n Neo) Manifest_GetManifests_ByManifestListID(mlID int64) (manis []types.Manifest, err error) {
-	return manis, fmt.Errorf("'Manifest_GetManifests_ByManifestListID' not implemented")
+	q := `MATCH (m:Manifest)-[:IS]->(plat:Platform)<-[:USES]-(f:Filter)<-[:IMPLEMENTS]-(ml:ManifestList)`
+	q += ` WHERE id(ml) = %d`
+	q += ` RETURN id(m) AS manifestID, m.digest AS manifestDigest, `
+	q += ` m.mediaType AS manifestMediaType, m.size AS manifestSize`
+	query := fmt.Sprintf(q, mlID)
+	res, err := n.Query(query)
+	for _, r := range res {
+		mani, err := ManifestFromResult(r)
+		if err != nil {
+			logrus.Errorf("failed to get manifest from result: %v", err)
+			continue
+		}
+		manis = append(manis, mani)
+	}
+	return
 }

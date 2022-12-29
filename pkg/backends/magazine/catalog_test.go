@@ -34,6 +34,7 @@ func Test_Basic(t *testing.T) {
 
 func Test_Catalog_ARM64(t *testing.T) {
 	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("users")
 	bs.AddBootstrap("filter")
 	bs.AddBootstrap("platforms:generic")

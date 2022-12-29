@@ -14,6 +14,7 @@ type Bootstrap struct {
 	Bootstraps    []string
 	EmptyAll      bool
 	PostTestSleep int
+	YAMLPrefix    string
 }
 
 func NewBootstrap() Bootstrap {
@@ -39,6 +40,10 @@ func (bs *Bootstrap) SetSqlite(p string) {
 
 func (bs *Bootstrap) AddBootstrap(b string) {
 	bs.Bootstraps = append(bs.Bootstraps, b)
+}
+
+func (bs *Bootstrap) SetYAMLPrefix(pre string) {
+	bs.YAMLPrefix = pre
 }
 
 // / Result

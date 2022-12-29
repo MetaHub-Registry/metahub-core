@@ -7,6 +7,7 @@ import (
 	"github.com/opencontainers/go-digest"
 	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
 /*
@@ -38,36 +39,40 @@ func Test_GetConfig(t *testing.T) {
 }
 
 func Test_ConfigRemoveObj(t *testing.T) {
-	err := min.PutConfig(ctx, []byte(featureTestGenericCfg), "sha256:1234567890")
+	err := min.PutConfig(ctx, []byte(featureTestGenericCfg), "sha256:f70ce6a20a96d310e32c1f5a005b24dc8b225f949a69e1ec46dc5b7c12779dc9")
 	assert.NoError(t, err)
-	b, err := min.ConfigGetBytes(ctx, "sha256:1234567890")
+	b, err := min.ConfigGetBytes(ctx, "sha256:f70ce6a20a96d310e32c1f5a005b24dc8b225f949a69e1ec46dc5b7c12779dc9")
 	assert.NoError(t, err)
 	assert.NotNil(t, b)
-	err = min.ConfigRemoveObj(ctx, "sha256:1234567890")
+	err = min.ConfigRemoveObj(ctx, "sha256:f70ce6a20a96d310e32c1f5a005b24dc8b225f949a69e1ec46dc5b7c12779dc9")
 	assert.NoError(t, err)
-	err = min.ConfigRemoveObj(ctx, "sha256:1234567890")
+	err = min.ConfigRemoveObj(ctx, "sha256:f70ce6a20a96d310e32c1f5a005b24dc8b225f949a69e1ec46dc5b7c12779dc9")
 	assert.Error(t, err)
-	_, err = min.ConfigGetBytes(ctx, "sha256:1234567890")
+	_, err = min.ConfigGetBytes(ctx, "sha256:f70ce6a20a96d310e32c1f5a005b24dc8b225f949a69e1ec46dc5b7c12779dc9")
 	assert.Error(t, err)
 }
 
-/*func Test_GetTypesConfig(t *testing.T) {
-	bootstrap := "cfg:generic"
-	err := SetupTest(bootstrap)
+func Test_GetTypesConfig(t *testing.T) {
+	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
+	bs.AddBootstrap("cfg:generic")
+	_, err := min.SetupTest(bs)
 	assert.NoError(t, err)
-	defer TeardownTest("")
+	defer min.PreTearDown(bs)
 	cfg, found, err := min.GetTypesConfig(ctx, BlobUp_FeaturetestGeneric.Digest)
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.NotNil(t, cfg)
 	assert.Equal(t, BlobUp_FeaturetestGeneric.Digest, cfg.Digest)
-}*/
+}
 
 func Test_ConfigGetBytes(t *testing.T) {
-	bootstrap := "cfg:generic"
-	err := SetupTest(bootstrap)
+	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
+	bs.AddBootstrap("cfg:generic")
+	_, err := min.SetupTest(bs)
 	assert.NoError(t, err)
-	defer TeardownTest("")
+	defer min.PreTearDown(bs)
 	// Tests
 	b, err := min.ConfigGetBytes(ctx, BlobUp_FeaturetestGeneric.Digest)
 	assert.NoError(t, err)

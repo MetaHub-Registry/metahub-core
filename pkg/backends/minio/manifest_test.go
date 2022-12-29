@@ -7,11 +7,17 @@ import (
 	"github.com/opencontainers/go-digest"
 	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
 func Test_ManifestFromBlob(t *testing.T) {
-	SetupTest("cfg:generic")
-	defer TeardownTest("")
+	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
+	// TODO: Bootstrap config correctly
+	bs.AddBootstrap("config:ft_amd64_b109")
+	_, err := min.SetupTest(bs)
+	assert.NoError(t, err)
+	defer min.PreTearDown(bs)
 	mani, err := min.NewManifestFromBytes(featureTestGenericMani)
 	assert.NoError(t, err)
 	assert.Equal(t, "application/vnd.docker.distribution.manifest.v2+json", mani.MediaType)
@@ -40,11 +46,14 @@ func Test_Manifest_RemoveManifestAliases(t *testing.T) {
 
 }
 func Test_Manifest_PutStatRemove(t *testing.T) {
-	SetupTest("cfg:generic")
-	defer TeardownTest("")
+	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
+	_, err := min.SetupTest(bs)
+	assert.NoError(t, err)
+	defer min.PreTearDown(bs)
 	// Test
 	ctx := context.Background()
-	err := min.ManifestsPutObj(ctx, featureTestGenericManiDigest, []byte(featureTestGenericMani))
+	err = min.ManifestsPutObj(ctx, featureTestGenericManiDigest, []byte(featureTestGenericMani))
 	assert.NoError(t, err)
 	obj, err := min.ManifestsStatObj(ctx, featureTestGenericManiDigest)
 	assert.NoError(t, err)

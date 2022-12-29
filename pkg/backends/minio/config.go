@@ -129,6 +129,11 @@ func (m Minio) PutConfig(ctx context.Context, b []byte, dig string) (err error) 
 		attribute.Key("digest").String(utils.ShortenDigest(dig)),
 	)
 	defer span.End()
+	if digest.FromBytes(b).String() != dig {
+		err = errors.Errorf("digest mismatch: %s != %s", digest.FromBytes(b).String(), dig)
+		l.Error(err)
+		return
+	}
 	err = m.ConfigPutObj(ctx, dig, b)
 	if err != nil {
 		l.Error(err)
@@ -205,6 +210,7 @@ func (m Minio) GetConfigsBucketName() string {
 }
 
 func (m Minio) GetTypesConfig(ctx context.Context, dig string) (cfg types.Config, found bool, err error) {
+	logrus.Warnf("GetTypesConfig(%s)", dig)
 	b, err := m.ConfigGetBytes(ctx, dig)
 	switch {
 	case err != nil && err.Error() == "The specified key does not exist.":
@@ -213,6 +219,10 @@ func (m Minio) GetTypesConfig(ctx context.Context, dig string) (cfg types.Config
 		return
 	case err != nil:
 		logrus.Warn(err)
+		return
+	}
+	if digest.FromBytes(b).String() != dig {
+		err = fmt.Errorf("digest mismatch: %s != %s", dig, digest.FromBytes(b).String())
 		return
 	}
 	// No error - off we go
