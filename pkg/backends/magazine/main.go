@@ -8,14 +8,13 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/backends/minio"
 	"github.com/metahub-registry/metahub-core/pkg/backends/neo"
 	"github.com/metahub-registry/metahub-core/pkg/backends/sqlite"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
 type Magazine struct {
 	Minio          minio.Minio
 	Database       Database
 	UserManagement sqlite.Sqlite
-	//SQlite sqlite.Sqlite
-	//Neo    neo.Neo
 }
 
 func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, err error) {
@@ -58,6 +57,35 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, err error) {
 		err = errors.Wrapf(err, "failed to setup neo4j backend")
 		logrus.Fatal(err)
 
+	}
+	return
+}
+
+func (mag Magazine) SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
+	logrus.Info("> SetupTest")
+	//return
+	br = utils.NewBootstrapResult()
+	for _, b := range bs.Bootstraps {
+		switch b {
+		// Users/Profile/Platforms
+		case "users":
+			err = sqlite.Setup_Users(&mag.UserManagement, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Users")
+				return
+			}
+		default:
+			err = mag.Database.BootstrapTestWithBR(b, bs, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Users in Database")
+				return
+			}
+			err = mag.Minio.BootstrapTestWithBR(b, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Users in Minio")
+				return
+			}
+		}
 	}
 	return
 }

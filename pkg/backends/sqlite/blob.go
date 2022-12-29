@@ -127,7 +127,7 @@ func (bu BlobUpload) Create(i *types.OCIBlobUpload) (err error) {
 		logrus.Error(err)
 		return
 	}
-	i.SqlID, err = res.LastInsertId()
+	i.ID, err = res.LastInsertId()
 	return
 }
 
@@ -228,6 +228,7 @@ func (bu BlobUpload) GetChunkUploadsByUUID(buID int64) (bcs []BlobChunks, err er
 	}
 	return
 }
+
 func (bu BlobUpload) CreateUploadChunk(buID, startByte, lenBytes int64) (bc BlobChunks, err error) {
 	bc = BlobChunks{
 		BlobUploadID: buID,
@@ -264,7 +265,7 @@ func (bu BlobUpload) GetByUUID(uid string) (b types.OCIBlobUpload, err error) {
 	}
 	if rows.Next() {
 		err = rows.Scan(
-			&b.SqlID,
+			&b.ID,
 			&b.UploadedBy,
 			&b.Digest,
 			&b.BlobID,

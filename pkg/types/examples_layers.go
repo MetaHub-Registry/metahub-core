@@ -10,6 +10,7 @@ func FT_arm64_Layer1() Layer {
 		Digest:    ref.Digest.String(),
 		Size:      ref.Size,
 		MediaType: ref.MediaType,
+		Data:      FT_arm_Layer1Byte(),
 	}
 }
 
@@ -19,6 +20,7 @@ func FT_arm64_Layer0() Layer {
 		Digest:    l0ref.Digest.String(),
 		Size:      l0ref.Size,
 		MediaType: l0ref.MediaType,
+		Data:      FT_arm_Layer0Byte(),
 	}
 }
 
@@ -28,6 +30,7 @@ func FT_amd64_Layer0() Layer {
 		Digest:    ref.Digest.String(),
 		Size:      ref.Size,
 		MediaType: ref.MediaType,
+		Data:      FT_amd_Layer0Byte(),
 	}
 }
 
@@ -37,6 +40,7 @@ func FT_amd64_Layer1() Layer {
 		Digest:    ref.Digest.String(),
 		Size:      ref.Size,
 		MediaType: ref.MediaType,
+		Data:      FT_amd_Layer1Byte(),
 	}
 }
 

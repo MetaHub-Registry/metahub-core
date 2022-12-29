@@ -13,6 +13,7 @@ func Test_Platform_CRUD(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("filter")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 45

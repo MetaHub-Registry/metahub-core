@@ -10,6 +10,7 @@ import (
 
 func Test_TagList(t *testing.T) {
 	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("filter")
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("platforms:amd64")
@@ -39,7 +40,8 @@ func Test_TagList(t *testing.T) {
 	req := types.Request{
 		Repo: "qnib/featuretest",
 	}
-	// pure SQLite
+	//
+	assert.NotNil(t, mag.Database)
 	res, err := mag.Database.Collection_GetTagsListByRepo(req.Repo)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(res.Tags))

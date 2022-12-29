@@ -73,6 +73,15 @@ func FT_amd64_ConfigByte() []byte {
 	return dat
 }
 
+func FT_amd64_b109_ConfigByte() []byte {
+	// read file and return bytes
+	dat, err := f.ReadFile("data/cfg/b109e1dac65af00234a8a7f817dcb1e18bc18ca97a5b805283995ebf1137e471.dat")
+	if err != nil {
+		panic(err)
+	}
+	return dat
+}
+
 func FT_amd64_Config() Config {
 	cfg, _ := NewConfigFromBytes(FT_amd64_ConfigByte())
 	return cfg

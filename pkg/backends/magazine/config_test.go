@@ -13,6 +13,7 @@ import (
 func Test_Config_StoreConfigUpload(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
+	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("users")
 	bs.AddBootstrap("filter")
 	bs.AddBootstrap("platforms:generic")

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/backends/minio"
 	"github.com/metahub-registry/metahub-core/pkg/backends/neo"
@@ -151,35 +150,6 @@ func TeardownTest(bs utils.Bootstrap) {
 	}
 }
 
-func (mag Magazine) SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
-	logrus.Info("> SetupTest")
-	//return
-	br = utils.NewBootstrapResult()
-	for _, b := range bs.Bootstraps {
-		switch b {
-		// Users/Profile/Platforms
-		case "users":
-			err = sqlite.Setup_Users(&mag.UserManagement, &br)
-			if err != nil {
-				err = errors.Wrap(err, "Setup_Users")
-				return
-			}
-		default:
-			err = mag.Database.BootstrapTestWithBR(b, &br)
-			if err != nil {
-				err = errors.Wrap(err, "Setup_Users in Database")
-				return
-			}
-			err = mag.Minio.BootstrapTestWithBR(b, &br)
-			if err != nil {
-				err = errors.Wrap(err, "Setup_Users in Minio")
-				return
-			}
-		}
-	}
-	return
-}
-
 func Setup_FTarm_Config() {
 	bu, b := types.FT_arm_BlobUpload_Config()
 	err := mag.StoreBlobUpload(ctx, &bu, b)
@@ -221,58 +191,6 @@ func Setup_Users() {
 		}
 	}
 }
-
-/*
-func Setup_Platforms(br *utils.BootstrapResult) (err error) {
-	//logrus.Info("> Setup_Platforms")
-	// Create platforms
-	plts := []types.Platform{
-		{Arch: "amd64", Variant: "", OS: "linux", Features: ""},
-		{Arch: "arm", Variant: "", OS: "linux", Features: ""},
-		{Arch: "arm", Variant: "v5", OS: "linux", Features: ""},
-		{Arch: "arm", Variant: "v6", OS: "linux", Features: ""},
-		{Arch: "arm", Variant: "v7", OS: "linux", Features: ""},
-		{Arch: "arm64", Variant: "v8", OS: "linux", Features: ""},
-	}
-	for _, p := range plts {
-		err := mag.SQlite.Platform.Insert(&p)
-		if err != nil {
-			return err
-		}
-		pStr := fmt.Sprintf("%s/%s", p.OS, p.Arch)
-		if p.Variant != "" {
-			pStr = fmt.Sprintf("%s/%s", pStr, p.Variant)
-		}
-		k := fmt.Sprintf("platform:%s#id", pStr)
-		br.Add(k, fmt.Sprint(p.SqlID))
-		// Check if filters are already there, if so link
-		f := types.Filter{
-			Label: "generic",
-		}
-		if p.Features != "" {
-			f.Label = strings.TrimPrefix(p.Features, "cpu:")
-		}
-		fID, found, err := mag.SQlite.Filter.GetFilter(f)
-		if err != nil {
-			return err
-		}
-		f.SqlID = fID
-		if found {
-			pfp := types.ProfileFilterPlatform{
-				Platform: p,
-				Filter:   f,
-			}
-			err = mag.SQlite.Platform.InsertPlatformFilter(pfp)
-			if err != nil {
-				return err
-			}
-		} else {
-			logrus.Warnf("No filter for platform '%s'", pStr)
-		}
-	}
-	return
-}
-*/
 
 func Setup_Profiles() {
 	//logrus.Warn("Setup_Profiles")

@@ -211,8 +211,11 @@ func (m Minio) BucketCheck() (err error) {
 }
 
 func (m Minio) PreTearDown(bs utils.Bootstrap) {
-	logrus.Warnf("Minio: %s", m.BucketConfigString())
+	if bs.PostTestSleep > 0 {
+		logrus.Warnf("Minio: %s", m.BucketConfigString())
+	}
 }
+
 func (m Minio) EmptyAll() (err error) {
 	logrus.Info("Emptying all buckets")
 	for _, bc := range m.BucketConfig {
@@ -238,6 +241,33 @@ func (m Minio) EmptyAll() (err error) {
 		for rErr := range bc.Client.RemoveObjects(context.Background(), bc.Bucket, objectsCh, opts) {
 			fmt.Println("Error detected during deletion: ", rErr)
 		}
+	}
+	return
+}
+
+func (m Minio) TearDown(bs utils.Bootstrap) (err error) {
+	for _, b := range bs.Bootstraps {
+		err = m.TeardownTest(b)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+	}
+	return
+}
+
+func (min Minio) TeardownTest(bootstrap string) (err error) {
+	logrus.Info("> TeardownTest")
+	err = min.EmptyAll()
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	switch bootstrap {
+	case "":
+	default:
+		err := fmt.Errorf("no teardown for '%s'", bootstrap)
+		logrus.Fatal(err)
+		return err
 	}
 	return
 }

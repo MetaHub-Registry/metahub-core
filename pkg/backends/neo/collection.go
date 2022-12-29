@@ -33,7 +33,6 @@ func (n Neo) GetCollection(col yamlCfg.ManifestCollection) (resCol types.Collect
 		return resCol, found, err
 	}
 	resCol, err = CollectionFromResult(res)
-
 	return
 }
 
@@ -85,7 +84,7 @@ func (n Neo) GetAllCollections() (collections []types.Collection, err error) {
 	q += ` RETURN id(c) AS collectionID, id(ml) AS manifestListID, id(f) AS filterID,`
 	q += ` c.repo AS collectionRepo, t.name AS tagName, id(t) AS tagID,`
 	q += ` ml.digest AS manifestListDigest, ml.mediaType AS manifestListMediaType, ml.size AS manifestListSize`
-	fmt.Printf("Query: GetAllCollections \n%s\n", q)
+	//fmt.Printf("Query: GetAllCollections \n%s\n", q)
 	input := map[string]interface{}{}
 	result, err := session.Run(q, input)
 	if err != nil {
@@ -561,6 +560,27 @@ func CollectionFromResult(res Result) (col types.Collection, err error) {
 		return
 	}
 	col = types.Collection{
+		ID:     colId,
+		Repo:   colRepo,
+		Tag:    tagName,
+		ColTag: ct,
+	}
+	return
+}
+
+func CollectionListingFromResult(res Result) (col types.CollectionListing, err error) {
+	err = res.CheckKeys("tagID", "tagName", "collectionID", "collectionRepo")
+	if err != nil {
+		return
+	}
+	tagName, _ := res.GetStr("tagName")
+	colId, _ := res.GetInt64("collectionID")
+	colRepo, _ := res.GetStr("collectionRepo")
+	ct, err := CollectionTagFromResult(res)
+	if err != nil {
+		return
+	}
+	col = types.CollectionListing{
 		ID:     colId,
 		Repo:   colRepo,
 		Tag:    tagName,

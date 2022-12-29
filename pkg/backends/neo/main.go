@@ -101,7 +101,7 @@ func (n Neo) Setup() (err error) {
 		logrus.Errorf("Error creating neo driver: %s\n", err)
 		return
 	}
-	logrus.Debug("Set database constraints (if not already present")
+	logrus.Debug("Set database constraints (if not already present)")
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	if err != nil {
 		logrus.Errorf("Error creating neo session: %s\n", err)
@@ -266,16 +266,16 @@ func (n Neo) Query(q string) (res []Result, err error) {
 	return
 }
 
-func (n Neo) BootstrapTestWithBR(b string, br *utils.BootstrapResult) (err error) {
+func (n Neo) BootstrapTestWithBR(b string, bs utils.Bootstrap, br *utils.BootstrapResult) (err error) {
 	switch b {
 	case "filter":
-		err = n.Setup_Filter(br, "../../../misc/yaml/profiles/generic")
+		err = n.Setup_Filter(bs, br, "profiles/arch")
 		if err != nil {
 			err = errors.Wrap(err, "Setup_Filter")
 			return
 		}
 	case "profiles":
-		err = n.Setup_Profiles(br, "../../../misc/yaml/profiles/generic")
+		err = n.Setup_Profiles(bs, br, "profiles/arch")
 		if err != nil {
 			err = errors.Wrap(err, "Setup_Profiles")
 			return
@@ -424,7 +424,7 @@ func (n Neo) BootstrapTestWithBR(b string, br *utils.BootstrapResult) (err error
 func (n Neo) BootstrapTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 	br = utils.NewBootstrapResult()
 	for _, b := range bs.Bootstraps {
-		err = n.BootstrapTestWithBR(b, &br)
+		err = n.BootstrapTestWithBR(b, bs, &br)
 		if err != nil {
 			err = errors.Wrapf(err, "while '%s'", b)
 			return

@@ -19,7 +19,7 @@ func Test_BlobUpload_Create(t *testing.T) {
 	bu.RangeStop = int64(len(l0Buf) - 1)
 	err := sq.BlobUpload.Create(&bu)
 	assert.NoError(t, err)
-	assert.NotEqual(t, 0, bu.SqlID)
+	assert.NotEqual(t, 0, bu.ID)
 	assert.NotEqual(t, "", bu.UUID)
 	rr := httptest.NewRecorder()
 	sq.BlobUpload.WriteOCICreateResponse(rr, &bu)

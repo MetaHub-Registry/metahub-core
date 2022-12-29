@@ -3,6 +3,7 @@ package neo
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/opencontainers/go-digest"
@@ -63,10 +64,12 @@ func SetupNeo4j(ctx context.Context) (*Neo4jContainer, error) {
 	return &Neo4jContainer{Container: container, HttpURI: httpUri, BoltURI: boltUri}, nil
 }
 
-func (n Neo) Setup_Filter(br *utils.BootstrapResult, d string) (err error) {
+func (n Neo) Setup_Filter(bs utils.Bootstrap, br *utils.BootstrapResult, d string) (err error) {
 	ctx := context.Background()
-	//logrus.Warn("Setup_Profiles")
-	prfs, err := config.FindProfiles(ctx, d)
+	logrus.Warn("Setup_Filter")
+	pre := bs.YAMLPrefix
+	path := filepath.Join(pre, d)
+	prfs, err := config.FindProfiles(ctx, path)
 	if err != nil {
 		return err
 	}
@@ -97,10 +100,12 @@ func (n Neo) Setup_Filter(br *utils.BootstrapResult, d string) (err error) {
 	return
 }
 
-func (n Neo) Setup_Profiles(br *utils.BootstrapResult, d string) (err error) {
+func (n Neo) Setup_Profiles(bs utils.Bootstrap, br *utils.BootstrapResult, d string) (err error) {
 	ctx := context.Background()
-	//logrus.Warn("Setup_Profiles")
-	prfs, err := config.FindProfiles(ctx, d)
+	logrus.Warn("Setup_Profiles")
+	pre := bs.YAMLPrefix
+	path := filepath.Join(pre, d)
+	prfs, err := config.FindProfiles(ctx, path)
 	if err != nil {
 		return err
 	}
@@ -179,6 +184,7 @@ func (n Neo) Setup_Config(br *utils.BootstrapResult, cfg types.Config, label str
 		return err
 	}
 	br.Add(fmt.Sprintf("config:%s#id", label), fmt.Sprint(cfgId))
+	br.Add(fmt.Sprintf("config:%s#digest", label), cfg.Digest)
 	return
 }
 
@@ -189,6 +195,7 @@ func (n Neo) Setup_Layer(br *utils.BootstrapResult, ly types.Layer, bootstrapstr
 		return err
 	}
 	br.Add(fmt.Sprintf("%s#id", bootstrapstring), fmt.Sprint(lyId))
+	br.Add(fmt.Sprintf("%s#digest", bootstrapstring), ly.Digest)
 	return
 }
 
