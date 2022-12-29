@@ -54,5 +54,6 @@ func (b OCIBlobUpload) WriteOCIPutResponse(w http.ResponseWriter) {
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(b.Data)))
 	w.Header().Set("Range", fmt.Sprintf("%d-%d", b.RangeStart, b.RangeStop))
 	w.Header().Set("Docker-Content-Digest", b.Digest)
+	w.Header().Set("Docker-Upload-UUID", b.UUID.String())
 	w.WriteHeader(http.StatusCreated)
 }
