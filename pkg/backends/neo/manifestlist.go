@@ -54,6 +54,20 @@ func (n Neo) CreateManifestList(dig digest.Digest, mt string, size int) (mlID in
 	return
 }
 
+func (n Neo) UnLinkManifestListToCollection(mlID, colID int64) (err error) {
+	q := `MATCH (c:Collection)-[r:REF]->(ml:ManifestList) WHERE id(c) = %d AND id(ml) = %d`
+	q += ` DELETE r`
+	query := fmt.Sprintf(q, colID, mlID)
+	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close()
+	_, err = session.Run(query, map[string]interface{}{})
+	if err != nil {
+		logrus.Errorf("failed to create link (ml:ManifestList)-[:REF]->(c:Collection): %v", err)
+		return
+	}
+	return
+}
+
 func (n Neo) LinkManifestListToCollection(mlID, colID int64) (err error) {
 	q := `MATCH (c:Collection), (ml:ManifestList) WHERE id(c) = %d AND id(ml) = %d`
 	q += ` MERGE (ml)<-[:REF]-(c)`
@@ -68,6 +82,19 @@ func (n Neo) LinkManifestListToCollection(mlID, colID int64) (err error) {
 	return
 }
 
+func (n Neo) UnLinkManifestListToCollectionTag(mlID, colTagID int64) (err error) {
+	q := `MATCH (ct:Tag)-[r:REF]->(ml:ManifestList) WHERE id(ct) = %d AND id(ml) = %d`
+	q += ` DELETE r`
+	query := fmt.Sprintf(q, colTagID, mlID)
+	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close()
+	_, err = session.Run(query, map[string]interface{}{})
+	if err != nil {
+		logrus.Errorf("failed to create link (ml:ManifestList)-[:REF]->(t:Tag): %v", err)
+		return
+	}
+	return
+}
 func (n Neo) LinkManifestListToCollectionTag(mlID, colTagID int64) (err error) {
 	q := `MATCH (ct:Tag), (ml:ManifestList) WHERE id(ct) = %d AND id(ml) = %d`
 	q += ` MERGE (ml)<-[:REF]-(ct)`

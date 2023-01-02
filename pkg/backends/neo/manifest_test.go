@@ -43,8 +43,15 @@ func Test_Manifest_CRUD(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, arm_mani_id, arm_mani_got3.ID)
 	// Manifest_Remove
-	err = db.Manifest_Remove(ctx, arm_mani_got3)
+	reqGot3 := types.Request{
+		Repo:   arm_mani_got3.Upstream.Repo,
+		Tag:    arm_mani_got3.Upstream.Tag,
+		Host:   arm_mani_got3.Upstream.Reg,
+		Digest: arm_mani_got3.Digest,
+	}
+	found, err = db.Manifest_Remove(ctx, reqGot3)
 	assert.NoError(t, err)
+	assert.True(t, found)
 	_, found, err = db.Manifest_Get_ByDigest(arm_mani_got3.Digest)
 	assert.NoError(t, err)
 	assert.False(t, found)
@@ -68,8 +75,15 @@ func Test_Manifest_CRUD(t *testing.T) {
 	arm_mani_got5, err := db.Manifest_Insert(ctx, arm_mani)
 	assert.NoError(t, err)
 	assert.Equal(t, arm_mani_got4.ID, arm_mani_got5)
-	err = db.Manifest_Remove(ctx, arm_mani)
+	reqArm := types.Request{
+		Repo:   arm_mani.Upstream.Repo,
+		Tag:    arm_mani.Upstream.Tag,
+		Host:   arm_mani.Upstream.Reg,
+		Digest: arm_mani.Digest,
+	}
+	found, err = db.Manifest_Remove(ctx, reqArm)
 	assert.NoError(t, err)
+	assert.True(t, found)
 	arm_mani_got6, err := db.Manifest_Insert(ctx, arm_mani)
 	assert.NoError(t, err)
 	assert.NotEqual(t, arm_mani_got4.ID, arm_mani_got6)

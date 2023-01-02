@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 )
@@ -39,6 +40,20 @@ func (n Neo) LinkCollectionTagToManifest(ctx context.Context, colTagID, maniID i
 	_, err = session.Run(query, map[string]interface{}{})
 	if err != nil {
 		logrus.Errorf("failed to create link collectionTag->manifest: %v", err)
+		return
+	}
+	return
+}
+
+func (n Neo) LinkCollectionTagToManifest_Remove(ctx context.Context, colTagID, maniID int64) (found bool, err error) {
+	q := `MATCH (t:Tag)-[u:UPSTREAM]->(m:Manifest) WHERE id(t) = %d AND id(m) = %d`
+	q += ` DELETE u`
+	query := fmt.Sprintf(q, colTagID, maniID)
+	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close()
+	_, err = session.Run(query, map[string]interface{}{})
+	if err != nil {
+		logrus.Errorf("failed to delete link collectionTag->manifest: %v", err)
 		return
 	}
 	return
@@ -100,6 +115,46 @@ func CollectionTagFromResult(res Result) (ct types.CollectionTag, err error) {
 	ct = types.CollectionTag{
 		ID:  id,
 		Tag: name,
+	}
+	return
+}
+
+func (n Neo) CollectionTag_CountRelationships(ctID int64) (count int64, err error) {
+	q := `MATCH (t:Tag)-[r]->() WHERE id(t) = %d RETURN count(r) AS count`
+	query := fmt.Sprintf(q, ctID)
+	res, found, err := n.QueryOne(query)
+	if err != nil {
+		return
+	}
+	if !found {
+		err = errors.New("failed to count relationships from Tag")
+		logrus.Error(err)
+		return
+	}
+	count, err = res.GetInt64("count")
+	if err != nil {
+		err = errors.Wrap(err, "failed to get count from result")
+		return
+	}
+	return
+}
+
+func (n Neo) CollectionTag_DetachFromCollection(cID, ctID int64) (err error) {
+	q := `MATCH (c:Collection)-[r:HAS_TAG]->(t:Tag) WHERE id(c) = %d AND id(t) = %d`
+	q += ` DELETE r`
+	query := fmt.Sprintf(q, cID, ctID)
+	fmt.Printf("!!! Query: \n%s\n", query)
+	_, err = n.Execute(query)
+	if err != nil {
+		return
+	}
+	// Count relationships from Tag
+	count, err := n.CollectionTag_CountRelationships(ctID)
+	if count == 0 {
+		// Delete Tag
+		q = `MATCH (t:Tag) WHERE id(t) = %d DELETE t`
+		query = fmt.Sprintf(q, ctID)
+		_, err = n.Execute(query)
 	}
 	return
 }

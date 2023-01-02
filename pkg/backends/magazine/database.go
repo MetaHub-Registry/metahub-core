@@ -41,7 +41,7 @@ type Database interface {
 	Manifest_Insert(ctx context.Context, mani types.Manifest) (maniID int64, err error)
 	Manifest_GetTypes_ByRequest(req types.Request) (res types.Manifest, found bool, err error)
 	Manifest_GetInsert(ctx context.Context, mani *types.Manifest) (err error)
-	Manifest_Remove(ctx context.Context, mani types.Manifest) (err error)
+	Manifest_Remove(ctx context.Context, req types.Request) (found bool, err error)
 	Manifest_GetManifests_ByManifestListID(mlID int64) (manis []types.Manifest, err error)
 	Manifest_GetByCollectionTag(colID, colTagID int64) (manis []types.Manifest, err error)
 	/********* Filter ***********/
@@ -63,6 +63,10 @@ type Database interface {
 	Collection_GetCreate_ByRepoTag(ctx context.Context, repo, tag string) (c types.Collection, found bool, err error)
 	CollectionListing_Get_ByID(colID, colTagID int64) (col types.CollectionListing, err error)
 	CollectionListing_Get_ByRepoLike(repo string) (cols []types.CollectionListing, err error)
+	Collection_Remove(ctx context.Context, c types.Collection) (found bool, err error)
+	/**** CollectionTag ****/
+	CollectionTag_CountRelationships(ctID int64) (count int64, err error)
+
 	/********* Links **********/
 	LinkCollectionTagToManifest(ctx context.Context, colTagID, maniID int64) error           // Connects a collection tag to a manifest to indicate it is servered by that collection
 	LinkCollectionToManifest(ctx context.Context, colID, maniID int64) error                 // Connects a collection to a manifest to indicate it is servered by that collection

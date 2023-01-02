@@ -107,6 +107,7 @@ func Test_Collection_ComputeML(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, "qnib/featuretest", col.Repo)
+
 }
 
 func Test_Collection_CRUD2(t *testing.T) {
