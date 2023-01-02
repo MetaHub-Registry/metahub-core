@@ -454,7 +454,42 @@ func (n Neo) Manifest_GetTypes_ByRequest(req types.Request) (res types.Manifest,
 	return
 }
 
-func (n Neo) Manifest_Remove(ctx context.Context, mani types.Manifest) (err error) {
+func (n Neo) Manifest_Get_ByID(ctx context.Context, mID int64) (m types.Manifest, found bool, err error) {
+	q := `MATCH (m:Manifest)-[:UPSTREAM]->(u:Upstream) WHERE id(m) = %d`
+	q += ` RETURN id(m) AS manifestID, m.digest AS manifestDigest, m.mediaType AS manifestMediaType, m.size AS manifestSize,`
+	q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag`
+	query := fmt.Sprintf(q, mID)
+	//fmt.Printf("Q: %s\n", query)
+	res, found, err := n.QueryOne(query)
+	if err != nil {
+		return
+	}
+	if !found {
+		return
+	}
+	m, err = ManifestFromResult(res)
+	if err != nil {
+		err = errors.Wrap(err, "failed to get manifest from result")
+		return
+	}
+	up, err := UpstreamFromResult(res)
+	m.Upstream = up
+	if err != nil {
+		err = errors.Wrap(err, "failed to get upstream from result")
+		return
+	}
+	return
+}
+
+func (n Neo) Manifest_Remove(ctx context.Context, req types.Request) (found bool, err error) {
+	mani, found, err := n.Manifest_GetTypes_ByRequest(req)
+	if err != nil {
+		err = errors.Wrap(err, "failed to get manifest by id")
+		return
+	}
+	if !found {
+		return
+	}
 	q := `MATCH (m:Manifest) WHERE id(m) = %d DETACH DELETE m`
 	query := fmt.Sprintf(q, mani.ID)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})

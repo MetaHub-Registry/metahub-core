@@ -25,6 +25,17 @@ func (n Neo) Collection_Create_ByYaml(ycol yamlCfg.ManifestCollection) (colID, c
 	return n.CreateCollection(ycol)
 }
 
+func (n Neo) GetCollectionTag(repo, tag string) (resCol types.Collection, found bool, err error) {
+	q := `MATCH (c:Collection)-[:HAS_TAG]->(t) WHERE c.repo = "%s" AND t.name = "%s" RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
+	query := fmt.Sprintf(q, repo, tag)
+	res, found, err := n.QueryOne(query)
+	if err != nil || !found {
+		return resCol, found, err
+	}
+	resCol, err = CollectionFromResult(res)
+	return
+}
+
 func (n Neo) GetCollection(col yamlCfg.ManifestCollection) (resCol types.Collection, found bool, err error) {
 	q := `MATCH (c:Collection)-[:HAS_TAG]->(t) WHERE c.repo = "%s" AND t.name = "%s" RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
 	query := fmt.Sprintf(q, col.Name, col.Tag)
@@ -46,7 +57,7 @@ func (n Neo) Collection_Get_ByRepoTag(repo, tag string) (c types.Collection, fou
 	q += ` c.repo AS collectionRepo, t.name AS tagName, id(t) AS tagID,`
 	q += ` ml.digest AS manifestListDigest, ml.mediaType AS manifestListMediaType, ml.size AS manifestListSize`
 	query := fmt.Sprintf(q, repo, tag)
-	//fmt.Printf("Query: %s\n", query)
+	fmt.Printf("Query: %s\n", query)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	input := map[string]interface{}{}
@@ -586,5 +597,53 @@ func CollectionListingFromResult(res Result) (col types.CollectionListing, err e
 		Tag:    tagName,
 		ColTag: ct,
 	}
+	return
+}
+
+func (n Neo) Collection_Remove(ctx context.Context, col types.Collection) (found bool, err error) {
+	c, found, err := n.Collection_Get_ByRepoTag(col.Repo, col.Tag)
+	if err != nil {
+		err = errors.Wrap(err, "failed to Collection_GetCreate_ByRepoTag")
+		logrus.Error(err)
+		return
+	}
+	if !found {
+		// Might not be a full collection
+		c, found, err = n.GetCollectionTag(col.Repo, col.Tag)
+		if err != nil {
+			err = errors.Wrap(err, "failed to GetCollectionTag")
+			logrus.Error(err)
+			return
+		}
+		if !found {
+			err = errors.New("collection not found")
+			logrus.Error(err)
+			return
+		}
+		fmt.Printf("Simple Collection found: \n%v\n", c)
+	}
+	// Remove CollectionTag link to Manifest
+	for _, ml := range c.ManifestLists {
+		err = n.UnLinkManifestListToCollection(ml.ID, c.ID)
+		if err != nil {
+			err = errors.Wrap(err, "failed to UnLinkManifestListToCollection")
+			logrus.Error(err)
+			return
+		}
+		err = n.UnLinkManifestListToCollectionTag(ml.ID, c.ColTag.ID)
+		if err != nil {
+			err = errors.Wrap(err, "failed to UnLinkManifestListToCollectionTag")
+			logrus.Error(err)
+			return
+		}
+	}
+	// Remove HAS_TAG between Collection and CollectionTag
+	err = n.CollectionTag_DetachFromCollection(c.ID, c.ColTag.ID)
+	if err != nil {
+		err = errors.Wrap(err, "failed to remove HAS_TAG between Collection and CollectionTag")
+		logrus.Error(err)
+		return
+	}
+
 	return
 }

@@ -40,7 +40,7 @@ func (s Sqlite) Manifest_GetInsert(ctx context.Context, mani *types.Manifest) (e
 	return s.Manifest.GetInsert(mani)
 }
 
-func (s Sqlite) Manifest_Remove(ctx context.Context, mani types.Manifest) (err error) {
+func (s Sqlite) Manifest_Remove(ctx context.Context, mani types.Manifest) (found bool, err error) {
 	mlIDs, _, err := s.Manifest.Remove(mani)
 	for _, mlID := range mlIDs {
 		err = s.Collection_Scrub_ByManifestListID(mlID)

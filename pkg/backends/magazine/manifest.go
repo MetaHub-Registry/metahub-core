@@ -181,8 +181,20 @@ func (mag Magazine) Manifest_DeleteByHTTPRequest(r *http.Request) (err error) {
 		msg += fmt.Sprintf("%s)", req.Tag)
 	}
 	logrus.Warn(msg)
-	err = mag.RemoveManifestByRequest(req)
+	found, err := mag.RemoveManifestByRequest(req)
 	if err != nil {
+		return
+	}
+	if !found || req.Tag != "" {
+		//Not a plain Manifest, let's try to delete a Collection
+		logrus.Warn("Not a plain Manifest, let's try to delete a Collection")
+		found, err = mag.RemoveCollectionByRequest(req)
+		if err != nil {
+			return
+		}
+		if !found {
+			err = errors.New("Collection not found")
+		}
 		return
 	}
 	return
@@ -323,7 +335,7 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 	return
 }
 
-func (mag Magazine) RemoveManifestByRequest(req types.Request) (err error) {
+func (mag Magazine) RemoveManifestByRequest(req types.Request) (found bool, err error) {
 	ctx := context.Background()
 	m := types.Manifest{
 		Upstream: types.Upstream{
@@ -332,18 +344,19 @@ func (mag Magazine) RemoveManifestByRequest(req types.Request) (err error) {
 		},
 		Digest: req.Digest,
 	}
-	//mlIDs, maniDigest, err := mag.SQlite.Manifest.Remove(m)
-	err = mag.Database.Manifest_Remove(ctx, m)
+	found, err = mag.Database.Manifest_Remove(ctx, req)
 	if err != nil {
-		err = errors.Wrap(err, "failed to SQlite.Manifest.Remove")
+		err = errors.Wrap(err, "failed to Database.Manifest_Remove")
 		return
 	}
-	// Remove Manifest Blob
-	err = mag.Minio.ManifestRemoveObj(ctx, m.Digest)
-	if err != nil {
-		err = errors.Wrap(err, "failed to Minio.ManifestRemoveObj")
-		return
+	if found {
+		// FOUND: Remove Manifest Blob
+		e := mag.Minio.ManifestRemoveObj(ctx, m.Digest)
+		if e != nil {
+			e = errors.Wrapf(e, "while in RemoveManifestByRequest (we won't fail here tho)")
+			logrus.Error(e)
+			return
+		}
 	}
-
 	return
 }

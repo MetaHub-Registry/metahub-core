@@ -3,6 +3,7 @@ package magazine
 import (
 	"context"
 
+	"github.com/metahub-registry/metahub-core/pkg/types"
 	yamlCfg "github.com/metahub-registry/metahub-core/pkg/yaml/config"
 )
 
@@ -27,4 +28,13 @@ func (mag Magazine) NeoLinkCollectionToManifest(ctx context.Context, colID, colT
 	}
 	err = mag.Database.LinkCollectionTagToManifest(ctx, colTagID, maniID)
 	return
+}
+
+func (mag Magazine) RemoveCollectionByRequest(req types.Request) (found bool, err error) {
+	ctx := context.Background()
+	c := types.Collection{
+		Repo: req.Repo,
+		Tag:  req.Tag,
+	}
+	return mag.Database.Collection_Remove(ctx, c)
 }
