@@ -18,6 +18,19 @@ func (n Neo) CollectionListing_Get_ByID(colID, colTagID int64) (col types.Collec
 		return col, fmt.Errorf("collection with ID '%d' npt found", colID)
 	}
 	col, err = CollectionListingFromResult(res)
+	if err != nil {
+		return
+	}
+	// Fill Manifests
+	manis, err := n.Manifest_GetByCollectionTag(col.ID, col.ColTag.ID)
+	if err != nil {
+		return
+	}
+	for _, m := range manis {
+		k := fmt.Sprintf("%s/%s:%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag)
+		col.Manifests[k] = m
+		col.ManifestCount++
+	}
 	return
 }
 

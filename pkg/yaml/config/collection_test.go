@@ -12,12 +12,12 @@ var ctx = context.Background()
 func Test_FindManifestCollections(t *testing.T) {
 	var err error
 	var cols map[string]ManifestCollection
-	cols, err = FindManifestCollections(ctx, "../../../misc/yaml/manifests/qnib/featuretest/generic.yaml")
+	cols, err = FindManifestCollections(ctx, "../../../misc/yaml/collections/qnib/featuretest/generic.yaml")
 	assert.NoError(t, err)
 	assert.Len(t, cols, 1)
-	_, err = FindManifestCollections(ctx, "../../../misc/yaml/manifests/qnib/featuretest/mismatch_tag.yaml")
+	_, err = FindManifestCollections(ctx, "../../../misc/yaml/collections/qnib/featuretest/mismatch_tag.yaml")
 	assert.Error(t, err)
-	cols, err = FindManifestCollections(ctx, "../../../misc/yaml/manifests/library/perl/5.26.yaml")
+	cols, err = FindManifestCollections(ctx, "../../../misc/yaml/collections/library/perl/5.26.yaml")
 	assert.NoError(t, err)
 	assert.Len(t, cols, 1)
 	col := cols["library/perl:5.26"]

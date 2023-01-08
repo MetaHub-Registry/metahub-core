@@ -15,15 +15,17 @@ import (
 )
 
 type Manifest struct {
-	ID        int64    `json:"id"`
-	Digest    string   `json:"digest"`
-	Data      []byte   `json:"data,omitempty"`
-	MediaType string   `json:"media_type"`
-	Size      int64    `json:"size"`
-	Platform  Platform `json:"platform"`
-	Upstream  Upstream `json:"upstream"`
-	Config    Config   `json:"config"`
-	Layers    []Layer  `json:"layers"`
+	ID          int64             `json:"id"`
+	Digest      string            `json:"digest"`
+	Data        []byte            `json:"data,omitempty"`
+	MediaType   string            `json:"media_type"`
+	Size        int64             `json:"size"`
+	Platform    Platform          `json:"platform"`
+	Upstream    Upstream          `json:"upstream"`
+	Config      Config            `json:"config"`
+	Layers      []Layer           `json:"layers"`
+	Profile     Profile           `json:"profile"`
+	Annotations map[string]string `json:"annotations"`
 }
 
 func (m Manifest) ToBytes() (data []byte, err error) {
