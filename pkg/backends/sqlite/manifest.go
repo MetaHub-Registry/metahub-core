@@ -12,7 +12,7 @@ type Manifest struct {
 	ID           int64    `json:"id"`
 	Digest       string   `json:"digest"`
 	ImageName    string   `json:"image_name"`
-	PlatformSpec Platform `json:"platform_spec"`
+	PlatformSpec Platform `json:"platform"`
 	Upstream     Upstream `json:"upstream"`
 	Config       Config   `json:"config"`
 	Profile      Profile  `json:"profile"`

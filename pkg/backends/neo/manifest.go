@@ -130,14 +130,16 @@ func (n Neo) GetAllManifests() (manifests []types.Manifest, err error) {
 func (n Neo) Manifest_GetByCollectionTag(colID, colTagID int64) (manis []types.Manifest, err error) {
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
-	q := `MATCH (p:Platform)-[]-(m:Manifest)-[]-(u:Upstream)`
-	q += ` MATCH (c:Collection)-[:UPSTREAM]->(m)-[]-(c:Config) WHERE id(c) = %d`
+	q := `MATCH (prf:Profile)-[:USES]->(f:Filter)-[:USES]->(p:Platform)-[]-(m:Manifest)-[]-(u:Upstream)`
+	q += ` MATCH (c:Collection)-[:UPSTREAM]->(m)-[]-(cfg:Config) WHERE id(c) = %d`
 	q += ` MATCH (t:Tag)-[:UPSTREAM]->(m) WHERE id(t) = %d`
 	q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant, p.features AS platformFeatures,`
 	q += ` id(m) AS manifestID, m.digest AS manifestDigest, m.mediaType AS manifestMediaType, m.size AS manifestSize,`
 	q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag,`
-	q += ` id(c) AS configID, c.digest AS configDigest, c.mediaType AS configMediaType, c.size AS configSize`
+	q += ` id(cfg) AS configID, cfg.digest AS configDigest, cfg.mediaType AS configMediaType, cfg.size AS configSize,`
+	q += ` id(prf) AS profileID, prf.name AS profileName`
 	query := fmt.Sprintf(q, colID, colTagID)
+	//fmt.Printf("query: \n%s\n", query)
 	input := map[string]interface{}{}
 	result, err := session.Run(query, input)
 	if err != nil {
@@ -165,9 +167,15 @@ func (n Neo) Manifest_GetByCollectionTag(colID, colTagID int64) (manis []types.M
 			err = e
 			return
 		}
+		prf, e := ProfileFromRecord(result)
+		if e != nil {
+			err = e
+			return
+		}
 		m.Config = c
 		m.Platform = p
 		m.Upstream = u
+		m.Profile = prf
 		manis = append(manis, m)
 	}
 	return
@@ -246,6 +254,23 @@ func ConfigFromRecord(res neo4j.Result) (c types.Config, err error) {
 		return
 	}
 	c.Size = v.(int64)
+	return
+}
+
+func ProfileFromRecord(res neo4j.Result) (p types.Profile, err error) {
+	r := res.Record()
+	v, ok := r.Get("profileID")
+	if !ok {
+		err = fmt.Errorf("no profileID found in record: %v", r)
+		return
+	}
+	p.ID = v.(int64)
+	v, ok = r.Get("profileName")
+	if !ok {
+		err = fmt.Errorf("no profileName found in record: %v", r)
+		return
+	}
+	p.Name = v.(string)
 	return
 }
 

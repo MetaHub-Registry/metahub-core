@@ -592,10 +592,12 @@ func CollectionListingFromResult(res Result) (col types.CollectionListing, err e
 		return
 	}
 	col = types.CollectionListing{
-		ID:     colId,
-		Repo:   colRepo,
-		Tag:    tagName,
-		ColTag: ct,
+		ID:            colId,
+		Repo:          colRepo,
+		Tag:           tagName,
+		ColTag:        ct,
+		Manifests:     map[string]types.Manifest{},
+		ManifestCount: 0,
 	}
 	return
 }

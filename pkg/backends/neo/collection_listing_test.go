@@ -2,6 +2,7 @@ package neo
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,6 +13,7 @@ func Test_CollectionListing_Get_ByID(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("filter")
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("platforms:amd64")
@@ -27,11 +29,10 @@ func Test_CollectionListing_Get_ByID(t *testing.T) {
 	bs.AddBootstrap("layer1:ft_amd64")
 	bs.AddBootstrap("manifest:ft_arm64")
 	bs.AddBootstrap("manifest:ft_amd64")
-	bs.AddBootstrap("manifest:ft_amd64")
 	bs.AddBootstrap("collection:ft_generic")
 	bs.AddBootstrap("collection:ft_arm64")
 	bs.SetEmptyAll()
-	//bs.PostTestSleep = 90
+	//bs.PostTestSleep = 300
 	br, err := SetupTest(bs)
 	_ = br
 	assert.NoError(t, err)
@@ -47,6 +48,11 @@ func Test_CollectionListing_Get_ByID(t *testing.T) {
 	assert.Equal(t, colTagID, cl.ColTag.ID)
 	assert.Equal(t, "generic", cl.ColTag.Tag)
 	assert.Equal(t, "qnib/featuretest", cl.Repo)
+	assert.Equal(t, int64(2), cl.ManifestCount)
+	assert.NotEqual(t, 0, len(cl.Manifests), fmt.Sprintf("Expected manifest to be present: %+v", cl.Manifests))
+	for k, v := range cl.Manifests {
+		assert.Equal(t, "generic", v.Profile.Name, fmt.Sprintf("Expected profile to be generic: %s", k))
+	}
 	// Like
 	cls, err := db.CollectionListing_Get_ByRepoLike("")
 	assert.NoError(t, err)

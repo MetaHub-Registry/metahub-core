@@ -20,13 +20,14 @@ import (
 var (
 	defaultArch   = "amd64"
 	defaultOS     = "linux"
-	manifestRegex = `.*manifests\/(?P<repo>.*)\/(?P<tag>[0-9a-z\-\_\.]+)\.(yaml|yml)`
+	manifestRegex = `.*collections\/(?P<repo>.*)\/(?P<tag>[0-9a-z\-\_\.]+)\.(yaml|yml)`
 )
 
 type ManifestCollection struct {
-	Name      string     `yaml:"name"`
-	Tag       string     `yaml:"tag"`
-	Manifests []Manifest `yaml:"manifests"`
+	Name        string            `yaml:"name"`
+	Tag         string            `yaml:"tag"`
+	Annotations map[string]string `yaml:"annotations"`
+	Manifests   []Manifest        `yaml:"manifests"`
 }
 
 type Platform struct {

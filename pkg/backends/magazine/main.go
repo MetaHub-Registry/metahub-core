@@ -65,6 +65,9 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, err error) {
 		logrus.Fatal(err)
 	}
 	fr := viper.GetString("frontend.redirect")
+	if fr != "" {
+		logrus.Infof("Redirect frontend to: %s", fr)
+	}
 	au := viper.GetString("auth.url")
 	cfg := MagConfig{
 		RedirectDoc: fr,

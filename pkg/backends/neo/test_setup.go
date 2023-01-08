@@ -123,7 +123,7 @@ func (n Neo) Setup_Profiles(bs utils.Bootstrap, br *utils.BootstrapResult, d str
 			return err
 		}
 		br.Add(fmt.Sprintf("profile:%s#id", p.Name), fmt.Sprint(p.ID))
-		//logrus.Infof("Profile '%s' created with ID: %d", p.Name, p.ID)
+		logrus.Infof("Profile '%s' created with ID: %d", p.Name, p.ID)
 		err = n.LinkProfileToFilter(ctx, p.ID, fID)
 		if err != nil {
 			return err

@@ -4,6 +4,7 @@ import (
 	"context"
 	"io/ioutil"
 	"log"
+	"os"
 
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
@@ -75,6 +76,13 @@ func FindProfiles(ctx context.Context, cacheDir string) (prfs map[string]Profile
 		}
 		files = append(files, newFiles...)
 		//l.Warnf("Add %d files with extension %s\n", len(files), newFiles)
+	}
+	if len(files) == 0 {
+		p, err := os.Getwd()
+		if err != nil {
+			l.Fatal(err)
+		}
+		l.Warnf("No profiles found in cacheDir; we are at '%s'", p)
 	}
 	// Read in each manifest config
 	for _, pfile := range files {

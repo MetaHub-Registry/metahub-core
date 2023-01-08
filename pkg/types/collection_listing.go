@@ -5,6 +5,7 @@ type CollectionListing struct {
 	Repo          string              `json:"repo"`
 	Tag           string              `json:"tag"`
 	ColTag        CollectionTag       `json:"-"`
+	Annotations   map[string]string   `json:"annotations"`
 	Manifests     map[string]Manifest `json:"manifests"`
 	ManifestCount int64               `json:"manifest_count"`
 }
