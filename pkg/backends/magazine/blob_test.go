@@ -20,6 +20,7 @@ func Test_Layer_StoreBlobUpload(t *testing.T) {
 func Test_Config_StoreBlobUpload(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.AddBootstrap("users")
+	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("filter")
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("platforms:amd64")

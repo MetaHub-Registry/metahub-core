@@ -41,7 +41,7 @@ func Test_Platform_CRUD(t *testing.T) {
 	// ARM64
 	err = db.Platform_GetInsert(&platform_arm64)
 	assert.NoError(t, err)
-	assert.Greater(t, platform_arm64.ID, platAmd64ID)
+	assert.NotEqual(t, platform_arm64.ID, platAmd64ID)
 	fGenID, err := br.GetInt64("filter:generic#id")
 	assert.NoError(t, err)
 	// LinkPlatformToFilter

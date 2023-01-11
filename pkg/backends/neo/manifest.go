@@ -544,3 +544,13 @@ func (n Neo) Manifest_GetManifests_ByManifestListID(mlID int64) (manis []types.M
 	}
 	return
 }
+
+func (n Neo) LinkManifestToAnnotation(ctx context.Context, maniID, annotationID int64) (err error) {
+	q := `MATCH (m:Manifest), (a:Annotation) WHERE id(m) = %d AND id(a) = %d MERGE (m)-[:HAS_ANNOTATION]->(a)`
+	query := fmt.Sprintf(q, maniID, annotationID)
+	_, err = n.Execute(query)
+	if err != nil {
+		return
+	}
+	return
+}

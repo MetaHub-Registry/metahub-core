@@ -28,7 +28,8 @@ func Test_Config_CRUD(t *testing.T) {
 	defer db.TeardownTest(bs)
 	// Actual test
 	arm_cfg := types.FT_arm_Config()
-	_, found, err := db.GetConfig(arm_cfg)
+
+	_, found, err := db.ConfigGetByDigest(arm_cfg.Digest)
 	assert.NoError(t, err)
 	assert.False(t, found)
 	_, found, err = db.ConfigGetByDigest(arm_cfg.Digest)

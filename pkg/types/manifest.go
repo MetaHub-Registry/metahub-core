@@ -15,17 +15,17 @@ import (
 )
 
 type Manifest struct {
-	ID          int64             `json:"id"`
-	Digest      string            `json:"digest"`
-	Data        []byte            `json:"data,omitempty"`
-	MediaType   string            `json:"media_type"`
-	Size        int64             `json:"size"`
-	Platform    Platform          `json:"platform"`
-	Upstream    Upstream          `json:"upstream"`
-	Config      Config            `json:"config"`
-	Layers      []Layer           `json:"layers"`
-	Profile     Profile           `json:"profile"`
-	Annotations map[string]string `json:"annotations"`
+	ID          int64       `json:"id"`
+	Digest      string      `json:"digest"`
+	Data        []byte      `json:"data,omitempty"`
+	MediaType   string      `json:"media_type"`
+	Size        int64       `json:"size"`
+	Platform    Platform    `json:"platform"`
+	Upstream    Upstream    `json:"upstream"`
+	Config      Config      `json:"config"`
+	Layers      []Layer     `json:"layers"`
+	Profile     Profile     `json:"profile"`
+	Annotations Annotations `json:"annotations"`
 }
 
 func (m Manifest) ToBytes() (data []byte, err error) {
@@ -123,4 +123,14 @@ func (m Manifest) WriteWWWBody(w http.ResponseWriter) {
 	logrus.Warnf("DIGEST.FromBytes: %s", dig.String())
 	logrus.Warnf("DIGEST.FromMani: %s", m.Digest)
 	w.Write(b)
+}
+
+func (m *Manifest) UpdateAnnotations(anno Annotations) (err error) {
+	for k, v := range anno.Map {
+		err = m.Annotations.AddAnnotation(k, v)
+		if err != nil {
+			return
+		}
+	}
+	return
 }

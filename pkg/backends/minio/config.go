@@ -228,6 +228,7 @@ func (m Minio) GetTypesConfig(ctx context.Context, dig string) (cfg types.Config
 	// No error - off we go
 	found = true
 	cfg, err = types.NewConfigFromBytes(b)
+	cfg.Labels = types.NewAnnotations()
 	if err != nil {
 		logrus.Error(err)
 	}
