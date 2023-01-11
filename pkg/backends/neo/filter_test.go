@@ -25,6 +25,12 @@ var (
 		Variant:  "",
 		Features: "foo",
 	}
+	pZen3 = types.Platform{
+		OS:       "linux",
+		Arch:     "amd64",
+		Variant:  "",
+		Features: "cpu:zen3",
+	}
 	pGen = types.Platform{
 		OS:       "linux",
 		Arch:     "amd64",
@@ -81,7 +87,7 @@ func Test_Filter_GetByFeature(t *testing.T) {
 	_ = ctx
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
-	//bs.PostTestSleep = 45
+	//bs.PostTestSleep = 120
 	br, err := SetupTest(bs)
 	_ = br
 	assert.NoError(t, err)
@@ -120,12 +126,34 @@ func Test_Filter_GetByFeature(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, pFoo.ID)
 	err = db.Filter_UpdatePlatform(ctx, pFoo)
-	assert.Error(t, err)
-	/* TODO: Need to implement
+	assert.NoError(t, err)
 	q = `MATCH (f:Filter)-[:USES]->(p:Platform) WHERE id(p) = %d RETURN id(f) AS filterID`
 	q = fmt.Sprintf(q, pFoo.ID)
 	r, err = db.Query(q)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(r))
-	*/
+}
+
+func Test_Filter_UpdatePlatform(t *testing.T) {
+	ctx := context.Background()
+	_ = ctx
+	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	//bs.PostTestSleep = 60
+	br, err := SetupTest(bs)
+	_ = br
+	assert.NoError(t, err)
+	defer db.TeardownTest(bs)
+	err = db.Platform_GetInsert(&pZen3)
+	assert.NoError(t, err)
+	// Actual test
+	fZen3 := types.Filter{
+		Label:   "zen3",
+		Feature: "cpu:zen3",
+	}
+	_, err = db.Filter_Insert(ctx, fZen3)
+	assert.NoError(t, err)
+	err = db.Filter_UpdatePlatform(ctx, pZen3)
+	assert.NoError(t, err)
 }

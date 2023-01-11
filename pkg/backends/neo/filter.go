@@ -84,6 +84,25 @@ func (n Neo) Filter_Get_ByLabel(label string) (f types.Filter, found bool, err e
 	found = true
 	return
 }
+func (n Neo) Filter_Get_ByFeature(feat string) (f types.Filter, found bool, err error) {
+	q := `MATCH (n:Filter) WHERE n.feature = "%s" RETURN id(n) AS filterID, n.label AS filterLabel, n.feature AS filterFeature LIMIT 1`
+	query := fmt.Sprintf(q, feat)
+	res, qFound, err := n.QueryOne(query)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	if !qFound {
+		return
+	}
+	f, err = FilterFromResult(res)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	found = true
+	return
+}
 
 func (n Neo) CreateFilter(f types.Filter) (filterID int64, err error) {
 	q := `CREATE (n:Filter {label: "%s", feature: "%s"}) RETURN id(n) AS ID`
@@ -150,9 +169,23 @@ func (n Neo) Filter_UpdatePlatform(ctx context.Context, plat types.Platform) (er
 		return err
 	} else {
 		// check if a filter already exists for the features
-		err = fmt.Errorf("'Filter_UpdatePlatform' not implemented")
+		f, found, err := n.Filter_Get_ByFeature(plat.Features)
+		if err != nil {
+			logrus.Error(err)
+			return err
+		}
+		if !found {
+			/// create filter
+			f.ID, err = n.Filter_Insert(ctx, types.Filter{Label: plat.Features, Feature: plat.Features})
+			if err != nil {
+				logrus.Error(err)
+				return err
+			}
+		}
+		// UpsertCreate link
+		err = n.LinkPlatformIDToFilterID(ctx, plat.ID, f.ID)
+		return err
 	}
-	return
 }
 
 func FilterFromResult(res Result) (f types.Filter, err error) {

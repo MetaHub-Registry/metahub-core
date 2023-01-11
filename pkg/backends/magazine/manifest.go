@@ -38,7 +38,33 @@ func (mag Magazine) GetManifest(ctx context.Context, m ycfg.Manifest) (mani type
 		Tag:    up.Tag,
 		Digest: up.Digest,
 	}
+	mani.Annotations = types.NewAnnotations()
+	/// Config
+	cfg, found, err := mag.Minio.GetTypesConfig(ctx, mani.Config.Digest)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	if !found {
+		err = errors.New("config is not cached")
+		return
+	}
+	mani.Config = cfg
+	anno, err := mag.Manifest_LabelsToAnnotations(mani)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	err = mani.UpdateAnnotations(anno)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
 	return
+}
+
+func (mag Magazine) Manifest_LabelsToAnnotations(mani types.Manifest) (anno types.Annotations, err error) {
+	return mani.Config.LabelsToAnnotations()
 }
 
 func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani types.Manifest, err error) {
@@ -266,6 +292,10 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (mani typ
 		err = fmt.Errorf("failed to find config for manifest")
 		return
 	}
+	logrus.Infof("Found Config: ID:%d #Labels:%d", cfg.ID, len(cfg.Labels.Map))
+	mani.Config = cfg
+	// Link Manifest to Config
+	logrus.Warnf("Linking Manifest to Config: %d -> %d", mani.ID, cfg.ID)
 	err = mag.Database.LinkManifestToConfig(ctx, mani.ID, cfg.ID)
 	if err != nil {
 		err = errors.Wrap(err, "failed to mag.LinkManifestToConfig")

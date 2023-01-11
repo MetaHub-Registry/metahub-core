@@ -9,6 +9,7 @@ import (
 	"github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
+	ociv1 "github.com/regclient/regclient/types/oci/v1"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
@@ -105,7 +106,9 @@ func (mag Magazine) Config_Get_ByManifest(ctx context.Context, req types.Request
 		return
 	}
 	if !cfgFound {
-		logrus.Errorf("Config '%s' not found: %s - is that a problem?", utils.ShortenDigest(cfg.Digest), label)
+		logrus.Errorf("Config '%s' not found '%s'. Insert with ID %d ", utils.ShortenDigest(cfg.Digest), label, cfg.ID)
+	} else {
+		logrus.Errorf("Config '%s' found: %s", utils.ShortenDigest(cfg.Digest), label)
 	}
 	v1Img, v1Found, err := mag.Minio.GetConfig(ctx, oMani.Config.Digest.String())
 	if err != nil {
@@ -125,19 +128,76 @@ func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUplo
 		logrus.Error(err)
 		return
 	}
+	c := ociv1.Image{
+		Config: ociv1.ImageConfig{
+			Labels: map[string]string{},
+		},
+	}
 	// Insert Config into Backend
 	cfg := types.Config{
 		Digest:    bu.Digest,
-		MediaType: bu.MediaType, //"application/vnd.docker.container.image.v1+json",
+		MediaType: bu.MediaType,
 		Size:      int64(len(buf)),
 		Data:      buf,
+		Cfg:       c,
 	}
-	/// WHat if config is already there?
-	_, err = mag.Database.Config_Insert(ctx, cfg)
+	switch bu.MediaType {
+	case "application/vnd.docker.container.image.v1+json":
+		var imgCfg v1.Image
+		err = json.Unmarshal(buf, &imgCfg)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		cfg.Cfg.Config.Labels = imgCfg.Config.Labels
+		anno, err := types.NewAnnotationsFromMap(imgCfg.Config.Labels)
+		if err != nil {
+			logrus.Error(err)
+			return err
+		}
+		cfg.Labels = anno
+	case "application/vnd.oci.image.config.v1+json":
+		var imgCfg ociv1.Image
+		err = json.Unmarshal(buf, &imgCfg)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		anno, err := types.NewAnnotationsFromMap(imgCfg.Config.Labels)
+		if err != nil {
+			logrus.Error(err)
+			return err
+		}
+		cfg.Cfg.Config.Labels = imgCfg.Config.Labels
+		cfg.Labels = anno
+	case "":
+		// OCI conformance test does not set the media type
+		bu.MediaType = "application/vnd.oci.image.config.v1+json"
+		var imgCfg ociv1.Image
+		err = json.Unmarshal(buf, &imgCfg)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		anno, err := types.NewAnnotationsFromMap(imgCfg.Config.Labels)
+		if err != nil {
+			logrus.Error(err)
+			return err
+		}
+		cfg.Cfg.Config.Labels = imgCfg.Config.Labels
+		cfg.Labels = anno
+	default:
+		err := errors.Errorf("unknown media type: %s", bu.MediaType)
+		logrus.Error(err)
+		return err
+	}
+	logrus.Warn("/// What if config is already there?")
+	cfgID, err := mag.Database.Config_Insert(ctx, cfg)
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
+	bu.ID = cfgID
 	err = mag.Minio.ConfigPutObj(ctx, bu.Digest, buf)
 	return
 }
@@ -146,14 +206,14 @@ func (mag Magazine) Config_GetInsert_ByOCIManifest(ociMani types.OCIManifest, la
 	ctx := context.Background()
 	/// OCI Manifest might embed the config as Data
 	if len(ociMani.Config.Data) > 0 {
-		/*
-			logrus.Warnf("Config embedded in OCI Manifest: %s", label)
-			fmt.Printf("Data: \n%s\n", ociMani.Config.Data)
-			dig := digest.FromBytes(ociMani.Config.Data)
-			if dig.String() != ociMani.Config.Digest.String() {
-				logrus.Errorf("Digest mismatch: %s != %s", dig, ociMani.Config.Digest)
-			}
-		*/
+		//logrus.Warnf("Config embedded in OCI Manifest: %s -> %s", utils.ShortenDigest(ociMani.Config.Digest.String()), label)
+		//fmt.Printf("Data: \n%s\n", ociMani.Config.Data)
+		dig := digest.FromBytes(ociMani.Config.Data)
+		if dig.String() != ociMani.Config.Digest.String() {
+			err = fmt.Errorf("digest mismatch: %s != %s", dig, ociMani.Config.Digest)
+			logrus.Error(err)
+			return
+		}
 		bu := types.OCIBlobUpload{
 			Digest:    ociMani.Config.Digest.String(),
 			Data:      ociMani.Config.Data,
@@ -164,6 +224,7 @@ func (mag Magazine) Config_GetInsert_ByOCIManifest(ociMani types.OCIManifest, la
 			logrus.Error(err)
 			return
 		}
+		logrus.Warn("Finished upload of embedded config")
 	}
 	cfg, found, err = mag.Database.Config_GetInsert_ByOCIManifest(ociMani, label)
 	return

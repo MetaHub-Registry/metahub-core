@@ -131,6 +131,7 @@ func FT_arm_BlobUpload_Config() (OCIBlobUpload, []byte) {
 		UploadedBy: "test",
 		BlobType:   "config",
 		BlobID:     1,
+		MediaType:  cfg.MediaType,
 		Repo:       "qnib/featuretest",
 		Digest:     cfg.Digest,
 	}

@@ -13,15 +13,16 @@ import (
 )
 
 type Config struct {
-	ID        int64    `json:"id"`
-	NeoID     int64    `json:"neo_id"`
-	SqlID     int64    `json:"sql_id"`
-	Data      []byte   `json:"-"`
-	Digest    string   `json:"digest"`
-	Label     string   `json:"label"`
-	MediaType string   `json:"media_type"`
-	Size      int64    `json:"size"`
-	Cfg       v1.Image `json:"cfg"`
+	ID        int64       `json:"id"`
+	NeoID     int64       `json:"neo_id"`
+	SqlID     int64       `json:"sql_id"`
+	Data      []byte      `json:"-"`
+	Digest    string      `json:"digest"`
+	Label     string      `json:"label"`
+	MediaType string      `json:"media_type"`
+	Size      int64       `json:"size"`
+	Cfg       v1.Image    `json:"cfg"`
+	Labels    Annotations `json:"labels"`
 }
 
 func NewConfigFromBytes(data []byte) (res Config, err error) {
@@ -112,6 +113,23 @@ func ConfigFromOCISpecV1Image(v1Img imgspecv1.Image) (res Config) {
 			DiffIDs: v1Img.RootFS.DiffIDs,
 		},
 		History: v1History,
+	}
+	return
+}
+
+func (c Config) LabelsToAnnotations() (anno Annotations, err error) {
+	anno = NewAnnotations()
+	for k, v := range c.Cfg.Config.Labels {
+		err = anno.AddAnnotation(k, v)
+		if err != nil {
+			return
+		}
+	}
+	for k, v := range c.Labels.Map {
+		err = anno.AddAnnotation(k, v)
+		if err != nil {
+			return
+		}
 	}
 	return
 }
