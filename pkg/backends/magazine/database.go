@@ -44,7 +44,6 @@ type Database interface {
 	Manifest_GetTypes_ByRequest(req types.Request) (res types.Manifest, found bool, err error)
 	Manifest_GetInsert(ctx context.Context, mani *types.Manifest) (err error)
 	Manifest_Remove(ctx context.Context, req types.Request) (found bool, err error)
-	Manifest_GetManifests_ByManifestListID(mlID int64) (manis []types.Manifest, err error)
 	Manifest_GetByCollectionTag(colID, colTagID int64) (manis []types.Manifest, err error)
 	/********* Filter ***********/
 	Filter_Insert(ctx context.Context, f types.Filter) (fID int64, err error)

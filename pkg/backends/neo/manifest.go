@@ -145,6 +145,7 @@ func (n Neo) Manifest_GetByCollectionTag(colID, colTagID int64) (manis []types.M
 	if err != nil {
 		return
 	}
+	ctx := context.Background()
 	manis = make([]types.Manifest, 0)
 	for result.Next() {
 		p, e := PlatformFromRecord(result)
@@ -172,6 +173,13 @@ func (n Neo) Manifest_GetByCollectionTag(colID, colTagID int64) (manis []types.M
 			err = e
 			return
 		}
+		anno, e := n.GetAnnotationsByConfigID(ctx, c.ID)
+		if e != nil {
+			err = e
+			return
+		}
+		m.Annotations = anno
+		c.Labels = anno
 		m.Config = c
 		m.Platform = p
 		m.Upstream = u
@@ -235,7 +243,7 @@ func ConfigFromRecord(res neo4j.Result) (c types.Config, err error) {
 		err = fmt.Errorf("no configID found in record: %v", r)
 		return
 	}
-	c.NeoID = v.(int64)
+	c.ID = v.(int64)
 	v, ok = r.Get("configDigest")
 	if !ok {
 		err = fmt.Errorf("no configDigest found in record: %v", r)
@@ -523,24 +531,6 @@ func (n Neo) Manifest_Remove(ctx context.Context, req types.Request) (found bool
 	if err != nil {
 		err = errors.Wrap(err, "failed to delete (m:Manifest)")
 		return
-	}
-	return
-}
-
-func (n Neo) Manifest_GetManifests_ByManifestListID(mlID int64) (manis []types.Manifest, err error) {
-	q := `MATCH (m:Manifest)-[:IS]->(plat:Platform)<-[:USES]-(f:Filter)<-[:IMPLEMENTS]-(ml:ManifestList)`
-	q += ` WHERE id(ml) = %d`
-	q += ` RETURN id(m) AS manifestID, m.digest AS manifestDigest, `
-	q += ` m.mediaType AS manifestMediaType, m.size AS manifestSize`
-	query := fmt.Sprintf(q, mlID)
-	res, err := n.Query(query)
-	for _, r := range res {
-		mani, err := ManifestFromResult(r)
-		if err != nil {
-			logrus.Errorf("failed to get manifest from result: %v", err)
-			continue
-		}
-		manis = append(manis, mani)
 	}
 	return
 }

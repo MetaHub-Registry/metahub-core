@@ -51,7 +51,3 @@ func (s Sqlite) Manifest_Remove(ctx context.Context, mani types.Manifest) (found
 	}
 	return
 }
-
-func (s Sqlite) Manifest_GetManifests_ByManifestListID(mlID int64) (manis []types.Manifest, err error) {
-	return s.Manifest.TypesManifest_GetByManifestListID(mlID)
-}

@@ -90,41 +90,6 @@ func (n Neo) Config_GetInsert_ByOCIManifest(ociMani types.OCIManifest, label str
 	return
 }
 
-/*
-func (n Neo) GetConfig(cfg types.Config) (cfgID int64, success bool, err error) {
-	q := `MATCH (n:Config) WHERE n.digest = "%s" RETURN id(n) AS ID`
-	query := fmt.Sprintf(q, cfg.Digest)
-	fmt.Printf("QueryGet: %s\n", query)
-	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
-	defer session.Close()
-	result, err := session.Run(query, map[string]interface{}{})
-	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
-		return
-	}
-	if result.Next() {
-		v, ok := result.Record().Get("ID")
-		if !ok {
-			err = fmt.Errorf("GetConfig() failed to get ID")
-			return
-		}
-		cfgID = v.(int64)
-		logrus.Warnf("found config with ID: %d", cfgID)
-		success = true
-		// Get Annotations
-		ctx := context.Background()
-		a, e := n.GetAnnotationsByConfigID(ctx, cfgID)
-		if e != nil {
-			err = errors.Wrap(e, "failed to get annotations by config ID")
-			return
-		}
-		logrus.Warnf("  -> found %d annotations", len(a.Map))
-		cfg.Labels = a
-	}
-	return
-}
-*/
-
 func (n Neo) createConfig(cfg types.Config) (cfgID int64, err error) {
 	q := `CREATE (n:Config {digest: "%s", mediaType: "%s", size: %d}) RETURN id(n) AS ID`
 	query := fmt.Sprintf(q, cfg.Digest, cfg.MediaType, cfg.Size)

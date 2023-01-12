@@ -24,7 +24,7 @@ func Test_Filter_Insert(t *testing.T) {
 	assert.NoError(t, err)
 	err = sq.Filter.InsertFilter(&testFilterGeneric)
 	assert.NoError(t, err)
-	assert.NotEqual(t, int64(-1), testCfg.SqlID)
+	assert.NotEqual(t, int64(-1), testCfg.ID)
 	prf := types.Profile{
 		Name: "generic",
 	}

@@ -182,7 +182,7 @@ func Setup_Config_FT_amd64(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	if err != nil {
 		return
 	}
-	br.Add("config:qnib/featuretest:amd64#id", fmt.Sprint(cfg.SqlID))
+	br.Add("config:qnib/featuretest:amd64#id", fmt.Sprint(cfg.ID))
 	br.Add("config:qnib/featuretest:amd64#digest", cfg.Digest)
 	br.Add("config:qnib/featuretest:amd64#size", fmt.Sprint(cfg.Size))
 	return
@@ -195,7 +195,7 @@ func Setup_Config_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	if err != nil {
 		return
 	}
-	br.Add("config:qnib/featuretest:arm64#id", fmt.Sprint(cfg.SqlID))
+	br.Add("config:qnib/featuretest:arm64#id", fmt.Sprint(cfg.ID))
 	br.Add("config:qnib/featuretest:arm64#digest", cfg.Digest)
 	br.Add("config:qnib/featuretest:arm64#size", fmt.Sprint(cfg.Size))
 	return
@@ -289,7 +289,7 @@ func Setup_Manifest_QNIB_FeatureTest_arm(sq *Sqlite, br *utils.BootstrapResult) 
 	if err != nil {
 		return err
 	}
-	mani.Config.SqlID = cfgID
+	mani.Config.ID = cfgID
 	// Layers
 	/// L0
 	l0 := types.Layer{}

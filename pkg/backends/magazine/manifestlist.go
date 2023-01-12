@@ -1,7 +1,6 @@
 package magazine
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 
@@ -63,28 +62,15 @@ func (mag Magazine) ComputeManifestlists() (err error) {
 }
 
 func (mag Magazine) ManifestListGetByRequest(req types.Request) (ml types.ManifestList, found bool, err error) {
-	ctx := context.Background()
 	// Fetch ML from SQLite
-	//ml, found, err = mag.SQlite.GetTypesManifestListByRequest(req)
 	ml, found, err = mag.Database.ManifestList_Get_ByRequest(req)
 	if err != nil {
 		logrus.Errorf("Failed to get ManifestList from Database: %v", err)
 		return
 	}
 	if !found {
-		// We did not find a ManifestList in SQLite
+		// We did not find a ManifestList
 		return
-	}
-	//manis, err := mag.SQlite.Manifest.TypesManifest_GetByManifestListID(ml.SqlID)
-	manis, err := mag.Database.Manifest_GetManifests_ByManifestListID(ml.ID)
-	for _, m := range manis {
-		// Fetch Manifest from Minio
-		miniMani, err := mag.Minio.ManifestGetObj(ctx, m.Digest)
-		if err != nil {
-			logrus.Errorf("Failed to fetch Manifest from Object store: %v", err)
-			return ml, found, err
-		}
-		ml.Manifests = append(ml.Manifests, miniMani)
 	}
 	return
 }

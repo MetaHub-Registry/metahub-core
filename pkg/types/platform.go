@@ -3,7 +3,7 @@ package types
 import "fmt"
 
 type Platform struct {
-	ID       int64  `json:"id"`
+	ID       int64  `json:"-"`
 	Arch     string `json:"architecture"`
 	OS       string `json:"os"`
 	Variant  string `json:"variant"`
