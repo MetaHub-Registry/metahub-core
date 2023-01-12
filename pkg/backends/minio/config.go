@@ -210,11 +210,11 @@ func (m Minio) GetConfigsBucketName() string {
 }
 
 func (m Minio) GetTypesConfig(ctx context.Context, dig string) (cfg types.Config, found bool, err error) {
-	logrus.Warnf("GetTypesConfig(%s)", dig)
 	b, err := m.ConfigGetBytes(ctx, dig)
 	switch {
 	case err != nil && err.Error() == "The specified key does not exist.":
 		// found is false
+		logrus.Debugf("GetTypesConfig(%s) not found", dig)
 		err = nil
 		return
 	case err != nil:

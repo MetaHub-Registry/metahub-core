@@ -15,7 +15,7 @@ import (
 )
 
 type Manifest struct {
-	ID          int64       `json:"id"`
+	ID          int64       `json:"-"`
 	Digest      string      `json:"digest"`
 	Data        []byte      `json:"data,omitempty"`
 	MediaType   string      `json:"media_type"`

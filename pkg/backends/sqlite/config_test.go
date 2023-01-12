@@ -23,7 +23,7 @@ func Test_Config_Insert(t *testing.T) {
 	defer TeardownTest(bs)
 	err := sq.Config.Insert(&testCfg)
 	assert.NoError(t, err)
-	assert.NotEqual(t, int64(-1), testCfg.SqlID)
+	assert.NotEqual(t, int64(-1), testCfg.ID)
 }
 
 func Test_Config_Upsert(t *testing.T) {
@@ -31,11 +31,11 @@ func Test_Config_Upsert(t *testing.T) {
 	defer TeardownTest(bs)
 	err := sq.Config.Upsert(&testCfg)
 	assert.NoError(t, err)
-	assert.NotEqual(t, int64(-1), testCfg.SqlID)
+	assert.NotEqual(t, int64(-1), testCfg.ID)
 	tCfg := testCfg
 	err = sq.Config.Upsert(&testCfg)
 	assert.NoError(t, err)
-	assert.Equal(t, tCfg.SqlID, testCfg.SqlID)
+	assert.Equal(t, tCfg.ID, testCfg.ID)
 }
 
 func Test_Config_GetCreateByRequest(t *testing.T) {
@@ -56,10 +56,10 @@ func Test_Config_GetCreateByRequest(t *testing.T) {
 	}
 	gotCfg, err := sq.Config.GetCreateByRequest(ociMani)
 	assert.NoError(t, err)
-	assert.NotEqual(t, int64(-1), gotCfg.SqlID)
+	assert.NotEqual(t, int64(-1), gotCfg.ID)
 	gotCfg2, err := sq.Config.GetCreateByRequest(ociMani)
 	assert.NoError(t, err)
-	assert.Equal(t, gotCfg.SqlID, gotCfg2.SqlID)
+	assert.Equal(t, gotCfg.ID, gotCfg2.ID)
 
 }
 
@@ -85,18 +85,18 @@ func Test_Config_gets(t *testing.T) {
 	found, err := sq.Config.GetByRequest(&cfg)
 	assert.NoError(t, err)
 	assert.True(t, found)
-	assert.Equal(t, expCfgID, fmt.Sprint(cfg.SqlID))
+	assert.Equal(t, expCfgID, fmt.Sprint(cfg.ID))
 	// Test GetByDigest
 	cfg2, found, err := sq.Config.ConfigGetByDigest(expDig)
 	assert.NoError(t, err)
 	assert.True(t, found)
-	assert.Equal(t, expCfgID, fmt.Sprint(cfg2.SqlID))
-	err = sq.Config.RemoveByID(cfg2.SqlID)
+	assert.Equal(t, expCfgID, fmt.Sprint(cfg2.ID))
+	err = sq.Config.RemoveByID(cfg2.ID)
 	assert.NoError(t, err)
 	_, found, err = sq.Config.ConfigGetByDigest(expDig)
 	assert.NoError(t, err)
 	assert.False(t, found)
-	err = sq.Config.RemoveByID(cfg2.SqlID)
+	err = sq.Config.RemoveByID(cfg2.ID)
 	assert.Error(t, err)
 
 }

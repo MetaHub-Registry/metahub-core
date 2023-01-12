@@ -31,7 +31,9 @@ func (l Layer) ToDescriptor() distribution.Descriptor {
 func (l Layer) WriteWWWHeader(w http.ResponseWriter) {
 	// TODO: Not sure if that is stable over time. We might need to
 	w.Header().Set("Docker-Content-Digest", l.Digest)
-	w.Header().Set("Content-Length", "0")
+	if w.Header().Get("Content-Length") == "" {
+		w.Header().Set("Content-Length", "0")
+	}
 	w.Header().Set("Docker-Distribution-API-Version", "registry/2.0")
 	w.WriteHeader(http.StatusOK)
 }

@@ -67,7 +67,6 @@ func (s Sqlite) LoginUserWithHash(username, pwhash string) (err error) {
 }
 
 func (s Sqlite) LoginUserScope(username, password string, req types.Request) (status int, pl helper.ErrorPayload, err error) {
-	logrus.Debug(">> LoginUserScope")
 	// check login and return token
 	u, err := s.User.GetByUsername(username)
 	if err != nil {

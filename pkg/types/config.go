@@ -13,9 +13,7 @@ import (
 )
 
 type Config struct {
-	ID        int64       `json:"id"`
-	NeoID     int64       `json:"neo_id"`
-	SqlID     int64       `json:"sql_id"`
+	ID        int64       `json:"-"`
 	Data      []byte      `json:"-"`
 	Digest    string      `json:"digest"`
 	Label     string      `json:"label"`

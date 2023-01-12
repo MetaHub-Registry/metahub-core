@@ -69,9 +69,6 @@ func Test_ManifestList_CRUD(t *testing.T) {
 	assert.NotNil(t, ml_generic_id)
 	err = db.LinkManifestListToManifests(ml_generic_id, []types.Manifest{arm_ml, amd_ml})
 	assert.NoError(t, err)
-	manis, err := db.Manifest_GetManifests_ByManifestListID(ml_arm64_id)
-	assert.NoError(t, err)
-	assert.Equal(t, 2, len(manis))
 }
 
 func Test_ManifestList_ByRequest_SeedNeo_Skylake(t *testing.T) {

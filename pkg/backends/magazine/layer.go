@@ -85,6 +85,7 @@ func (mag Magazine) Layer_GetPresignedUrlByHTTPRequest(r *http.Request) (psUrl s
 func (mag Magazine) Layer_GetByHTTPRequest(r *http.Request) (layer types.Layer, found bool, err error) {
 	ctx := context.Background()
 	req := types.NewRequest(r)
+	//logrus.Debugf("Layer_GetByHTTPRequest: %s", req.String())
 	// Fetch Layer from SQLite
 	layer, found, err = mag.Database.LayerGetByDigest(req.Digest)
 	if err != nil {

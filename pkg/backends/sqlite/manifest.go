@@ -193,7 +193,7 @@ func (m Manifest) Insert(i *types.Manifest) (err error) {
 		logrus.Error(err)
 		return
 	}
-	res, err := stmt.Exec(i.Digest, i.MediaType, i.Size, i.Platform.ID, i.Upstream.ID, i.Config.SqlID)
+	res, err := stmt.Exec(i.Digest, i.MediaType, i.Size, i.Platform.ID, i.Upstream.ID, i.Config.ID)
 	if err != nil {
 		err = errors.Wrap(err, "failed to insert manifest")
 		logrus.Error(err)

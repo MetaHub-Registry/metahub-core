@@ -70,7 +70,7 @@ func (c Config) Upsert(i *types.Config) (err error) {
 			return
 		}
 	}
-	i.SqlID = id
+	i.ID = id
 	return
 }
 
@@ -86,7 +86,7 @@ func (c Config) Insert(i *types.Config) (err error) {
 		logrus.Error(err)
 		return
 	}
-	i.SqlID, err = res.LastInsertId()
+	i.ID, err = res.LastInsertId()
 	return
 }
 
@@ -100,7 +100,7 @@ func (c Config) GetByRequest(cfg *types.Config) (found bool, err error) {
 	}
 	for rows.Next() {
 		found = true
-		err = rows.Scan(&cfg.SqlID)
+		err = rows.Scan(&cfg.ID)
 	}
 	return
 }
@@ -132,7 +132,7 @@ func (c Config) GetCreateByRequest(ociMani types.OCIManifest) (cfg types.Config,
 		logrus.Error(err)
 		return
 	}
-	cfg.SqlID, err = res.LastInsertId()
+	cfg.ID, err = res.LastInsertId()
 	return
 }
 
@@ -147,7 +147,7 @@ func (c Config) ConfigGetByDigest(dig string) (cfg types.Config, found bool, err
 	cfg = types.Config{}
 	for rows.Next() {
 		found = true
-		err = rows.Scan(&cfg.SqlID, &cfg.Digest, &cfg.Label, &cfg.MediaType, &cfg.Size)
+		err = rows.Scan(&cfg.ID, &cfg.Digest, &cfg.Label, &cfg.MediaType, &cfg.Size)
 	}
 	return
 }
