@@ -13,6 +13,7 @@ import (
 )
 
 // var ctx = context.Background()
+/*
 var cfgWithLabels = []byte(`{
 	"schemaVersion": 2,
 	"config": {
@@ -28,7 +29,7 @@ var cfgWithLabels = []byte(`{
 	},
 	"layers": []
 	}`)
-
+*/
 func Test_CachManifest(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
@@ -147,6 +148,7 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer(t *testing.T) {
 	assert.Equal(t, 1, len(cols))
 }
 
+/*
 func Test_Manifest_Annotations(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
@@ -177,3 +179,4 @@ func Test_Manifest_Annotations(t *testing.T) {
 	assert.Equal(t, bufDig.String(), mani.Digest)
 	assert.Equal(t, 2, len(mani.Config.Labels.Map))
 }
+*/

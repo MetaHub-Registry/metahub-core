@@ -23,8 +23,8 @@ type Database interface {
 	Upstream_GetInsert_ByRequest(req types.Request) (up types.Upstream, found bool, err error)
 
 	/********* Annotation/Labels *********/
-	Config_AddLabels(ctx context.Context, cfgID int64, a *types.Annotations) (err error)
-	Manifest_AddAnnotations(ctx context.Context, maniID int64, a *types.Annotations) (err error)
+	//Config_AddLabels(ctx context.Context, cfgID int64, a *types.Annotations) (err error)
+	//Manifest_AddAnnotations(ctx context.Context, maniID int64, a *types.Annotations) (err error)
 
 	/********* Layer ***********/
 	LayerGetByDigest(dig string) (l types.Layer, found bool, err error)

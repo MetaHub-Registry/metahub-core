@@ -150,12 +150,13 @@ func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUplo
 			return
 		}
 		cfg.Cfg.Config.Labels = imgCfg.Config.Labels
-		anno, err := types.NewAnnotationsFromMap(imgCfg.Config.Labels)
+		/*anno, err := types.NewAnnotationsFromMap(imgCfg.Config.Labels)
 		if err != nil {
 			logrus.Error(err)
 			return err
 		}
 		cfg.Labels = anno
+		*/
 	case "application/vnd.oci.image.config.v1+json":
 		var imgCfg ociv1.Image
 		err = json.Unmarshal(buf, &imgCfg)
@@ -163,13 +164,15 @@ func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUplo
 			logrus.Error(err)
 			return
 		}
-		anno, err := types.NewAnnotationsFromMap(imgCfg.Config.Labels)
-		if err != nil {
-			logrus.Error(err)
-			return err
-		}
-		cfg.Cfg.Config.Labels = imgCfg.Config.Labels
-		cfg.Labels = anno
+		/*
+			anno, err := types.NewAnnotationsFromMap(imgCfg.Config.Labels)
+			if err != nil {
+				logrus.Error(err)
+				return err
+			}
+			cfg.Cfg.Config.Labels = imgCfg.Config.Labels
+			cfg.Labels = anno
+		*/
 	case "":
 		// OCI conformance test does not set the media type
 		bu.MediaType = "application/vnd.oci.image.config.v1+json"
@@ -179,13 +182,15 @@ func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUplo
 			logrus.Error(err)
 			return
 		}
-		anno, err := types.NewAnnotationsFromMap(imgCfg.Config.Labels)
-		if err != nil {
-			logrus.Error(err)
-			return err
-		}
-		cfg.Cfg.Config.Labels = imgCfg.Config.Labels
-		cfg.Labels = anno
+		/*
+			anno, err := types.NewAnnotationsFromMap(imgCfg.Config.Labels)
+			if err != nil {
+				logrus.Error(err)
+				return err
+			}
+			cfg.Cfg.Config.Labels = imgCfg.Config.Labels
+			cfg.Labels = anno
+		*/
 	default:
 		err := errors.Errorf("unknown media type: %s", bu.MediaType)
 		logrus.Error(err)

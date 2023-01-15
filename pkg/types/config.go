@@ -13,14 +13,14 @@ import (
 )
 
 type Config struct {
-	ID        int64       `json:"-"`
-	Data      []byte      `json:"-"`
-	Digest    string      `json:"digest"`
-	Label     string      `json:"label"`
-	MediaType string      `json:"media_type"`
-	Size      int64       `json:"size"`
-	Cfg       v1.Image    `json:"cfg"`
-	Labels    Annotations `json:"labels"`
+	ID        int64    `json:"-"`
+	Data      []byte   `json:"-"`
+	Digest    string   `json:"digest"`
+	Label     string   `json:"label"`
+	MediaType string   `json:"media_type"`
+	Size      int64    `json:"size"`
+	Cfg       v1.Image `json:"cfg"`
+	//Labels    Annotations `json:"labels"`
 }
 
 func NewConfigFromBytes(data []byte) (res Config, err error) {
@@ -115,6 +115,7 @@ func ConfigFromOCISpecV1Image(v1Img imgspecv1.Image) (res Config) {
 	return
 }
 
+/*
 func (c Config) LabelsToAnnotations() (anno Annotations, err error) {
 	anno = NewAnnotations()
 	for k, v := range c.Cfg.Config.Labels {
@@ -131,3 +132,4 @@ func (c Config) LabelsToAnnotations() (anno Annotations, err error) {
 	}
 	return
 }
+*/

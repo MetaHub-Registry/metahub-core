@@ -1,13 +1,6 @@
 package neo
 
-import (
-	"context"
-	"fmt"
-
-	"github.com/pkg/errors"
-	"github.com/metahub-registry/metahub-core/pkg/types"
-)
-
+/*
 func (n Neo) Config_AddLabels(ctx context.Context, cfgID int64, a *types.Annotations) (err error) {
 	for k, v := range a.Map {
 		aID, e := n.AddAnnotation(ctx, k, v)
@@ -86,3 +79,4 @@ func AnnotationFromResult(res Result) (a types.Annotations, err error) {
 	a.ID = id
 	return
 }
+*/

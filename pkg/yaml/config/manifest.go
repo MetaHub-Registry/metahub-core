@@ -8,10 +8,10 @@ import (
 )
 
 type Manifest struct {
-	Image       string            `yaml:"image"`
-	Digest      string            `yaml:"digest"`
-	Platform    platform.Platform `yaml:"platform"`
-	Annotations map[string]string `yaml:"annotations"`
+	Image    string            `yaml:"image"`
+	Digest   string            `yaml:"digest"`
+	Platform platform.Platform `yaml:"platform"`
+	//Annotations map[string]string `yaml:"annotations"`
 }
 
 func (m Manifest) ToUpstreamTriple() (u upstream.UpstreamTriple, err error) {

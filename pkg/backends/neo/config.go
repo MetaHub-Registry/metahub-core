@@ -30,14 +30,16 @@ func (n Neo) ConfigGetByDigest(dig string) (cfg types.Config, found bool, err er
 			err = errors.Wrap(err, "failed to create config from DB result")
 			return
 		}
-		// TODO: Fetch annotations
-		ctx := context.Background()
-		a, e := n.GetAnnotationsByConfigID(ctx, cfg.ID)
-		if e != nil {
-			err = errors.Wrap(e, "failed to get annotations by config ID")
-			return
-		}
-		cfg.Labels = a
+		/*
+			// TODO: Fetch annotations
+			ctx := context.Background()
+			a, e := n.GetAnnotationsByConfigID(ctx, cfg.ID)
+			if e != nil {
+				err = errors.Wrap(e, "failed to get annotations by config ID")
+				return
+			}
+			cfg.Labels = a
+		*/
 		found = true
 	default:
 		err = fmt.Errorf("found multiple configs with digest %s", dig)
@@ -69,16 +71,18 @@ func (n Neo) Config_GetInsert_ByOCIManifest(ociMani types.OCIManifest, label str
 		return
 	}
 	// Create Config from ociMani
-	a, err := types.NewAnnotationsFromMap(ociMani.Config.Annotations)
-	if err != nil {
-		logrus.Error(err)
-		return
-	}
+	/*
+		a, err := types.NewAnnotationsFromMap(ociMani.Config.Annotations)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+	*/
 	cfg = types.Config{
 		Digest:    ociMani.Config.Digest.String(),
 		MediaType: ociMani.Config.MediaType,
 		Size:      ociMani.Config.Size,
-		Labels:    a,
+		//Labels:    a,
 	}
 	cfgId, err := n.createConfig(cfg)
 	//err = fmt.Errorf("need more info to create config with Upstream to create label")
@@ -126,13 +130,15 @@ func (n Neo) Config_Insert(ctx context.Context, cfg types.Config) (cfgID int64, 
 		}
 		//logrus.Errorf("Config_Insert ID: %d", cfgID)
 		// Add Annotations
-		a, e := cfg.LabelsToAnnotations()
-		if e != nil {
-			err = e
-			return
-		}
-		//logrus.Errorf("Config_Insert Annotations: %v", a)
-		err = n.Config_AddLabels(ctx, cfgID, &a)
+		/*
+			a, e := cfg.LabelsToAnnotations()
+			if e != nil {
+				err = e
+				return
+			}
+			//logrus.Errorf("Config_Insert Annotations: %v", a)
+			err = n.Config_AddLabels(ctx, cfgID, &a)
+		*/
 		return
 	}
 	cfgID = gotCfg.ID
@@ -157,6 +163,7 @@ func ConfigFromResult(res Result) (cfg types.Config, err error) {
 	return
 }
 
+/*
 func (n Neo) LinkConfigToAnnotation(ctx context.Context, cfgID, annotationID int64) (err error) {
 	q := `MATCH (cfg:Config), (a:Annotation) WHERE id(cfg) = %d AND id(a) = %d MERGE (cfg)-[:HAS_ANNOTATION]->(a)`
 	query := fmt.Sprintf(q, cfgID, annotationID)
@@ -166,3 +173,4 @@ func (n Neo) LinkConfigToAnnotation(ctx context.Context, cfgID, annotationID int
 	}
 	return
 }
+*/

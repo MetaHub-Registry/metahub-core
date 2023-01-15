@@ -145,7 +145,7 @@ func (n Neo) Manifest_GetByCollectionTag(colID, colTagID int64) (manis []types.M
 	if err != nil {
 		return
 	}
-	ctx := context.Background()
+	//ctx := context.Background()
 	manis = make([]types.Manifest, 0)
 	for result.Next() {
 		p, e := PlatformFromRecord(result)
@@ -173,13 +173,15 @@ func (n Neo) Manifest_GetByCollectionTag(colID, colTagID int64) (manis []types.M
 			err = e
 			return
 		}
-		anno, e := n.GetAnnotationsByConfigID(ctx, c.ID)
-		if e != nil {
-			err = e
-			return
-		}
-		m.Annotations = anno
-		c.Labels = anno
+		/*
+			anno, e := n.GetAnnotationsByConfigID(ctx, c.ID)
+			if e != nil {
+				err = e
+				return
+			}
+			m.Annotations = anno
+			c.Labels = anno
+		*/
 		m.Config = c
 		m.Platform = p
 		m.Upstream = u
@@ -535,6 +537,7 @@ func (n Neo) Manifest_Remove(ctx context.Context, req types.Request) (found bool
 	return
 }
 
+/*
 func (n Neo) LinkManifestToAnnotation(ctx context.Context, maniID, annotationID int64) (err error) {
 	q := `MATCH (m:Manifest), (a:Annotation) WHERE id(m) = %d AND id(a) = %d MERGE (m)-[:HAS_ANNOTATION]->(a)`
 	query := fmt.Sprintf(q, maniID, annotationID)
@@ -544,3 +547,4 @@ func (n Neo) LinkManifestToAnnotation(ctx context.Context, maniID, annotationID 
 	}
 	return
 }
+*/
