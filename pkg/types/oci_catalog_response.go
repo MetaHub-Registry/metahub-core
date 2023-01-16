@@ -11,11 +11,8 @@ type CatalogResponse struct {
 	Repos []string `json:"repositories"`
 }
 
-func (r CatalogResponse) WriteWWWHeader(w http.ResponseWriter) {
+func (r CatalogResponse) WriteWWW(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
-}
-
-func (r CatalogResponse) WriteWWWBody(w http.ResponseWriter) {
 	b, err := r.ToBytes()
 	if err != nil {
 		logrus.Errorf("failed to marshal manifest: %v", err)

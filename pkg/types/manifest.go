@@ -112,16 +112,19 @@ func (m Manifest) WriteWWWHeader(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", m.MediaType)
 	w.Header().Set("Docker-Content-Digest", m.Digest)
 	w.Header().Set("Etag", m.Digest)
-
 }
 
-func (m Manifest) WriteWWWBody(w http.ResponseWriter) {
+func (m Manifest) WriteWWW(w http.ResponseWriter) {
 	size := len(m.Data)
 	w.Header().Set("Content-Length", fmt.Sprint(size))
 	b := m.Data
 	dig := digest.FromBytes(b)
-	logrus.Warnf("DIGEST.FromBytes: %s", dig.String())
-	logrus.Warnf("DIGEST.FromMani: %s", m.Digest)
+	if dig.String() != m.Digest {
+		logrus.Error("Digest mismatch")
+	}
+	w.Header().Set("Content-Type", m.MediaType)
+	w.Header().Set("Docker-Content-Digest", m.Digest)
+	w.Header().Set("Etag", m.Digest)
 	w.Write(b)
 }
 

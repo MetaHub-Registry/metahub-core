@@ -41,7 +41,7 @@ func (br BlobReference) ToDescriptor() distribution.Descriptor {
 	}
 }
 
-func (br BlobReference) WriteWWWHeader(w http.ResponseWriter) {
+func (br BlobReference) WriteWWW(w http.ResponseWriter) {
 	b := br.Data
 	size := len(b)
 	// TODO: Check if we need to set the Content-Type
@@ -50,8 +50,5 @@ func (br BlobReference) WriteWWWHeader(w http.ResponseWriter) {
 	w.Header().Set("Docker-Content-Digest", br.Digest)
 	w.Header().Set("Docker-Distribution-API-Version", "registry/2.0")
 	w.Header().Set("Etag", br.Digest)
-}
-
-func (br BlobReference) WriteWWWBody(w http.ResponseWriter) {
 	w.Write(br.Data)
 }

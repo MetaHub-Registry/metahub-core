@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 
 	"github.com/docker/distribution/manifest/manifestlist"
 )
@@ -29,7 +30,16 @@ func (ml ManifestList) ToOCIBytes() (b []byte) {
 		MediaType:     ml.MediaType,
 		Manifests:     []manifestlist.ManifestDescriptor{},
 	}
+	// Sort by digest
+	digList := []string{}
+	digMap := map[string]Manifest{}
 	for _, m := range ml.Manifests {
+		digList = append(digList, m.Digest)
+		digMap[m.Digest] = m
+	}
+	sort.Strings(digList)
+	for _, d := range digList {
+		m := digMap[d]
 		oci.Manifests = append(oci.Manifests, m.ToOCIManifestDescriptor())
 	}
 	b, _ = json.Marshal(oci)
@@ -47,7 +57,12 @@ func (ml ManifestList) WriteWWWHeader(w http.ResponseWriter) {
 	w.Header().Set("Etag", ml.Digest)
 }
 
-func (ml ManifestList) WriteWWWBody(w http.ResponseWriter) {
+func (ml ManifestList) WriteWWW(w http.ResponseWriter) {
 	b := ml.ToOCIBytes()
+	size := len(b)
+	w.Header().Set("Content-Type", ml.MediaType)
+	w.Header().Set("Content-Length", fmt.Sprint(size))
+	w.Header().Set("Docker-Content-Digest", ml.Digest)
+	w.Header().Set("Etag", ml.Digest)
 	w.Write(b)
 }

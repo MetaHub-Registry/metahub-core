@@ -38,12 +38,15 @@ func (l Layer) WriteWWWHeader(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (l Layer) WriteWWWBody(w http.ResponseWriter) {
+func (l Layer) WriteWWW(w http.ResponseWriter) {
 	b := l.Data
 	size := len(b)
+	w.Header().Set("Docker-Content-Digest", l.Digest)
 	w.Header().Set("Content-Length", fmt.Sprint(size))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Write(l.Data)
+	w.Header().Set("Docker-Distribution-API-Version", "registry/2.0")
+	w.WriteHeader(http.StatusOK)
 }
 
 func NewLayerFromBytes(data []byte) (res Layer, err error) {
