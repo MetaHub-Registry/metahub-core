@@ -47,6 +47,16 @@ func (n Neo) CollectionListing_Get_ByRepoLike(repo string) (cols []types.Collect
 		if err != nil {
 			return cols, err
 		}
+		// Fill Manifests
+		manis, e := n.Manifest_GetByCollectionTag(col.ID, col.ColTag.ID)
+		if e != nil {
+			return cols, e
+		}
+		for _, m := range manis {
+			k := fmt.Sprintf("%s/%s:%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag)
+			col.Manifests[k] = m
+			col.ManifestCount++
+		}
 		cols = append(cols, col)
 	}
 	return
