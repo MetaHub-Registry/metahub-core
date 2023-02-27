@@ -11,7 +11,7 @@ import (
 var f embed.FS
 
 var (
-	Example_PlatformAMD64 = []Platform{
+	/*Example_PlatformAMD64 = []Platform{
 		{Arch: "amd64", Variant: "", OS: "linux", Features: "cpu:broadwell"},
 		{Arch: "amd64", Variant: "", OS: "linux", Features: "cpu:cascadelake"},
 		{Arch: "amd64", Variant: "", OS: "linux", Features: "cpu:skylake"},
@@ -22,36 +22,27 @@ var (
 		{Arch: "amd64", Variant: "", OS: "linux", Features: "cpu:zen3"},
 		{Arch: "amd64", Variant: "", OS: "linux", Features: "cpu:zen4"},
 	}
-	Example_PlatformGeneric = []Platform{
-		{Arch: "amd64", Variant: "", OS: "linux", Features: ""},
-		{Arch: "arm", Variant: "v6", OS: "linux", Features: ""},
-		{Arch: "arm", Variant: "v7", OS: "linux", Features: ""},
-		{Arch: "arm64", Variant: "", OS: "linux", Features: ""},
-		{Arch: "arm64", Variant: "v8", OS: "linux", Features: ""},
-		{Arch: "riscv64", Variant: "", OS: "linux", Features: ""},
-	}
 	Example_PlatformARM64 = []Platform{
 		{Arch: "arm64", Variant: "v8", OS: "linux", Features: "cpu:a64fx"},
 		{Arch: "arm64", Variant: "v8", OS: "linux", Features: "cpu:graviton3"},
 		{Arch: "arm64", Variant: "v8", OS: "linux", Features: "cpu:graviton3e"},
 	}
+	*/
+	Example_PlatformGeneric = []Platform{
+		{Arch: "amd64", Variant: "", OS: "linux"},
+		{Arch: "arm", Variant: "v6", OS: "linux"},
+		{Arch: "arm", Variant: "v7", OS: "linux"},
+		{Arch: "arm64", Variant: "", OS: "linux"},
+		{Arch: "arm64", Variant: "v8", OS: "linux"},
+		{Arch: "riscv64", Variant: "", OS: "linux"},
+	}
 )
 
 func Example_Platform_amd64() Platform {
 	return Platform{
-		Arch:     "amd64",
-		OS:       "linux",
-		Variant:  "",
-		Features: "",
-	}
-}
-
-func Example_Platform_broadwell() Platform {
-	return Platform{
-		Arch:     "amd64",
-		OS:       "linux",
-		Variant:  "",
-		Features: "cpu:broadwell",
+		Arch:    "amd64",
+		OS:      "linux",
+		Variant: "",
 	}
 }
 
@@ -66,7 +57,7 @@ func FT_arm_ConfigByte() []byte {
 
 func FT_amd64_ConfigByte() []byte {
 	// read file and return bytes
-	dat, err := f.ReadFile("data/cfg/83fdbde95f56beb69853240df571a7f085c561b4f8d914c5cc5e0f171dcb86df.dat")
+	dat, err := f.ReadFile("data/cfg/fba3e3993bfe856a766b683c73e1ddeb03f2d359d7bd7700095682d94c3fcebf.dat")
 	if err != nil {
 		panic(err)
 	}

@@ -14,7 +14,7 @@ func Test_CacheLayers(t *testing.T) {
 	assert.NoError(t, err)
 	defer TeardownTest(bs)
 	// Test
-	mani := types.FT_arm_Manifest()
+	mani := types.FT_arm_ManifestData()
 	err = mag.CacheLayers(ctx, mani)
 	assert.NoError(t, err)
 	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mani.Digest)

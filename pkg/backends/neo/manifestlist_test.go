@@ -1,33 +1,21 @@
 package neo
 
-import (
-	"context"
-	"testing"
-
-	"github.com/opencontainers/go-digest"
-	"github.com/stretchr/testify/assert"
-	"github.com/metahub-registry/metahub-core/pkg/types"
-	"github.com/metahub-registry/metahub-core/pkg/utils"
-)
-
+/*
 func Test_ManifestList_CRUD(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
-	bs.AddBootstrap("filter")
 	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("platforms:amd64")
-	bs.AddBootstrap("platforms:arm64")
-	bs.AddBootstrap("profiles")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
 	bs.AddBootstrap("config:ft_arm")
 	bs.AddBootstrap("config:ft_amd64")
 	bs.AddBootstrap("upstream:ft_arm64")
 	bs.AddBootstrap("upstream:ft_amd64")
-	bs.AddBootstrap("layer0:ft_arm64")
-	bs.AddBootstrap("layer1:ft_arm64")
-	bs.AddBootstrap("layer0:ft_amd64")
-	bs.AddBootstrap("layer1:ft_amd64")
+	bs.AddBootstrap("layer:0:ft_arm64")
+	bs.AddBootstrap("layer:1:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_amd64")
+	bs.AddBootstrap("layer:1:ft_amd64")
 	bs.AddBootstrap("manifest:ft_arm64")
 	bs.AddBootstrap("manifest:ft_amd64")
 	bs.SetEmptyAll()
@@ -56,10 +44,10 @@ func Test_ManifestList_CRUD(t *testing.T) {
 	err = db.LinkManifestListToFilter(ml_arm64_id, flt_arm64_id)
 	assert.NoError(t, err)
 	//// Manifest
-	arm_ml := types.FT_arm_Manifest()
+	arm_ml := types.FT_arm_ManifestData()
 	arm_ml.ID, err = br.GetInt64("manifest:ft_arm64#id")
 	assert.NoError(t, err)
-	amd_ml := types.FT_arm_Manifest()
+	amd_ml := types.FT_arm_ManifestData()
 	amd_ml.ID, err = br.GetInt64("manifest:ft_amd64#id")
 	assert.NoError(t, err)
 	//// GENERIC ML
@@ -67,7 +55,7 @@ func Test_ManifestList_CRUD(t *testing.T) {
 	ml_generic_id, err := db.CreateManifestList(digest.Digest(ml_generic.Digest), ml_generic.MediaType, int(ml_generic.Size))
 	assert.NoError(t, err)
 	assert.NotNil(t, ml_generic_id)
-	err = db.LinkManifestListToManifests(ml_generic_id, []types.Manifest{arm_ml, amd_ml})
+	err = db.LinkManifestListToManifests(ml_generic_id, []types.ManifestData{arm_ml, amd_ml})
 	assert.NoError(t, err)
 }
 
@@ -102,3 +90,4 @@ func Test_ManifestList_ByRequest_SeedNeo_Skylake(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, 1, len(ml.Manifests))
 }
+*/

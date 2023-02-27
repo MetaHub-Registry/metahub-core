@@ -111,43 +111,44 @@ func (n Neo) Setup() (err error) {
 	input := map[string]interface{}{}
 	type pair struct {
 		name string
-		attr string
+		attr []string
 	}
 	nodes := []pair{
 		{
 			name: "Profile",
-			attr: "name",
+			attr: []string{"label"},
 		}, {
 			name: "Upstream",
-			attr: "label",
+			attr: []string{"label"},
 		}, {
-			name: "Filter",
-			attr: "label",
+			name: "Rule",
+			attr: []string{"label"},
 		}, {
 			name: "Collection",
-			attr: "label",
+			attr: []string{"label"},
 		}, {
 			name: "Platform",
-			attr: "label",
+			attr: []string{"label"},
 		}, {
 			name: "Manifest",
-			attr: "digest",
+			attr: []string{"digest", "mediaType"},
 			//}, {
 			//	name: "ManifestList",
 			//	attr: "digest",
 		}, {
 			name: "Config",
-			attr: "digest",
+			attr: []string{"digest", "mediaType"},
 		}, {
 			name: "Layer",
-			attr: "digest",
+			attr: []string{"digest", "mediaType"},
 		},
 	}
 	for _, t := range nodes {
-		q := fmt.Sprintf(`CREATE CONSTRAINT constraint_node_%s IF NOT EXISTS FOR (p:%s) REQUIRE p.%s IS UNIQUE`, strings.ToLower(t.name), t.name, t.attr)
+		q := fmt.Sprintf(`CREATE CONSTRAINT constraint_node_%s IF NOT EXISTS FOR (p:%s) REQUIRE (p.`, strings.ToLower(t.name), t.name)
+		q += strings.Join(t.attr, ", p.")
+		q += `) IS UNIQUE`
 		logrus.Debug(q)
 		_ = input
-		/// TODO: enable CREATE CONSTRAINT
 		_, err = session.Run(q, input)
 		if err != nil {
 			logrus.Fatal(err.Error())
@@ -175,7 +176,7 @@ func (n Neo) EmptyGraph() (err error) {
 	return
 }
 
-func (n Neo) Execute(q string) (res Result, err error) {
+func (n Neo) Execute(q string) (res types.Result, err error) {
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	if err != nil {
 		logrus.Errorf("Error creating neo session: %s\n", err)
@@ -188,7 +189,7 @@ func (n Neo) Execute(q string) (res Result, err error) {
 		logrus.Errorf("Error running query: %s\n", err)
 		return
 	}
-	res = NewResult()
+	res = types.NewResult()
 	for r.Next() {
 		record := r.Record()
 		keys, err := r.Keys()
@@ -204,7 +205,7 @@ func (n Neo) Execute(q string) (res Result, err error) {
 	return
 }
 
-func (n Neo) QueryOne(q string) (res Result, found bool, err error) {
+func (n Neo) QueryOne(q string) (res types.Result, found bool, err error) {
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
 	if err != nil {
 		logrus.Errorf("Error creating neo session: %s\n", err)
@@ -224,7 +225,7 @@ func (n Neo) QueryOne(q string) (res Result, found bool, err error) {
 			logrus.Errorf("Error getting keys: %s\n", err)
 			return res, found, err
 		}
-		res = NewResult()
+		res = types.NewResult()
 		for idx, key := range keys {
 			v := record.Values[idx]
 			res.Add(key, v)
@@ -234,7 +235,7 @@ func (n Neo) QueryOne(q string) (res Result, found bool, err error) {
 	return
 }
 
-func (n Neo) Query(q string) (res []Result, err error) {
+func (n Neo) Query(q string) (res []types.Result, err error) {
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
 	if err != nil {
 		logrus.Errorf("Error creating neo session: %s\n", err)
@@ -247,7 +248,7 @@ func (n Neo) Query(q string) (res []Result, err error) {
 		logrus.Errorf("Error running query: %s\n", err)
 		return
 	}
-	res = []Result{}
+	res = []types.Result{}
 	for r.Next() {
 		record := r.Record()
 		keys, err := r.Keys()
@@ -255,7 +256,7 @@ func (n Neo) Query(q string) (res []Result, err error) {
 			logrus.Errorf("Error getting keys: %s\n", err)
 			return nil, err
 		}
-		row := NewResult()
+		row := types.NewResult()
 		for idx, key := range keys {
 			v := record.Values[idx]
 			row.Add(key, v)
@@ -266,94 +267,175 @@ func (n Neo) Query(q string) (res []Result, err error) {
 	return
 }
 
-func (n Neo) BootstrapTestWithBR(b string, bs utils.Bootstrap, br *utils.BootstrapResult) (err error) {
+func (n Neo) Bootstrap_Rules(bs utils.Bootstrap, br *utils.BootstrapResult, path string) (err error) {
+	err = n.Setup_Rules(bs, br, path)
+	if err != nil {
+		err = errors.Wrapf(err, "Setup_Rules(%s)", path)
+		return
+	}
+
+	return
+}
+
+func (n Neo) Bootstrap_Profiles(bs utils.Bootstrap, br *utils.BootstrapResult, path string) (err error) {
+	err = n.Setup_Profiles(bs, br, path)
+	if err != nil {
+		err = errors.Wrapf(err, "Setup_Profiles(%s)", path)
+		return
+	}
+
+	return
+}
+
+func (n Neo) Bootstrap_Annotation(bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
+	sl := strings.Split(b, ":")
+	if len(sl) != 2 {
+		err = errors.Errorf("invalid bootstrap annotation: %s", b)
+		return
+	}
+	err = n.Setup_Annotation(bs, br, sl[0], sl[1])
+	if err != nil {
+		err = errors.Wrapf(err, "Bootstrap_Annotation(%s, %s)", sl[0], sl[1])
+		return
+	}
+
+	return
+}
+
+func (n Neo) Bootstrap_Config(bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
 	switch b {
-	case "filter":
-		err = n.Setup_Filter(bs, br, "profiles/arch")
+	case "ft_arm":
+		err = n.Setup_Config(br, types.FT_arm_Config(), "ft_arm64")
 		if err != nil {
-			err = errors.Wrap(err, "Setup_Filter")
+			err = errors.Wrapf(err, "while '%s'", b)
 			return
 		}
-	case "profiles":
-		err = n.Setup_Profiles(bs, br, "profiles/arch")
+	case "ft_amd64":
+		err = n.Setup_Config(br, types.FT_amd64_Config(), "ft_amd64")
 		if err != nil {
-			err = errors.Wrap(err, "Setup_Profiles")
+			err = errors.Wrapf(err, "while '%s'", b)
 			return
 		}
+	}
+	return
+}
+
+func (n Neo) Bootstrap_Upstream(bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
+	switch b {
+	case "ft_arm64":
+		err = n.Setup_Upstream(br, types.FT_arm_Upstream(), "ft_arm64")
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "ft_amd64":
+		err = n.Setup_Upstream(br, types.FT_amd64_Upstream(), "ft_amd64")
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	}
+	return
+}
+
+func (n Neo) Bootstrap_Layer(bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
+	switch b {
+	case "0:ft_arm64":
+		err = n.Setup_Layer(br, types.FT_arm64_Layer0(), b)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "1:ft_arm64":
+		err = n.Setup_Layer(br, types.FT_arm64_Layer1(), b)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "0:ft_amd64":
+		err = n.Setup_Layer(br, types.FT_amd64_Layer0(), b)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "1:ft_amd64":
+		err = n.Setup_Layer(br, types.FT_amd64_Layer1(), b)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	}
+	return
+}
+
+func (n Neo) BootstrapTestWithBR(b string, bs utils.Bootstrap, br *utils.BootstrapResult) (err error) {
+	sl := strings.Split(b, ":")
+	if len(sl) < 2 {
+		err = fmt.Errorf("invalid bootstrap string '%s'", b)
+		return
+	}
+	rest := strings.Join(sl[1:], ":")
+	switch sl[0] {
+	case "annotation":
+		err = n.Bootstrap_Annotation(bs, br, rest)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+		return
+	case "rules":
+		err = n.Bootstrap_Rules(bs, br, rest)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+		return
+
+	case "profile":
+		err = n.Bootstrap_Profiles(bs, br, rest)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+		return
+	case "config":
+		err = n.Bootstrap_Config(bs, br, rest)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+		return
+	case "upstream":
+		err = n.Bootstrap_Upstream(bs, br, rest)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+		return
+	case "layer":
+		err = n.Bootstrap_Layer(bs, br, rest)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+		return
+	}
+	// FIXME: Old way
+	switch b {
 	case "platforms:generic":
 		err = n.Setup_Platforms(br, types.Example_PlatformGeneric)
 		if err != nil {
 			err = errors.Wrap(err, "Setup_Platforms:Generic")
 			return
 		}
-	case "platforms:amd64":
-		err = n.Setup_Platforms(br, types.Example_PlatformAMD64)
-		if err != nil {
-			err = errors.Wrap(err, "Setup_Platforms:amd64")
-			return
-		}
-	case "platforms:arm64":
-		err = n.Setup_Platforms(br, types.Example_PlatformARM64)
+	case "manifestdata:ft_arm64":
+		err = n.Setup_ManifestData(br, types.FT_arm_ManifestData(), b)
 		if err != nil {
 			err = errors.Wrapf(err, "while '%s'", b)
 			return
 		}
-	case "config:ft_arm":
-		err = n.Setup_Config(br, types.FT_arm_Config(), "ft_arm64")
-		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
-			return
-		}
-	case "config:ft_amd64":
-		err = n.Setup_Config(br, types.FT_amd64_Config(), "ft_amd64")
-		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
-			return
-		}
-	case "upstream:ft_arm64":
-		err = n.Setup_Upstream(br, types.FT_arm_Upstream(), "ft_arm64")
-		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
-			return
-		}
-	case "upstream:ft_amd64":
-		err = n.Setup_Upstream(br, types.FT_amd64_Upstream(), "ft_amd64")
-		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
-			return
-		}
-	case "layer0:ft_arm64":
-		err = n.Setup_Layer(br, types.FT_arm64_Layer0(), b)
-		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
-			return
-		}
-	case "layer1:ft_arm64":
-		err = n.Setup_Layer(br, types.FT_arm64_Layer1(), b)
-		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
-			return
-		}
-	case "layer0:ft_amd64":
-		err = n.Setup_Layer(br, types.FT_amd64_Layer0(), b)
-		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
-			return
-		}
-	case "layer1:ft_amd64":
-		err = n.Setup_Layer(br, types.FT_amd64_Layer1(), b)
-		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
-			return
-		}
-	case "manifest:ft_arm64":
-		err = n.Setup_Manifest(br, types.FT_arm_Manifest(), b)
-		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
-			return
-		}
-	case "manifest:ft_amd64":
-		err = n.Setup_Manifest(br, types.FT_amd_Manifest(), b)
+	case "manifestdata:ft_amd64":
+		err = n.Setup_ManifestData(br, types.FT_amd_ManifestData(), b)
 		if err != nil {
 			err = errors.Wrapf(err, "while '%s'", b)
 			return
@@ -361,6 +443,26 @@ func (n Neo) BootstrapTestWithBR(b string, bs utils.Bootstrap, br *utils.Bootstr
 	case "manifestlist:ft_generic":
 		err = n.Setup_ManifestList_FT_generic(br)
 		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "manifest:ft_arm64":
+		err = n.Setup_Manifest_FT_arm64(br)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "manifest:ft_amd64":
+		err = n.Setup_Manifest_FT_amd64(br)
+		if err != nil {
+			br.PrintDict()
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "manifest:ft_mpich_amd64":
+		err = n.Setup_Manifest_FT_mpich_amd64(br)
+		if err != nil {
+			br.PrintDict()
 			err = errors.Wrapf(err, "while '%s'", b)
 			return
 		}
@@ -378,12 +480,6 @@ func (n Neo) BootstrapTestWithBR(b string, bs utils.Bootstrap, br *utils.Bootstr
 		}
 	case "collection:ft_amd64":
 		err = n.Setup_Collection_FT_amd64(br)
-		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
-			return
-		}
-	case "ComputeManifestlists":
-		err = n.ComputeManifestlists()
 		if err != nil {
 			err = errors.Wrapf(err, "while '%s'", b)
 			return

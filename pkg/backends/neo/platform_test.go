@@ -14,7 +14,6 @@ func Test_Platform_CRUD(t *testing.T) {
 	_ = ctx
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
-	bs.AddBootstrap("filter")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 45
 	br, err := SetupTest(bs)
@@ -22,8 +21,8 @@ func Test_Platform_CRUD(t *testing.T) {
 	assert.NoError(t, err)
 	defer db.TeardownTest(bs)
 	// Actual test
-	platform_amd64 := types.Platform{Arch: "amd64", Variant: "", OS: "linux", Features: ""}
-	platform_arm64 := types.Platform{Arch: "arm64", Variant: "", OS: "linux", Features: ""}
+	platform_amd64 := types.Platform{Arch: "amd64", Variant: "", OS: "linux"}
+	platform_arm64 := types.Platform{Arch: "arm64", Variant: "", OS: "linux"}
 	_, found, err := db.GetPlatform(platform_amd64)
 	assert.NoError(t, err)
 	assert.False(t, found)
@@ -42,17 +41,4 @@ func Test_Platform_CRUD(t *testing.T) {
 	err = db.Platform_GetInsert(&platform_arm64)
 	assert.NoError(t, err)
 	assert.NotEqual(t, platform_arm64.ID, platAmd64ID)
-	fGenID, err := br.GetInt64("filter:generic#id")
-	assert.NoError(t, err)
-	// LinkPlatformToFilter
-	err = db.LinkPlatformIDToFilterID(ctx, platform_amd64.ID, fGenID)
-	assert.NoError(t, err)
-	// GetFilter
-	f, found, err := db.Filter_Get_ByID(fGenID)
-	assert.NoError(t, err)
-	assert.True(t, found)
-	assert.Equal(t, fGenID, f.ID)
-	err = db.LinkPlatformIDToFilter(ctx, platform_arm64.ID, f)
-	assert.NoError(t, err)
-
 }

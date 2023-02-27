@@ -15,7 +15,7 @@ func Test_Blobupload_CRU(t *testing.T) {
 	_ = ctx
 	bs := utils.NewBootstrap()
 	bs.AddBootstrap("config:ft_arm")
-	bs.AddBootstrap("layer0:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_arm64")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 90
 	br, err := SetupTest(bs)
@@ -57,7 +57,7 @@ func Test_Blobupload_CRU(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(res))
 	///////// Layer
-	layerDigest, err := br.Get("layer0:ft_arm64#digest")
+	layerDigest, err := br.Get("layer:0:ft_arm64#digest")
 	assert.NoError(t, err)
 	ociBU.Digest = layerDigest
 	err = db.BlobUpload_Update_ByUUID(&ociBU)
@@ -75,7 +75,7 @@ func Test_BlobChunk_CRU(t *testing.T) {
 	_ = ctx
 	bs := utils.NewBootstrap()
 	bs.AddBootstrap("config:ft_arm")
-	bs.AddBootstrap("layer0:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_arm64")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 90
 	br, err := SetupTest(bs)

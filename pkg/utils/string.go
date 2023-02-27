@@ -5,8 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -82,6 +84,17 @@ func FindMissingInSecond(one []string, two []string) []string {
 	return difference
 }
 
+func ShortenMediaType(mediatype string) (res string) {
+	r := regexp.MustCompile(`application\/vnd.(.*)`)
+	matches := r.FindStringSubmatch(mediatype)
+	if len(matches) > 1 {
+		res = matches[1]
+	} else {
+		res = mediatype
+	}
+	return
+}
+
 func ShortenDigest(dig string) (res string) {
 	dig = strings.TrimPrefix(dig, "sha256:")
 	switch {
@@ -100,4 +113,44 @@ func JsonPrettyPrint(in []byte) string {
 		return string(in)
 	}
 	return out.String()
+}
+
+func CreateLabelFromDescriptor(desc v1.Descriptor) string {
+	return CreateLabelFromTypeAndDigest(desc.MediaType, desc.Digest.String())
+}
+
+func CreateLabelFromTypeAndDigest(md, dig string) string {
+	label := ShortenMediaType(md)
+	d := ShortenDigest(dig)
+	switch label {
+	case "oci.image.index.v1+json":
+		label = fmt.Sprintf("oci:%s", d)
+	case "oci.image.config.v1+json":
+		label = fmt.Sprintf("oci:%s", d)
+	case "oci.image.manifest.v1+json":
+		label = fmt.Sprintf("oci:%s", d)
+	case "docker.distribution.manifest.v2+json":
+		label = fmt.Sprintf("dkr:%s", d)
+	case "docker.image.manifest.list.v2+json":
+		label = fmt.Sprintf("dkr:%s", d)
+	case "oci.image.layer.v1.tar+gzip":
+		label = fmt.Sprintf("ociGz:%s", d)
+	case "oci.image.layer.v1.tar":
+		label = fmt.Sprintf("ociTar:%s", d)
+	case "docker.container.image.v1+json":
+		label = fmt.Sprintf("dkr:%s", d)
+	case "docker.image.rootfs.diff.tar.gzip":
+		label = fmt.Sprintf("dkrGz:%s", d)
+	case "docker.image.rootfs.diff.tar":
+		label = fmt.Sprintf("dkrTar:%s", d)
+	default:
+		label = fmt.Sprintf("??:%s", d)
+	}
+	return label
+}
+
+func UpLabelKey(key string) string {
+	res := strings.ToUpper(key)
+	res = strings.ReplaceAll(res, ".", "_")
+	return res
 }

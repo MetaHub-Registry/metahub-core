@@ -1,0 +1,48 @@
+package neo
+
+import (
+	"context"
+	"testing"
+
+	lep "github.com/mgudov/logic-expression-parser"
+	"github.com/stretchr/testify/assert"
+	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
+)
+
+func Test_Expr_Simple(t *testing.T) {
+	ctx := context.Background()
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.SetEmptyAll()
+	// TODO: Add ManifestData that matches annotation
+	bs.AddBootstrap("annotation:foo:bar")
+	bs.AddBootstrap("rules:rules/foo/bar.yaml")
+	//bs.PostTestSleep = 120
+	br, err := SetupTest(bs)
+	_ = br
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs)
+	// Actual test
+	///// Eval all rules first
+	err = db.Rule_EvalAll(ctx)
+	assert.NoError(t, err)
+	/// Now tests
+	er := types.NewExprRes()
+	query := `foo:bar=true`
+	encQuery, err := utils.EncodeExpression(query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expr, err := lep.ParseExpression(encQuery)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.TraverseExpr(er, expr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+}

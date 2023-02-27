@@ -1,0 +1,136 @@
+package neo
+
+import (
+	"context"
+	"fmt"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
+)
+
+func Test_Rule_GetCreate(t *testing.T) {
+	ctx := context.Background()
+	_ = ctx
+	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
+	//bs.PostTestSleep = 120
+	br, err := SetupTest(bs)
+	_ = br
+	if err != nil {
+		db.TeardownTest(bs)
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs)
+	r := types.Rule{
+		Op:    "eq",
+		Type:  "anno",
+		Name:  "foo0",
+		Tag:   "bar0",
+		Key:   "foo0",
+		Value: "bar0",
+	}
+	_, found, err := db.Rule_Get(ctx, r)
+	assert.NoError(t, err)
+	assert.False(t, found)
+	/// create Rule
+	ruleID, err := db.Rule_Create(ctx, r)
+	assert.NoError(t, err)
+	gotRuleID, found, err := db.Rule_Get(ctx, r)
+	assert.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, ruleID, gotRuleID)
+	r0 := types.Rule{
+		Op:    "eq",
+		Name:  "foo1",
+		Type:  "anno",
+		Tag:   "bar1",
+		Key:   "foo1",
+		Value: "bar1",
+	}
+	ruleID, err = db.Rule_GetCreate(ctx, r0)
+	assert.NoError(t, err)
+	assert.NotEqual(t, ruleID, gotRuleID)
+	rls, err := db.Rules_GetAll(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(rls))
+
+}
+
+func Test_Rule_EvalAnnotationRule(t *testing.T) {
+	ctx := context.Background()
+	_ = ctx
+	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
+	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target:platform")
+	//bs.PostTestSleep = 120
+	br, err := SetupTest(bs)
+	_ = br
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs)
+	// Actual Test
+	_, found, err := db.Rule_GetByLabel(ctx, "target:platform")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.False(t, found)
+	r := types.Rule{
+		Name:  "target",
+		Tag:   "platform",
+		Type:  "anno",
+		Op:    "eq",
+		Key:   "org.supercontainers.hardware.cpu.target",
+		Value: "platform",
+	}
+	rID, err := db.Rule_GetCreate(ctx, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.ID = rID
+	err = db.Rule_EvalAnnotationRule(ctx, r)
+	assert.NoError(t, err)
+	q := fmt.Sprintf(`MATCH (r:Rule) WHERE id(r) = %d RETURN r`, rID)
+	_, found, err = db.QueryOne(q)
+	if err != nil || !found {
+		t.Fatal("Rule not found")
+	}
+	gotR, found, err := db.Rule_GetByLabel(ctx, "target:platform")
+	if err != nil || !found {
+		t.Fatal("Rule not found")
+	}
+	assert.Equal(t, r, gotR)
+}
+
+func Test_Rule_EvalAll(t *testing.T) {
+	ctx := context.Background()
+	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("annotation:foo:bar")
+	bs.AddBootstrap("annotation:org.supercontainers.mpi.implementation:mpich")
+	bs.AddBootstrap("rules:rules/foo/bar.yaml")
+	//bs.PostTestSleep = 120
+	br, err := SetupTest(bs)
+	_ = br
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs)
+	// Actual Test
+	err = db.Rule_EvalAll(ctx)
+	assert.NoError(t, err)
+	// Check rules
+	fbR, found, err := db.Rule_GetByLabel(ctx, "foo:bar")
+	if err != nil || !found {
+		t.Fatal("Rule not found")
+	}
+
+	as, err := db.Rule_GetSuccessAnnotations(ctx, fbR)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, len(as.Data))
+}

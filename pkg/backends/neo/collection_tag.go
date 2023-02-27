@@ -105,7 +105,7 @@ func (n Neo) Collection_GetTagsListByRepo(repo string) (tags types.TagResponse, 
 	return
 }
 
-func CollectionTagFromResult(res Result) (ct types.CollectionTag, err error) {
+func CollectionTagFromResult(res types.Result) (ct types.CollectionTag, err error) {
 	err = res.CheckKeys("tagID", "tagName")
 	if err != nil {
 		return

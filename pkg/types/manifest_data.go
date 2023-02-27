@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/manifest/manifestlist"
@@ -14,33 +13,30 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type Manifest struct {
-	ID        int64    `json:"-"`
-	Digest    string   `json:"digest"`
-	Data      []byte   `json:"data,omitempty"`
-	MediaType string   `json:"media_type"`
-	Size      int64    `json:"size"`
-	Platform  Platform `json:"platform"`
-	Upstream  Upstream `json:"upstream"`
-	Config    Config   `json:"config"`
-	Layers    []Layer  `json:"layers"`
-	Profile   Profile  `json:"profile"`
-	//Annotations Annotations `json:"annotations"`
+type ManifestData struct {
+	ID          int64       `json:"-"`
+	Type        string      `json:"-"`
+	Origin      string      `json:"-"`
+	Digest      string      `json:"digest"`
+	Data        []byte      `json:"data,omitempty"`
+	MediaType   string      `json:"media_type"`
+	Size        int64       `json:"size"`
+	Platform    Platform    `json:"platform"`
+	Upstream    Upstream    `json:"upstream"`
+	Config      Config      `json:"config"`
+	Layers      []Layer     `json:"layers"`
+	Label       string      `json:"label"`
+	Annotations Annotations `json:"annotations"`
 }
 
-func (m Manifest) ToBytes() (data []byte, err error) {
+func (m ManifestData) ToBytes() (data []byte, err error) {
 	data, err = json.Marshal(m)
 	return
 }
 
-func (m Manifest) ToOCIManifestDescriptor() (md manifestlist.ManifestDescriptor) {
+func (m ManifestData) ToOCIManifestDescriptor() (md manifestlist.ManifestDescriptor) {
 	feats := []string{}
-	for _, f := range strings.Split(m.Platform.Features, ",") {
-		if f != "" {
-			feats = append(feats, f)
-		}
-	}
-	strings.Split(m.Platform.Features, ",")
+	logrus.Warnf("Platofmr: %#v", m.Platform)
 	return manifestlist.ManifestDescriptor{
 		distribution.Descriptor{
 			Digest:    digest.Digest(m.Digest),
@@ -56,14 +52,8 @@ func (m Manifest) ToOCIManifestDescriptor() (md manifestlist.ManifestDescriptor)
 	}
 }
 
-func (m Manifest) ToManifestDescriptor() (md ManifestDescriptor) {
+func (m ManifestData) ToManifestDescriptor() (md ManifestDescriptor) {
 	feats := []string{}
-	for _, f := range strings.Split(m.Platform.Features, ",") {
-		if f != "" {
-			feats = append(feats, f)
-		}
-	}
-	strings.Split(m.Platform.Features, ",")
 	return ManifestDescriptor{
 		Digest:    m.Digest,
 		MediaType: m.MediaType,
@@ -89,7 +79,7 @@ type OCIManifest struct {
 	Layers []distribution.Descriptor `json:"layers"`
 }
 
-func (m Manifest) ToOCIBytes() (b []byte) {
+func (m ManifestData) ToOCIBytes() (b []byte) {
 	oci := OCIManifest{
 		SchemaVersion: 2,
 		MediaType:     m.MediaType,
@@ -103,7 +93,7 @@ func (m Manifest) ToOCIBytes() (b []byte) {
 	return
 }
 
-func (m Manifest) WriteWWWHeader(w http.ResponseWriter) {
+func (m ManifestData) WriteWWWHeader(w http.ResponseWriter) {
 	if m.MediaType == "" {
 		logrus.Fatal("Manifest.MediaType is empty")
 	}
@@ -114,7 +104,7 @@ func (m Manifest) WriteWWWHeader(w http.ResponseWriter) {
 	w.Header().Set("Etag", m.Digest)
 }
 
-func (m Manifest) WriteWWW(w http.ResponseWriter) {
+func (m ManifestData) WriteWWW(w http.ResponseWriter) {
 	size := len(m.Data)
 	w.Header().Set("Content-Length", fmt.Sprint(size))
 	b := m.Data

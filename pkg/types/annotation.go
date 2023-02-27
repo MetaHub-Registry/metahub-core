@@ -1,56 +1,49 @@
 package types
 
 import (
-	"encoding/json"
-	"fmt"
+	"regexp"
 
-	"github.com/minio/minio-go/v7/pkg/set"
+	"github.com/sirupsen/logrus"
 )
 
-type Annotations struct {
-	ID   int64
-	Keys set.StringSet
-	Map  map[string]string
+type Annotation struct {
+	ID    int64  `json:"id"`
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
-func NewAnnotations() Annotations {
-	return Annotations{
-		Keys: set.NewStringSet(),
-		Map:  make(map[string]string),
+func NewAnnotation(k, v string) Annotation {
+	a := Annotation{
+		Key:   k,
+		Value: v,
 	}
+	return a
 }
 
-func (a *Annotations) AddAnnotation(k, v string) (err error) {
-	if a.Keys.Contains(k) && a.Map[k] != v {
-		return fmt.Errorf("annotation %s already exists and differs from new. (current:'%s' / new: '%s'", k, a.Map[k], v)
-	}
-	a.Keys.Add(k)
-	a.Map[k] = v
-	return nil
+func (a Annotation) EvalRule(r Rule) bool {
+	return a.evalRule(r.Op, r.Value)
 }
 
-func (a *Annotations) GetAnnotation(k string) (v string, err error) {
-	if !a.Keys.Contains(k) {
-		return "", fmt.Errorf("annotation %s does not exist", k)
+// TODO: Needs to become an interface with more complex annotations
+func (a Annotation) evalRule(op, v string) bool {
+	logrus.Warnf("evaluating rule %s %s %s", a.Value, op, v)
+	switch op {
+	case "eq":
+		return a.Value == v
+	case "ne":
+		return a.Value != v
+	case "gt":
+		return a.Value > v
+	case "lt":
+		return a.Value < v
+	case "ge":
+		return a.Value >= v
+	case "le":
+		return a.Value <= v
+	case "re":
+		// regex
+		re := regexp.MustCompile(v)
+		return re.MatchString(a.Value)
 	}
-	return a.Map[k], nil
-}
-
-func (a Annotations) MarshalJSON() ([]byte, error) {
-	res := map[string]string{}
-	for t := range a.Keys {
-		res[t] = a.Map[t]
-	}
-	return json.Marshal(res)
-}
-
-func NewAnnotationsFromMap(m map[string]string) (a Annotations, err error) {
-	a = NewAnnotations()
-	for k, v := range m {
-		err = a.AddAnnotation(k, v)
-		if err != nil {
-			return
-		}
-	}
-	return
+	return false
 }

@@ -1,15 +1,118 @@
 package magazine
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
+	"github.com/opencontainers/go-digest"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func (mag Magazine) ComputeManifestlists() (err error) {
-	return mag.Database.ComputeManifestlists()
+func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
+	err = mag.Database.Rule_EvalAll(ctx)
+	if err != nil {
+		return
+	}
+	logrus.Warnf("Compute Manifest Lists")
+	/// TODO: We need
+	/// 1. Generate ExprRes? (a rule<>mdID mapping)
+	rls, err := mag.Database.Rules_GetAll(ctx)
+	if err != nil {
+		logrus.Errorf("failed to get rules: %v", err)
+		return
+	}
+	er := types.NewExprRes()
+	for _, rl := range rls {
+		label := fmt.Sprintf("%s:%s", rl.Name, rl.Tag)
+		logrus.Warnf("Rule: %s", label)
+		mds, e := mag.Database.ManifestData_GetByRule(ctx, rl)
+		if e != nil {
+			err = errors.Wrapf(e, "failed to get manifestdata by rule: %v", err)
+			return
+		}
+		for _, md := range mds {
+			logrus.Warnf("  manifestdata: %s", md.Label)
+			er.Add(label, md)
+		}
+	}
+	/// 2. Query for profiles (set of rules) and output the manifestdata that evals true for all rules of a profile
+	prfs, err := mag.Database.GetProfiles()
+	if err != nil {
+		logrus.Errorf("failed to get profiles: %v", err)
+		return
+	}
+	for _, prf := range prfs {
+		label := fmt.Sprintf("%s:%s", prf.Name, prf.Tag)
+		logrus.Warnf("Profile: %s", label)
+		if prf.Rule != "" {
+			lbs, err := utils.ExprGetLabels(prf.Rule)
+			if err != nil {
+				logrus.Errorf("failed to get labels from rule: %v", err)
+				return err
+			}
+			mds := er.GetManifestdataForRules(lbs.ToSlice()...)
+			for _, md := range mds {
+				logrus.Warnf("  manifestdata: %s", md.Label)
+			}
+		}
+	}
+	ctpps, err := mag.Database.CollectionTagProfilePair_GetAll()
+	if err != nil {
+		logrus.Errorf("failed to get profile manifestdata pairs: %v", err)
+		return
+	}
+	for _, ctpp := range ctpps {
+		c := ctpp.Collection
+		ct := ctpp.Collection.ColTag
+		p := ctpp.Profile
+		logrus.Infof("Collection: [%d]%s:%s[%d] [%s:%s]", c.ID, c.Repo, ct.Tag, ct.ID, ctpp.Profile.Name, ctpp.Profile.Tag)
+		ml := types.ManifestList{
+			SchemaVersion: 2,
+			MediaType:     "application/vnd.oci.image.index.v1+json",
+			Manifests:     []types.ManifestData{},
+		}
+		// filter manifests through ExprRes
+		ms := er.FilterByCTPP(ctpp)
+		for _, m := range ms {
+			logrus.Warnf("   filtered md: %s", m.Label)
+			ml.Manifests = append(ml.Manifests, m)
+		}
+		mlBlob := ml.ToOCIBytes()
+		mlDigest := digest.FromBytes(mlBlob)
+		err = mag.Minio.ManifestsPutObj(ctx, mlDigest.String(), mlBlob)
+		if err != nil {
+			logrus.Error(err)
+			continue
+		}
+		mlID, err := mag.Database.InsertManifestList(mlDigest, ml.MediaType, len(mlBlob))
+		if err != nil {
+			logrus.Error(err)
+			continue
+		}
+		// Link ManifestList to Collection
+		err = mag.Database.LinkManifestListToCollection(mlID, c.ID)
+		if err != nil {
+			logrus.Error(err)
+			continue
+		}
+		// Link ManifestList to CollectionTag
+		err = mag.Database.LinkManifestListToCollectionTag(mlID, ct.ID)
+		if err != nil {
+			logrus.Error(err)
+			continue
+		}
+		// Link ManifestList to Profile
+		err = mag.Database.LinkManifestListToProfile(mlID, p.ID)
+		if err != nil {
+			logrus.Error(err)
+			continue
+		}
+	}
+	return
 }
 
 func (mag Magazine) ManifestListGetByRequest(req types.Request) (ml types.ManifestList, found bool, err error) {

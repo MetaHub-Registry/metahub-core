@@ -14,7 +14,7 @@ func Test_FT_arm_ConfigByte(t *testing.T) {
 }
 
 func Test_FT_arm_Manifest(t *testing.T) {
-	mani := FT_arm_Manifest()
+	mani := FT_arm_ManifestData()
 	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mani.Digest)
 	assert.Len(t, mani.Layers, 2)
 }

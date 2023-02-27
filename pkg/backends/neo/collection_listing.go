@@ -22,7 +22,7 @@ func (n Neo) CollectionListing_Get_ByID(colID, colTagID int64) (col types.Collec
 		return
 	}
 	// Fill Manifests
-	manis, err := n.Manifest_GetByCollectionTag(col.ID, col.ColTag.ID)
+	manis, err := n.ManifestData_GetByCollectionTag(col.ID, col.ColTag.ID)
 	if err != nil {
 		return
 	}
@@ -48,7 +48,7 @@ func (n Neo) CollectionListing_Get_ByRepoLike(repo string) (cols []types.Collect
 			return cols, err
 		}
 		// Fill Manifests
-		manis, e := n.Manifest_GetByCollectionTag(col.ID, col.ColTag.ID)
+		manis, e := n.ManifestData_GetByCollectionTag(col.ID, col.ColTag.ID)
 		if e != nil {
 			return cols, e
 		}

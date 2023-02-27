@@ -94,7 +94,7 @@ func (n Neo) CreateUpstream(up types.Upstream) (upID int64, err error) {
 	return
 }
 
-func UpstreamFromResult(res Result) (u types.Upstream, err error) {
+func UpstreamFromResult(res types.Result) (u types.Upstream, err error) {
 	err = res.CheckKeys("upstreamID", "upstreamReg", "upstreamRepo", "upstreamTag")
 	if err != nil {
 		return
@@ -113,7 +113,7 @@ func UpstreamFromResult(res Result) (u types.Upstream, err error) {
 }
 
 func UpstreamFromRecord(res neo4j.Result) (u types.Upstream, err error) {
-	r := NewResult()
+	r := types.NewResult()
 	record := res.Record()
 	keys, err := res.Keys()
 	if err != nil {

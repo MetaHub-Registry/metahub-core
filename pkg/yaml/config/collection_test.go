@@ -1,24 +1,25 @@
 package config
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-var ctx = context.Background()
-
 func Test_FindManifestCollections(t *testing.T) {
 	var err error
 	var cols map[string]ManifestCollection
 	cols, err = FindManifestCollections(ctx, "../../../misc/yaml/collections/qnib/featuretest/generic.yaml")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Len(t, cols, 1)
 	_, err = FindManifestCollections(ctx, "../../../misc/yaml/collections/qnib/featuretest/mismatch_tag.yaml")
 	assert.Error(t, err)
 	cols, err = FindManifestCollections(ctx, "../../../misc/yaml/collections/library/perl/5.26.yaml")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Len(t, cols, 1)
 	col := cols["library/perl:5.26"]
 	assert.Equal(t, "library/perl", col.Name)

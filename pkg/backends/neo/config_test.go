@@ -14,25 +14,25 @@ func Test_Config_CRUD(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
-	/*bs.AddBootstrap("filter")
-	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("platforms:amd64")
-	bs.AddBootstrap("platforms:arm64")
-	bs.AddBootstrap("profiles")
-	*/
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	//bs.AddBootstrap("platforms:generic")
+	//bs.AddBootstrap("rules:rules/cpu/generic.yaml")
+	//bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
 	bs.SetEmptyAll()
-	//bs.PostTestSleep = 60
+	//bs.PostTestSleep = 300
 	br, err := SetupTest(bs)
 	_ = br
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer db.TeardownTest(bs)
 	// Actual test
 	arm_cfg := types.FT_arm_Config()
 
-	_, found, err := db.ConfigGetByDigest(arm_cfg.Digest)
+	_, found, err := db.Config_GetByDigest(arm_cfg.Digest)
 	assert.NoError(t, err)
 	assert.False(t, found)
-	_, found, err = db.ConfigGetByDigest(arm_cfg.Digest)
+	_, found, err = db.Config_GetByDigest(arm_cfg.Digest)
 	assert.NoError(t, err)
 	assert.False(t, found)
 	arm_cfg_id, err := db.createConfig(arm_cfg)
@@ -50,14 +50,16 @@ func Test_Config_CRUD(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, amd64_cfg_got.ID, amd64_cfg_got2.ID)
-	amd64_cfg_got3, found, err := db.ConfigGetByDigest(amd64_cfg_got.Digest)
+	amd64_cfgs_got3, found, err := db.Config_GetByDigest(amd64_cfg_got.Digest)
+	assert.Equal(t, 1, len(amd64_cfgs_got3))
+	amd64_cfg_got3 := amd64_cfgs_got3[0]
 	assert.NoError(t, err)
 	assert.True(t, found, fmt.Sprintf("expected to find config with digest %s", amd64_cfg_got.Digest))
 	assert.Equal(t, amd64_cfg_got.ID, amd64_cfg_got3.ID)
 	// Delete
 	err = db.ConfigDeleteByDigest(amd64_cfg_got.Digest)
 	assert.NoError(t, err)
-	_, found, err = db.ConfigGetByDigest(amd64_cfg_got.Digest)
+	_, found, err = db.Config_GetByDigest(amd64_cfg_got.Digest)
 	assert.NoError(t, err)
 	assert.False(t, found)
 }

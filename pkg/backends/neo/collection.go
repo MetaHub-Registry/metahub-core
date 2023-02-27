@@ -57,7 +57,7 @@ func (n Neo) Collection_Get_ByRepoTag(repo, tag string) (c types.Collection, fou
 	q += ` c.repo AS collectionRepo, t.name AS tagName, id(t) AS tagID,`
 	q += ` ml.digest AS manifestListDigest, ml.mediaType AS manifestListMediaType, ml.size AS manifestListSize`
 	query := fmt.Sprintf(q, repo, tag)
-	fmt.Printf("Query: %s\n", query)
+	//fmt.Printf("Query: %s\n", query)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	input := map[string]interface{}{}
@@ -77,7 +77,7 @@ func (n Neo) Collection_Get_ByRepoTag(repo, tag string) (c types.Collection, fou
 			return
 		}
 		// Get all manifests for this manifestList
-		ml.Manifests, err = n.GetManifestsForManifestList(ml.ID)
+		ml.Manifests, err = n.ManifestData_GetByManifestList(ml.ID)
 		if err != nil {
 			return
 		}
@@ -115,7 +115,7 @@ func (n Neo) GetAllCollections() (collections []types.Collection, err error) {
 			return
 		}
 		// Get all manifests for this manifestList
-		ml.Manifests, err = n.GetManifestsForManifestList(ml.ID)
+		ml.Manifests, err = n.ManifestData_GetByManifestList(ml.ID)
 		if err != nil {
 			return
 		}
@@ -268,7 +268,7 @@ func ManifestListFromRecord(res neo4j.Result) (ml types.ManifestList, err error)
 		return
 	}
 	ml.MediaType = v.(string)
-	ml.Manifests = make([]types.Manifest, 0)
+	ml.Manifests = make([]types.ManifestData, 0)
 	return
 }
 
@@ -287,6 +287,7 @@ func (n Neo) LinkCollectionToManifest(ctx context.Context, colID, maniID int64) 
 }
 
 func (n Neo) GetCollectionFilterPairs_ForCollection(col types.Collection) (cfps []types.CollectionFilterPair, err error) {
+	// Platform and filters need to be reworked
 	q := `MATCH (t:Tag)-[:UPSTREAM]-(m:Manifest)-[:IS]->(Platform)<-[:USES]-(f:Filter)`
 	q += ` MATCH (c:Collection)-[:UPSTREAM]->(m)`
 	q += ` WHERE c.repo = "%s" AND t.name = "%s"`
@@ -359,7 +360,7 @@ func (n Neo) getCollectionFilterPairs(q string) (cfps []types.CollectionFilterPa
 	cfps = make([]types.CollectionFilterPair, 0)
 	for _, t := range tupels {
 		q := `MATCH (c:Collection)-[:HAS_TAG]->(t:Tag)-[:UPSTREAM]-(m:Manifest)-[:IS]->(p:Platform)<-[:USES]-(f:Filter)`
-		q += ` MATCH (cfg:Config)<-[:USES]-(m)-[:UPSTREAM]->(u:Upstream)`
+		q += ` MATCH (cfg:Config)<-[:USES]-(md:ManifestData)-[]-(m)-[:UPSTREAM]->(u:Upstream)`
 		q += ` WHERE id(c) = %d AND id(f) = %d AND id(t) = %d`
 		q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant, p.features AS platformFeatures,`
 		q += ` id(m) AS manifestID, m.digest AS manifestDigest, m.mediaType AS manifestMediaType, m.size AS manifestSize,`
@@ -382,10 +383,10 @@ func (n Neo) getCollectionFilterPairs(q string) (cfps []types.CollectionFilterPa
 				ColTag: ct,
 			},
 			Filter: types.Filter{
-				ID:    t.filterID,
-				Label: t.filterLabel,
+				ID:   t.filterID,
+				Name: t.filterLabel,
 			},
-			Manifests: make([]types.Manifest, 0),
+			Manifests: make([]types.ManifestData, 0),
 		}
 		for result.Next() {
 			p, e := PlatformFromRecord(result)
@@ -403,7 +404,7 @@ func (n Neo) getCollectionFilterPairs(q string) (cfps []types.CollectionFilterPa
 				err = errors.Wrap(e, "failed to get upstream from record")
 				return cfps, err
 			}
-			m, e := ManifestFromRecord(result)
+			m, e := ManifestDataFromRecord(result)
 			if e != nil {
 				err = errors.Wrap(e, "failed to get manifest from record")
 				return cfps, err
@@ -419,8 +420,8 @@ func (n Neo) getCollectionFilterPairs(q string) (cfps []types.CollectionFilterPa
 }
 
 func (n Neo) GetCollectionFilterPairs() (cfps []types.CollectionFilterPair, err error) {
-	q := `MATCH (c:Collection)-[:HAS_TAG]->(t:Tag)-[:UPSTREAM]-(Manifest)-[:IS]->(Platform)<-[:USES]-(f:Filter)`
-	q += ` MATCH (c)-[:UPSTREAM]->(m:Manifest)`
+	q := `MATCH (c:Collection)-[:HAS_TAG]->(t:Tag)-[:UPSTREAM]-(m:Manifest)-[:IS]->(Platform)<-[:USES]-(f:Filter)`
+	q += ` MATCH (c)-[:UPSTREAM]->(m)`
 	//logrus.Infof("query: %s", q)
 	return n.getCollectionFilterPairs(q)
 }
@@ -438,127 +439,129 @@ func (n Neo) Collection_GetInsert_ByRequest(req types.Request) (col types.Collec
 	return
 }
 
-func (n Neo) CollectionManifest_ByRequest(req types.Request, mani types.Manifest) (err error) {
-	ctx := context.Background()
-	// Add Manifest
-	err = n.Manifest_GetInsert(ctx, &mani)
-	if err != nil {
-		logrus.Error(err)
-		return
-	}
-	// Config
-	cfgID, err := n.Config_Insert(ctx, mani.Config)
-	if err != nil {
-		logrus.Error(err)
-		return
-	}
-	err = n.LinkManifestToConfig(ctx, mani.ID, cfgID)
-	if err != nil {
-		logrus.Error(err)
-		return
-	}
+func (n Neo) CollectionManifest_ByRequest(req types.Request, mani types.ManifestData) (err error) {
+	/*
+		ctx := context.Background()
+		DOes not work anymore
+		// Add Manifest
+		err = n.Manifest_GetInsert(ctx, &mani)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		// Config
+		cfgID, err := n.Config_Insert(ctx, mani.Config)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		err = n.LinkManifestToConfig(ctx, mani.ID, cfgID)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
 
-	// Platform
-	err = n.Platform_GetInsert(&mani.Platform)
-	if err != nil {
-		logrus.Error(err)
-		return
-	}
-	err = n.LinkManifestToPlatform(ctx, mani.ID, mani.Platform.ID)
-	if err != nil {
-		logrus.Error(err)
-		return
-	}
-	// TODO: Deal with upstream / collection
-	/******
-	 * 1. create upstream that is unique to the repo:tag-profile */
-	maniUp := mani.Upstream
-	if maniUp != (types.Upstream{}) {
-		// Let's only do upstream if the manifest provides one
-		maniUp.Tag = fmt.Sprintf("%s-%s", req.Tag, mani.Platform.GetTag())
-		found, err := n.Upstream_GetInsert(&maniUp)
-		if err != nil {
-			err = errors.Wrap(err, "failed to Upstream_GetInsert")
-			logrus.Error(err)
-			return err
-		}
-		if found {
-			//TODO: Do we need to create a new upstream?
-			logrus.Warnf("Upstream already exists: %s/%s:%s", maniUp.Reg, maniUp.Repo, maniUp.Tag)
-		}
-	} else {
-		// TODO: Manifest does not come with upstream, we'll create a fake one with the current profile
-		// -> <repo>:<tag>-<PlatformTag>
-		maniUp = types.Upstream{
-			Reg:  req.Host,
-			Repo: req.Repo,
-			Tag:  fmt.Sprintf("%s-%s", req.Tag, mani.Platform.GetTag()),
-		}
-		found, err := n.Upstream_GetInsert(&maniUp)
-		if err != nil {
-			err = errors.Wrap(err, "failed to Upstream_GetInsert")
-			logrus.Error(err)
-			return err
-		}
-		if found {
-			//TODO: Do we need to create a new upstream?
-			logrus.Warnf("Upstream already exists: %s/%s:%s", maniUp.Reg, maniUp.Repo, maniUp.Tag)
-		}
-	}
-	// 1.1 Link Manifest To Upstream
-	err = n.LinkManifestToUpstream(ctx, mani.ID, maniUp.ID)
-	if err != nil {
-		logrus.Error(err)
-		return
-	}
-	/* 2. create collection for the repo:tag */
-	// Collection and Tag
-	colTag, foundColTag, err := n.CollectionTag_GetByTag(req.Tag)
-	if err != nil {
-		logrus.Error(err)
-		return
-	}
-	if !foundColTag {
-		colTag, err = n.CollectionTag_Create(req.Tag)
+		// Platform
+		err = n.Platform_GetInsert(&mani.Platform)
 		if err != nil {
 			logrus.Error(err)
 			return
 		}
-	}
-	col, foundCol, err := n.Collection_Get_ByRepo(req.Repo)
-	if err != nil {
-		logrus.Error(err)
-		return
-	}
-	if !foundCol {
-		col, err = n.Collection_Create_ByRequest(req)
+		err = n.LinkManifestToPlatform(ctx, mani.ID, mani.Platform.ID)
 		if err != nil {
 			logrus.Error(err)
 			return
 		}
-	}
-	col.ColTag = colTag
-	// 2.1 Link Collection to Tag
-	err = n.LinkCollectionTagToManifest(ctx, colTag.ID, mani.ID)
-	if err != nil {
-		logrus.Error(err)
-		return
-	}
-	err = n.LinkCollectionToManifest(ctx, col.ID, mani.ID)
-	if err != nil {
-		logrus.Error(err)
-		return
-	}
-	/* 3. create/update manifestlist for given collection with additional manifest in it */
-	err = n.ComputeManifestlists_ForCollection(ctx, col)
-	if err != nil {
-		logrus.Error(err)
-		return
-	}
+		//  Deal with upstream / collection
+		// 1. create upstream that is unique to the repo:tag-profile
+		maniUp := mani.Upstream
+		if maniUp != (types.Upstream{}) {
+			// Let's only do upstream if the manifest provides one
+			maniUp.Tag = fmt.Sprintf("%s-%s", req.Tag, mani.Platform.GetTag())
+			found, err := n.Upstream_GetInsert(&maniUp)
+			if err != nil {
+				err = errors.Wrap(err, "failed to Upstream_GetInsert")
+				logrus.Error(err)
+				return err
+			}
+			if found {
+				//Do we need to create a new upstream?
+				logrus.Warnf("Upstream already exists: %s/%s:%s", maniUp.Reg, maniUp.Repo, maniUp.Tag)
+			}
+		} else {
+			// Manifest does not come with upstream, we'll create a fake one with the current profile
+			// -> <repo>:<tag>-<PlatformTag>
+			maniUp = types.Upstream{
+				Reg:  req.Host,
+				Repo: req.Repo,
+				Tag:  fmt.Sprintf("%s-%s", req.Tag, mani.Platform.GetTag()),
+			}
+			found, err := n.Upstream_GetInsert(&maniUp)
+			if err != nil {
+				err = errors.Wrap(err, "failed to Upstream_GetInsert")
+				logrus.Error(err)
+				return err
+			}
+			if found {
+				// Do we need to create a new upstream?
+				logrus.Warnf("Upstream already exists: %s/%s:%s", maniUp.Reg, maniUp.Repo, maniUp.Tag)
+			}
+		}
+		// 1.1 Link Manifest To Upstream
+		err = n.LinkManifestToUpstream(ctx, mani.ID, maniUp.ID)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		// 2. create collection for the repo:tag
+		// Collection and Tag
+		colTag, foundColTag, err := n.CollectionTag_GetByTag(req.Tag)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		if !foundColTag {
+			colTag, err = n.CollectionTag_Create(req.Tag)
+			if err != nil {
+				logrus.Error(err)
+				return
+			}
+		}
+		col, foundCol, err := n.Collection_Get_ByRepo(req.Repo)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		if !foundCol {
+			col, err = n.Collection_Create_ByRequest(req)
+			if err != nil {
+				logrus.Error(err)
+				return
+			}
+		}
+		col.ColTag = colTag
+		// 2.1 Link Collection to Tag
+		err = n.LinkCollectionTagToManifest(ctx, colTag.ID, mani.ID)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		err = n.LinkCollectionToManifest(ctx, col.ID, mani.ID)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		// 3. create/update manifestlist for given collection with additional manifest in it
+		err = n.ComputeManifestlists_ForCollection(ctx, col)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+	*/
 	return
 }
 
-func CollectionFromResult(res Result) (col types.Collection, err error) {
+func CollectionFromResult(res types.Result) (col types.Collection, err error) {
 	err = res.CheckKeys("tagID", "tagName", "collectionID", "collectionRepo")
 	if err != nil {
 		return
@@ -579,7 +582,7 @@ func CollectionFromResult(res Result) (col types.Collection, err error) {
 	return
 }
 
-func CollectionListingFromResult(res Result) (col types.CollectionListing, err error) {
+func CollectionListingFromResult(res types.Result) (col types.CollectionListing, err error) {
 	err = res.CheckKeys("tagID", "tagName", "collectionID", "collectionRepo")
 	if err != nil {
 		return
@@ -596,7 +599,7 @@ func CollectionListingFromResult(res Result) (col types.CollectionListing, err e
 		Repo:          colRepo,
 		Tag:           tagName,
 		ColTag:        ct,
-		Manifests:     map[string]types.Manifest{},
+		Manifests:     map[string]types.ManifestData{},
 		ManifestCount: 0,
 	}
 	return

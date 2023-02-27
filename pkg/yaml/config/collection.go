@@ -49,17 +49,8 @@ func FindManifestCollections(ctx context.Context, cacheDir string) (cfgs map[str
 	span.SetAttributes(attribute.Key("path").String(cacheDir))
 	defer span.End()
 	cfgs = make(map[string]ManifestCollection)
-	files := []string{}
+	files, err := FindYamlFiles(cacheDir)
 
-	for _, ext := range []string{"*.yml", "*.yaml"} {
-		newFiles, err := utils.RecursiveFind(cacheDir, ext, false)
-		if err != nil {
-			l.Errorf("Warning, issue looking for Manifest Collection %s: %x\n", ext, err)
-			continue
-		}
-		//l.Debugf("Add %d files with extension %s\n", len(files), newFiles)
-		files = append(files, newFiles...)
-	}
 	// Read in each manifest config
 	for _, mfile := range files {
 		l.Debugf("Reading manifest config file %s\n", mfile)
@@ -70,78 +61,70 @@ func FindManifestCollections(ctx context.Context, cacheDir string) (cfgs map[str
 		m := utils.ReSubMatchMap(re, mfile)
 		tag := m["tag"]
 		repo := m["repo"]
-		mcfg, err := LoadManifestConfig(ctx, mfile)
+		manifest, err := LoadManifestConfig(ctx, mfile)
 		if err != nil {
 			l.Warnf("Issue reading %s: %x, skipping.\n", mfile, err)
 			continue
 		}
 
 		// Required to have name and tag
-		for _, manifest := range mcfg.Manifests {
-			if manifest.Name != repo || manifest.Tag != tag {
-				l.Warnf("Manifest %s defines the repo (%s) and tag (%s)via path", mfile, repo, tag)
-				err = fmt.Errorf("the collection file states name:%s and tag:%s which is a missmatch. You can skip the name and tag definition btw", manifest.Name, manifest.Tag)
-				return cfgs, err
+		if manifest.Name != repo || manifest.Tag != tag {
+			l.Warnf("Manifest %s defines the repo (%s) and tag (%s)via path", mfile, repo, tag)
+			err = fmt.Errorf("the collection file states name:%s and tag:%s which is a missmatch. You can skip the name and tag definition btw", manifest.Name, manifest.Tag)
+			return cfgs, err
 
-			}
-			uri := repo + ":" + tag
-			_, manifestSpan := tr.Start(ctx, uri)
-			defer manifestSpan.End()
-			// If we don't have a registry, must be library
-			// TODO we don't read the registry currently (assumed all docker hub)
-			if strings.Count(uri, "/") == 0 {
-				uri = "library/" + uri
-			}
-
-			// We aren't allowed to add the same one twice, issue a warning
-			_, ok := cfgs[uri]
-			if ok {
-				l.Warnf("Duplicate uri %s found, will not be added again.", uri)
-				continue
-			}
-			l.Debugf("Added: %s", uri)
-			cfgs[uri] = manifest
-			manifestSpan.End()
 		}
+		uri := repo + ":" + tag
+		_, manifestSpan := tr.Start(ctx, uri)
+		defer manifestSpan.End()
+		// If we don't have a registry, must be library
+		// TODO we don't read the registry currently (assumed all docker hub)
+		if strings.Count(uri, "/") == 0 {
+			uri = "library/" + uri
+		}
+
+		// We aren't allowed to add the same one twice, issue a warning
+		_, ok := cfgs[uri]
+		if ok {
+			l.Warnf("Duplicate uri %s found, will not be added again.", uri)
+			continue
+		}
+		l.Debugf("Added: %s", uri)
+		cfgs[uri] = manifest
+		manifestSpan.End()
 		fileSpan.End()
 	}
 	return
 }
 
 // readManifestConfig reads (and returns) a manifest config
-func readManifestConfig(yamlStr []byte) (conf ManifestConfig, err error) {
+func readManifestConfig(yamlStr []byte) (col ManifestCollection, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "config",
 		"func":    "readManifestConfig",
 	})
 	// First unmarshall into generic structure
-	conf = ManifestConfig{}
-	err = yaml.Unmarshal(yamlStr, &conf)
+	col = ManifestCollection{}
+	err = yaml.Unmarshal(yamlStr, &col)
 	if err != nil {
 		l.Fatalf("Unmarshal: %v\n", err)
 		return
 	}
-	for i, ml := range conf.Manifests {
-		for j, m := range ml.Manifests {
-			if m.Platform.OS == "" {
-				m.Platform.OS = defaultOS
-			}
-			if m.Platform.Architecture == "" {
-				m.Platform.Architecture = defaultArch
-			}
-			conf.Manifests[i].Manifests[j] = m
+	for i, m := range col.Manifests {
+		if m.Platform.OS == "" {
+			m.Platform.OS = defaultOS
 		}
+		if m.Platform.Architecture == "" {
+			m.Platform.Architecture = defaultArch
+		}
+		col.Manifests[i] = m
+
 	}
 	return
 }
 
-// ManifestConfig holds a listing of containers/tags associated with a URI
-type ManifestConfig struct {
-	Manifests []ManifestCollection `yaml:"manifests"`
-}
-
 // LoadManifestConfig loads a yaml manifest
-func LoadManifestConfig(ctx context.Context, yamlfile string) (ManifestConfig, error) {
+func LoadManifestConfig(ctx context.Context, yamlfile string) (ManifestCollection, error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "config",
 		"func":    "LoadManifestConfig",
@@ -155,7 +138,7 @@ func LoadManifestConfig(ctx context.Context, yamlfile string) (ManifestConfig, e
 	yamlContent, err := ioutil.ReadFile(yamlfile)
 	if err != nil {
 		l.Errorf("Cannot load manifest config file #%v ", err)
-		return ManifestConfig{}, err
+		return ManifestCollection{}, err
 	}
 	l.Debug("attempting readManifestConfig()")
 	return readManifestConfig(yamlContent)

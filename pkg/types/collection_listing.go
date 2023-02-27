@@ -1,13 +1,13 @@
 package types
 
 type CollectionListing struct {
-	ID            int64               `json:"id"`
-	Repo          string              `json:"repo"`
-	Tag           string              `json:"tag"`
-	ColTag        CollectionTag       `json:"-"`
-	Annotations   map[string]string   `json:"annotations"`
-	Manifests     map[string]Manifest `json:"manifests"`
-	ManifestCount int64               `json:"manifest_count"`
+	ID            int64                   `json:"id"`
+	Repo          string                  `json:"repo"`
+	Tag           string                  `json:"tag"`
+	ColTag        CollectionTag           `json:"-"`
+	Annotations   map[string]string       `json:"annotations"`
+	Manifests     map[string]ManifestData `json:"manifests"`
+	ManifestCount int64                   `json:"manifest_count"`
 }
 
 func NewCollectionListing(repo, tag string) CollectionListing {
@@ -17,7 +17,7 @@ func NewCollectionListing(repo, tag string) CollectionListing {
 		Tag:           tag,
 		Repo:          repo,
 		ColTag:        ct,
-		Manifests:     map[string]Manifest{},
+		Manifests:     map[string]ManifestData{},
 		ManifestCount: 0,
 	}
 }

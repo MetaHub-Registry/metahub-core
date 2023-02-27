@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
@@ -88,52 +87,54 @@ func Setup_Layers_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 }
 
 func Setup_Platforms(sqObj *Sqlite, br *utils.BootstrapResult) (err error) {
-	//logrus.Info("> Setup_Platforms")
-	// Create platforms
-	plts := []types.Platform{
-		{Arch: "amd64", Variant: "", OS: "linux", Features: ""},
-		{Arch: "arm", Variant: "", OS: "linux", Features: ""},
-		{Arch: "arm", Variant: "v5", OS: "linux", Features: ""},
-		{Arch: "arm", Variant: "v6", OS: "linux", Features: ""},
-		{Arch: "arm", Variant: "v7", OS: "linux", Features: ""},
-		{Arch: "arm64", Variant: "v8", OS: "linux", Features: ""},
-	}
-	for _, p := range plts {
-		err := sqObj.Platform.Insert(&p)
-		if err != nil {
-			return err
+	logrus.Warn("> Setup_Platforms")
+	/*
+		// Create platforms
+		plts := []types.Platform{
+			{Arch: "amd64", Variant: "", OS: "linux", Features: ""},
+			{Arch: "arm", Variant: "", OS: "linux", Features: ""},
+			{Arch: "arm", Variant: "v5", OS: "linux", Features: ""},
+			{Arch: "arm", Variant: "v6", OS: "linux", Features: ""},
+			{Arch: "arm", Variant: "v7", OS: "linux", Features: ""},
+			{Arch: "arm64", Variant: "v8", OS: "linux", Features: ""},
 		}
-		pStr := fmt.Sprintf("%s/%s", p.OS, p.Arch)
-		if p.Variant != "" {
-			pStr = fmt.Sprintf("%s/%s", pStr, p.Variant)
-		}
-		k := fmt.Sprintf("platform:%s#id", pStr)
-		br.Add(k, fmt.Sprint(p.ID))
-		// Check if filters are already there, if so link
-		f := types.Filter{
-			Label: "generic",
-		}
-		if p.Features != "" {
-			f.Label = strings.TrimPrefix(p.Features, "cpu:")
-		}
-		fID, found, err := sqObj.Filter.GetFilter(f)
-		if err != nil {
-			return err
-		}
-		f.ID = fID
-		if found {
-			pfp := types.ProfileFilterPlatform{
-				Platform: p,
-				Filter:   f,
-			}
-			err = sqObj.Platform.InsertPlatformFilter(pfp)
+		for _, p := range plts {
+			err := sqObj.Platform.Insert(&p)
 			if err != nil {
 				return err
 			}
-		} else {
-			logrus.Warnf("No filter for platform '%s'", pStr)
+			pStr := fmt.Sprintf("%s/%s", p.OS, p.Arch)
+			if p.Variant != "" {
+				pStr = fmt.Sprintf("%s/%s", pStr, p.Variant)
+			}
+			k := fmt.Sprintf("platform:%s#id", pStr)
+			br.Add(k, fmt.Sprint(p.ID))
+			// Check if filters are already there, if so link
+			f := types.Filter{
+				Label: "generic",
+			}
+			if p.Features != "" {
+				f.Label = strings.TrimPrefix(p.Features, "cpu:")
+			}
+			fID, found, err := sqObj.Filter.GetFilter(f)
+			if err != nil {
+				return err
+			}
+			f.ID = fID
+			if found {
+				pfp := types.ProfileFilterPlatform{
+					Platform: p,
+					Filter:   f,
+				}
+				err = sqObj.Platform.InsertPlatformFilter(pfp)
+				if err != nil {
+					return err
+				}
+			} else {
+				logrus.Warnf("No filter for platform '%s'", pStr)
+			}
 		}
-	}
+	*/
 	return
 }
 
@@ -162,16 +163,18 @@ func Setup_Upstream_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 }
 
 func Setup_Filter_Generic(sq *Sqlite, br *utils.BootstrapResult) (err error) {
-	//logrus.Info("> Setup_Filter_Generic")
-	// Create filter
-	f := types.Filter{
-		Label: "generic",
-	}
-	err = sq.Filter.InsertFilter(&f)
-	if err != nil {
-		return
-	}
-	br.Add("filter:generic#id", fmt.Sprint(f.ID))
+	logrus.Warn("> Setup_Filter_Generic")
+	/*
+		// Create filter
+		f := types.Filter{
+			Label: "generic",
+		}
+		err = sq.Filter.InsertFilter(&f)
+		if err != nil {
+			return
+		}
+		br.Add("filter:generic#id", fmt.Sprint(f.ID))
+	*/
 	return
 }
 
@@ -204,7 +207,7 @@ func Setup_Config_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 func Setup_Manifest_QNIB_FeatureTest_amd(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	//logrus.Warn("Setup_Maniest_QNIB_FeatureTest_arm")
 	// Create cmanifest for qnib/featuretest
-	mani := types.FT_amd_Manifest()
+	mani := types.FT_amd_ManifestData()
 	// Upstream ID
 	upID, err := br.GetInt64("upstream:qnib/featuretest:amd64#id")
 	if err != nil {
@@ -277,7 +280,7 @@ func Setup_Manifest_QNIB_FeatureTest_amd(sq *Sqlite, br *utils.BootstrapResult) 
 func Setup_Manifest_QNIB_FeatureTest_arm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	//logrus.Warn("Setup_Maniest_QNIB_FeatureTest_arm")
 	// Create cmanifest for qnib/featuretest
-	mani := types.FT_arm_Manifest()
+	mani := types.FT_arm_ManifestData()
 	// Upstream ID
 	upID, err := br.GetInt64("upstream:qnib/featuretest:arm64#id")
 	if err != nil {
@@ -348,65 +351,67 @@ func Setup_Manifest_QNIB_FeatureTest_arm(sq *Sqlite, br *utils.BootstrapResult) 
 }
 
 func Setup_Profiles(sqObj *Sqlite, br *utils.BootstrapResult, d string) (err error) {
-	ctx := context.Background()
-	//logrus.Warn("Setup_Profiles")
-	prfs, err := config.FindProfiles(ctx, d)
-	if err != nil {
-		return err
-	}
-	for _, prf := range prfs {
-		f := types.Filter{
-			Label: prf.Name,
+	logrus.Warn("Setup_Profiles")
+	/*
+		ctx := context.Background()
+		prfs, err := config.FindProfiles(ctx, d)
+		if err != nil {
+			return err
 		}
-		feats := []string{}
-		for _, act := range prf.Actions {
-			for k, v := range act.Args {
-				if k == "value" {
-					feats = append(feats, v.(string))
+		for _, prf := range prfs {
+			f := types.Filter{
+				Label: prf.Name,
+			}
+			feats := []string{}
+			for _, act := range prf.Actions {
+				for k, v := range act.Args {
+					if k == "value" {
+						feats = append(feats, v.(string))
+					}
 				}
 			}
-		}
-		f.Feature = strings.Join(feats, ",")
-		msg := fmt.Sprintf("# Profile: %s", f.Label)
-		if len(f.Feature) > 0 {
-			msg += fmt.Sprintf(" [%s]", f.Feature)
-		}
-		//logrus.Info(msg)
-		fID, success, err := sqObj.Filter.GetFilter(f)
-		if err != nil {
-			return err
-		}
-		if !success {
-			err = sqObj.Filter.InsertFilter(&f)
+			f.Feature = strings.Join(feats, ",")
+			msg := fmt.Sprintf("# Profile: %s", f.Label)
+			if len(f.Feature) > 0 {
+				msg += fmt.Sprintf(" [%s]", f.Feature)
+			}
+			//logrus.Info(msg)
+			fID, success, err := sqObj.Filter.GetFilter(f)
 			if err != nil {
 				return err
 			}
-			fID = f.ID
-		}
-		br.Add(fmt.Sprintf("filter:%s#id", f.Label), fmt.Sprint(fID))
-		//logrus.Infof("Filter '%s' created with ID: %d", f.Label, fID)
-		// Profile
-		p := types.Profile{
-			Name: prf.Name,
-		}
-		prfId, success, err := sqObj.Profile.HasProfile(p.Name)
-		if err != nil {
-			return err
-		}
-		if !success {
-			err = sqObj.Profile.Insert(&p)
+			if !success {
+				err = sqObj.Filter.InsertFilter(&f)
+				if err != nil {
+					return err
+				}
+				fID = f.ID
+			}
+			br.Add(fmt.Sprintf("filter:%s#id", f.Label), fmt.Sprint(fID))
+			//logrus.Infof("Filter '%s' created with ID: %d", f.Label, fID)
+			// Profile
+			p := types.Profile{
+				Name: prf.Name,
+			}
+			prfId, success, err := sqObj.Profile.HasProfile(p.Name)
 			if err != nil {
 				return err
 			}
-			prfId = p.ID
+			if !success {
+				err = sqObj.Profile.Insert(&p)
+				if err != nil {
+					return err
+				}
+				prfId = p.ID
+			}
+			br.Add(fmt.Sprintf("profile:%s#id", p.Name), fmt.Sprint(prfId))
+			//logrus.Infof("Profile '%s' created with ID: %d", p.Name, prfId)
+			err = sqObj.LinkProfileToFilter(ctx, prfId, fID)
+			if err != nil {
+				return err
+			}
 		}
-		br.Add(fmt.Sprintf("profile:%s#id", p.Name), fmt.Sprint(prfId))
-		//logrus.Infof("Profile '%s' created with ID: %d", p.Name, prfId)
-		err = sqObj.LinkProfileToFilter(ctx, prfId, fID)
-		if err != nil {
-			return err
-		}
-	}
+	*/
 	return
 }
 

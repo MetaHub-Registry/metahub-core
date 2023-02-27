@@ -1,18 +1,6 @@
 package config
 
-import (
-	"context"
-	"io/ioutil"
-	"log"
-	"os"
-
-	"github.com/sirupsen/logrus"
-	"github.com/metahub-registry/metahub-core/pkg/utils"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"gopkg.in/yaml.v3"
-)
-
+/*
 type Profile struct {
 	Name    string   `yaml:"name"`
 	Actions []Action `yaml:"actions"`
@@ -58,11 +46,11 @@ func LoadProfile(yamlfile string) ProfileConfig {
 func FindProfiles(ctx context.Context, cacheDir string) (prfs map[string]Profile, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package":  "config",
-		"func":     "FindManifestCollections",
+		"func":     "FindProfiles",
 		"cacheDir": cacheDir,
 	})
 	tr := otel.Tracer("config")
-	_, span := tr.Start(ctx, "FindManifestCollections")
+	_, span := tr.Start(ctx, "FindProfiles")
 	span.SetAttributes(attribute.Key("path").String(cacheDir))
 	defer span.End()
 	prfs = make(map[string]Profile)
@@ -91,3 +79,4 @@ func FindProfiles(ctx context.Context, cacheDir string) (prfs map[string]Profile
 	}
 	return
 }
+*/

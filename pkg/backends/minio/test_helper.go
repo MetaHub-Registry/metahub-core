@@ -204,25 +204,25 @@ func (m Minio) BootstrapTestWithBR(b string, br *utils.BootstrapResult) (err err
 			err = errors.Wrapf(err, "while '%s'", b)
 			return
 		}
-	case "layer0:ft_arm64":
+	case "layer:0:ft_arm64":
 		err = m.Setup_Layer(br, types.FT_arm64_Layer0(), b)
 		if err != nil {
 			err = errors.Wrapf(err, "while '%s'", b)
 			return
 		}
-	case "layer1:ft_arm64":
+	case "layer:1:ft_arm64":
 		err = m.Setup_Layer(br, types.FT_arm64_Layer1(), b)
 		if err != nil {
 			err = errors.Wrapf(err, "while '%s'", b)
 			return
 		}
-	case "layer0:ft_amd64":
+	case "layer:0:ft_amd64":
 		err = m.Setup_Layer(br, types.FT_amd64_Layer0(), b)
 		if err != nil {
 			err = errors.Wrapf(err, "while '%s'", b)
 			return
 		}
-	case "layer1:ft_amd64":
+	case "layer:1:ft_amd64":
 		err = m.Setup_Layer(br, types.FT_amd64_Layer1(), b)
 		if err != nil {
 			err = errors.Wrapf(err, "while '%s'", b)

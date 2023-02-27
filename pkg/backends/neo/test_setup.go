@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"strings"
+	"regexp"
 
 	"github.com/opencontainers/go-digest"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -64,70 +65,117 @@ func SetupNeo4j(ctx context.Context) (*Neo4jContainer, error) {
 	return &Neo4jContainer{Container: container, HttpURI: httpUri, BoltURI: boltUri}, nil
 }
 
-func (n Neo) Setup_Filter(bs utils.Bootstrap, br *utils.BootstrapResult, d string) (err error) {
+/*
+	func (n Neo) Setup_Profile(bs utils.Bootstrap, br *utils.BootstrapResult, d string) (err error) {
+		logrus.Warn("Setup_Filter")
+		switch d {
+		case "platform-generic":
+			f := types.NewEmptyFilter("platform-generic")
+			r, err := types.NewRule(types.RuleTypeAnnotation, "eq", "org.supercontainers.hardware.cpu.target", "platform")
+			if err != nil {
+				return err
+			}
+			err = f.AddRule(r)
+			if err != nil {
+				return err
+			}
+			fID, err := n.Filter_Insert(context.Background(), f)
+			if err != nil {
+				return err
+			}
+			br.Add(fmt.Sprintf("filter:%s#id", f.Name), fmt.Sprint(fID))
+		case "mpich-generic":
+			f := types.NewEmptyFilter("mpich-generic")
+			r, err := types.NewRule(types.RuleTypeAnnotation, "eq", "org.supercontainers.hardware.cpu.target", "platform")
+			if err != nil {
+				return err
+			}
+			err = f.AddRule(r)
+			if err != nil {
+				return err
+			}
+			rMpich, err := types.NewRule(types.RuleTypeAnnotation, "eq", "org.supercontainers.mpi.implementation", "mpich")
+			if err != nil {
+				return err
+			}
+			err = f.AddRule(rMpich)
+			if err != nil {
+				return err
+			}
+			fID, err := n.Filter_Insert(context.Background(), f)
+			if err != nil {
+				return err
+			}
+			br.Add(fmt.Sprintf("filter:%s#id", f.Name), fmt.Sprint(fID))
+
+		}
+		return
+	}
+*/
+
+func (n Neo) Setup_Annotation(bs utils.Bootstrap, br *utils.BootstrapResult, k, v string) (err error) {
 	ctx := context.Background()
-	logrus.Warn("Setup_Filter")
-	pre := bs.YAMLPrefix
-	path := filepath.Join(pre, d)
-	prfs, err := config.FindProfiles(ctx, path)
+	logrus.Warnf("Setup_Annotation (%s:%s)", k, v)
+	a := types.NewAnnotation(k, v)
+	aID, err := n.Annotation_GetInsert(ctx, a)
 	if err != nil {
 		return err
 	}
-	for _, prf := range prfs {
-		f := types.Filter{
-			Label: prf.Name,
-		}
-		feats := []string{}
-		for _, act := range prf.Actions {
-			for k, v := range act.Args {
-				if k == "value" {
-					feats = append(feats, v.(string))
-				}
-			}
-		}
-		f.Feature = strings.Join(feats, ",")
-		msg := fmt.Sprintf("# Filter: %s", f.Label)
-		if len(f.Feature) > 0 {
-			msg += fmt.Sprintf(" [%s]", f.Feature)
-		}
-		//logrus.Info(msg)
-		fID, err := n.Filter_Insert(ctx, f)
-		if err != nil {
-			return err
-		}
-		br.Add(fmt.Sprintf("filter:%s#id", f.Label), fmt.Sprint(fID))
-	}
+	br.Add(fmt.Sprintf("annotation:%s:%s#id", k, v), fmt.Sprint(aID))
 	return
 }
 
 func (n Neo) Setup_Profiles(bs utils.Bootstrap, br *utils.BootstrapResult, d string) (err error) {
-	ctx := context.Background()
 	logrus.Warn("Setup_Profiles")
+	ctx := context.Background()
 	pre := bs.YAMLPrefix
+	if pre == "" {
+		err = fmt.Errorf(`the YAMLPrefix is empty, please use "bs.SetYAMLPrefix(<relative path to yaml root>)"`)
+		return
+	}
 	path := filepath.Join(pre, d)
-	prfs, err := config.FindProfiles(ctx, path)
-	if err != nil {
+	prfs, e := config.FindProfiles(path)
+	if e != nil {
+		err = errors.Wrap(e, fmt.Sprintf("failed to find profiles in %s", path))
 		return err
 	}
 	for _, prf := range prfs {
-		fID, err := br.GetInt64(fmt.Sprintf("filter:%s#id", prf.Name))
-		if err != nil {
-			return err
-		}
-		// Profile
-		p := types.Profile{
-			Name: prf.Name,
-		}
+		p, _ := prf.ToProfile()
 		err = n.Profile_GetInsert(ctx, &p)
 		if err != nil {
 			return err
 		}
-		br.Add(fmt.Sprintf("profile:%s#id", p.Name), fmt.Sprint(p.ID))
-		logrus.Infof("Profile '%s' created with ID: %d", p.Name, p.ID)
-		err = n.LinkProfileToFilter(ctx, p.ID, fID)
+		label := fmt.Sprintf("%s:%s", p.Name, p.Tag)
+		br.Add(fmt.Sprintf("profile:%s#id", label), fmt.Sprint(p.ID))
+		msg := fmt.Sprintf("Profile '%s' created with ID: %d", label, p.ID)
+		if p.Rule != "" {
+			msg += fmt.Sprintf(" and Rule: %s", p.Rule)
+		}
+		logrus.Info(msg)
+		// TODO: Link Profile with rules?
+	}
+	return
+}
+
+func (n Neo) Setup_Rules(bs utils.Bootstrap, br *utils.BootstrapResult, d string) (err error) {
+	logrus.Warn("Setup_Rules")
+	ctx := context.Background()
+	pre := bs.YAMLPrefix
+	path := filepath.Join(pre, d)
+	rls, err := config.FindRules(path)
+	if err != nil {
+		return err
+	}
+	for _, rl := range rls {
+		r := rl.ToTypesRule()
+		rID, err := n.Rule_GetCreate(ctx, r)
 		if err != nil {
 			return err
 		}
+		label := fmt.Sprintf("%s:%s", r.Name, r.Tag)
+		br.Add(fmt.Sprintf("rule:%s#id", label), fmt.Sprint(rID))
+		logrus.Infof("Rule '%s' created with ID: %d", label, rID)
+		// TODO: Link Profile with rules?
 	}
 	return
 }
@@ -141,38 +189,33 @@ func (n Neo) Setup_Platforms(br *utils.BootstrapResult, plts []types.Platform) (
 			return err
 		}
 		pStr := fmt.Sprintf("%s/%s", p.OS, p.Arch)
-		/*if p.Variant != "" {
+		if p.Variant != "" {
 			pStr = fmt.Sprintf("%s/%s", pStr, p.Variant)
-		}*/
-		if p.Features != "" {
-			pStr += fmt.Sprintf("[%s]", p.Features)
 		}
 		k := fmt.Sprintf("platform:%s#id", pStr)
-		//logrus.Warnf("Add '%s' with ID: %d", k, p.ID)
+		logrus.Warnf("Add '%s' with ID: %d", k, p.ID)
 		br.Add(k, fmt.Sprint(p.ID))
-		// Check if filters are already there, if so link
-		f := types.Filter{
-			Label: "generic",
-		}
-		if p.Features != "" {
-			f.Label = strings.TrimPrefix(p.Features, "cpu:")
-		}
-		fID, found, err := n.GetFilter(f)
-		if err != nil {
-			return err
-		}
-
-		if found {
-			f.ID = fID
-
-			err = n.InsertPlatformFilter(p, f)
+		/*
+			// Check if filters are already there, if so link
+			f := types.Filter{
+				Label: "generic",
+			}
+			fID, found, err := n.GetFilter(f)
 			if err != nil {
 				return err
 			}
-		} else {
-			logrus.Warnf("No filter for platform '%s'", pStr)
-		}
 
+			if found {
+				f.ID = fID
+
+				err = n.InsertPlatformFilter(p, f)
+				if err != nil {
+					return err
+				}
+			} else {
+				logrus.Warnf("No filter for platform '%s'", pStr)
+			}
+		*/
 	}
 	return
 }
@@ -194,8 +237,8 @@ func (n Neo) Setup_Layer(br *utils.BootstrapResult, ly types.Layer, bootstrapstr
 	if err != nil {
 		return err
 	}
-	br.Add(fmt.Sprintf("%s#id", bootstrapstring), fmt.Sprint(lyId))
-	br.Add(fmt.Sprintf("%s#digest", bootstrapstring), ly.Digest)
+	br.Add(fmt.Sprintf("layer:%s#id", bootstrapstring), fmt.Sprint(lyId))
+	br.Add(fmt.Sprintf("layer:%s#digest", bootstrapstring), ly.Digest)
 	return
 }
 
@@ -208,37 +251,200 @@ func (n Neo) Setup_Upstream(br *utils.BootstrapResult, up types.Upstream, label 
 	return
 }
 
-func (n Neo) Setup_Collection_FT_generic(br *utils.BootstrapResult) (err error) {
+func (n Neo) Setup_Manifest_FT_mpich_amd64(br *utils.BootstrapResult) (err error) {
 	ctx := context.Background()
-	// Add Collection
-	yamlCol := config.FT_yamlCollection_generic()
-	colID, colTagID, err := n.CreateCollection(yamlCol)
+	// Add Upstream
+	upID, err := br.GetInt64("upstream:ft_amd64#id")
 	if err != nil {
 		return err
 	}
-	br.Add("collection:ft#id", fmt.Sprint(colID))
-	br.Add("tag:generic#id", fmt.Sprint(colTagID))
+	up, err := n.Upstream_Get_ByID(upID)
 	if err != nil {
 		return err
 	}
-	// Link Collection To Manifests
-	for _, mani := range []string{"manifest:ft_arm64#id", "manifest:ft_amd64#id"} {
-		mani_id, err := br.GetInt64(mani)
-		if err != nil {
-			return err
-		}
-		err = n.LinkCollectionTagToManifest(ctx, colTagID, mani_id)
-		if err != nil {
-			return err
-		}
-		err = n.LinkCollectionToManifest(ctx, colID, mani_id)
-		if err != nil {
-			return err
-		}
-
+	/// Get Platform
+	plaID, err := br.GetInt64("platform:linux/amd64#id")
+	if err != nil {
+		return err
+	}
+	plat, found, err := n.Platform_GetByID(plaID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("platformID '%d' not found", plaID)
+	}
+	as := types.NewAnnotations()
+	if err = as.AddNewAnnotation("org.supercontainers.hardware.cpu.target", "platform"); err != nil {
+		return err
+	}
+	if err = as.AddNewAnnotation("org.supercontainers.hardware.cpu.target.platform", "amd64"); err != nil {
+		return err
+	}
+	if err = as.AddNewAnnotation("org.supercontainers.mpi.implementation", "mpich"); err != nil {
+		return err
+	}
+	m := types.Manifest{
+		Upstream:    up,
+		Platform:    plat,
+		Annotations: as,
+	}
+	maniID, err := n.Manifest_GetInsert(ctx, m)
+	br.Add("manifest:ft_mpich_amd64#id", fmt.Sprint(maniID))
+	if err != nil {
+		return err
+	}
+	err = n.Manifest_LinkToUpstream(ctx, maniID, upID)
+	if err != nil {
+		return err
+	}
+	err = n.LinkManifestToPlatform(ctx, maniID, plaID)
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	// Link Config
+	arm_config_id, err := br.GetInt64(fmt.Sprintf("config:ft_%s#id", m.Platform.Arch))
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	err = n.ManifestData_LinkToConfig(ctx, maniID, arm_config_id)
+	if err != nil {
+		logrus.Error(err)
+		return err
 	}
 	return
 }
+
+func (n Neo) Setup_Manifest_FT_amd64(br *utils.BootstrapResult) (err error) {
+	ctx := context.Background()
+	// Add Upstream
+	upID, err := br.GetInt64("upstream:ft_amd64#id")
+	if err != nil {
+		return err
+	}
+	up, err := n.Upstream_Get_ByID(upID)
+	if err != nil {
+		return err
+	}
+	/// Get Platform
+	plaID, err := br.GetInt64("platform:linux/amd64#id")
+	if err != nil {
+		return err
+	}
+	plat, found, err := n.Platform_GetByID(plaID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("platformID '%d' not found", plaID)
+	}
+	as := types.NewAnnotations()
+	if err = as.AddNewAnnotation("org.supercontainers.hardware.cpu.target", "platform"); err != nil {
+		return err
+	}
+	if err = as.AddNewAnnotation("org.supercontainers.hardware.cpu.target.platform", "amd64"); err != nil {
+		return err
+	}
+	m := types.Manifest{
+		Upstream:    up,
+		Platform:    plat,
+		Annotations: as,
+	}
+	maniID, err := n.Manifest_GetInsert(ctx, m)
+	br.Add("manifest:ft_amd64#id", fmt.Sprint(maniID))
+	if err != nil {
+		return err
+	}
+	err = n.Manifest_LinkToUpstream(ctx, maniID, upID)
+	if err != nil {
+		return err
+	}
+	err = n.LinkManifestToPlatform(ctx, maniID, plaID)
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	// Link Config
+	arm_config_id, err := br.GetInt64(fmt.Sprintf("config:ft_%s#id", m.Platform.Arch))
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	err = n.ManifestData_LinkToConfig(ctx, maniID, arm_config_id)
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	return
+}
+
+func (n Neo) Setup_Manifest_FT_arm64(br *utils.BootstrapResult) (err error) {
+	ctx := context.Background()
+	// Add Manifest
+	/// Get Upstream
+	upID, err := br.GetInt64("upstream:ft_arm64#id")
+	if err != nil {
+		return err
+	}
+	up, err := n.Upstream_Get_ByID(upID)
+	if err != nil {
+		return err
+	}
+	/// Get Platform
+	plaID, err := br.GetInt64("platform:linux/arm64#id")
+	if err != nil {
+		return err
+	}
+	plat, found, err := n.Platform_GetByID(plaID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("platform not found")
+	}
+	as := types.NewAnnotations()
+	if err = as.AddNewAnnotation("org.supercontainers.hardware.cpu.target", "platform"); err != nil {
+		return err
+	}
+	if err = as.AddNewAnnotation("org.supercontainers.hardware.cpu.target.platform", "arm64"); err != nil {
+		return err
+	}
+	m := types.Manifest{
+		Upstream:    up,
+		Platform:    plat,
+		Annotations: as,
+	}
+	maniID, err := n.Manifest_GetInsert(ctx, m)
+	br.Add("manifest:ft_arm64#id", fmt.Sprint(maniID))
+	if err != nil {
+		return err
+	}
+	err = n.Manifest_LinkToUpstream(ctx, maniID, upID)
+	if err != nil {
+		return err
+	}
+	// Link Platform
+	err = n.LinkManifestToPlatform(ctx, maniID, plaID)
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	// Link Config
+	arm_config_id, err := br.GetInt64(fmt.Sprintf("config:ft_%s#id", m.Platform.Arch))
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	err = n.ManifestData_LinkToConfig(ctx, maniID, arm_config_id)
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	return
+}
+
 func (n Neo) Setup_Collection_FT_amd64(br *utils.BootstrapResult) (err error) {
 	ctx := context.Background()
 	// Add Collection
@@ -252,21 +458,20 @@ func (n Neo) Setup_Collection_FT_amd64(br *utils.BootstrapResult) (err error) {
 	if err != nil {
 		return err
 	}
-	// Link Collection To Manifests
+	// Link Collection To Manifest
 	for _, mani := range []string{"manifest:ft_amd64#id"} {
-		mani_id, err := br.GetInt64(mani)
+		maniID, err := br.GetInt64(mani)
 		if err != nil {
 			return err
 		}
-		err = n.LinkCollectionTagToManifest(ctx, colTagID, mani_id)
+		err = n.LinkCollectionToManifest(ctx, maniID, colID)
 		if err != nil {
 			return err
 		}
-		err = n.LinkCollectionToManifest(ctx, colID, mani_id)
+		err = n.LinkCollectionTagToManifest(ctx, maniID, colTagID)
 		if err != nil {
 			return err
 		}
-
 	}
 	return
 }
@@ -284,34 +489,64 @@ func (n Neo) Setup_Collection_FT_arm64(br *utils.BootstrapResult) (err error) {
 	if err != nil {
 		return err
 	}
-	// Link Collection To Manifests
+	// Link Collection To Manifest
 	for _, mani := range []string{"manifest:ft_arm64#id"} {
-		mani_id, err := br.GetInt64(mani)
+		maniID, err := br.GetInt64(mani)
 		if err != nil {
 			return err
 		}
-		err = n.LinkCollectionTagToManifest(ctx, colTagID, mani_id)
+		err = n.LinkCollectionToManifest(ctx, maniID, colID)
 		if err != nil {
 			return err
 		}
-		err = n.LinkCollectionToManifest(ctx, colID, mani_id)
+		err = n.LinkCollectionTagToManifest(ctx, maniID, colTagID)
 		if err != nil {
 			return err
 		}
+	}
+	return
+}
 
+func (n Neo) Setup_Collection_FT_generic(br *utils.BootstrapResult) (err error) {
+	ctx := context.Background()
+	// Add Collection
+	yamlCol := config.FT_yamlCollection_generic()
+	colID, colTagID, err := n.CreateCollection(yamlCol)
+	if err != nil {
+		return err
+	}
+	br.Add("collection:ft#id", fmt.Sprint(colID))
+	br.Add("tag:generic#id", fmt.Sprint(colTagID))
+	if err != nil {
+		return err
+	}
+	// Link Collection To Manifest
+	for _, mani := range []string{"manifest:ft_arm64#id", "manifest:ft_amd64#id"} {
+		maniID, err := br.GetInt64(mani)
+		if err != nil {
+			return err
+		}
+		err = n.LinkCollectionToManifest(ctx, colID, maniID)
+		if err != nil {
+			return err
+		}
+		err = n.LinkCollectionTagToManifest(ctx, colTagID, maniID)
+		if err != nil {
+			return err
+		}
 	}
 	return
 }
 
 func (n Neo) Setup_ManifestList_FT_generic(br *utils.BootstrapResult) (err error) {
 	// // Manifest
-	arm_ml := types.FT_arm_Manifest()
-	arm_ml.ID, err = br.GetInt64("manifest:ft_arm64#id")
+	arm_ml := types.FT_arm_ManifestData()
+	arm_ml.ID, err = br.GetInt64("manifestdata:ft_arm64#id")
 	if err != nil {
 		return err
 	}
-	amd_ml := types.FT_arm_Manifest()
-	amd_ml.ID, err = br.GetInt64("manifest:ft_amd64#id")
+	amd_ml := types.FT_arm_ManifestData()
+	amd_ml.ID, err = br.GetInt64("manifestdata:ft_amd64#id")
 	if err != nil {
 		return err
 	}
@@ -321,55 +556,37 @@ func (n Neo) Setup_ManifestList_FT_generic(br *utils.BootstrapResult) (err error
 	if err != nil {
 		return err
 	}
-	err = n.LinkManifestListToManifests(ml_generic_id, []types.Manifest{arm_ml, amd_ml})
+	err = n.LinkManifestListToManifests(ml_generic_id, []types.ManifestData{arm_ml, amd_ml})
 	if err != nil {
 		return err
 	}
 	return
 }
 
-func (n Neo) Setup_Manifest(br *utils.BootstrapResult, mani types.Manifest, label string) (err error) {
+func (n Neo) Setup_ManifestData(br *utils.BootstrapResult, mani types.ManifestData, label string) (err error) {
 	ctx := context.Background()
-	mani_id, err := n.Manifest_Insert(ctx, mani)
+	mani_id, err := n.ManifestData_Insert(ctx, mani)
 	if err != nil {
 		return err
 	}
 	mani.ID = mani_id
 	br.Add(fmt.Sprintf("%s#id", label), fmt.Sprint(mani_id))
-	pStr := fmt.Sprintf("%s/%s", mani.Platform.OS, mani.Platform.Arch)
-	// Link Platform
-	platform_id, err := br.GetInt64(fmt.Sprintf("platform:%s#id", pStr))
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	//logrus.Warnf("Manifest '%d' linked to platform '%s' with ID: %d", mani_id, pStr, platform_id)
-	err = n.LinkManifestToPlatform(ctx, mani_id, platform_id)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	// Link Config
-	arm_config_id, err := br.GetInt64(fmt.Sprintf("config:ft_%s#id", mani.Platform.Arch))
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	err = n.LinkManifestToConfig(ctx, mani_id, arm_config_id)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	// Link Upstream
-	arm_upstream_id, err := br.GetInt64(fmt.Sprintf("upstream:ft_%s#id", mani.Platform.Arch))
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	err = n.LinkManifestToUpstream(ctx, mani_id, arm_upstream_id)
-	if err != nil {
-		logrus.Error(err)
-		return err
+	// Check if manifest with the same label is already in DB
+	re := `^manifestdata:(?P<name>.*)$`
+	r := regexp.MustCompile(re)
+	if r.MatchString(label) {
+		m := r.FindStringSubmatch(label)
+		k := m[1]
+		key := fmt.Sprintf("manifest:%s#id", k)
+		mID, err := br.GetInt64(key)
+		if err != nil {
+			return nil
+		}
+		// Link ManifestData to Manifest
+		err = n.LinkManifestToManifestData(ctx, mID, mani_id)
+		if err != nil {
+			return err
+		}
 	}
 	return
 }
@@ -416,8 +633,8 @@ func (n Neo) Cypher_AddCollection_FT_generic(br *utils.BootstrapResult) (err err
 	q += ` MERGE (p0)-[:USES]->(f1)`
 	q += ` MERGE (pArm:Platform {label: "linux/arm64", arch: "arm64", os: "linux", variant: "", features: ""})`
 	q += ` MERGE (f1)-[:USES]->(pArm)`
-	q += ` MERGE (mArm:Manifest {digest: "digest: sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mediaType: "application/vnd.docker.distribution.manifest.v2+json", size: 735})`
-	q += ` MERGE (pArm)<-[:IS]-(mArm)`
+	q += ` MERGE (mdArm:ManifestData {digest: "digest: sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mediaType: "application/vnd.docker.distribution.manifest.v2+json", size: 735})`
+	q += ` MERGE (pArm)<-[:IS]-(mArm:Manifest {label: c1.repo+":"+t1.name})-[:CREATED]->(mdArm)`
 	q += ` MERGE (t1)-[:UPSTREAM]->(mArm)`
 	q += ` MERGE (c1)-[:UPSTREAM]->(mArm)`
 	q += ` MERGE (upArm:Upstream {reg: "metahub-registry.org", repo: "qnib/featuretest", tag: "tag1-linux.arm64"})`
@@ -426,8 +643,8 @@ func (n Neo) Cypher_AddCollection_FT_generic(br *utils.BootstrapResult) (err err
 	q += ` MERGE (mArm)-[:USES]->(cfgArm)`
 	q += ` MERGE (pAmd:Platform {label: "linux/amd64", arch: "amd64", os: "linux", variant: "", features: ""})`
 	q += ` MERGE (f1)-[:USES]->(pAmd)`
-	q += ` MERGE (mAmd:Manifest {digest: "digest: sha256:5bf8eee20fde14eb6e3e924c18fafa4d816e131f315810875136f0438ff7beed", mediaType: "application/vnd.docker.distribution.manifest.v2+json", size: 735})`
-	q += ` MERGE (pAmd)<-[:IS]-(mAmd)`
+	q += ` MERGE (mdAmd:ManifestData {digest: "digest: sha256:5bf8eee20fde14eb6e3e924c18fafa4d816e131f315810875136f0438ff7beed", mediaType: "application/vnd.docker.distribution.manifest.v2+json", size: 735})`
+	q += ` MERGE (pAmd)<-[:IS]-(mAmd:Manifest {label: c1.repo+":"+t1.name})-[:CREATED]->(mdAmd)`
 	q += ` MERGE (t1)-[:UPSTREAM]->(mAmd)`
 	q += ` MERGE (c1)-[:UPSTREAM]->(mAmd)`
 	q += ` MERGE (upAmd:Upstream {reg: "metahub-registry.org", repo: "qnib/featuretest", tag: "tag1-linux.amd64"})`
@@ -450,8 +667,8 @@ func (n Neo) Cypher_ManifestList_FT_generic(br *utils.BootstrapResult) (err erro
 	q += ` MERGE (p0)-[:USES]->(f1)`
 	q += ` MERGE (pArm:Platform {label: "linux/arm64", arch: "arm64", os: "linux", variant: "", features: ""})`
 	q += ` MERGE (f1)-[:USES]->(pArm)`
-	q += ` MERGE (mArm:Manifest {digest: "digest: sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mediaType: "application/vnd.docker.distribution.manifest.v2+json", size: 735})`
-	q += ` MERGE (pArm)<-[:IS]-(mArm)`
+	q += ` MERGE (mdArm:ManifestData {digest: "digest: sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mediaType: "application/vnd.docker.distribution.manifest.v2+json", size: 735})`
+	q += ` MERGE (pArm)<-[:IS]-(mArm:Manifest  {label: c1.repo+":"+t1.name})-[:CREATED]->(mdArm)`
 	q += ` MERGE (mlGen:ManifestList {digest: "digest: sha256:9d23fb26fef6bd93a9ec12b89d4674b270a7a54cb09dfed6933c0abcacddfc0f", mediaType: "application/vnd.docker.distribution.manifest.list.v2+json", size: 106})`
 	q += ` MERGE (mlGen)-[:INCLUDES]->(mArm)`
 	q += ` MERGE (t1)-[:UPSTREAM]->(mArm)`
@@ -461,8 +678,8 @@ func (n Neo) Cypher_ManifestList_FT_generic(br *utils.BootstrapResult) (err erro
 	q += ` MERGE (t1)-[:HAS_TAG]->(c1)`
 	q += ` MERGE (pAmd:Platform {label: "linux/amd64", arch: "amd64", os: "linux", variant: "", features: ""})`
 	q += ` MERGE (f1)-[:USES]->(pAmd)`
-	q += ` MERGE (mAmd:Manifest {digest: "digest: sha256:5bf8eee20fde14eb6e3e924c18fafa4d816e131f315810875136f0438ff7beed", mediaType: "application/vnd.docker.distribution.manifest.v2+json", size: 735})`
-	q += ` MERGE (pAmd)<-[:IS]-(mAmd)`
+	q += ` MERGE (mdAmd:ManifestData {digest: "digest: sha256:5bf8eee20fde14eb6e3e924c18fafa4d816e131f315810875136f0438ff7beed", mediaType: "application/vnd.docker.distribution.manifest.v2+json", size: 735})`
+	q += ` MERGE (pAmd)<-[:IS]-(mAmd:Manifest {label: c1.repo+":"+t1.name})-[:CREATED]->(mdAmd)`
 	q += ` MERGE (t1)-[:UPSTREAM]->(mAmd)`
 	q += ` MERGE (c1)-[:UPSTREAM]->(mAmd)`
 	q += ` MERGE (mlGen)-[:INCLUDES]->(mAmd)`
@@ -485,12 +702,12 @@ func (n Neo) Cypher_ManifestList_FT_skylake(br *utils.BootstrapResult) (err erro
 	q += ` MERGE (p0)-[:USES]->(f1)`
 	q += ` MERGE (pIL:Platform {label: "skylake", arch: "amd64", os: "linux", variant: "", features: "cpu:skylake"})`
 	q += ` MERGE (f1)-[:USES]->(pIL)`
-	q += ` MERGE (mIL:Manifest {digest: "digest: sha256:bde4b56852850ea948d2b4426fffdcff31bdb8fa1aec6c822af03e93e114fa05", mediaType: "application/vnd.docker.distribution.manifest.v2+json", size: 735})`
-	q += ` MERGE (pIL)<-[:IS]-(mIL)`
+	q += ` MERGE (mdSL:ManifestData {digest: "digest: sha256:bde4b56852850ea948d2b4426fffdcff31bdb8fa1aec6c822af03e93e114fa05", mediaType: "application/vnd.docker.distribution.manifest.v2+json", size: 735})`
+	q += ` MERGE (pIL)<-[:IS]-(mIL:Manifest {label: c1.repo+":"+t1.name})-[:CREATED]->(mdSL)`
 	/// ManifestList
-	q += ` MERGE (mlIL:ManifestList {digest: "digest: sha256:07992d9ce9abfdf556cf553c9be9276c14fcfc325724be67e43364f6a8fa0add", mediaType: "application/vnd.docker.distribution.manifest.list.v2+json", size: 106})`
-	q += ` MERGE (mlIL)-[:INCLUDES]->(mIL)`
-	q += ` MERGE (mlIL)-[:IMPLEMENTS]->(f1)`
+	q += ` MERGE (mlSL:ManifestList {digest: "digest: sha256:07992d9ce9abfdf556cf553c9be9276c14fcfc325724be67e43364f6a8fa0add", mediaType: "application/vnd.docker.distribution.manifest.list.v2+json", size: 106})`
+	q += ` MERGE (mlSL)-[:INCLUDES]->(mdSL)`
+	q += ` MERGE (mlSL)-[:IMPLEMENTS]->(f1)`
 	q += ` MERGE (t1)-[:REF]->(mlIL)`
 	q += ` MERGE (c1)-[:REF]->(mlIL)`
 	q += ` MERGE (t1)-[:HAS_TAG]->(c1)`

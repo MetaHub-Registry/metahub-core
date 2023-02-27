@@ -13,14 +13,14 @@ import (
 )
 
 type Config struct {
-	ID        int64    `json:"-"`
-	Data      []byte   `json:"-"`
-	Digest    string   `json:"digest"`
-	Label     string   `json:"label"`
-	MediaType string   `json:"media_type"`
-	Size      int64    `json:"size"`
-	Cfg       v1.Image `json:"cfg"`
-	//Labels    Annotations `json:"labels"`
+	ID         int64       `json:"-"`
+	Data       []byte      `json:"-"`
+	Digest     string      `json:"digest"`
+	GraphLabel string      `json:"graph_label"`
+	MediaType  string      `json:"media_type"`
+	Size       int64       `json:"size"`
+	Cfg        v1.Image    `json:"cfg"`
+	Labels     Annotations `json:"labels"`
 }
 
 func NewConfigFromBytes(data []byte) (res Config, err error) {
@@ -122,21 +122,66 @@ func ConfigFromOCISpecV1Image(v1Img imgspecv1.Image) (res Config) {
 	return
 }
 
-/*
 func (c Config) LabelsToAnnotations() (anno Annotations, err error) {
 	anno = NewAnnotations()
 	for k, v := range c.Cfg.Config.Labels {
-		err = anno.AddAnnotation(k, v)
+		a := NewAnnotation(k, v)
+		err = anno.AddAnnotation(a)
 		if err != nil {
 			return
 		}
 	}
-	for k, v := range c.Labels.Map {
-		err = anno.AddAnnotation(k, v)
+	for _, a := range c.Labels.Data {
+		err = anno.AddAnnotation(a)
 		if err != nil {
 			return
 		}
 	}
 	return
 }
-*/
+
+func (c Config) ToBytes() (b []byte, err error) {
+	for k, a := range c.Labels.Data {
+		c.Cfg.Config.Labels[k] = a.Value
+	}
+	b, err = json.Marshal(c.Cfg)
+	return
+}
+
+func (c Config) ToOCISpecV1Image() (res imgspecv1.Image) {
+	h := []imgspecv1.History{}
+	for _, h1 := range c.Cfg.History {
+		h = append(h, imgspecv1.History{
+			Created:    h1.Created,
+			CreatedBy:  h1.CreatedBy,
+			Comment:    h1.Comment,
+			EmptyLayer: h1.EmptyLayer,
+		})
+	}
+	return imgspecv1.Image{
+		Created:      c.Cfg.Created,
+		Author:       c.Cfg.Author,
+		Architecture: c.Cfg.Architecture,
+		OS:           c.Cfg.OS,
+		Variant:      c.Cfg.Variant,
+		OSVersion:    c.Cfg.OSVersion,
+		OSFeatures:   c.Cfg.OSFeatures,
+		Config: imgspecv1.ImageConfig{
+			User:         c.Cfg.Config.User,
+			ExposedPorts: c.Cfg.Config.ExposedPorts,
+			Env:          c.Cfg.Config.Env,
+			Entrypoint:   c.Cfg.Config.Entrypoint,
+			Cmd:          c.Cfg.Config.Cmd,
+			Volumes:      c.Cfg.Config.Volumes,
+			WorkingDir:   c.Cfg.Config.WorkingDir,
+			Labels:       c.Cfg.Config.Labels,
+			StopSignal:   c.Cfg.Config.StopSignal,
+		},
+
+		RootFS: imgspecv1.RootFS{
+			Type:    c.Cfg.RootFS.Type,
+			DiffIDs: c.Cfg.RootFS.DiffIDs,
+		},
+		History: h,
+	}
+}

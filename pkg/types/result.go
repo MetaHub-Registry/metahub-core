@@ -1,4 +1,4 @@
-package neo
+package types
 
 import (
 	"fmt"

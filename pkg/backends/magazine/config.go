@@ -36,7 +36,7 @@ func (mag Magazine) CacheImageConfigViaUpstream(ctx context.Context, up upstream
 	return
 }
 
-func (mag Magazine) CachImageConfig(ctx context.Context, mani *types.Manifest) (err error) {
+func (mag Magazine) CachImageConfig(ctx context.Context, mani *types.ManifestData) (err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"packrusage": "backend/magazine/config.go",
 		"func":       "CachImageConfig",
@@ -233,4 +233,8 @@ func (mag Magazine) Config_GetInsert_ByOCIManifest(ociMani types.OCIManifest, la
 	}
 	cfg, found, err = mag.Database.Config_GetInsert_ByOCIManifest(ociMani, label)
 	return
+}
+
+func (mag Magazine) Config_AddLabel(ctx context.Context, cfgID int64, a types.Annotation) (err error) {
+	return mag.Database.Config_AddLabel(ctx, cfgID, a)
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 
 	"github.com/sirupsen/logrus"
@@ -49,6 +50,17 @@ func (bs *Bootstrap) SetYAMLPrefix(pre string) {
 // / Result
 type BootstrapResult struct {
 	Dict map[string]string
+}
+
+func (br BootstrapResult) PrintDict() {
+	keys := []string{}
+	for k, _ := range br.Dict {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		logrus.Infof("'%-20s' : '%s'", k, br.Dict[k])
+	}
 }
 
 func NewBootstrapResult() BootstrapResult {

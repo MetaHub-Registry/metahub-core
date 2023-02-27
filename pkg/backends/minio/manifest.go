@@ -21,7 +21,7 @@ import (
 
 var aliasPrefix = "aliases"
 
-func (m Minio) GetManifest(ctx context.Context, up upstream.UpstreamTriple) (res types.Manifest, isCached bool, err error) {
+func (m Minio) GetManifest(ctx context.Context, up upstream.UpstreamTriple) (res types.ManifestData, isCached bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "backends/minio",
 		"func":    "GetManifest",
@@ -96,7 +96,7 @@ func RawManifestFromBlob(b []byte) (mani manifest.Manifest, err error) {
 	return
 }
 
-func (m Minio) NewManifestFromBytes(b []byte) (mani types.Manifest, err error) {
+func (m Minio) NewManifestFromBytes(b []byte) (mani types.ManifestData, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"packrusage": "backend/minio/manifest.go",
 		"func":       "NewManifestFromBytes",
@@ -107,10 +107,11 @@ func (m Minio) NewManifestFromBytes(b []byte) (mani types.Manifest, err error) {
 		err = errors.WithMessagef(err, "manifest.FromBlob %s", string(b))
 		l.Error(err)
 	}
+	logrus.Warnf("ConfigSha: %s", cntMani.ConfigInfo().Digest.String())
 	bInfo := cntMani.ConfigInfo()
 	// TODO: Is deriving digest from byte safe?
 	maniDig := digest.FromBytes(b)
-	mani = types.Manifest{
+	mani = types.ManifestData{
 		MediaType: mt,
 		Digest:    maniDig.String(),
 		Size:      bInfo.Size,
@@ -170,7 +171,7 @@ func (m Minio) RemoveManifestAliases() (err error) {
 	return
 }
 
-func (m Minio) ManifestGetObj(ctx context.Context, path string) (mani types.Manifest, err error) {
+func (m Minio) ManifestGetObj(ctx context.Context, path string) (mani types.ManifestData, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"packrusage": "backend/minio/manifest.go",
 		"func":       "ManifestGetObj",
@@ -193,10 +194,11 @@ func (m Minio) ManifestGetObj(ctx context.Context, path string) (mani types.Mani
 		err = errors.Wrapf(err, "m.NewManifestFromBytes")
 		l.Error(err)
 	}
+	mani.Annotations = types.NewAnnotations()
 	return
 }
 
-func (m Minio) GetManifestViaPath(ctx context.Context, path string) (mani types.Manifest, err error) {
+func (m Minio) GetManifestViaPath(ctx context.Context, path string) (mani types.ManifestData, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"packrusage": "backend/minio/manifest.go",
 		"func":       "GetManifestViaPath",
