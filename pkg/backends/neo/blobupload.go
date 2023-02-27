@@ -133,7 +133,7 @@ func (n Neo) UploadChunk_Get_ByUUID(buID int64) (bcs []types.BlobChunks, err err
 }
 
 // / Helpers
-func BlobChunkFromResult(res Result) (bc types.BlobChunks, err error) {
+func BlobChunkFromResult(res types.Result) (bc types.BlobChunks, err error) {
 	err = res.CheckKeys("blobchunkID", "blobchunkStartByte", "blobchunkBytes", "blobchunkCreatedAt")
 	if err != nil {
 		return
@@ -151,7 +151,7 @@ func BlobChunkFromResult(res Result) (bc types.BlobChunks, err error) {
 	return
 }
 
-func OCIBlobUploadFromResult(res Result) (ct types.OCIBlobUpload, err error) {
+func OCIBlobUploadFromResult(res types.Result) (ct types.OCIBlobUpload, err error) {
 	err = res.CheckKeys("blobuploadID", "blobuploadUploadedBy", "blobuploadDigest", "blobuploadUUID", "blobuploadLocation")
 	if err != nil {
 		return

@@ -28,13 +28,14 @@ func (mag Magazine) NeoInsertProfile(ctx context.Context, prf types.Profile) (pr
 	return
 }
 
-func (mag Magazine) SQliteLinkProfileToFilter(ctx context.Context, prfID, filterID int64) (err error) {
+/*func (mag Magazine) SQliteLinkProfileToFilter(ctx context.Context, prfID, filterID int64) (err error) {
 	return mag.Database.LinkProfileToFilter(ctx, prfID, filterID)
 }
 
 func (mag Magazine) NeoLinkProfileToFilter(ctx context.Context, prfID, filterID int64) (err error) {
 	return mag.Database.LinkProfileToFilter(ctx, prfID, filterID)
 }
+*/
 
 func (mag Magazine) SQliteInsertProfile(ctx context.Context, p types.Profile) (profileID int64, err error) {
 	err = mag.Database.Profile_GetInsert(ctx, &p)

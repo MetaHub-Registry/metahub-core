@@ -1,0 +1,35 @@
+package neo
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
+)
+
+func Test_Annotation_CRUD(t *testing.T) {
+	ctx := context.Background()
+	_ = ctx
+	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
+	//bs.PostTestSleep = 90
+	br, err := SetupTest(bs)
+	_ = br
+	assert.NoError(t, err)
+	defer db.TeardownTest(bs)
+	// Actual test
+	a0 := types.NewAnnotation("foo", "bar")
+	a0_id, err := db.Annotation_GetInsert(ctx, a0)
+	assert.NoError(t, err)
+	assert.NotEqual(t, 0, a0_id)
+	l0 := types.NewAnnotation("foo", "bar")
+	l0_id, err := db.Label_GetInsert(ctx, l0)
+	assert.NoError(t, err)
+	assert.NotEqual(t, 0, l0_id)
+	a, found, err := db.Annotation_GetByID(ctx, a0_id)
+	assert.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, a0_id, a.ID)
+}

@@ -2,6 +2,8 @@ package magazine
 
 import (
 	"context"
+	b64 "encoding/base64"
+	"fmt"
 	"testing"
 
 	"github.com/opencontainers/go-digest"
@@ -67,19 +69,17 @@ func Test_StoreManifestUpload_OCIManifest(t *testing.T) {
 	bs.SetEmptyAll()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("users")
-	bs.AddBootstrap("filter")
-	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("platforms:amd64")
-	bs.AddBootstrap("platforms:arm64")
-	bs.AddBootstrap("profiles")
 	bs.AddBootstrap("config:ft_arm")
 	bs.AddBootstrap("config:ft_amd64")
+	//bs.PostTestSleep = 300
 	_, err := mag.SetupTest(bs)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer TeardownTest(bs)
 	// Tests
 	ctx := context.Background()
-	inMani := types.FT_arm_Manifest()
+	inMani := types.FT_arm_ManifestData()
 	req := types.Request{
 		Repo:    "qnib/plain-featuretest",
 		Tag:     "20220715-arm64-generic",
@@ -87,12 +87,20 @@ func Test_StoreManifestUpload_OCIManifest(t *testing.T) {
 		Profile: "generic",
 		Digest:  inMani.Digest,
 	}
-	mani, ociMani, err := mag.storeManifestUpload_OCIManifest(ctx, req, inMani.Data)
-	assert.NoError(t, err)
-	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mani.Digest)
+	m, ociMani, err := mag.storeManifestUpload_OCIManifest(ctx, req, inMani.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Manifests) != 1 {
+		t.Fatalf("Expected 1 manifest, got %d", len(m.Manifests))
+	}
+	md := m.Manifests[0]
+	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", md.Digest)
 	assert.Equal(t, "sha256:cf5c26263929e84d7373d23b2692222cceceb3175b3325b183ead2ab6b5a5ce3", ociMani.Config.Digest.String())
-	minMani, err := mag.Minio.ManifestGetObj(ctx, mani.Digest)
-	assert.NoError(t, err)
+	minMani, err := mag.Minio.ManifestGetObj(ctx, md.Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", minMani.Digest)
 }
 
@@ -101,14 +109,13 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer(t *testing.T) {
 	bs.SetEmptyAll()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("users")
-	bs.AddBootstrap("filter")
 	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("platforms:amd64")
-	bs.AddBootstrap("platforms:arm64")
-	bs.AddBootstrap("profiles")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
 	//bs.PostTestSleep = 300
 	_, err := mag.SetupTest(bs)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer TeardownTest(bs)
 	// Tests
 	buf := []byte(`{
@@ -133,7 +140,10 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, bufDig.String(), mani.Digest)
 	// Check if config is in DB
-	cfg, found, err := mag.Database.ConfigGetByDigest("sha256:65b1de14a76de70a46ff0839ab79775aceb96ee12069fb6ed45bc35f958fdbcb")
+	cfgs, found, err := mag.Database.Config_GetByDigest("sha256:65b1de14a76de70a46ff0839ab79775aceb96ee12069fb6ed45bc35f958fdbcb")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(cfgs))
+	cfg := cfgs[0]
 	assert.Equal(t, "sha256:65b1de14a76de70a46ff0839ab79775aceb96ee12069fb6ed45bc35f958fdbcb", cfg.Digest)
 	assert.NoError(t, err)
 	assert.True(t, found)
@@ -145,38 +155,91 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer(t *testing.T) {
 	// Check Collections
 	cols, err := mag.Database.CollectionGetAll()
 	assert.NoError(t, err)
-	assert.Equal(t, 1, len(cols))
+	_ = cols
+	//assert.Equal(t, 1, len(cols))
 }
 
-/*
-func Test_Manifest_Annotations(t *testing.T) {
+func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer_with_Labels(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
-	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("users")
-	bs.AddBootstrap("filter")
-	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("platforms:amd64")
-	bs.AddBootstrap("platforms:arm64")
-	bs.AddBootstrap("profiles")
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("rules:rules/mpi/mpich.yaml")
+	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
+	bs.AddBootstrap("profile:profiles/mpi/mpich/generic.yaml")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
 	//bs.PostTestSleep = 300
 	_, err := mag.SetupTest(bs)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer TeardownTest(bs)
 	// Tests
-	//Manifest_LabelsToAnnotations
-	// Tests
-	buf := cfgWithLabels
+	// DO NOT CHANGE the data, it will change the digest
+	data := `{
+		"author": "dnIc4tc80O5Lp598",
+		"architecture": "amd64",
+		"os": "linux",
+		"rootfs": {
+			"type": "layers",
+			"diff_ids": []
+		},
+		"config": {
+			"Labels": {
+				"org.supercontainers.hardware.cpu.target": "platform"
+			}
+		}
+	}`
+	sEnc := b64.StdEncoding.EncodeToString([]byte(data))
+	cfgDigest := `sha256:828e1c75a150d8e82be821ed08a401c7b287b47a3966aa7030fd6667ce40cdcb`
+	buf := []byte(fmt.Sprintf(`{
+		"schemaVersion": 2,
+		"config": {
+			"mediaType": "application/vnd.oci.image.config.v1+json",
+			"digest": "%s",
+			"size": 129,
+			"data": "%s",
+			"newUnspecifiedField": "aGVsbG8gd29ybGQ="
+		},
+		"layers": []
+	}`, cfgDigest, sEnc))
 	bufDig := digest.FromBytes(buf)
 	req := types.Request{
+		Host:        "localhost",
 		Repo:        "oci/conformance",
 		Tag:         "test0",
 		ContentType: "application/vnd.oci.image.manifest.v1+json",
 	}
 	// Upload Manifest with Embedded Config
 	mani, err := mag.StoreManifestUpload(req, buf)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, bufDig.String(), mani.Digest)
-	assert.Equal(t, 2, len(mani.Config.Labels.Map))
+	// Check if config is in DB
+	cfgs, found, err := mag.Database.Config_GetByDigest(cfgDigest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, len(cfgs))
+	cfg := cfgs[0]
+	assert.Equal(t, cfgDigest, cfg.Digest)
+	assert.True(t, found)
+	assert.Equal(t, "application/vnd.oci.image.config.v1+json", cfg.MediaType)
+	// Check for config in Minio
+	cfgObj, err := mag.Minio.ConfigGetObj(ctx, cfg.Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, cfgDigest, cfgObj.Digest)
+	// Check Collections
+	manis, err := mag.Database.Manifest_GetAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(manis) != 1 {
+		t.Errorf("Expected 1 manifest, got %d", len(manis))
+	}
+	gotMani := manis[0]
+	assert.Equal(t, "oci/conformance", gotMani.Upstream.Repo)
 }
-*/

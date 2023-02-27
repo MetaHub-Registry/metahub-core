@@ -178,15 +178,10 @@ func (s *Sqlite) createDB(mhFile string, tables string) (err error) {
 		err = s.Profile.CreateTables()
 		checkErr(err, "")
 	}
-	if len(tables) == 0 || t.Has("filters") {
-		err = s.Filter.CreateTables()
-		checkErr(err, "")
-	}
-	if len(tables) == 0 || t.Has("profiles") {
-
-		err = s.Platform.CreateTables()
-		checkErr(err, "")
-	}
+	//if len(tables) == 0 || t.Has("profiles") {
+	//err = s.Platform.CreateTables()
+	//checkErr(err, "")
+	//}
 	if len(tables) == 0 || t.Has("configs") {
 		err = s.Config.CreateTables()
 		checkErr(err, "")

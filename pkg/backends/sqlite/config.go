@@ -81,7 +81,7 @@ func (c Config) Insert(i *types.Config) (err error) {
 		logrus.Error(err)
 		return
 	}
-	res, err := stmt.Exec(i.Digest, i.Label, i.MediaType, i.Size)
+	res, err := stmt.Exec(i.Digest, i.GraphLabel, i.MediaType, i.Size)
 	if err != nil {
 		logrus.Error(err)
 		return
@@ -147,7 +147,7 @@ func (c Config) ConfigGetByDigest(dig string) (cfg types.Config, found bool, err
 	cfg = types.Config{}
 	for rows.Next() {
 		found = true
-		err = rows.Scan(&cfg.ID, &cfg.Digest, &cfg.Label, &cfg.MediaType, &cfg.Size)
+		err = rows.Scan(&cfg.ID, &cfg.Digest, &cfg.GraphLabel, &cfg.MediaType, &cfg.Size)
 	}
 	return
 }

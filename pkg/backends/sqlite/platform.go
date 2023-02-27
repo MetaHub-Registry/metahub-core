@@ -1,12 +1,5 @@
 package sqlite
 
-import (
-	"fmt"
-
-	"github.com/sirupsen/logrus"
-	"github.com/metahub-registry/metahub-core/pkg/types"
-)
-
 type Platform struct {
 	ID       int64  `json:"id"`
 	Arch     string `json:"architecture"`
@@ -15,6 +8,7 @@ type Platform struct {
 	Features string `json:"features"`
 }
 
+/*
 func (p Platform) CreateTables() (err error) {
 	err = p.createPlatformTable()
 	if err != nil {
@@ -200,3 +194,4 @@ func (sq Sqlite) UpdatePlatformFilter(i types.Platform) (err error) {
 	}
 	return
 }
+*/

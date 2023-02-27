@@ -186,7 +186,7 @@ func (m Manifest) CreateTables() (err error) {
 	return
 }
 
-func (m Manifest) Insert(i *types.Manifest) (err error) {
+func (m Manifest) Insert(i *types.ManifestData) (err error) {
 	q := `INSERT INTO manifests (digest, media_type, size, platform_id, upstream_id, config_id) VALUES (?, ?, ?, ?, ?, ?)`
 	stmt, err := db.Prepare(q)
 	if err != nil {
@@ -203,7 +203,7 @@ func (m Manifest) Insert(i *types.Manifest) (err error) {
 	return
 }
 
-func (m *Manifest) GetTypesManifestByRequest(req types.Request) (res types.Manifest, found bool, err error) {
+func (m *Manifest) GetTypesManifestByRequest(req types.Request) (res types.ManifestData, found bool, err error) {
 	q := `SELECT DISTINCT maniID,maniDigest,os,arch,variant,features,configDigest,configMediaType,configSize,`
 	q += `upstreamReg,upstreamRepo,upstreamTag FROM main.manifests_view`
 	if req.Digest != "" {
@@ -236,15 +236,14 @@ func (m *Manifest) GetTypesManifestByRequest(req types.Request) (res types.Manif
 			return
 		}
 		found = true
-		res = types.Manifest{
+		res = types.ManifestData{
 			ID:        maniRes.maniID,
 			Digest:    maniRes.maniDigest,
 			MediaType: "application/vnd.docker.distribution.manifest.v2+json",
 			Platform: types.Platform{
-				OS:       maniRes.os,
-				Arch:     maniRes.arch,
-				Variant:  maniRes.variant,
-				Features: maniRes.features,
+				OS:      maniRes.os,
+				Arch:    maniRes.arch,
+				Variant: maniRes.variant,
 			},
 			Config: types.Config{
 				Digest:    maniRes.configDigest,
@@ -279,7 +278,7 @@ func (m Manifest) GetIDByDigest(dig string) (id int64, found bool, err error) {
 	return
 }
 
-func (m Manifest) GetInsert(i *types.Manifest) (err error) {
+func (m Manifest) GetInsert(i *types.ManifestData) (err error) {
 	id, found, err := m.GetIDByDigest(i.Digest)
 	if found {
 		i.ID = id
@@ -288,9 +287,9 @@ func (m Manifest) GetInsert(i *types.Manifest) (err error) {
 	return m.Insert(i)
 }
 
-func (m *Manifest) TypesManifest_GetByManifestListID(mlID int64) (manis []types.Manifest, err error) {
-	manis = []types.Manifest{}
-	q := `SELECT maniID,maniDigest,maniListID,os,arch,variant,features,configDigest,configMediaType,configSize,`
+func (m *Manifest) TypesManifest_GetByManifestListID(mlID int64) (manis []types.ManifestData, err error) {
+	manis = []types.ManifestData{}
+	q := `SELECT maniID,maniDigest,maniListID,os,arch,variant,configDigest,configMediaType,configSize,`
 	q += `upstreamReg,upstreamRepo,upstreamTag FROM main.manifests_view`
 	q += fmt.Sprintf(` WHERE maniListID=%d;`, mlID)
 	rows, err := db.Query(q)
@@ -307,7 +306,6 @@ func (m *Manifest) TypesManifest_GetByManifestListID(mlID int64) (manis []types.
 			&maniRes.os,
 			&maniRes.arch,
 			&maniRes.variant,
-			&maniRes.features,
 			&maniRes.configDigest,
 			&maniRes.configMediaType,
 			&maniRes.configSize,
@@ -318,15 +316,14 @@ func (m *Manifest) TypesManifest_GetByManifestListID(mlID int64) (manis []types.
 		if err != nil {
 			logrus.Error(err)
 		}
-		mani := types.Manifest{
+		mani := types.ManifestData{
 			ID:        maniRes.maniID,
 			Digest:    maniRes.maniDigest,
 			MediaType: "application/vnd.docker.distribution.manifest.v2+json",
 			Platform: types.Platform{
-				OS:       maniRes.os,
-				Arch:     maniRes.arch,
-				Variant:  maniRes.variant,
-				Features: maniRes.features,
+				OS:      maniRes.os,
+				Arch:    maniRes.arch,
+				Variant: maniRes.variant,
 			},
 			Config: types.Config{
 				Digest:    maniRes.configDigest,
@@ -438,7 +435,7 @@ func (m Manifest) RemoveByID(id int64) (mlIDs []int64, err error) {
 	return
 }
 
-func (m Manifest) Remove(i types.Manifest) (mlIDs []int64, maniDigest string, err error) {
+func (m Manifest) Remove(i types.ManifestData) (mlIDs []int64, maniDigest string, err error) {
 	id, found, err := m.GetIDByDigest(i.Digest)
 	if err != nil {
 		return

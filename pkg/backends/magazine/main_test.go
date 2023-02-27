@@ -2,9 +2,7 @@ package magazine
 
 import (
 	"context"
-	"fmt"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -188,52 +186,6 @@ func Setup_Users() {
 		err := mag.InsertUser(ctx, u)
 		if err != nil {
 			logrus.Error(err)
-		}
-	}
-}
-
-func Setup_Profiles() {
-	//logrus.Warn("Setup_Profiles")
-	prfs, err := config.FindProfiles(ctx, "../../../misc/yaml/profiles")
-	if err != nil {
-		logrus.Fatal(err)
-	}
-	for _, prf := range prfs {
-		f := types.Filter{
-			Label: prf.Name,
-		}
-		feats := []string{}
-		for _, act := range prf.Actions {
-			for k, v := range act.Args {
-				if k == "value" {
-					feats = append(feats, v.(string))
-				}
-			}
-		}
-		f.Feature = strings.Join(feats, ",")
-		msg := fmt.Sprintf("# Profile: %s", f.Label)
-		if len(f.Feature) > 0 {
-			msg += fmt.Sprintf(" [%s]", f.Feature)
-		}
-		//logrus.Info(msg)
-		fID, err := mag.SQliteInsertFilter(ctx, f)
-		if err != nil {
-			logrus.Fatal(err)
-		}
-		logrus.Infof("Filter '%s' created with ID: %d", f.Label, fID)
-		// Profile
-		p := types.Profile{
-			Name: prf.Name,
-		}
-		prfId, err := mag.SQliteInsertProfile(ctx, p)
-		if err != nil {
-			logrus.Fatal(err)
-		}
-		logrus.Infof("Profile '%s' created with ID: %d", p.Name, prfId)
-		err = mag.SQliteLinkProfileToFilter(ctx, prfId, fID)
-		if err != nil {
-			logrus.Error(err)
-			continue
 		}
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/opencontainers/go-digest"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
@@ -13,7 +14,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func (mag Magazine) CacheLayers(ctx context.Context, mani types.Manifest) (err error) {
+func (mag Magazine) CacheLayers(ctx context.Context, mani types.ManifestData) (err error) {
 	up := upstream.UpstreamTriple{
 		Reg:  mani.Upstream.Reg,
 		Repo: mani.Upstream.Repo,
@@ -138,4 +139,33 @@ func (mag Magazine) GetLayerByOCIManifest(oMani types.OCIManifest) (layers []typ
 		layers = append(layers, layer)
 	}
 	return layers, nil
+}
+
+func (mag Magazine) Layers_CreateOCIv1LayerDescriptors(ctx context.Context, layerIn []types.Layer) (res map[int64]v1.Descriptor, err error) {
+	res = make(map[int64]v1.Descriptor)
+	var mt string
+	for _, l := range layerIn {
+		switch l.MediaType {
+		case "application/vnd.docker.image.rootfs.diff.tar.gzip":
+			mt = v1.MediaTypeImageLayerGzip
+		case "application/vnd.docker.image.rootfs.diff.tar":
+			mt = v1.MediaTypeImageLayer
+		default:
+			err = fmt.Errorf("unknown media type: %s", l.MediaType)
+			return
+		}
+		d := v1.Descriptor{
+			MediaType: mt,
+			Digest:    digest.Digest(l.Digest),
+			Size:      l.Size,
+		}
+		// Put Layer in Graph
+		lID, err := mag.Database.Layer_DescriporGetInsert(ctx, d)
+		if err != nil {
+			logrus.Error(err)
+			return res, err
+		}
+		res[lID] = d
+	}
+	return
 }

@@ -1,44 +1,33 @@
 package magazine
 
-import (
-	"context"
-
-	"github.com/metahub-registry/metahub-core/pkg/types"
-)
-
+/*
 func (mag Magazine) InsertFilter(ctx context.Context, filter types.Filter) (filterID int64, err error) {
-	return mag.Database.Filter_Insert(ctx, filter)
-}
-
-func (mag Magazine) NeoInsertFilter(ctx context.Context, f types.Filter) (filterID int64, err error) {
-	/*
-		filterID, success, err := mag.Neo.GetFilter(f)
-		if err != nil {
+	filterID, err = mag.Database.Filter_Insert(ctx, filter)
+	if err != nil {
+		return
+	}
+	// Iterate through Annotations (and other filte targets?) to connect rules
+	for _, r := range filter.Rules {
+		rId, found, e := mag.Database.Rule_Get(ctx, r)
+		if e != nil {
+			err = errors.Wrap(e, "mag.Database.Rule_Get")
+			logrus.Error(err)
+			return filterID, err
+		}
+		if !found {
+			err = fmt.Errorf("rule not found: %v", r)
 			return
 		}
-		if !success {
-			filterID, err = mag.Neo.CreateFilter(f)
+		r.ID = rId
+		switch r.Type {
+		case types.RuleTypeAnnotation:
+			// Insert Annotation
+			err = mag.Database.Rule_EvalAnnotationRule(ctx, r)
 			if err != nil {
-				return
+				logrus.Error(err)
 			}
 		}
-	*/
-	return mag.InsertFilter(ctx, f)
+	}
+	return
 }
-
-func (mag Magazine) SQliteInsertFilter(ctx context.Context, f types.Filter) (filterID int64, err error) {
-	/*
-		filterID, success, err := mag.SQlite.Filter.GetFilter(f)
-		if err != nil {
-			return
-		}
-		if !success {
-			err = mag.SQlite.Filter.InsertFilter(&f)
-			if err != nil {
-				return
-			}
-			filterID = f.SqlID
-		}
-	*/
-	return mag.InsertFilter(ctx, f)
-}
+*/

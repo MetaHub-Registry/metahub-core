@@ -1,7 +1,6 @@
 package sqlite
 
 import (
-	"context"
 	"os"
 	"testing"
 
@@ -11,22 +10,13 @@ import (
 )
 
 var (
-	sq  Sqlite
-	ctx = context.Background()
+	sq Sqlite
+	//ctx = context.Background()
 )
 
 func Test_SetupTeardown(t *testing.T) {
 	bs := utils.NewBootstrap()
-	bs.AddBootstrap("profiles")
-	bs.AddBootstrap("platforms")
 	bs.AddBootstrap("users")
-	bs.AddBootstrap("config:qnib/featuretest:arm64")
-	bs.AddBootstrap("upstreams:qnib/featuretest:arm64")
-	bs.AddBootstrap("layers:qnib/featuretest:arm64")
-	bs.AddBootstrap("manifest:qnib/featuretest:arm64")
-	bs.AddBootstrap("manifestlist:qnib/featuretest:arm64")
-	bs.AddBootstrap("collection:qnib/featuretest:arm64")
-	bs.AddBootstrap("filter:generic")
 	br, err := SetupTest(bs)
 	_ = br
 	assert.NoError(t, err)

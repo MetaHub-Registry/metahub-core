@@ -1,0 +1,3 @@
+name: "cpu"
+tag: "generic"
+rule: cpu:generic=true

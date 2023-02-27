@@ -1,17 +1,11 @@
 package sqlite
 
-import (
-	"fmt"
-
-	"github.com/sirupsen/logrus"
-	"github.com/metahub-registry/metahub-core/pkg/types"
-)
-
 type Filter struct {
 	ID    int64  `json:"id"`
 	Label string `json:"label"`
 }
 
+/*
 func (f Filter) CreateTables() (err error) {
 	err = f.createFilterTable()
 	if err != nil {
@@ -169,3 +163,4 @@ func (f Filter) InsertProfileFilter(pfp types.ProfileFilterPlatform) (err error)
 	}
 	return
 }
+*/

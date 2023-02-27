@@ -5,8 +5,10 @@ import (
 	"fmt"
 
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
 func (n Neo) Profile_GetInsert(ctx context.Context, p *types.Profile) (err error) {
@@ -21,141 +23,64 @@ func (n Neo) Profile_GetInsert(ctx context.Context, p *types.Profile) (err error
 		}
 	}
 	p.ID = prfID
-	return
-}
 
-func (n Neo) Profile_Get_ByName(ctx context.Context, name string) (p types.Profile, found bool, err error) {
-	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
-	defer session.Close()
-	q := fmt.Sprintf(`MATCH (prf:Profile) WHERE prf.name = "%s" RETURN id(prf) AS id`, name)
-	input := map[string]interface{}{}
-	result, err := session.Run(q, input)
+	if p.Rule == "" {
+		return
+	}
+	// Connect Profile to Rules
+	// FIXME: Do we need to do this each time, or only when a new rule is added?
+	lbls, err := utils.ExprGetLabels(p.Rule)
 	if err != nil {
 		return
 	}
-	for result.Next() {
-		found = true
-		record := result.Record()
-		id, ok := record.Get("id")
-		if !ok {
-			logrus.Errorf("No id found in record: %v", record)
+	for _, lbl := range lbls.ToSlice() {
+		r, found, err := n.Rule_GetByLabel(ctx, lbl)
+		if err != nil {
+			return err
+		}
+		if !found {
+			logrus.Warnf("rule with label '%s' not found", lbl)
 			continue
 		}
-		p.ID = id.(int64)
+		e := n.Profile_LinkRule(ctx, prfID, r.ID)
+		if e != nil {
+			err = errors.Wrap(e, "failed to link profile to rule")
+			return err
+		}
 	}
+	return
+}
+
+func (n Neo) Profile_Get_ByNameTag(ctx context.Context, name, tag string) (p types.Profile, found bool, err error) {
+	q := fmt.Sprintf(`MATCH (prf:Profile) WHERE prf.name = "%s" AND prf.tag = "%s"`, name, tag)
+	q += ` RETURN id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule`
+	res, found, err := n.QueryOne(q)
+	if err != nil || !found {
+		return
+	}
+	p, err = n.ProfileFromResult(res)
 	return
 }
 
 func (n Neo) GetProfiles() (ps []types.Profile, err error) {
-	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
-	defer session.Close()
-	q := `MATCH (prf:Profile) RETURN id(prf) AS id, prf.name AS name`
-	input := map[string]interface{}{}
-	result, err := session.Run(q, input)
-	if err != nil {
-		return
-	}
+	q := `MATCH (prf:Profile)`
+	q += ` RETURN id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule`
+	res, err := n.Query(q)
 	ps = make([]types.Profile, 0)
-	for result.Next() {
-		p := types.Profile{}
-		record := result.Record()
-		id, ok := record.Get("id")
-		if !ok {
-			logrus.Errorf("No id found in record: %v", record)
+	for _, r := range res {
+		p, err := n.ProfileFromResult(r)
+		if err != nil {
+			logrus.Error(err)
 			continue
 		}
-		p.ID = id.(int64)
-		v, ok := record.Get("name")
-		if !ok {
-			logrus.Errorf("No name found in record: %v", record)
-			continue
-		}
-		p.Name = v.(string)
 		ps = append(ps, p)
 	}
 	return
 }
 
-func (n Neo) GetProfileFilterPlatformPairs() (pfs []types.ProfileFilterPlatform, err error) {
-	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
-	defer session.Close()
-	q := `MATCH (p:Profile)-[]-(f:Filter)-[]-(plat:Platform)`
-	q += ` RETURN id(p) AS profileID, p.name AS profileName, id(f) AS filterID, f.label AS filterLabel,`
-	q += ` id(plat) AS platformID, plat.os AS platformOS, plat.arch AS platformArch, plat.variant AS platformVariant, plat.features AS platformFeatures`
-	input := map[string]interface{}{}
-	result, err := session.Run(q, input)
-	if err != nil {
-		return
-	}
-	pfs = make([]types.ProfileFilterPlatform, 0)
-	for result.Next() {
-		p := types.Profile{}
-		f := types.Filter{}
-		plat := types.Platform{}
-		record := result.Record()
-		v, ok := record.Get("profileID")
-		if !ok {
-			logrus.Errorf("No profileID found in record: %v", record)
-			continue
-		}
-		p.ID = v.(int64)
-		v, ok = record.Get("profileName")
-		if !ok {
-			logrus.Errorf("No profileName found in record: %v", record)
-			continue
-		}
-		p.Name = v.(string)
-		v, ok = record.Get("filterID")
-		if !ok {
-			logrus.Errorf("No filterID found in record: %v", record)
-			continue
-		}
-		f.ID = v.(int64)
-		v, ok = record.Get("filterLabel")
-		if !ok {
-			logrus.Errorf("No filterLabel found in record: %v", record)
-			continue
-		}
-		f.Label = v.(string)
-		// Platform
-		v, ok = record.Get("platformID")
-		if !ok {
-			logrus.Errorf("No platformID found in record: %v", record)
-			continue
-		}
-		plat.ID = v.(int64)
-		v, ok = record.Get("platformOS")
-		if !ok {
-			logrus.Errorf("No platformOS found in record: %v", record)
-			continue
-		}
-		plat.OS = v.(string)
-		v, ok = record.Get("platformArch")
-		if !ok {
-			logrus.Errorf("No platformArch found in record: %v", record)
-			continue
-		}
-		plat.Arch = v.(string)
-		v, ok = record.Get("platformVariant")
-		if !ok {
-			logrus.Errorf("No platformVariant found in record: %v", record)
-			continue
-		}
-		plat.Variant = v.(string)
-		v, ok = record.Get("platformFeatures")
-		if !ok {
-			logrus.Errorf("No platformFeatures found in record: %v", record)
-			continue
-		}
-		plat.Features = v.(string)
-		pfs = append(pfs, types.ProfileFilterPlatform{Profile: p, Filter: f, Platform: plat})
-	}
-	return
-}
-
 func (n Neo) GetProfile(prf types.Profile) (prfID int64, success bool, err error) {
-	q := `MATCH (n:Profile) WHERE n.name = "%s" RETURN id(n) AS ID`
-	query := fmt.Sprintf(q, prf.Name)
+	q := `MATCH (n:Profile) WHERE n.name = "%s" AND n.tag = "%s" RETURN id(n) AS ID`
+	query := fmt.Sprintf(q, prf.Name, prf.Tag)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	result, err := session.Run(query, map[string]interface{}{})
@@ -176,8 +101,9 @@ func (n Neo) GetProfile(prf types.Profile) (prfID int64, success bool, err error
 }
 
 func (n Neo) CreateProfile(prf types.Profile) (prfID int64, err error) {
-	q := `CREATE (n:Profile {name: "%s"}) RETURN id(n) AS ID`
-	query := fmt.Sprintf(q, prf.Name)
+	q := `CREATE (n:Profile {name: "%s", tag: "%s", label: "%s", rule: "%s"}) RETURN id(n) AS ID`
+	label := fmt.Sprintf("%s:%s", prf.Name, prf.Tag)
+	query := fmt.Sprintf(q, prf.Name, prf.Tag, label, prf.Rule)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	result, err := session.Run(query, map[string]interface{}{})
@@ -192,20 +118,63 @@ func (n Neo) CreateProfile(prf types.Profile) (prfID int64, err error) {
 			return
 		}
 		prfID = v.(int64)
+
+	} else {
+		err = fmt.Errorf("CreateProfile: failed to get ID")
+		return
 	}
 	return
 }
 
-func (n Neo) LinkProfileToFilter(ctx context.Context, profileID, filterID int64) (err error) {
-	q := `MATCH (p:Profile),(f:Filter) WHERE id(p) = %d AND id(f) = %d`
-	q += ` MERGE (p)-[:USES]->(f)`
-	query := fmt.Sprintf(q, profileID, filterID)
-	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
-	defer session.Close()
-	_, err = session.Run(query, map[string]interface{}{})
-	if err != nil {
-		logrus.Errorf("failed to create link (p:Profile)-[:USES]->(f:Filter): %v", err)
+func (n Neo) Profile_LinkRule(ctx context.Context, profileID, ruleID int64) (err error) {
+	q := `MATCH (p:Profile),(r:Rule) WHERE id(p) = %d AND id(r) = %d`
+	q += ` MERGE (p)-[:USES]->(r)`
+	query := fmt.Sprintf(q, profileID, ruleID)
+	_, err = n.Execute(query)
+	return
+}
+
+func ProfileFromRecord(res neo4j.Result) (p types.Profile, err error) {
+	r := res.Record()
+	v, ok := r.Get("profileID")
+	if !ok {
+		err = fmt.Errorf("no profileID found in record: %v", r)
 		return
 	}
+	p.ID = v.(int64)
+	v, ok = r.Get("profileName")
+	if !ok {
+		err = fmt.Errorf("no profileName found in record: %v", r)
+		return
+	}
+	p.Name = v.(string)
+	return
+}
+
+func (n Neo) ProfileFromResult(res types.Result) (p types.Profile, err error) {
+	//ctx := context.Background()
+	err = res.CheckKeys("profileID", "profileName", "profileTag", "profileRule")
+	if err != nil {
+		return
+	}
+	id, _ := res.GetInt64("profileID")
+	name, _ := res.GetStr("profileName")
+	tag, _ := res.GetStr("profileTag")
+	profileRule, _ := res.GetStr("profileRule")
+	p = types.Profile{
+		ID:            id,
+		Name:          name,
+		Tag:           tag,
+		Rule:          profileRule,
+		Manipulations: []string{},
+	}
+	// TODO: Evaluate the rule string and get the rules attached?
+	/*
+		f.Rules, err = n.Rules_GetByFilterID(ctx, id)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+	*/
 	return
 }

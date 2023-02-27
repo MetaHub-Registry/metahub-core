@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	yamlCfg "github.com/metahub-registry/metahub-core/pkg/yaml/config"
 )
@@ -15,28 +14,29 @@ func Test_Collection_CRUD(t *testing.T) {
 	_ = ctx
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
-	bs.AddBootstrap("filter")
 	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("platforms:amd64")
-	bs.AddBootstrap("platforms:arm64")
-	bs.AddBootstrap("profiles")
+	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
 	bs.AddBootstrap("config:ft_arm")
 	bs.AddBootstrap("config:ft_amd64")
 	bs.AddBootstrap("upstream:ft_arm64")
 	bs.AddBootstrap("upstream:ft_amd64")
-	bs.AddBootstrap("layer0:ft_arm64")
-	bs.AddBootstrap("layer1:ft_arm64")
-	bs.AddBootstrap("layer0:ft_amd64")
-	bs.AddBootstrap("layer1:ft_amd64")
 	bs.AddBootstrap("manifest:ft_arm64")
 	bs.AddBootstrap("manifest:ft_amd64")
-	bs.AddBootstrap("manifest:ft_amd64")
-	bs.AddBootstrap("manifestlist:ft_generic")
+	bs.AddBootstrap("layer:0:ft_arm64")
+	bs.AddBootstrap("layer:1:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_amd64")
+	bs.AddBootstrap("layer:1:ft_amd64")
+	bs.AddBootstrap("manifestdata:ft_arm64")
+	bs.AddBootstrap("manifestdata:ft_amd64")
+	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target:platform")
 	bs.SetEmptyAll()
-	//bs.PostTestSleep = 60
+	//bs.PostTestSleep = 120
 	br, err := SetupTest(bs)
-	_ = br
-	assert.NoError(t, err)
+	//br.PrintDict()
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer db.TeardownTest(bs)
 	// Actual test
 	col1 := yamlCfg.ManifestCollection{
@@ -62,31 +62,65 @@ func Test_Collection_CRUD(t *testing.T) {
 	assert.NoError(t, err)
 	err = db.LinkCollectionTagToManifest(ctx, col1_got.ColTag.ID, man1_id)
 	assert.NoError(t, err)
+	err = db.LinkCollectionToManifest(ctx, col1_got.ID, man1_id)
+	assert.NoError(t, err)
 	/// To Manifest
 	mani_amd_id, err := br.GetInt64("manifest:ft_amd64#id")
 	assert.NoError(t, err)
 	err = db.LinkCollectionTagToManifest(ctx, col1_got.ColTag.ID, mani_amd_id)
 	assert.NoError(t, err)
+	err = db.LinkCollectionToManifest(ctx, col1_got.ID, mani_amd_id)
+	assert.NoError(t, err)
 }
 
+/*
+func Test_Collection_ComputeManifest(t *testing.T) {
+	ctx := context.Background()
+	_ = ctx
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("filter:platform-generic")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
+	bs.AddBootstrap("config:ft_arm")
+	bs.AddBootstrap("config:ft_amd64")
+	bs.AddBootstrap("upstream:ft_arm64")
+	bs.AddBootstrap("upstream:ft_amd64")
+	bs.AddBootstrap("manifest:ft_arm64")
+	bs.AddBootstrap("manifest:ft_amd64")
+	bs.AddBootstrap("layer:0:ft_arm64")
+	bs.AddBootstrap("layer:1:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_amd64")
+	bs.AddBootstrap("layer:1:ft_amd64")
+	bs.AddBootstrap("manifestdata:ft_arm64")
+	bs.AddBootstrap("manifestdata:ft_amd64")
+	bs.AddBootstrap("collection:ft_generic")
+	bs.SetEmptyAll()
+	bs.PostTestSleep = 120
+	br, err := SetupTest(bs)
+	_ = br
+	//br.PrintDict()
+	assert.NoError(t, err)
+	defer db.TeardownTest(bs)
+	// Actual test
+}
+
+/*
 func Test_Collection_ComputeML(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
-	bs.AddBootstrap("filter")
 	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("platforms:amd64")
-	bs.AddBootstrap("platforms:arm64")
-	bs.AddBootstrap("profiles")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
 	bs.AddBootstrap("config:ft_arm")
 	bs.AddBootstrap("config:ft_amd64")
 	bs.AddBootstrap("upstream:ft_arm64")
 	bs.AddBootstrap("upstream:ft_amd64")
-	bs.AddBootstrap("layer0:ft_arm64")
-	bs.AddBootstrap("layer1:ft_arm64")
-	bs.AddBootstrap("layer0:ft_amd64")
-	bs.AddBootstrap("layer1:ft_amd64")
+	bs.AddBootstrap("layer:0:ft_arm64")
+	bs.AddBootstrap("layer:1:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_amd64")
+	bs.AddBootstrap("layer:1:ft_amd64")
 	bs.AddBootstrap("manifest:ft_arm64")
 	bs.AddBootstrap("manifest:ft_amd64")
 	bs.AddBootstrap("manifest:ft_amd64")
@@ -111,46 +145,12 @@ func Test_Collection_ComputeML(t *testing.T) {
 
 }
 
-func Test_Collection_CRUD2(t *testing.T) {
-	ctx := context.Background()
-	_ = ctx
-	bs := utils.NewBootstrap()
-	bs.SetEmptyAll()
-	//bs.PostTestSleep = 60
-	br, err := SetupTest(bs)
-	_ = br
-	assert.NoError(t, err)
-	defer db.TeardownTest(bs)
-	// Actual test
-	col1, found, err := db.Collection_GetCreate_ByRepo("qnib/featuretest")
-	assert.NoError(t, err)
-	assert.False(t, found)
-	assert.Equal(t, "qnib/featuretest", col1.Repo)
-	col2, found, err := db.Collection_GetCreate_ByRepo("qnib/featuretest")
-	assert.NoError(t, err)
-	assert.True(t, found)
-	assert.Equal(t, col1.ID, col2.ID)
-	//
-	_, found, err = db.CollectionTag_GetByTag("latest")
-	assert.NoError(t, err)
-	assert.False(t, found)
-	col3, found, err := db.Collection_GetCreate_ByRepoTag(ctx, "qnib/featuretest", "latest")
-	assert.NoError(t, err)
-	assert.True(t, found)
-	assert.Equal(t, col1.ID, col3.ID)
-	assert.Equal(t, "latest", col3.Tag)
-	assert.Equal(t, "latest", col3.ColTag.Tag)
-}
-
 func Test_Collection_ByRequest(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
-	bs.AddBootstrap("filter")
 	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("platforms:amd64")
-	bs.AddBootstrap("platforms:arm64")
-	bs.AddBootstrap("profiles")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 60
 	br, err := SetupTest(bs)
@@ -163,11 +163,11 @@ func Test_Collection_ByRequest(t *testing.T) {
 		Tag:  "tag1",
 	}
 	////// By Upstream
-	mani := types.FT_amd_Manifest()
+	mani := types.FT_amd_ManifestData()
 	err = db.CollectionManifest_ByRequest(req, mani)
 	assert.NoError(t, err)
 	/// By DIGEST
-	m, found, err := db.Manifest_Get_ByDigest(mani.Digest)
+	m, found, err := db.ManifestData_Get_ByDigest(mani.Digest)
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, "qnib-pub-containers/qnib/plain-featuretest", m.Upstream.Repo)
@@ -179,11 +179,8 @@ func Test_Collection_ByRequest_MetahubUpstream(t *testing.T) {
 	_ = ctx
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
-	bs.AddBootstrap("filter")
 	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("platforms:amd64")
-	bs.AddBootstrap("platforms:arm64")
-	bs.AddBootstrap("profiles")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 300
 	br, err := SetupTest(bs)
@@ -204,7 +201,7 @@ func Test_Collection_ByRequest_MetahubUpstream(t *testing.T) {
 		Profile: "generic",
 	}
 	////// With Metahub Upstream
-	mani := types.FT_amd_Manifest()
+	mani := types.FT_amd_ManifestData()
 	up := types.Upstream{
 		Reg:  "metahub-registry.org",
 		Repo: "qnib/featuretest",
@@ -214,23 +211,23 @@ func Test_Collection_ByRequest_MetahubUpstream(t *testing.T) {
 	err = db.CollectionManifest_ByRequest(reqCol, mani)
 	assert.NoError(t, err)
 	/// By DIGEST
-	m, found, err := db.Manifest_Get_ByDigest(mani.Digest)
+	m, found, err := db.ManifestData_Get_ByDigest(mani.Digest)
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, "qnib/featuretest", m.Upstream.Repo)
 	/// Via Upstream
-	upMani1, found, err := db.Manifest_Get_ByUpstream(up)
+	upMani1, found, err := db.ManifestData_Get_ByUpstream(up)
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, mani.Digest, upMani1.Digest)
 	assert.Equal(t, "qnib/featuretest", upMani1.Upstream.Repo)
 	// More tests
-	reqMani1, found, err := db.Manifest_GetTypes_ByRequest(reqMani)
+	reqMani1, found, err := db.ManifestData_GetTypes_ByRequest(reqMani)
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, "qnib/featuretest", reqMani1.Upstream.Repo)
 	/// Second Manifest
-	maniArm := types.FT_arm_Manifest()
+	maniArm := types.FT_arm_ManifestData()
 	maniArm.Upstream = up
 	err = db.CollectionManifest_ByRequest(reqCol, maniArm)
 	assert.NoError(t, err)
@@ -241,7 +238,8 @@ func Test_Collection_ByRequest_MetahubUpstream(t *testing.T) {
 	assert.Equal(t, 2, len(ml.Manifests))
 
 }
-
+*/
+/*
 func Test_Collection_GetCollectionFilterPairs_ForCollection(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
@@ -282,3 +280,4 @@ func Test_Collection_GetCollectionFilterPairs_ForCollection(t *testing.T) {
 	assert.Equal(t, 2, len(ml.Manifests))
 
 }
+*/

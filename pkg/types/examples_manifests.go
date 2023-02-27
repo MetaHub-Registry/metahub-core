@@ -19,7 +19,7 @@ func ManifestReferenceByte_FT_arm() []byte {
 	  }`)
 }
 
-func FT_amd_Manifest() Manifest {
+func FT_amd_ManifestData() ManifestData {
 	dat, err := f.ReadFile("data/manifests/5bf8eee20fde14eb6e3e924c18fafa4d816e131f315810875136f0438ff7beed.dat")
 	if err != nil {
 		panic(err)
@@ -28,7 +28,7 @@ func FT_amd_Manifest() Manifest {
 	l0 := FT_amd_Layer0Reference()
 	l1 := FT_amd_Layer1Reference()
 	up := FT_amd_Upstream()
-	mani := Manifest{
+	mani := ManifestData{
 		Digest:    string(digest.FromBytes(dat)),
 		Size:      735,
 		MediaType: "application/vnd.docker.distribution.manifest.v2+json",
@@ -49,7 +49,7 @@ func FT_amd_Manifest() Manifest {
 	return mani
 }
 
-func FT_arm_Manifest() Manifest {
+func FT_arm_ManifestData() ManifestData {
 	dat, err := f.ReadFile("data/manifests/ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5.dat")
 	if err != nil {
 		panic(err)
@@ -58,7 +58,7 @@ func FT_arm_Manifest() Manifest {
 	l0 := FT_arm_Layer0Reference()
 	l1 := FT_arm_Layer1Reference()
 	up := FT_arm_Upstream()
-	mani := Manifest{
+	mani := ManifestData{
 		Digest:    string(digest.FromBytes(dat)),
 		Size:      735,
 		MediaType: "application/vnd.docker.distribution.manifest.v2+json",

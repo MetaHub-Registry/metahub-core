@@ -254,7 +254,7 @@ func (sq Sqlite) GetTypesManifestListByRequest(req types.Request) (res types.Man
 		Digest:        "",
 		SchemaVersion: 2,
 		MediaType:     "application/vnd.docker.distribution.manifest.list.v2+json",
-		Manifests:     []types.Manifest{},
+		Manifests:     []types.ManifestData{},
 	}
 	for rows.Next() {
 		logrus.Warnf("Found manifestlist")

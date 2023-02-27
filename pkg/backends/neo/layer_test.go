@@ -13,11 +13,10 @@ func Test_Layer_CRUD(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
-	/*bs.AddBootstrap("filter")
-	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("platforms:amd64")
-	bs.AddBootstrap("platforms:arm64")
-	bs.AddBootstrap("profiles")
+	/*
+		bs.SetYAMLPrefix("../../../misc/yaml")
+		bs.AddBootstrap("platforms:generic")
+		bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
 	*/
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 60

@@ -10,12 +10,12 @@ import (
 )
 
 type ManifestList struct {
-	ID            int64      `json:"id"`
-	Size          int        `json:"size"`
-	Digest        string     `json:"digest"`
-	SchemaVersion int        `json:"schema_version"`
-	MediaType     string     `json:"media_type"`
-	Manifests     []Manifest `json:"manifests"`
+	ID            int64          `json:"id"`
+	Size          int            `json:"size"`
+	Digest        string         `json:"digest"`
+	SchemaVersion int            `json:"schema_version"`
+	MediaType     string         `json:"media_type"`
+	Manifests     []ManifestData `json:"manifests"`
 }
 
 type OCIManifestList struct {
@@ -32,7 +32,7 @@ func (ml ManifestList) ToOCIBytes() (b []byte) {
 	}
 	// Sort by digest
 	digList := []string{}
-	digMap := map[string]Manifest{}
+	digMap := map[string]ManifestData{}
 	for _, m := range ml.Manifests {
 		digList = append(digList, m.Digest)
 		digMap[m.Digest] = m

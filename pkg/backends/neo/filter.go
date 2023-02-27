@@ -1,14 +1,6 @@
 package neo
 
-import (
-	"context"
-	"fmt"
-
-	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
-	"github.com/sirupsen/logrus"
-	"github.com/metahub-registry/metahub-core/pkg/types"
-)
-
+/*
 func (n Neo) Filter_Insert(ctx context.Context, f types.Filter) (filterID int64, err error) {
 	filterID, success, err := n.GetFilter(f)
 	if err != nil {
@@ -23,30 +15,23 @@ func (n Neo) Filter_Insert(ctx context.Context, f types.Filter) (filterID int64,
 	return
 }
 
-func (n Neo) GetFilter(f types.Filter) (filterID int64, success bool, err error) {
-	q := `MATCH (n:Filter) WHERE n.label = "%s" RETURN id(n) AS ID`
-	query := fmt.Sprintf(q, f.Label)
-	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
-	defer session.Close()
-	result, err := session.Run(query, map[string]interface{}{})
+func (n Neo) GetFilter(f types.Filter) (filterID int64, found bool, err error) {
+	q := `MATCH (n:Filter) WHERE n.name = "%s" RETURN id(n) AS ID`
+	query := fmt.Sprintf(q, f.Name)
+	res, found, err := n.QueryOne(query)
 	if err != nil {
 		logrus.Errorf("Failed to run query: %s", err)
 		return
 	}
-	if result.Next() {
-		v, ok := result.Record().Get("ID")
-		if !ok {
-			err = fmt.Errorf("GetFilter: failed to get ID")
-			return
-		}
-		filterID = v.(int64)
-		success = true
+	if !found {
+		return
 	}
+	filterID, err = res.GetInt64("ID")
 	return
 }
 
 func (n Neo) Filter_Get_ByID(id int64) (f types.Filter, found bool, err error) {
-	q := `MATCH (n:Filter) WHERE id(n) = %d RETURN id(n) AS filterID, n.label AS filterLabel, n.feature AS filterFeature LIMIT 1`
+	q := `MATCH (n:Filter) WHERE id(n) = %d RETURN id(n) AS filterID, n.name AS filterName`
 	query := fmt.Sprintf(q, id)
 	res, qFound, err := n.QueryOne(query)
 	if err != nil {
@@ -56,7 +41,7 @@ func (n Neo) Filter_Get_ByID(id int64) (f types.Filter, found bool, err error) {
 	if !qFound {
 		return
 	}
-	f, err = FilterFromResult(res)
+	f, err = n.FilterFromResult(res)
 	if err != nil {
 		logrus.Error(err)
 		return
@@ -65,6 +50,44 @@ func (n Neo) Filter_Get_ByID(id int64) (f types.Filter, found bool, err error) {
 	return
 }
 
+func (n Neo) CreateFilter(f types.Filter) (filterID int64, err error) {
+	ctx := context.Background()
+	q := `CREATE (n:Filter {name: "%s"}) RETURN id(n) AS filterID`
+	query := fmt.Sprintf(q, f.Name)
+	res, err := n.Execute(query)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	filterID, err = res.GetInt64("filterID")
+	for _, r := range f.Rules {
+		rID, err := n.Rule_GetCreate(ctx, r)
+		if err != nil {
+			logrus.Error(err)
+			continue
+		}
+		r.ID = rID
+		err = n.Filter_LinkToRule(ctx, filterID, r)
+		if err != nil {
+			logrus.Error(err)
+			continue
+		}
+	}
+	return
+}
+
+func (n Neo) Filter_LinkToRule(ctx context.Context, filterID int64, r types.Rule) (err error) {
+	q := `MATCH (f:Filter), (r:Rule) WHERE id(f) = %d AND id(r) = %d MERGE (f)-[:HAS_RULE]->(r)`
+	query := fmt.Sprintf(q, filterID, r.ID)
+	_, err = n.Execute(query)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	return
+}
+
+/*
 func (n Neo) Filter_Get_ByLabel(label string) (f types.Filter, found bool, err error) {
 	q := `MATCH (n:Filter) WHERE n.label = "%s" RETURN id(n) AS filterID, n.label AS filterLabel, n.feature AS filterFeature LIMIT 1`
 	query := fmt.Sprintf(q, label)
@@ -84,6 +107,7 @@ func (n Neo) Filter_Get_ByLabel(label string) (f types.Filter, found bool, err e
 	found = true
 	return
 }
+
 func (n Neo) Filter_Get_ByFeature(feat string) (f types.Filter, found bool, err error) {
 	q := `MATCH (n:Filter) WHERE n.feature = "%s" RETURN id(n) AS filterID, n.label AS filterLabel, n.feature AS filterFeature LIMIT 1`
 	query := fmt.Sprintf(q, feat)
@@ -101,27 +125,6 @@ func (n Neo) Filter_Get_ByFeature(feat string) (f types.Filter, found bool, err 
 		return
 	}
 	found = true
-	return
-}
-
-func (n Neo) CreateFilter(f types.Filter) (filterID int64, err error) {
-	q := `CREATE (n:Filter {label: "%s", feature: "%s"}) RETURN id(n) AS ID`
-	query := fmt.Sprintf(q, f.Label, f.Feature)
-	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
-	defer session.Close()
-	result, err := session.Run(query, map[string]interface{}{})
-	if err != nil {
-		logrus.Errorf("failed to create platform: %v", err)
-		return
-	}
-	if result.Next() {
-		v, ok := result.Record().Get("ID")
-		if !ok {
-			err = fmt.Errorf("CreateFilter: failed to get ID")
-			return
-		}
-		filterID = v.(int64)
-	}
 	return
 }
 
@@ -187,20 +190,61 @@ func (n Neo) Filter_UpdatePlatform(ctx context.Context, plat types.Platform) (er
 		return err
 	}
 }
+*/
 
-func FilterFromResult(res Result) (f types.Filter, err error) {
-	err = res.CheckKeys("filterID", "filterLabel", "filterFeature")
+/*
+func (n Neo) FilterFromResult(res types.Result) (f types.Filter, err error) {
+	ctx := context.Background()
+	err = res.CheckKeys("filterID", "filterName")
 	if err != nil {
 		return
 	}
 	id, _ := res.GetInt64("filterID")
-	label, _ := res.GetStr("filterLabel")
-	feat, _ := res.GetStr("filterFeature")
-
+	name, _ := res.GetStr("filterName")
 	f = types.Filter{
-		ID:      id,
-		Label:   label,
-		Feature: feat,
+		ID:   id,
+		Name: name,
+	}
+	f.Rules, err = n.Rules_GetByFilterID(ctx, id)
+	if err != nil {
+		logrus.Error(err)
+		return
 	}
 	return
 }
+
+
+func (n Neo) ProfileManifestDataPair_Get() (fmdps types.ProfileManifestDataPairs, err error) {
+	q := `MATCH (md:ManifestData)-[:HAS_ANNOTATION]->(Annotation)<-[:TRUE]-(Rule)<-[:HAS_RULE]->(p:Profile)`
+	q += ` RETURN DISTINCT`
+	q += ` id(md) AS manifestID, md.digest AS manifestDigest, md.mediaType AS manifestMediaType,`
+	q += ` md.size AS manifestSize,md.label AS manifestLabel,`
+	q += ` id(p) AS profileID, p.name AS profileName, p.tag AS profileTag`
+	res, err := n.Query(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	pmdps = types.NewProfileManifestDataPairs()
+	for _, r := range res {
+		p, err := n.ProfileFromResult(r)
+		if err != nil {
+			logrus.Error(err)
+			continue
+		}
+		md, err := n.ManifestDataFromResult(r)
+		if err != nil {
+			logrus.Error(err)
+			continue
+		}
+		pmdp := types.ProfileManifestDataPair{
+			Profile:      p,
+			ManifestData: md,
+		}
+		_ = pmdp
+		//fmdps.Pairs = append(fmdps.Pairs, fmdp)
+	}
+	_ = pmdps
+	return
+}
+*/

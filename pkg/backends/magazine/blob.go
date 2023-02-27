@@ -45,7 +45,7 @@ func (mag Magazine) BlobDelete(ctx context.Context, req types.Request) (err erro
 		return err
 	}
 	// Not a layer, so it must be a config
-	_, found, err = mag.Database.ConfigGetByDigest(req.Digest)
+	_, found, err = mag.Database.Config_GetByDigest(req.Digest)
 	if err != nil {
 		return err
 	}

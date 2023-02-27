@@ -1,6 +1,35 @@
 package types
 
 type Profile struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
+	ID            int64    `json:"id"`
+	Name          string   `json:"name"`
+	Tag           string   `json:"tag"`
+	Rule          string   `json:"rule"`
+	Manipulations []string `json:"manipulations"`
+}
+
+const (
+	AnnotationRuleEq    = "eq"
+	AnnotationRuleNeq   = "neq"
+	AnnotationRuleGt    = "gt"
+	AnnotationRuleGte   = "gte"
+	AnnotationRuleLt    = "lt"
+	AnnotationRuleLte   = "lte"
+	AnnotationRuleRegex = "re"
+)
+
+var (
+	AnnotationsRules = []string{
+		AnnotationRuleEq,
+		AnnotationRuleNeq,
+		AnnotationRuleGt,
+		AnnotationRuleGte,
+		AnnotationRuleLt,
+		AnnotationRuleLte,
+		AnnotationRuleRegex,
+	}
+)
+
+func (p Profile) EvalRules(as Annotations) (err error) {
+	return err
 }

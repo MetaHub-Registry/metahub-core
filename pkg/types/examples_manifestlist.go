@@ -17,8 +17,8 @@ func FT_amd_Manifestlist() ManifestList {
 		SchemaVersion: 2,
 		Digest:        dig,
 		MediaType:     "application/vnd.docker.distribution.manifest.list.v2+json",
-		Manifests: []Manifest{
-			FT_amd_Manifest(),
+		Manifests: []ManifestData{
+			FT_amd_ManifestData(),
 		},
 	}
 }
@@ -36,9 +36,9 @@ func FT_generic_Manifestlist() ManifestList {
 		SchemaVersion: 2,
 		Digest:        dig,
 		MediaType:     "application/vnd.docker.distribution.manifest.list.v2+json",
-		Manifests: []Manifest{
-			FT_arm_Manifest(),
-			FT_amd_Manifest(),
+		Manifests: []ManifestData{
+			FT_arm_ManifestData(),
+			FT_amd_ManifestData(),
 		},
 	}
 }
@@ -58,8 +58,8 @@ func FT_arm_Manifestlist() ManifestList {
 		Digest:        dig,
 		Size:          len(dat),
 		MediaType:     "application/vnd.docker.distribution.manifest.list.v2+json",
-		Manifests: []Manifest{
-			FT_arm_Manifest(),
+		Manifests: []ManifestData{
+			FT_arm_ManifestData(),
 		},
 	}
 }

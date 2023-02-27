@@ -3,11 +3,10 @@ package types
 import "fmt"
 
 type Platform struct {
-	ID       int64  `json:"-"`
-	Arch     string `json:"architecture"`
-	OS       string `json:"os"`
-	Variant  string `json:"variant"`
-	Features string `json:"features"`
+	ID      int64  `json:"-"`
+	Arch    string `json:"architecture"`
+	OS      string `json:"os"`
+	Variant string `json:"variant"`
 }
 
 func (p Platform) GetLabel() string {

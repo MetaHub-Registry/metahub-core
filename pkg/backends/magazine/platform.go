@@ -15,6 +15,8 @@ func (mag Magazine) NeoInsertPlatform(ctx context.Context, plat types.Platform) 
 	return
 }
 
+/*
 func (mag Magazine) NeoLinkPlatformIDToFilter(ctx context.Context, platID int64, fltr types.Filter) (err error) {
 	return mag.Database.LinkPlatformIDToFilter(ctx, platID, fltr)
 }
+*/

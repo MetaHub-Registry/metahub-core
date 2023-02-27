@@ -1,0 +1,3 @@
+name: "mpich"
+tag: "generic"
+rule: cpu:generic=true && mpi:mpich=true

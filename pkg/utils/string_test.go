@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -44,6 +45,52 @@ func Test_shortenDigest(t *testing.T) {
 	}
 	for _, test := range tests {
 		got := ShortenDigest(test.input)
+		res := []string{}
+		if got != test.exp {
+			res = append(res, fmt.Sprintf("(input:'%-56s' EXP: '%s' // GOT: '%s' >> ", test.input, test.exp, got))
+		}
+		if len(res) > 0 {
+			t.Error(t, strings.Join(res, "\n"))
+		}
+	}
+
+}
+
+func Test_shortenMediaType(t *testing.T) {
+	tests := []struct {
+		input string
+		exp   string
+	}{
+		{v1.MediaTypeImageManifest, "oci.image.manifest.v1+json"},
+		{v1.MediaTypeImageLayerGzip, "oci.image.layer.v1.tar+gzip"},
+		{v1.MediaTypeImageLayer, "oci.image.layer.v1.tar"},
+		{"application/vnd.docker.image.rootfs.diff.tar.gzip", "docker.image.rootfs.diff.tar.gzip"},
+		{"application/vnd.docker.image.rootfs.diff.tar", "docker.image.rootfs.diff.tar"},
+		{"application/vnd.oci.image.manifest.v1+json", "oci.image.manifest.v1+json"},
+	}
+	for _, test := range tests {
+		got := ShortenMediaType(test.input)
+		res := []string{}
+		if got != test.exp {
+			res = append(res, fmt.Sprintf("(input:'%-56s' EXP: '%s' // GOT: '%s' >> ", test.input, test.exp, got))
+		}
+		if len(res) > 0 {
+			t.Error(t, strings.Join(res, "\n"))
+		}
+	}
+}
+
+func Test_UpLabelKey(t *testing.T) {
+	tests := []struct {
+		input string
+		exp   string
+	}{
+		{"foo", "FOO"},
+		{"foo.bar", "FOO_BAR"},
+	}
+
+	for _, test := range tests {
+		got := UpLabelKey(test.input)
 		res := []string{}
 		if got != test.exp {
 			res = append(res, fmt.Sprintf("(input:'%-56s' EXP: '%s' // GOT: '%s' >> ", test.input, test.exp, got))

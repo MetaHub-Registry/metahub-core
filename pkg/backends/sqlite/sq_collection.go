@@ -53,7 +53,7 @@ func (s Sqlite) Collection_InsertXTable(sqlID, colTagID, mlID int64) (err error)
 	return s.Collection.InsertXTable(sqlID, colTagID, mlID)
 }
 
-func (s Sqlite) CollectionManifest_ByRequest(req types.Request, mani types.Manifest) (err error) {
+func (s Sqlite) CollectionManifest_ByRequest(req types.Request, mani types.ManifestData) (err error) {
 	// Tag && Collection & ManifestList
 	/*
 		tag, err := mag.SQlite.CollectionTag.GetCreateByRequest(req)
@@ -86,7 +86,7 @@ func (s Sqlite) CollectionManifest_ByRequest(req types.Request, mani types.Manif
 	ml := types.ManifestList{
 		SchemaVersion: 2,
 		MediaType:     "application/vnd.docker.distribution.manifest.list.v2+json",
-		Manifests: []types.Manifest{
+		Manifests: []types.ManifestData{
 			mani,
 		},
 	}
@@ -146,7 +146,7 @@ func (s Sqlite) AddMLtoCollection(col *types.Collection) (err error) {
 			MediaType:     "application/vnd.docker.distribution.manifest.list.v2+json",
 			ID:            int64(mlRes.ManiListID),
 			Digest:        mlRes.ManiListDigest,
-			Manifests:     []types.Manifest{},
+			Manifests:     []types.ManifestData{},
 		}
 		/// Add manifests to manifestlist
 		manis, err := s.Manifest.TypesManifest_GetByManifestListID(ml.ID)
