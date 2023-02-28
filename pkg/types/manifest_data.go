@@ -26,6 +26,7 @@ type ManifestData struct {
 	Config      Config      `json:"config"`
 	Layers      []Layer     `json:"layers"`
 	Label       string      `json:"label"`
+	Profile     Profile     `json:"profile"`
 	Annotations Annotations `json:"annotations"`
 }
 

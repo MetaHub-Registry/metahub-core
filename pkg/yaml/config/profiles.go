@@ -79,7 +79,7 @@ func LoadProfile(ctx context.Context, yamlfile string) (p Profile, err error) {
 		err = errors.Errorf("profile name %s does not match filename %s; please consider removing name/tag, will be derived by name", p.Tag, tag)
 		return
 	}
-	logrus.Warnf("Profile %s:%s", name, tag)
+	logrus.Warnf("Profile %s#%s", name, tag)
 	p.Name = name
 	p.Tag = tag
 	return p, nil

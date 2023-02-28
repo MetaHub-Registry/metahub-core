@@ -113,6 +113,18 @@ func (mag Magazine) SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err
 				err = errors.Wrap(err, "Setup_Users")
 				return
 			}
+		case "computeManifests":
+			err := mag.ComputeManifests()
+			if err != nil {
+				err = errors.Wrap(err, "while SetupTest: ComputeManifests")
+				return br, err
+			}
+		case "computeManifestlists":
+			err := mag.ComputeManifests()
+			if err != nil {
+				err = errors.Wrap(err, "while SetupTest: computeManifestlists")
+				return br, err
+			}
 		default:
 			err = mag.Database.BootstrapTestWithBR(b, bs, &br)
 			if err != nil {

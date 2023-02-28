@@ -32,7 +32,6 @@ func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMa
 		},
 		MediaType: v1.MediaTypeImageManifest,
 	}
-	_ = m
 	/////// A. Generate `oci.image.config.v1`
 	cfg, err := mag.GenerateOCIv1Config(ctx, mani, origMani)
 	if err != nil {
