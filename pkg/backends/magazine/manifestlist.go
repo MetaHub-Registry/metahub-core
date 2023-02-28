@@ -93,6 +93,15 @@ func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
 			logrus.Error(err)
 			continue
 		}
+		// Link ManifestList to ManifestData
+		for _, m := range ms {
+			e := mag.Database.LinkManifestListToManifestData(mlID, m.ID)
+			if e != nil {
+				err = errors.Wrap(e, "while linking ManifestList to ManifestData")
+				return err
+			}
+		}
+
 		// Link ManifestList to Collection
 		err = mag.Database.LinkManifestListToCollection(mlID, c.ID)
 		if err != nil {
@@ -137,7 +146,7 @@ func (mag Magazine) ManifestList_GetByHTTPRequest(r *http.Request) (ml types.Man
 	} else {
 		msg += fmt.Sprintf("%s)", req.Tag)
 	}
-	if req.Profile != "generic" {
+	if req.Profile != "cpu#generic" {
 		msg += fmt.Sprintf(" - profile: %s", req.Profile)
 	}
 	logrus.Info(msg)

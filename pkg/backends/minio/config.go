@@ -41,6 +41,9 @@ func (m Minio) GetConfig(ctx context.Context, dig string) (cfg v1.Image, found b
 		logrus.Errorf("failed to unmarshal v1.Image: %v", err)
 		return
 	}
+	if cfg.Config.Labels == nil {
+		cfg.Config.Labels = make(map[string]string)
+	}
 	found = true
 	return
 }

@@ -82,6 +82,20 @@ func (n Neo) LinkManifestListToCollection(mlID, colID int64) (err error) {
 	return
 }
 
+func (n Neo) LinkManifestListToManifestData(mlID, mdID int64) (err error) {
+	q := `MATCH (ml:ManifestList), (md:ManifestData) WHERE id(ml) = %d AND id(md) = %d`
+	q += ` MERGE (ml)-[:INCLUDES]-(md)`
+	query := fmt.Sprintf(q, mlID, mdID)
+	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close()
+	_, err = session.Run(query, map[string]interface{}{})
+	if err != nil {
+		logrus.Errorf("failed to create link (ml)-[:INCLUDES]-(md): %v", err)
+		return
+	}
+	return
+}
+
 func (n Neo) UnLinkManifestListToCollectionTag(mlID, colTagID int64) (err error) {
 	q := `MATCH (ct:Tag)-[r:REF]->(ml:ManifestList) WHERE id(ct) = %d AND id(ml) = %d`
 	q += ` DELETE r`
@@ -95,6 +109,7 @@ func (n Neo) UnLinkManifestListToCollectionTag(mlID, colTagID int64) (err error)
 	}
 	return
 }
+
 func (n Neo) LinkManifestListToCollectionTag(mlID, colTagID int64) (err error) {
 	q := `MATCH (ct:Tag), (ml:ManifestList) WHERE id(ct) = %d AND id(ml) = %d`
 	q += ` MERGE (ml)<-[:REF]-(ct)`
@@ -111,7 +126,7 @@ func (n Neo) LinkManifestListToCollectionTag(mlID, colTagID int64) (err error) {
 
 func (n Neo) LinkManifestListToProfile(mlID, pID int64) (err error) {
 	q := `MATCH (p:Profile), (ml:ManifestList) WHERE id(p) = %d AND id(ml) = %d`
-	q += ` MERGE (ml)<-[:REF]-(ct)`
+	q += ` MERGE (ml)<-[:REF]-(p)`
 	query := fmt.Sprintf(q, pID, mlID)
 	_, err = n.Execute(query)
 	return
@@ -182,39 +197,43 @@ func (n Neo) InsertManifestList(dig digest.Digest, mt string, size int) (mlID in
 }
 
 func (n Neo) ManifestList_Get_ByRequest(req types.Request) (ml types.ManifestList, found bool, err error) {
-	/* TODO: Need to implement ManifestList_Get_ByRequest
-	q := `MATCH (prf:Profile)-[:USES]->(f:Filter)<-[:IMPLEMENTS]-(ml:ManifestList) WHERE prf.name = "%s"`
-	q += ` MATCH (c:Collection)-[:REF]->(ml)<-[:REF]-(t:Tag) WHERE c.repo = "%s" AND t.name = "%s"`
-	q += ` RETURN id(ml) as manifestlistID, ml.digest as manifestlistDigest, ml.mediaType as manifestlistMediaType, ml.size as manifestlistSize,`
-	q += ` id(f) as filterID, f.label as filterLabel, f.feature AS filterFeature, id(t) as tagID`
-	query := fmt.Sprintf(q, req.Profile, req.Repo, req.Tag)
-	//fmt.Printf("Query: ManifestList_Get_ByRequest\n%s\n", query)
-	res, found, err := n.QueryOne(query)
-	if err != nil || !found {
-		return
+	/* TODO: Need to implement ManifestList_Get_ByRequest */
+	// TODO: Do we have a tag or just a digest?
+	logrus.Infof("Query for ML of name '%s' and tag '%s' / dig:'%s'", req.Repo, req.Tag, utils.ShortenDigest(req.Digest))
+	q := fmt.Sprintf(`MATCH (c:Collection)-[:REF]->(ml)<-[:REF]-(t:Tag) WHERE c.repo = "%s"`, req.Repo)
+	if req.Tag != "" {
+		q += fmt.Sprintf(` AND t.name ="%s"`, req.Tag)
+	} else {
+		q += fmt.Sprintf(` AND ml.digest ="%s"`, req.Digest)
 	}
-	tagID, err := res.GetInt64("tagID")
+	q += fmt.Sprintf(` MATCH (ml)<-[:REF]-(prf:Profile) WHERE prf.label = "%s"`, req.Profile)
+	q += ` RETURN id(ml) as manifestlistID, ml.digest as manifestlistDigest, ml.mediaType as manifestlistMediaType, ml.size as manifestlistSize`
+	//query := fmt.Sprintf(q, req.Repo, req.Tag, req.Profile)
+	res, found, err := n.QueryOne(q)
 	if err != nil {
+		logrus.Error(err)
 		return
 	}
-	_ = tagID
+	if !found {
+		logrus.Errorf("ManifestList not found")
+		fmt.Printf(" >>> \n%s\n", q)
+		return
+	}
 	ml, err = ManifestListFromResult(res)
 	if err != nil {
+		logrus.Error(err)
 		return
 	}
-	f, err := FilterFromResult(res)
-	if err != nil {
-		return
-	}
-	q = `MATCH (f:Filter)-[:USES]->(p:Platform)<-[:IS]-(m:Manifest)-[]-(md:ManifestData)<-[:INCLUDES]-(ml:ManifestList)`
-	q += ` WHERE id(ml) = %d AND id(f) = %d`
-	q += ` RETURN id(md) as manifestID, md.digest as manifestDigest, md.mediaType as manifestMediaType, md.size as manifestSize,`
-	q += ` id(p) as platformID, p.os as platformOS, p.arch as platformArch, p.variant as platformVariant, p.features as platformFeatures`
-	query = fmt.Sprintf(q, ml.ID, f.ID)
-	//fmt.Printf("Query: Add Manifests\n%s\n", query)
-	rs, err := n.Query(query)
+	// TODO: Fetch all INCLUDES for ManifestList
+	q = fmt.Sprintf(`MATCH (ml:ManifestList)-[:INCLUDES]->(md:ManifestData) WHERE id(ml) = %d`, ml.ID)
+	q += ` MATCH (md)<-[]-(m:Manifest)-[:IS]->(p:Platform)`
+	q += ` RETURN id(md) as manifestID, md.digest as manifestDigest, md.mediaType as manifestMediaType,`
+	q += ` md.size as manifestSize,`
+	q += ` id(p) as platformID, p.os as platformOS, p.arch as platformArch, p.variant as platformVariant`
+	fmt.Printf("Query: \n%s\n", q)
+	rs, err := n.Query(q)
 	for _, r := range rs {
-		m, err := ManifestDataFromResult(r)
+		m, err := n.ManifestDataFromResult(r)
 		if err != nil {
 			logrus.Error(err)
 			continue
@@ -227,7 +246,6 @@ func (n Neo) ManifestList_Get_ByRequest(req types.Request) (ml types.ManifestLis
 		m.Platform = p
 		ml.Manifests = append(ml.Manifests, m)
 	}
-	*/
 	return
 }
 

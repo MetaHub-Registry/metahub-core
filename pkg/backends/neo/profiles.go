@@ -102,7 +102,7 @@ func (n Neo) GetProfile(prf types.Profile) (prfID int64, success bool, err error
 
 func (n Neo) CreateProfile(prf types.Profile) (prfID int64, err error) {
 	q := `CREATE (n:Profile {name: "%s", tag: "%s", label: "%s", rule: "%s"}) RETURN id(n) AS ID`
-	label := fmt.Sprintf("%s:%s", prf.Name, prf.Tag)
+	label := fmt.Sprintf("%s#%s", prf.Name, prf.Tag)
 	query := fmt.Sprintf(q, prf.Name, prf.Tag, label, prf.Rule)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
@@ -120,7 +120,7 @@ func (n Neo) CreateProfile(prf types.Profile) (prfID int64, err error) {
 		prfID = v.(int64)
 
 	} else {
-		err = fmt.Errorf("CreateProfile: failed to get ID")
+		err = fmt.Errorf("CreateProfile: no result")
 		return
 	}
 	return
@@ -176,5 +176,24 @@ func (n Neo) ProfileFromResult(res types.Result) (p types.Profile, err error) {
 			return
 		}
 	*/
+	return
+}
+
+func (n Neo) Profile_FromManifestDataID(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
+	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[]-(a:Annotation)-[]-(md:ManifestData) WHERE id(md) = %d`, mdID)
+	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule`
+	res, err := n.Query(q)
+	if err != nil {
+		return
+	}
+	prfs = make([]types.Profile, 0)
+	for _, r := range res {
+		p, err := n.ProfileFromResult(r)
+		if err != nil {
+			logrus.Error(err)
+			continue
+		}
+		prfs = append(prfs, p)
+	}
 	return
 }

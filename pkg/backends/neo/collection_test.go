@@ -96,7 +96,7 @@ func Test_Collection_ComputeManifest(t *testing.T) {
 	bs.AddBootstrap("manifestdata:ft_amd64")
 	bs.AddBootstrap("collection:ft_generic")
 	bs.SetEmptyAll()
-	bs.PostTestSleep = 120
+	//bs.PostTestSleep = 120
 	br, err := SetupTest(bs)
 	_ = br
 	//br.PrintDict()

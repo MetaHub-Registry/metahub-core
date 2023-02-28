@@ -79,6 +79,7 @@ func (s Sqlite) LoginUserScope(username, password string, req types.Request) (st
 	}
 	match, err := u.PasswordMatches(password)
 	if err != nil {
+		logrus.Error(err)
 		return http.StatusInternalServerError, pl, err
 	}
 	if !match {
@@ -87,6 +88,7 @@ func (s Sqlite) LoginUserScope(username, password string, req types.Request) (st
 			"wrong credentials",
 			helper.NewDetailFromReq(req),
 		)
+		logrus.Error("wrong credentials")
 		return http.StatusUnauthorized, pl, nil
 	}
 	switch req.Method {
@@ -375,7 +377,6 @@ func (u *User) ResetPassword(password string) error {
 // and hash match, we return true; otherwise, we return false.
 func (u *User) PasswordMatches(plainText string) (bool, error) {
 	err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(plainText))
-
 	if err != nil {
 		switch {
 		case errors.Is(err, bcrypt.ErrMismatchedHashAndPassword):

@@ -100,6 +100,7 @@ type Database interface {
 	LinkManifestListToCollection(mlID, colID int64) (err error)
 	LinkManifestListToCollectionTag(mlID, colTagID int64) (err error)
 	LinkManifestListToProfile(mlID, prfID int64) (err error)
+	LinkManifestListToManifestData(mlID, mdID int64) (err error)
 	ManifestData_LinkToLayer(ctx context.Context, maniID, layerID int64, idx int) error //
 	LinkManifestToManifestData(ctx context.Context, maniID, maniDataID int64, props ...string) error
 	/****** BlobUpload ******/

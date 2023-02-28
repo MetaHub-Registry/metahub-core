@@ -581,7 +581,7 @@ func (n Neo) ManifestData_GetByCollectionTag(colID, colTagID int64) (manis []typ
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	q := `MATCH (p:Platform)-[r]-(m:Manifest)-[]-(u:Upstream)`
-	q += ` MATCH (c:Collection)-[:UPSTREAM]->(m)-[]-(md:ManifestData)-[:USES]->(cfg:Config) WHERE id(c) = %d`
+	q += ` MATCH (c:Collection)-[:UPSTREAM]->(m)-[:CREATED]-(md:ManifestData)-[:USES]->(cfg:Config) WHERE id(c) = %d`
 	q += ` MATCH (t:Tag)-[:UPSTREAM]->(m) WHERE id(t) = %d`
 	q += ` RETURN type(r) AS manifestdataRelType,`
 	q += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant, p.features AS platformFeatures,`
@@ -589,7 +589,7 @@ func (n Neo) ManifestData_GetByCollectionTag(colID, colTagID int64) (manis []typ
 	q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag,`
 	q += ` id(cfg) AS configID, cfg.digest AS configDigest, cfg.mediaType AS configMediaType, cfg.size AS configSize`
 	query := fmt.Sprintf(q, colID, colTagID)
-	fmt.Printf("query: \n%s\n", query)
+	//fmt.Printf("query: \n%s\n", query)
 	input := map[string]interface{}{}
 	result, err := session.Run(query, input)
 	if err != nil {
@@ -618,7 +618,6 @@ func (n Neo) ManifestData_GetByCollectionTag(colID, colTagID int64) (manis []typ
 			err = e
 			return
 		}
-
 		anno, e := n.Labels_GetByConfigID(ctx, c.ID)
 		if e != nil {
 			err = e
@@ -629,7 +628,19 @@ func (n Neo) ManifestData_GetByCollectionTag(colID, colTagID int64) (manis []typ
 		m.Config = c
 		m.Platform = p
 		m.Upstream = u
-		manis = append(manis, m)
+		prfs, e := n.Profile_FromManifestDataID(ctx, m.ID)
+		if e != nil {
+			err = errors.Wrap(e, "failed to get profiles for manifest data")
+			return
+		}
+		if len(prfs) == 0 {
+			err = fmt.Errorf("no profiles found for manifest data: %d", m.ID)
+			continue
+		}
+		for _, prf := range prfs {
+			m.Profile = prf
+			manis = append(manis, m)
+		}
 	}
 	return
 }
