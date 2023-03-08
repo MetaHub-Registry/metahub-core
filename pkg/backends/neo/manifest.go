@@ -161,7 +161,7 @@ func (n Neo) Manifest_GetAll() (manis []types.Manifest, err error) {
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	q := `MATCH (p:Platform)-[]-(m:Manifest)-[]-(u:Upstream)`
-	q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant, p.features AS platformFeatures,`
+	q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
 	q += ` id(m) AS manifestID,`
 	q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag`
 	//fmt.Printf("query: \n%s\n", q)

@@ -5,7 +5,7 @@ import (
 )
 
 func FT_amd_Manifestlist() ManifestList {
-	dat, err := f.ReadFile("data/manifestlists/d46f2503b600eac6066ba46c034425096087875de9480334b3471347d14bf227.dat")
+	dat, err := f.ReadFile("data/manifestlists/d46f2503b600eac6066ba46c034425096087875de9480334b3471347d14bf227.json")
 	if err != nil {
 		panic(err)
 	}
@@ -24,7 +24,7 @@ func FT_amd_Manifestlist() ManifestList {
 }
 
 func FT_generic_Manifestlist() ManifestList {
-	dat, err := f.ReadFile("data/manifestlists/451af211ab5d4bb4cf956ec8bf50e9cf57c2083c9dbbcd0c8facf4642cb76932.dat")
+	dat, err := f.ReadFile("data/manifestlists/451af211ab5d4bb4cf956ec8bf50e9cf57c2083c9dbbcd0c8facf4642cb76932.json")
 	if err != nil {
 		panic(err)
 	}
@@ -44,7 +44,7 @@ func FT_generic_Manifestlist() ManifestList {
 }
 
 func FT_arm_Manifestlist() ManifestList {
-	dat, err := f.ReadFile("data/manifestlists/15e01c3caff37bd3e6e4c77d7fa1d1a5afad482d50400b31d20458b792dcb61d.dat")
+	dat, err := f.ReadFile("data/manifestlists/15e01c3caff37bd3e6e4c77d7fa1d1a5afad482d50400b31d20458b792dcb61d.json")
 	if err != nil {
 		panic(err)
 	}

@@ -13,6 +13,11 @@ import (
 	"github.com/spf13/viper"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel"
+)
+
+var (
+	tracer = otel.Tracer("metalib/neo")
 )
 
 type NeoConfig struct {

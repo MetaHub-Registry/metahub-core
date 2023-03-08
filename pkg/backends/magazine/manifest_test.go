@@ -70,7 +70,8 @@ func Test_StoreManifestUpload_OCIManifest(t *testing.T) {
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("users")
 	bs.AddBootstrap("config:ft_arm")
-	bs.AddBootstrap("config:ft_amd64")
+	bs.AddBootstrap("layer:0:ft_arm64")
+	bs.AddBootstrap("layer:1:ft_arm64")
 	//bs.PostTestSleep = 300
 	_, err := mag.SetupTest(bs)
 	if err != nil {
@@ -136,7 +137,7 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer(t *testing.T) {
 		ContentType: "application/vnd.oci.image.manifest.v1+json",
 	}
 	// Upload Manifest with Embedded Config
-	mani, err := mag.StoreManifestUpload(req, buf)
+	mani, err := mag.StoreManifestUpload(ctx, req, buf)
 	assert.NoError(t, err)
 	assert.Equal(t, bufDig.String(), mani.Digest)
 	// Check if config is in DB
@@ -211,7 +212,7 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer_with_Labels(t *tes
 		ContentType: "application/vnd.oci.image.manifest.v1+json",
 	}
 	// Upload Manifest with Embedded Config
-	mani, err := mag.StoreManifestUpload(req, buf)
+	mani, err := mag.StoreManifestUpload(ctx, req, buf)
 	if err != nil {
 		t.Fatal(err)
 	}

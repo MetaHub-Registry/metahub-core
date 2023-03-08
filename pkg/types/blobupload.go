@@ -7,13 +7,14 @@ import (
 )
 
 type BlobUpload struct {
-	ID         int64     `json:"id"`
-	UUID       uuid.UUID `json:"uuid"`
-	CreatedAt  time.Time `json:"created_at"`
-	FinishedAt time.Time `json:"finished_at"`
-	UploadedBy string    `json:"uploaded_by"`
-	BlobID     int64     `json:"blob_id"`   // blob is either a layer or a config
-	BlobType   string    `json:"blob_type"` //
+	ID            int64     `json:"id"`
+	UUID          uuid.UUID `json:"uuid"`
+	CreatedAt     time.Time `json:"created_at"`
+	FinishedAt    time.Time `json:"finished_at"`
+	UploadUser    string    `json:"upload_user"`
+	UploadProfile string    `json:"upload_profile"`
+	BlobID        int64     `json:"blob_id"`   // blob is either a layer or a config
+	BlobType      string    `json:"blob_type"` //
 }
 
 type BlobChunks struct {

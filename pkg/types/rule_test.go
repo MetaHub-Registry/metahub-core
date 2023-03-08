@@ -27,5 +27,11 @@ func Test_Rule_ToString(t *testing.T) {
 	}
 	exp := fmt.Sprintf("%6s > %-45s | %-3s | %s", "anno", "foo", "eq", "bar")
 	assert.Equal(t, exp, r0.ToString())
+	r1, err := NewRule("plat", "eq", "arch", "amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exp1 := fmt.Sprintf("%6s > %-45s | %-3s | %s", "plat", "arch", "eq", "amd64")
+	assert.Equal(t, exp1, r1.ToString())
 
 }

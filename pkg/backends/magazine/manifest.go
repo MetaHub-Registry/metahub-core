@@ -13,6 +13,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	ycfg "github.com/metahub-registry/metahub-core/pkg/yaml/config"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 func (mag Magazine) GetManifest(ctx context.Context, m ycfg.Manifest) (mani types.ManifestData, err error) {
@@ -188,11 +189,17 @@ func (mag Magazine) NeoLinkManifestToPlatform(ctx context.Context, maniID, platI
 	return mag.Database.LinkManifestToPlatform(ctx, maniID, platID)
 }
 
-func (mag Magazine) Manifest_GetByHTTPRequest(r *http.Request) (m types.ManifestData, found bool, err error) {
+func (mag Magazine) Manifest_GetByHTTPRequest(ctx context.Context, r *http.Request) (m types.ManifestData, found bool, err error) {
 	req := types.NewRequest(r)
 	if req.Profile == "" {
 		return
 	}
+	ctx, span := tracer.Start(ctx, "Manifest_GetByHTTPRequest")
+	span.SetAttributes(
+		attribute.Key("method").String(r.Method),
+		attribute.Key("repo").String(req.Repo),
+	)
+	defer span.End()
 	msg := fmt.Sprintf("%-5s ManifestHandler(%s, ", r.Method, req.Repo)
 	if req.Tag == "" {
 		msg += fmt.Sprintf("%s)", req.Digest)
@@ -203,7 +210,7 @@ func (mag Magazine) Manifest_GetByHTTPRequest(r *http.Request) (m types.Manifest
 		msg += fmt.Sprintf(" - profile: %s", req.Profile)
 	}
 	logrus.Info(msg)
-	m, found, err = mag.Manifest_GetByRequest(req)
+	m, found, err = mag.Manifest_GetByRequest(ctx, req)
 	if err != nil {
 		return
 	}
@@ -238,8 +245,9 @@ func (mag Magazine) Manifest_DeleteByHTTPRequest(r *http.Request) (err error) {
 	return
 }
 
-func (mag Magazine) Manifest_GetByRequest(req types.Request) (m types.ManifestData, found bool, err error) {
-	ctx := context.Background()
+func (mag Magazine) Manifest_GetByRequest(ctx context.Context, req types.Request) (m types.ManifestData, found bool, err error) {
+	ctx, span := tracer.Start(ctx, "Manifest_GetByRequest")
+	defer span.End()
 	// Fetch Manifest from SQLite
 	m, found, err = mag.Database.ManifestData_GetTypes_ByRequest(req)
 	if err != nil {
@@ -291,12 +299,21 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 		return
 	}
 	mani.ID = mID
+	lyrs := []types.Layer{}
+	for _, l := range ociMani.Layers {
+		lyrs = append(lyrs, types.Layer{
+			Digest:    l.Digest.String(),
+			MediaType: l.MediaType,
+			Size:      l.Size,
+		})
+	}
 	// Store ManifestData (the actual Manifest with digest and all)
 	md := types.ManifestData{
 		Digest:    dig.String(),
 		MediaType: ociMani.MediaType,
 		Data:      buf,
 		Size:      int64(len(buf)),
+		Layers:    lyrs,
 	}
 	err = mag.Database.ManifestData_GetInsert(ctx, &md)
 	if err != nil {
@@ -312,9 +329,10 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 	return
 }
 
-func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (md types.ManifestData, err error) {
+func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, buf []byte) (md types.ManifestData, err error) {
 	/// TODO: Can this be dratically simplified?
-	ctx := context.Background()
+	ctx, span := tracer.Start(ctx, "StoreManifestUpload")
+	defer span.End()
 	var ociMani types.OCIManifest
 	// Put Manifest Blob into Minio
 	m, ociMani, err := mag.storeManifestUpload_OCIManifest(ctx, req, buf)
@@ -342,7 +360,7 @@ func (mag Magazine) StoreManifestUpload(req types.Request, buf []byte) (md types
 	//logrus.Infof("Found Config: ID:%d #Labels:%d", cfg.ID, len(cfg.Labels.Map))
 	md.Config = cfg
 	// Link Manifest to Config
-	logrus.Warnf("Linking Manifest to Config: %d -> %d", md.ID, cfg.ID)
+	logrus.Warnf("Linking Manifest to Config: '%d' -> '%d'", md.ID, cfg.ID)
 	err = mag.Database.ManifestData_LinkToConfig(ctx, md.ID, cfg.ID)
 	if err != nil {
 		err = errors.Wrap(err, "failed to mag.LinkManifestToConfig")

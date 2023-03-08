@@ -55,7 +55,6 @@ func Test_Rule_GetCreate(t *testing.T) {
 	rls, err := db.Rules_GetAll(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(rls))
-
 }
 
 func Test_Rule_EvalAnnotationRule(t *testing.T) {
@@ -92,7 +91,7 @@ func Test_Rule_EvalAnnotationRule(t *testing.T) {
 	r.ID = rID
 	err = db.Rule_EvalAnnotationRule(ctx, r)
 	assert.NoError(t, err)
-	q := fmt.Sprintf(`MATCH (r:Rule) WHERE id(r) = %d RETURN r`, rID)
+	q := fmt.Sprintf(`MATCH (r:Rule) WHERE id(r) = %d RETURN id(r) AS rID`, rID)
 	_, found, err = db.QueryOne(q)
 	if err != nil || !found {
 		t.Fatal("Rule not found")
@@ -109,9 +108,10 @@ func Test_Rule_EvalAll(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("annotation:foo:bar")
-	bs.AddBootstrap("annotation:org.supercontainers.mpi.implementation:mpich")
 	bs.AddBootstrap("rules:rules/foo/bar.yaml")
+	bs.AddBootstrap("rules:rules/platform/os/linux.yaml")
 	//bs.PostTestSleep = 120
 	br, err := SetupTest(bs)
 	_ = br
@@ -133,4 +133,15 @@ func Test_Rule_EvalAll(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, 1, len(as.Data))
+
+	osR, found, err := db.Rule_GetByLabel(ctx, "platform/os:linux")
+	if err != nil || !found {
+		t.Fatal("Rule not found")
+	}
+
+	ps, err := db.Rule_GetSuccessPlatform(ctx, osR)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 6, len(ps))
 }

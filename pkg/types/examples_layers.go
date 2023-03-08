@@ -116,11 +116,12 @@ func FT_amd_Layer1Byte() []byte {
 func FT_arm_BlobUpload_Layer0() (OCIBlobUpload, []byte) {
 	r := FT_arm_Layer0Reference()
 	bu := OCIBlobUpload{
-		UploadedBy: "test",
-		BlobType:   "layer",
-		BlobID:     1,
-		Repo:       "qnib/featuretest",
-		Digest:     r.Digest.String(),
+		UploadUser:    "test",
+		UploadProfile: "generic",
+		BlobType:      "layer",
+		BlobID:        1,
+		Repo:          "qnib/featuretest",
+		Digest:        r.Digest.String(),
 	}
 	return bu, FT_arm_Layer0Byte()
 }
@@ -128,12 +129,13 @@ func FT_arm_BlobUpload_Layer0() (OCIBlobUpload, []byte) {
 func FT_arm_BlobUpload_Config() (OCIBlobUpload, []byte) {
 	cfg := FT_arm_Config()
 	bu := OCIBlobUpload{
-		UploadedBy: "test",
-		BlobType:   "config",
-		BlobID:     1,
-		MediaType:  cfg.MediaType,
-		Repo:       "qnib/featuretest",
-		Digest:     cfg.Digest,
+		UploadUser:    "test",
+		UploadProfile: "generic",
+		BlobType:      "config",
+		BlobID:        1,
+		MediaType:     cfg.MediaType,
+		Repo:          "qnib/featuretest",
+		Digest:        cfg.Digest,
 	}
 	return bu, FT_arm_ConfigByte()
 }

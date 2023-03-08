@@ -9,12 +9,15 @@ import (
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/metahub-registry/metahub-core/pkg/tracing"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (n Neo) Layer_PlainInsert(ctx context.Context, l types.Layer) (layerID int64, err error) {
-	layerID, success, err := n.GetLayer(l)
+	gotL, success, err := n.LayerGetByDigest(l.Digest)
 	if err != nil {
 		return
 	}
@@ -23,11 +26,10 @@ func (n Neo) Layer_PlainInsert(ctx context.Context, l types.Layer) (layerID int6
 		if err != nil {
 			return
 		}
+		return
 	}
-	return
-}
-
-func (n Neo) Layer_Insert(ctx context.Context, l types.Layer, up types.Upstream) (layerID int64, err error) {
+	// If layer already exists, return its ID
+	layerID = gotL.ID
 	return
 }
 
@@ -236,21 +238,76 @@ func LayerFromResult(res types.Result) (l types.Layer, err error) {
 }
 
 func (n Neo) Layer_GetByTypeAndDigest(ctx context.Context, mt, dig string) (l types.Layer, found bool, err error) {
-	q := `MATCH (n:Layer) WHERE n.digest = "%s" AND n.mediaType = "%s"`
+	ctx, span := tracer.Start(ctx, "Layer_GetByTypeAndDigest")
+	_ = ctx
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("dig").String(utils.ShortenDigest(dig)),
+		attribute.Key("mediaType").String(mt),
+	)
+	q := `MATCH (n:Layer) WHERE n.digest = "%s"`
 	q += ` RETURN id(n) AS layerID, n.digest AS layerDigest, n.mediaType AS layerMediaType, n.size AS layerSize`
-	query := fmt.Sprintf(q, dig, mt)
-	//fmt.Printf("query: \n%s\n", query)
-	res, found, err := n.QueryOne(query)
+	query := fmt.Sprintf(q, dig)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", query),
+	))
+	res, err := n.Query(query)
 	if err != nil {
 		return
 	}
-	if !found {
+	if len(res) == 0 {
+		// found is false by default
 		return
 	}
-	l, err = LayerFromResult(res)
-	if err != nil {
-		err = errors.Wrap(err, "failed to get layer by type and digest")
+	for _, r := range res {
+		l, err = LayerFromResult(r)
+		if err != nil {
+			err = errors.Wrap(err, "failed to get layer by type and digest")
+		}
+		switch {
+		case l.MediaType == "unknown":
+			tracing.SpanDebug(span, "Found layer with 'unkown' mediaType. Update to '%s'", mt)
+			l.MediaType = mt
+			label := utils.CreateLabelFromTypeAndDigest(mt, l.Digest)
+			q := fmt.Sprintf(`MATCH (n:Layer) WHERE id(n) = %d SET n.mediaType = "%s", n.label = "%s"`, l.ID, mt, label)
+			_, err = n.Execute(q)
+			if err != nil {
+				err = errors.Wrap(err, "failed while updating 'unkown' mediatype")
+				span.RecordError(err)
+				return
+			}
+			found = true
+			return
+		case l.MediaType == mt:
+			found = true
+			return
+		default:
+			logrus.Warnf("found layer with same digest but different media type: %s", l.Digest)
+			label := utils.CreateLabelFromTypeAndDigest(mt, l.Digest)
+			qDef := fmt.Sprintf(`CREATE (n:Layer {digest: "%s", mediaType: "%s", size: %d, label: "%s"})`, l.Digest, mt, l.Size, label)
+			qDef += ` RETURN id(n) AS layerID, n.digest AS layerDigest, n.mediaType AS layerMediaType, n.size AS layerSize`
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "debug"),
+				attribute.String("log.query", qDef),
+			))
+			resDef, e := n.Execute(qDef)
+			if e != nil {
+				err = errors.Wrap(e, "failed while creating new layer with different mediatype")
+				span.RecordError(err)
+				return
+			}
+			l, err = LayerFromResult(resDef)
+			if err != nil {
+				err = errors.Wrap(err, "failed to get layer by type and digest")
+				span.RecordError(err)
+				return
+			}
+			found = true
+			return
+		}
 	}
+
 	return
 }
 

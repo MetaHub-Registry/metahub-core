@@ -362,7 +362,7 @@ func (n Neo) getCollectionFilterPairs(q string) (cfps []types.CollectionFilterPa
 		q := `MATCH (c:Collection)-[:HAS_TAG]->(t:Tag)-[:UPSTREAM]-(m:Manifest)-[:IS]->(p:Platform)<-[:USES]-(f:Filter)`
 		q += ` MATCH (cfg:Config)<-[:USES]-(md:ManifestData)-[]-(m)-[:UPSTREAM]->(u:Upstream)`
 		q += ` WHERE id(c) = %d AND id(f) = %d AND id(t) = %d`
-		q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant, p.features AS platformFeatures,`
+		q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
 		q += ` id(m) AS manifestID, m.digest AS manifestDigest, m.mediaType AS manifestMediaType, m.size AS manifestSize,`
 		q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag,`
 		q += ` id(cfg) AS configID, cfg.digest AS configDigest, cfg.mediaType AS configMediaType, cfg.size AS configSize`

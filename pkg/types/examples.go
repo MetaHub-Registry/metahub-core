@@ -48,7 +48,7 @@ func Example_Platform_amd64() Platform {
 
 func FT_arm_ConfigByte() []byte {
 	// read file and return bytes
-	dat, err := f.ReadFile("data/cfg/cf5c26263929e84d7373d23b2692222cceceb3175b3325b183ead2ab6b5a5ce3.dat")
+	dat, err := f.ReadFile("data/cfg/cf5c26263929e84d7373d23b2692222cceceb3175b3325b183ead2ab6b5a5ce3.json")
 	if err != nil {
 		panic(err)
 	}
@@ -57,7 +57,7 @@ func FT_arm_ConfigByte() []byte {
 
 func FT_amd64_ConfigByte() []byte {
 	// read file and return bytes
-	dat, err := f.ReadFile("data/cfg/fba3e3993bfe856a766b683c73e1ddeb03f2d359d7bd7700095682d94c3fcebf.dat")
+	dat, err := f.ReadFile("data/cfg/fba3e3993bfe856a766b683c73e1ddeb03f2d359d7bd7700095682d94c3fcebf.json")
 	if err != nil {
 		panic(err)
 	}
@@ -66,7 +66,7 @@ func FT_amd64_ConfigByte() []byte {
 
 func FT_amd64_b109_ConfigByte() []byte {
 	// read file and return bytes
-	dat, err := f.ReadFile("data/cfg/b109e1dac65af00234a8a7f817dcb1e18bc18ca97a5b805283995ebf1137e471.dat")
+	dat, err := f.ReadFile("data/cfg/b109e1dac65af00234a8a7f817dcb1e18bc18ca97a5b805283995ebf1137e471.json")
 	if err != nil {
 		panic(err)
 	}

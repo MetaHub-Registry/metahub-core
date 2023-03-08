@@ -1,0 +1,3 @@
+## TODO: Make a second rule 'cpu.target=null' (lack of an annotation)
+##       So that this rule assembles all images without optimizations
+rule: generic:linux=true

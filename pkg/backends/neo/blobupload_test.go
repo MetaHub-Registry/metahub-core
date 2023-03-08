@@ -25,12 +25,13 @@ func Test_Blobupload_CRU(t *testing.T) {
 	// Actual test
 	//// CREATE
 	ociBU := types.OCIBlobUpload{
-		Repo:       "qnib/featuretest",
-		UploadedBy: "test",
-		BlobType:   "layer",
-		Digest:     "sha256:1234567890",
+		Repo:          "qnib/featuretest",
+		UploadUser:    "test",
+		UploadProfile: "generic",
+		BlobType:      "layer",
+		Digest:        "sha256:1234567890",
 	}
-	err = db.BlobUpload_Create_ByOCI(&ociBU)
+	err = db.BlobUpload_Create_ByOCI(ctx, &ociBU)
 	assert.NoError(t, err)
 	assert.NotNil(t, ociBU.UUID)
 	assert.NotNil(t, ociBU.ID)
@@ -39,7 +40,7 @@ func Test_Blobupload_CRU(t *testing.T) {
 	assert.Equal(t, "layer", ociBU.BlobType)
 	assert.Equal(t, "qnib/featuretest", ociBU.Repo)
 	//// READ
-	ociBU2, found, err := db.BlobUpload_GetOCI_ByUUID(ociBU.UUID.String())
+	ociBU2, found, err := db.BlobUpload_GetOCI_ByUUID(ctx, ociBU.UUID.String())
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, ociBU.ID, ociBU2.ID)
@@ -49,7 +50,7 @@ func Test_Blobupload_CRU(t *testing.T) {
 	cfgDigest, err := br.Get("config:ft_arm64#digest")
 	assert.NoError(t, err)
 	ociBU.Digest = cfgDigest
-	err = db.BlobUpload_Update_ByUUID(&ociBU)
+	err = db.BlobUpload_Update_ByUUID(ctx, &ociBU)
 	assert.NoError(t, err)
 	q := `MATCH (bu:BlobUpload)-[:IS]->(c:Config) WHERE id(bu) = %d RETURN ID(c) AS configID`
 	query := fmt.Sprintf(q, ociBU.ID)
@@ -60,7 +61,7 @@ func Test_Blobupload_CRU(t *testing.T) {
 	layerDigest, err := br.Get("layer:0:ft_arm64#digest")
 	assert.NoError(t, err)
 	ociBU.Digest = layerDigest
-	err = db.BlobUpload_Update_ByUUID(&ociBU)
+	err = db.BlobUpload_Update_ByUUID(ctx, &ociBU)
 	assert.NoError(t, err)
 	q = `MATCH (bu:BlobUpload)-[:IS]->(l:Layer) WHERE id(bu) = %d RETURN ID(l) AS ID`
 	query = fmt.Sprintf(q, ociBU.ID)
@@ -85,18 +86,19 @@ func Test_BlobChunk_CRU(t *testing.T) {
 	// Actual test
 	//// CREATE
 	ociBU := types.OCIBlobUpload{
-		Repo:       "qnib/featuretest",
-		UploadedBy: "test",
-		BlobType:   "layer",
-		Digest:     "sha256:1234567890",
+		Repo:          "qnib/featuretest",
+		UploadUser:    "test",
+		UploadProfile: "generic",
+		BlobType:      "layer",
+		Digest:        "sha256:1234567890",
 	}
-	err = db.BlobUpload_Create_ByOCI(&ociBU)
+	err = db.BlobUpload_Create_ByOCI(ctx, &ociBU)
 	assert.NoError(t, err)
-	bc, err := db.UploadChunk_Create(ociBU.ID, 0, 10)
+	bc, err := db.UploadChunk_Create(ctx, ociBU.ID, 0, 10)
 	assert.NoError(t, err)
 	assert.NotNil(t, bc.ID)
 	// / READ
-	bcs, err := db.UploadChunk_Get_ByUUID(ociBU.ID)
+	bcs, err := db.UploadChunk_Get_ByUUID(ctx, ociBU.ID)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(bcs))
 }

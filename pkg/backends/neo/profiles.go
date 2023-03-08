@@ -103,6 +103,9 @@ func (n Neo) GetProfile(prf types.Profile) (prfID int64, success bool, err error
 func (n Neo) CreateProfile(prf types.Profile) (prfID int64, err error) {
 	q := `CREATE (n:Profile {name: "%s", tag: "%s", label: "%s", rule: "%s"}) RETURN id(n) AS ID`
 	label := fmt.Sprintf("%s#%s", prf.Name, prf.Tag)
+	if prf.Name == "" {
+		label = prf.Tag
+	}
 	query := fmt.Sprintf(q, prf.Name, prf.Tag, label, prf.Rule)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
@@ -178,11 +181,47 @@ func (n Neo) ProfileFromResult(res types.Result) (p types.Profile, err error) {
 	*/
 	return
 }
-
 func (n Neo) Profile_FromManifestDataID(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
+	prfs, e := n.Profile_FromManifestDataID_ViaAnnotations(ctx, mdID)
+	if e != nil {
+		err = errors.Wrap(e, "failed to get profiles via annotations for ManifestData")
+		return
+	}
+	prfs2, e := n.Profile_FromManifestDataID_ViaPlatform(ctx, mdID)
+	if e != nil {
+		err = errors.Wrap(e, "failed to get profiles via platform for ManifestData")
+		return
+	}
+	prfs = append(prfs, prfs2...)
+	return
+}
+
+func (n Neo) Profile_FromManifestDataID_ViaAnnotations(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
 	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[]-(a:Annotation)-[]-(md:ManifestData) WHERE id(md) = %d`, mdID)
 	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule`
 	res, err := n.Query(q)
+	//fmt.Printf("Query: \n%s\n", q)
+	if err != nil {
+		return
+	}
+	prfs = make([]types.Profile, 0)
+	for _, r := range res {
+		p, err := n.ProfileFromResult(r)
+		if err != nil {
+			logrus.Error(err)
+			continue
+		}
+		prfs = append(prfs, p)
+	}
+	return
+}
+
+func (n Neo) Profile_FromManifestDataID_ViaPlatform(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
+	rel := types.RelationSuccess
+	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[%s]->(p:Platform)<-[:IS]-(m:Manifest)-[:CREATED]-(md:ManifestData) WHERE id(md) = %d`, rel, mdID)
+	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule`
+	res, err := n.Query(q)
+	//fmt.Printf("Query: \n%s\n", q)
 	if err != nil {
 		return
 	}

@@ -14,6 +14,8 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (mag Magazine) CacheImageConfigViaUpstream(ctx context.Context, up upstream.UpstreamTriple) (err error) {
@@ -91,18 +93,25 @@ func (mag Magazine) InsertConfig(ctx context.Context, cfg types.Config, up types
 
 }
 
-func (mag Magazine) ConfigBlob_GetByHTTPRequest(r *http.Request) (cfg types.Config, found bool, err error) {
-	ctx := context.Background()
+func (mag Magazine) ConfigBlob_GetByHTTPRequest(ctx context.Context, r *http.Request) (cfg types.Config, found bool, err error) {
 	req := types.NewRequest(r)
 	return mag.Minio.GetTypesConfig(ctx, req.Digest)
 }
 
 // Take in a manifest with a config DIGEST and return the config from Blob Storage
 func (mag Magazine) Config_Get_ByManifest(ctx context.Context, req types.Request, oMani types.OCIManifest) (cfg types.Config, v1Img v1.Image, found bool, err error) {
+	ctx, span := tracer.Start(ctx, "StoreConfigUpload")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("host").String(req.Host),
+		attribute.Key("repo").String(req.Repo),
+		attribute.Key("tag").String(req.Tag),
+	)
 	label := fmt.Sprintf("%s/%s:%s", req.Host, req.Repo, req.Tag)
-	cfg, cfgFound, err := mag.Config_GetInsert_ByOCIManifest(oMani, label)
+	cfg, cfgFound, err := mag.Config_GetInsert_ByOCIManifest(ctx, oMani, label)
 	if err != nil {
 		err = errors.Wrap(err, "failed to Config.GetCreateByRequest")
+		span.RecordError(err)
 		return
 	}
 	if !cfgFound {
@@ -122,10 +131,16 @@ func (mag Magazine) Config_Get_ByManifest(ctx context.Context, req types.Request
 
 func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUpload, buf []byte) (err error) {
 	// TODO: Wait; we are getting the actual config, not only the descriptor
+	ctx, span := tracer.Start(ctx, "StoreConfigUpload")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("buID").Int64(bu.ID),
+	)
 	// Store Blob
 	err = mag.Minio.PutConfig(ctx, buf, bu.Digest)
 	if err != nil {
 		logrus.Error(err)
+		span.RecordError(err)
 		return
 	}
 	c := ociv1.Image{
@@ -136,83 +151,95 @@ func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUplo
 	// Insert Config into Backend
 	cfg := types.Config{
 		Digest:    bu.Digest,
-		MediaType: bu.MediaType,
+		MediaType: "unknown",
 		Size:      int64(len(buf)),
 		Data:      buf,
 		Cfg:       c,
 	}
-	switch bu.MediaType {
-	case "application/vnd.docker.container.image.v1+json":
-		var imgCfg v1.Image
-		err = json.Unmarshal(buf, &imgCfg)
-		if err != nil {
-			logrus.Error(err)
-			return
-		}
-		cfg.Cfg.Config.Labels = imgCfg.Config.Labels
-		/*anno, err := types.NewAnnotationsFromMap(imgCfg.Config.Labels)
-		if err != nil {
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.message", "Store config upload without knowing which mediaType it actually is"),
+		attribute.String("cfg.digest", utils.ShortenDigest(bu.Digest)),
+		attribute.String("cfg.mediaType", bu.MediaType),
+	))
+	/*
+		switch bu.MediaType {
+		case "application/vnd.docker.container.image.v1+json":
+			var imgCfg v1.Image
+			err = json.Unmarshal(buf, &imgCfg)
+			if err != nil {
+				logrus.Error(err)
+				return
+			}
+			cfg.Cfg.Config.Labels = imgCfg.Config.Labels
+			//anno, err := types.NewAnnotationsFromMap(imgCfg.Config.Labels)
+			//if err != nil {
+			//	logrus.Error(err)
+			//	return err
+			//}
+			//cfg.Labels = anno
+
+		case "application/vnd.oci.image.config.v1+json":
+			var imgCfg ociv1.Image
+			err = json.Unmarshal(buf, &imgCfg)
+			if err != nil {
+				logrus.Error(err)
+				return
+			}
+			//	anno, err := types.NewAnnotationsFromMap(imgCfg.Config.Labels)
+			//	if err != nil {
+			//		logrus.Error(err)
+			//		return err
+			//	}
+			//	cfg.Cfg.Config.Labels = imgCfg.Config.Labels
+			//	cfg.Labels = anno
+		case "":
+			// OCI conformance test does not set the media type
+			bu.MediaType = "application/vnd.oci.image.config.v1+json"
+			var imgCfg ociv1.Image
+			err = json.Unmarshal(buf, &imgCfg)
+			if err != nil {
+				logrus.Error(err)
+				return
+			}
+			//	anno, err := types.NewAnnotationsFromMap(imgCfg.Config.Labels)
+			//	if err != nil {
+			//		logrus.Error(err)
+			//		return err
+			//	}
+			//	cfg.Cfg.Config.Labels = imgCfg.Config.Labels
+			//	cfg.Labels = anno
+		default:
+			err := errors.Errorf("unknown media type: %s", bu.MediaType)
 			logrus.Error(err)
 			return err
 		}
-		cfg.Labels = anno
-		*/
-	case "application/vnd.oci.image.config.v1+json":
-		var imgCfg ociv1.Image
-		err = json.Unmarshal(buf, &imgCfg)
-		if err != nil {
-			logrus.Error(err)
-			return
-		}
-		/*
-			anno, err := types.NewAnnotationsFromMap(imgCfg.Config.Labels)
-			if err != nil {
-				logrus.Error(err)
-				return err
-			}
-			cfg.Cfg.Config.Labels = imgCfg.Config.Labels
-			cfg.Labels = anno
-		*/
-	case "":
-		// OCI conformance test does not set the media type
-		bu.MediaType = "application/vnd.oci.image.config.v1+json"
-		var imgCfg ociv1.Image
-		err = json.Unmarshal(buf, &imgCfg)
-		if err != nil {
-			logrus.Error(err)
-			return
-		}
-		/*
-			anno, err := types.NewAnnotationsFromMap(imgCfg.Config.Labels)
-			if err != nil {
-				logrus.Error(err)
-				return err
-			}
-			cfg.Cfg.Config.Labels = imgCfg.Config.Labels
-			cfg.Labels = anno
-		*/
-	default:
-		err := errors.Errorf("unknown media type: %s", bu.MediaType)
-		logrus.Error(err)
-		return err
-	}
-	logrus.Warn("/// What if config is already there?")
-	cfgID, err := mag.Database.Config_Insert(ctx, cfg)
+	*/
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "warn"),
+		attribute.String("log.message", "What if config is already there?"),
+	))
+	_, err = mag.Database.Config_Insert(ctx, cfg)
 	if err != nil {
 		logrus.Error(err)
+		span.RecordError(err)
 		return
 	}
-	bu.ID = cfgID
 	err = mag.Minio.ConfigPutObj(ctx, bu.Digest, buf)
 	return
 }
 
-func (mag Magazine) Config_GetInsert_ByOCIManifest(ociMani types.OCIManifest, label string) (cfg types.Config, found bool, err error) {
-	ctx := context.Background()
+func (mag Magazine) Config_GetInsert_ByOCIManifest(ctx context.Context, ociMani types.OCIManifest, label string) (cfg types.Config, found bool, err error) {
+	ctx, span := tracer.Start(ctx, "Config_GetInsert_ByOCIManifest")
+	defer span.End()
 	/// OCI Manifest might embed the config as Data
 	if len(ociMani.Config.Data) > 0 {
-		//logrus.Warnf("Config embedded in OCI Manifest: %s -> %s", utils.ShortenDigest(ociMani.Config.Digest.String()), label)
-		//fmt.Printf("Data: \n%s\n", ociMani.Config.Data)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("label", label),
+			attribute.String("log.message", "Config embedded in OCI Manifest"),
+			attribute.String("config.digest", utils.ShortenDigest(ociMani.Config.Digest.String())),
+		))
 		dig := digest.FromBytes(ociMani.Config.Data)
 		if dig.String() != ociMani.Config.Digest.String() {
 			err = fmt.Errorf("digest mismatch: %s != %s", dig, ociMani.Config.Digest)
@@ -231,7 +258,7 @@ func (mag Magazine) Config_GetInsert_ByOCIManifest(ociMani types.OCIManifest, la
 		}
 		logrus.Warn("Finished upload of embedded config")
 	}
-	cfg, found, err = mag.Database.Config_GetInsert_ByOCIManifest(ociMani, label)
+	cfg, found, err = mag.Database.Config_GetInsert_ByOCIManifest(ctx, ociMani, label)
 	return
 }
 

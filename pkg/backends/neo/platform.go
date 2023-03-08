@@ -25,7 +25,7 @@ func (n Neo) Platform_GetInsert(p *types.Platform) (err error) {
 
 func (n Neo) Platform_GetByID(platID int64) (plat types.Platform, found bool, err error) {
 	q := `MATCH (n:Platform) WHERE id(n) = %d`
-	q += ` RETURN id(n) AS platformID, n.arch AS platformArch, n.os AS platformOS, n.variant AS platformVariant, n.features AS platformFeatures`
+	q += ` RETURN id(n) AS platformID, n.arch AS platformArch, n.os AS platformOS, n.variant AS platformVariant`
 	query := fmt.Sprintf(q, platID)
 	//fmt.Printf("Query: \n%s\n", query)
 	res, found, err := n.QueryOne(query)

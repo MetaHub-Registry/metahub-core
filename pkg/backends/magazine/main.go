@@ -13,7 +13,13 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/backends/minio"
 	"github.com/metahub-registry/metahub-core/pkg/backends/neo"
 	"github.com/metahub-registry/metahub-core/pkg/backends/sqlite"
+	"github.com/metahub-registry/metahub-core/pkg/tracing"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel"
+)
+
+var (
+	tracer = otel.Tracer("metalib/magazin")
 )
 
 type Magazine struct {
@@ -72,6 +78,26 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, err error) {
 	cfg := MagConfig{
 		RedirectDoc: fr,
 		AuthURL:     au,
+		Tracing:     TraceCfg{Enabled: false},
+	}
+	// Tracing
+	trEnd := viper.GetString("tracing.endpoint")
+	svcName := viper.GetString("tracing.name")
+	if svcName == "" || trEnd == "" {
+		logrus.Warn("Tracing is disabled (tracing.name/tracing.endpoint is empty)")
+	}
+	if trEnd != "" {
+		logrus.Infof("Tracing endpoint: %s", trEnd)
+		tr, err := tracing.InitTracer(svcName, trEnd)
+		if err != nil {
+			logrus.Fatalf("Could not initialize jaeger tracer: %s", err.Error())
+		}
+		trCfg := TraceCfg{
+			Enabled:  true,
+			Endpoint: trEnd,
+			Tracer:   tr,
+		}
+		cfg.Tracing = trCfg
 	}
 	m = Magazine{
 		Minio:  min,

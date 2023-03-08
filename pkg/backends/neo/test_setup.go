@@ -152,7 +152,6 @@ func (n Neo) Setup_Profiles(bs utils.Bootstrap, br *utils.BootstrapResult, d str
 			msg += fmt.Sprintf(" and Rule: %s", p.Rule)
 		}
 		logrus.Info(msg)
-		// TODO: Link Profile with rules?
 	}
 	return
 }
@@ -175,7 +174,11 @@ func (n Neo) Setup_Rules(bs utils.Bootstrap, br *utils.BootstrapResult, d string
 		label := fmt.Sprintf("%s:%s", r.Name, r.Tag)
 		br.Add(fmt.Sprintf("rule:%s#id", label), fmt.Sprint(rID))
 		logrus.Infof("Rule '%s' created with ID: %d", label, rID)
-		// TODO: Link Profile with rules?
+		err = n.Rule_EvalAll(ctx)
+		if err != nil {
+			err = errors.Wrap(err, "failed to eval all rules")
+			return err
+		}
 	}
 	return
 }
