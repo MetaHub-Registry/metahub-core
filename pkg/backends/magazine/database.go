@@ -36,15 +36,14 @@ type Database interface {
 	/********* Layer ***********/
 	LayerGetByDigest(dig string) (l types.Layer, found bool, err error)
 	LayerDeleteByDigest(dig string) error
-	Layer_Insert(ctx context.Context, l types.Layer, up types.Upstream) (lID int64, err error)
 	Layer_PlainInsert(ctx context.Context, l types.Layer) (lID int64, err error)
 	Layer_DescriporGetInsert(ctx context.Context, desc v1.Descriptor) (layerID int64, err error)
 	/********* Config **********/
 	Config_GetByDigest(dig string) (cfgs []types.Config, found bool, err error)
-	Config_GetByDigestAndType(dig, mediaType string) (cfg types.Config, found bool, err error)
+	Config_GetByDigestAndType(ctx context.Context, dig, mediaType string) (cfg types.Config, found bool, err error)
 	ConfigDeleteByDigest(dig string) error
 	Config_Insert(ctx context.Context, cfg types.Config) (cfgId int64, err error)
-	Config_GetInsert_ByOCIManifest(ociMani types.OCIManifest, label string) (cfg types.Config, found bool, err error)
+	Config_GetInsert_ByOCIManifest(ctx context.Context, ociMani types.OCIManifest, label string) (cfg types.Config, found bool, err error)
 	Config_Update(ctx context.Context, cfgID int64, cfg types.Config) (err error)
 	Config_AddLabel(ctx context.Context, cfgID int64, a types.Annotation) (err error)
 
@@ -104,14 +103,14 @@ type Database interface {
 	ManifestData_LinkToLayer(ctx context.Context, maniID, layerID int64, idx int) error //
 	LinkManifestToManifestData(ctx context.Context, maniID, maniDataID int64, props ...string) error
 	/****** BlobUpload ******/
-	BlobUpload_Create_ByOCI(i *types.OCIBlobUpload) (err error)
-	BlobUpload_Update_ByUUID(i *types.OCIBlobUpload) (err error)
-	BlobUpload_GetOCI_ByUUID(uuid string) (bu types.OCIBlobUpload, found bool, err error)
-	BlobUpload_Complete(i *types.OCIBlobUpload) (err error)
+	BlobUpload_Create_ByOCI(ctx context.Context, i *types.OCIBlobUpload) (err error)
+	BlobUpload_Update_ByUUID(ctx context.Context, i *types.OCIBlobUpload) (err error)
+	BlobUpload_GetOCI_ByUUID(ctx context.Context, uuid string) (bu types.OCIBlobUpload, found bool, err error)
+	BlobUpload_Complete(ctx context.Context, i *types.OCIBlobUpload) (err error)
 
 	/**** BlobChunks ****/
-	UploadChunk_Get_ByUUID(buID int64) (bcs []types.BlobChunks, err error)
-	UploadChunk_Create(buID, startByte, lenBytes int64) (bc types.BlobChunks, err error)
+	UploadChunk_Get_ByUUID(ctx context.Context, buID int64) (bcs []types.BlobChunks, err error)
+	UploadChunk_Create(ctx context.Context, buID, startByte, lenBytes int64) (bc types.BlobChunks, err error)
 
 	/****** Profiles ********/
 	GetProfiles() (ps []types.Profile, err error)

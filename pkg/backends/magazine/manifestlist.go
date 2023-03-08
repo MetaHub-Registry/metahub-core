@@ -138,7 +138,7 @@ func (mag Magazine) ManifestListGetByRequest(req types.Request) (ml types.Manife
 	return
 }
 
-func (mag Magazine) ManifestList_GetByHTTPRequest(r *http.Request) (ml types.ManifestList, found bool, err error) {
+func (mag Magazine) ManifestList_GetByHTTPRequest(ctx context.Context, r *http.Request) (ml types.ManifestList, found bool, err error) {
 	req := types.NewRequest(r)
 	msg := fmt.Sprintf("%-5s ManifestListHandler(%s, ", r.Method, req.Repo)
 	if req.Tag == "" {

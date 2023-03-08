@@ -13,6 +13,8 @@ import (
 
 func (mag Magazine) StoreBlobUpload(ctx context.Context, bu *types.OCIBlobUpload, buf []byte) (err error) {
 	//// Are we dealing with a Config or a layer?
+	ctx, span := tracer.Start(ctx, "StoreBlobUpload")
+	defer span.End()
 	v1Img := v1.Image{}
 	err = json.Unmarshal(buf, &v1Img)
 	switch {

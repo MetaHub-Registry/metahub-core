@@ -11,13 +11,14 @@ import (
 )
 
 type BlobUpload struct {
-	ID         int64     `json:"id"`
-	UUID       uuid.UUID `json:"uuid"`
-	CreatedAt  time.Time `json:"created_at"`
-	FinishedAt time.Time `json:"finished_at"`
-	UploadedBy string    `json:"uploaded_by"`
-	BlobID     int64     `json:"blob_id"`   // blob is either a layer or a config
-	BlobType   string    `json:"blob_type"` //
+	ID            int64     `json:"id"`
+	UUID          uuid.UUID `json:"uuid"`
+	CreatedAt     time.Time `json:"created_at"`
+	FinishedAt    time.Time `json:"finished_at"`
+	UploadUser    string    `json:"upload_user"`
+	UploadProfile string    `json:"upload_profile"`
+	BlobID        int64     `json:"blob_id"`   // blob is either a layer or a config
+	BlobType      string    `json:"blob_type"` //
 }
 
 type BlobChunks struct {
@@ -59,7 +60,8 @@ func (bu BlobUpload) CreateBUTables() (err error) {
         id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
         "uuid" TEXT,
 		"digest" TEXT,
-		"uploaded_by" TEXT,
+		"upload_user" TEXT,
+		"upload_profile" TEXT,
 		"created_at" TIMESTAMP,
 		"finished_at" TIMESTAMP,
         "blob_id" INTEGER,
@@ -114,7 +116,7 @@ func (bu BlobUpload) CreateChunkTables() (err error) {
 }
 
 func (bu BlobUpload) Create(i *types.OCIBlobUpload) (err error) {
-	q := `INSERT INTO blob_uploads (uploaded_by, created_at, blob_id, blob_type, digest, uuid, location) VALUES (?, ?, ?, ?, ?, ?, ?)`
+	q := `INSERT INTO blob_uploads (upload_user, upload_profile, created_at, blob_id, blob_type, digest, uuid, location) VALUES (?, ?, ?, ?, ?, ?, ?)`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		logrus.Error(err)
@@ -122,7 +124,7 @@ func (bu BlobUpload) Create(i *types.OCIBlobUpload) (err error) {
 	}
 	i.UUID = uuid.New()
 	i.Location = fmt.Sprintf("/v2/%s/blobs/uploads/%s", i.Repo, i.UUID)
-	res, err := stmt.Exec(i.UploadedBy, time.Now(), i.BlobID, i.BlobType, i.Digest, i.UUID.String(), i.Location)
+	res, err := stmt.Exec(i.UploadUser, i.UploadProfile, time.Now(), i.BlobID, i.BlobType, i.Digest, i.UUID.String(), i.Location)
 	if err != nil {
 		logrus.Error(err)
 		return
@@ -254,7 +256,7 @@ func (bu BlobUpload) CreateUploadChunk(buID, startByte, lenBytes int64) (bc Blob
 }
 
 func (bu BlobUpload) GetByUUID(uid string) (b types.OCIBlobUpload, err error) {
-	q := fmt.Sprintf(`SELECT id, uploaded_by, digest, blob_id, blob_type, location FROM blob_uploads WHERE uuid="%s"`, uid)
+	q := fmt.Sprintf(`SELECT id, upload_user, upload_profile, digest, blob_id, blob_type, location FROM blob_uploads WHERE uuid="%s"`, uid)
 	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Fatal(err)
@@ -266,7 +268,8 @@ func (bu BlobUpload) GetByUUID(uid string) (b types.OCIBlobUpload, err error) {
 	if rows.Next() {
 		err = rows.Scan(
 			&b.ID,
-			&b.UploadedBy,
+			&b.UploadUser,
+			&b.UploadProfile,
 			&b.Digest,
 			&b.BlobID,
 			&b.BlobType,

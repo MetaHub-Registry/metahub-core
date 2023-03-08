@@ -9,6 +9,7 @@ import (
 
 const (
 	RuleTypeAnnotation = "anno"
+	RuleTypePlatform   = "plat"
 	RelationSuccess    = "TRUE"
 	RelationFailure    = "FALSE"
 )
@@ -16,6 +17,7 @@ const (
 var (
 	RuleTypes = set.CreateStringSet(
 		RuleTypeAnnotation,
+		RuleTypePlatform,
 	)
 )
 

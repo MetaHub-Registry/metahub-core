@@ -208,7 +208,6 @@ func (n Neo) ManifestList_Get_ByRequest(req types.Request) (ml types.ManifestLis
 	}
 	q += fmt.Sprintf(` MATCH (ml)<-[:REF]-(prf:Profile) WHERE prf.label = "%s"`, req.Profile)
 	q += ` RETURN id(ml) as manifestlistID, ml.digest as manifestlistDigest, ml.mediaType as manifestlistMediaType, ml.size as manifestlistSize`
-	//query := fmt.Sprintf(q, req.Repo, req.Tag, req.Profile)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
 		logrus.Error(err)

@@ -29,7 +29,3 @@ var (
 		AnnotationRuleRegex,
 	}
 )
-
-func (p Profile) EvalRules(as Annotations) (err error) {
-	return err
-}

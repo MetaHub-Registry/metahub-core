@@ -3,6 +3,8 @@ package types
 import (
 	"fmt"
 	"strings"
+
+	"github.com/sirupsen/logrus"
 )
 
 type Result struct {
@@ -24,6 +26,16 @@ func (r *Result) Add(key string, val interface{}) {
 		r.Strings[key] = val.(string)
 	case int64:
 		r.Int64s[key] = val.(int64)
+	case []interface{}:
+		v := val.([]interface{})
+		switch v[0].(type) {
+		case string:
+			str := v[0].(string)
+			logrus.Warnf("  > %s: %s", key, str)
+			r.Strings[key] = str
+		}
+	default:
+		panic(fmt.Sprintf("unknown type for key '%s': %T", key, val))
 	}
 }
 

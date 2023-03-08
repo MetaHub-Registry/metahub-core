@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"regexp"
 
@@ -15,7 +16,7 @@ import (
 )
 
 var (
-	profileRegex = `.*\/(?P<name>.*)\/(?P<tag>[0-9a-z\-\_\.]+)\.(yaml|yml)`
+	profileRegex = `.*(profiles|rules)(\/(?P<dir>.*))?\/(?P<file>[0-9a-z\-\_\.]+)\.(yaml|yml)`
 )
 
 type Profile struct {
@@ -58,8 +59,17 @@ func LoadProfile(ctx context.Context, yamlfile string) (p Profile, err error) {
 	defer span.End()
 	re := regexp.MustCompile(profileRegex)
 	m := utils.ReSubMatchMap(re, yamlfile)
-	name := m["name"]
-	tag := m["tag"]
+	if _, ok := m["file"]; !ok {
+		err = errors.Errorf("no tag found in filename %s, that we need", yamlfile)
+		return
+	}
+	var name, tag string
+	if _, ok := m["dir"]; ok {
+		name = m["dir"]
+		tag = m["file"]
+	} else {
+		name = m["file"]
+	}
 	yamlContent, err := ioutil.ReadFile(yamlfile)
 	if err != nil {
 		l.Errorf("Cannot load profile config file #%v ", err)
@@ -72,14 +82,20 @@ func LoadProfile(ctx context.Context, yamlfile string) (p Profile, err error) {
 		return Profile{}, err
 	}
 	if p.Name != "" && p.Name != name {
-		err = errors.Errorf("profile name %s does not match filename %s; please consider removing name/tag, will be derived by name", p.Name, name)
+		//fmt.Printf("### Regexp: \n%s\n", re.String())
+		//fmt.Printf("### yamlfile: \n%s\n", yamlfile)
+		err = errors.Errorf("profile name '%s' does not match filename '%s'; please consider removing name/tag, will be derived by name", p.Name, name)
 		return
 	}
 	if p.Tag != "" && p.Tag != tag {
-		err = errors.Errorf("profile name %s does not match filename %s; please consider removing name/tag, will be derived by name", p.Tag, tag)
+		err = errors.Errorf("profile tag %s does not match filename %s; please consider removing name/tag, will be derived by name", p.Tag, tag)
 		return
 	}
-	logrus.Warnf("Profile %s#%s", name, tag)
+	label := fmt.Sprintf("%s#%s", name, tag)
+	if name == "" {
+		label = tag
+	}
+	logrus.Warnf("Profile %s", label)
 	p.Name = name
 	p.Tag = tag
 	return p, nil

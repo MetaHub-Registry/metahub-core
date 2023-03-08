@@ -7,8 +7,11 @@ import (
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/metahub-registry/metahub-core/pkg/tracing"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (n Neo) Config_GetID_ByDigestAndType(ctx context.Context, dig, mediaType string) (cfgID int64, found bool, err error) {
@@ -55,40 +58,113 @@ func (n Neo) Config_GetByDigest(dig string) (cfgs []types.Config, found bool, er
 	return
 }
 
-func (n Neo) Config_GetByDigestAndType(dig, mediaType string) (cfg types.Config, found bool, err error) {
-	q := `MATCH (n:Config) WHERE n.digest = "%s" AND n.mediaType = "%s"`
+func (n Neo) Config_GetByDigestAndType(ctx context.Context, dig, mediaType string) (cfg types.Config, found bool, err error) {
+	ctx, span := tracer.Start(ctx, "Config_GetByDigestAndType")
+	_ = ctx
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("dig").String(utils.ShortenDigest(dig)),
+		attribute.Key("mediaType").String(mediaType),
+	)
+	q := `MATCH (n:Config) WHERE n.digest = "%s"`
 	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.mediaType AS configMediaType, n.size AS configSize`
-	query := fmt.Sprintf(q, dig, mediaType)
-	//fmt.Printf("Query: %s\n", query)
+	query := fmt.Sprintf(q, dig)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", query),
+	))
 	res, err := n.Query(query)
 	if err != nil {
 		logrus.Errorf("Failed to run query: %s", err)
 		return
 	}
-	switch len(res) {
-	case 0:
+	if len(res) == 0 {
+		// found is false by default
+		tracing.SpanLog(span, "warn", "No config found with digest '%s'", utils.ShortenDigest(dig))
 		return
-	case 1:
-		r := res[0]
+	}
+	cfgs := make([]types.Config, 0)
+	for _, r := range res {
 		cfg, err = ConfigFromResult(r)
 		if err != nil {
 			err = errors.Wrap(err, "failed to create config from DB result")
+			span.RecordError(err)
 			return
 		}
-		/*
-			// TODO: Fetch annotations
-			ctx := context.Background()
-			a, e := n.GetAnnotationsByConfigID(ctx, cfg.ID)
-			if e != nil {
-				err = errors.Wrap(e, "failed to get annotations by config ID")
+		if cfg.MediaType == mediaType {
+			found = true
+			tracing.SpanDebug(span, "Found config with '%s' mediaType.", cfg.MediaType)
+			return
+		} else {
+			tracing.SpanDebug(span, "Found config with '%s' mediaType. Expected '%s'", cfg.MediaType, mediaType)
+			cfgs = append(cfgs, cfg)
+		}
+	}
+	for _, cfg = range cfgs {
+		switch cfg.MediaType {
+		case "unknown":
+			tracing.SpanDebug(span, "Found config with 'unkown' mediaType. Update to '%s'", mediaType)
+			cfg.MediaType = mediaType
+			label := utils.CreateLabelFromTypeAndDigest(mediaType, cfg.Digest)
+			q := fmt.Sprintf(`MATCH (n:Config) WHERE id(n) = %d SET n.mediaType = "%s", n.label = "%s"`, cfg.ID, mediaType, label)
+			_, err = n.Execute(q)
+			if err != nil {
+				err = errors.Wrap(err, "failed while updating 'unkown' mediatype")
+				span.RecordError(err)
 				return
 			}
-			cfg.Labels = a
-		*/
-		found = true
-	default:
-		err = fmt.Errorf("found multiple configs with digest %s and mediaType '%s'", dig, mediaType)
-		return
+			found = true
+			return
+		default:
+			msg := fmt.Sprintf("found config with same digest but different media type: %s", cfg.MediaType)
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "debug"),
+				attribute.String("log.message", msg),
+			))
+			label := utils.CreateLabelFromTypeAndDigest(mediaType, cfg.Digest)
+			qDef := fmt.Sprintf(`CREATE (n:Config {digest: "%s", mediaType: "%s", size: %d, label: "%s"})`, cfg.Digest, mediaType, cfg.Size, label)
+			//qDef += ` RETURN id(n) AS ID`
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "debug"),
+				attribute.String("log.query", qDef),
+			))
+			_, e := n.Execute(qDef)
+			if e != nil {
+				err = errors.Wrap(e, "failed while creating new layer with different mediatype")
+				span.RecordError(err)
+				return
+			}
+			q := fmt.Sprintf(`MATCH (n:Config) WHERE n.digest = "%s" AND n.mediaType = "%s" AND n.size = %d RETURN id(n) AS ID`, cfg.Digest, mediaType, cfg.Size)
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "debug"),
+				attribute.String("log.query", q),
+			))
+			resQ, found, e := n.QueryOne(q)
+			if e != nil {
+				err = errors.Wrap(e, "failed to QueryOne")
+				span.RecordError(err)
+				return cfg, false, err
+			}
+			if !found {
+				err = errors.New("failed to find new config")
+				span.RecordError(err)
+				return cfg, false, err
+			}
+			cfgID, e := resQ.GetInt64("ID")
+			if e != nil {
+				err = errors.Wrap(e, "failed to get cfgID")
+				span.RecordError(err)
+				return cfg, false, err
+			}
+			cfg = types.Config{
+				ID:        cfgID,
+				Digest:    cfg.Digest,
+				MediaType: mediaType,
+				Size:      cfg.Size,
+			}
+			found = true
+			return cfg, found, err
+		}
 	}
 	return
 }
@@ -106,13 +182,19 @@ func (n Neo) ConfigDeleteByDigest(dig string) (err error) {
 	return err
 }
 
-func (n Neo) Config_GetInsert_ByOCIManifest(ociMani types.OCIManifest, label string) (cfg types.Config, found bool, err error) {
-	cfg, found, err = n.Config_GetByDigestAndType(ociMani.Config.Digest.String(), ociMani.Config.MediaType)
+func (n Neo) Config_GetInsert_ByOCIManifest(ctx context.Context, ociMani types.OCIManifest, label string) (cfg types.Config, found bool, err error) {
+	ctx, span := tracer.Start(ctx, "Config_GetInsert_ByOCIManifest")
+	defer span.End()
+	cfg, found, err = n.Config_GetByDigestAndType(ctx, ociMani.Config.Digest.String(), ociMani.Config.MediaType)
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
 	if found {
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", "config found"),
+		))
 		return
 	}
 	// Create Config from ociMani
@@ -129,7 +211,7 @@ func (n Neo) Config_GetInsert_ByOCIManifest(ociMani types.OCIManifest, label str
 		Size:      ociMani.Config.Size,
 		//Labels:    a,
 	}
-	cfgId, err := n.createConfig(cfg)
+	cfgId, err := n.createConfig(ctx, cfg)
 	//err = fmt.Errorf("need more info to create config with Upstream to create label")
 	if err != nil {
 		logrus.Error(err)
@@ -139,38 +221,44 @@ func (n Neo) Config_GetInsert_ByOCIManifest(ociMani types.OCIManifest, label str
 	return
 }
 
-func (n Neo) createConfig(cfg types.Config) (cfgID int64, err error) {
+func (n Neo) createConfig(ctx context.Context, cfg types.Config) (cfgID int64, err error) {
+	_, span := tracer.Start(ctx, "createConfig")
+	defer span.End()
 	label := utils.CreateLabelFromTypeAndDigest(cfg.MediaType, cfg.Digest)
 	q := `CREATE (n:Config {digest: "%s", mediaType: "%s", size: %d, label: "%s"}) RETURN id(n) AS ID`
 	query := fmt.Sprintf(q, cfg.Digest, cfg.MediaType, cfg.Size, label)
-	//fmt.Printf("QueryCreate: \n%s\n", query)
-	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
-	defer session.Close()
-	result, err := session.Run(query, map[string]interface{}{})
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", query),
+	))
+	res, err := n.Execute(query)
 	if err != nil {
 		logrus.Errorf("failed to create conifg: %v", err)
+		span.RecordError(err)
 		return
 	}
-	if result.Next() {
-		v, ok := result.Record().Get("ID")
-		if !ok {
-			err = fmt.Errorf("createConfig: failed to get ID")
-			return
-		}
-		cfgID = v.(int64)
-	} else {
+	cfgID, err = res.GetInt64("ID")
+	if err != nil {
 		err = fmt.Errorf("createConfig: failed to get ID")
+		span.RecordError(err)
+		return
 	}
 	return
 }
 
 func (n Neo) Config_Insert(ctx context.Context, cfg types.Config) (cfgID int64, err error) {
-	gotCfg, success, err := n.Config_GetByDigestAndType(cfg.Digest, cfg.MediaType)
+	ctx, span := tracer.Start(ctx, "Config_Insert")
+	defer span.End()
+	gotCfg, success, err := n.Config_GetByDigestAndType(ctx, cfg.Digest, cfg.MediaType)
 	if err != nil {
 		return
 	}
 	if !success {
-		cfgID, err = n.createConfig(cfg)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", "config not found, creating new config"),
+		))
+		cfgID, err = n.createConfig(ctx, cfg)
 		if err != nil {
 			return
 		}

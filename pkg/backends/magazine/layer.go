@@ -57,6 +57,8 @@ func (mag Magazine) NeoInsertLayer(ctx context.Context, layer types.Layer) (laye
 
 func (mag Magazine) StoreLayerUpload(ctx context.Context, bu *types.OCIBlobUpload, buf []byte) (err error) {
 	// Store Blob
+	ctx, span := tracer.Start(ctx, "StoreLayerUpload")
+	defer span.End()
 	err = mag.Minio.PutLayer(ctx, buf, bu.Digest)
 	if err != nil {
 		logrus.Error(err)
@@ -65,7 +67,7 @@ func (mag Magazine) StoreLayerUpload(ctx context.Context, bu *types.OCIBlobUploa
 	// Insert Layer into SQLite
 	l := types.Layer{
 		Digest:    bu.Digest,
-		MediaType: "application/vnd.oci.image.layer.v1.tar+gzip",
+		MediaType: "unknown",
 		Size:      int64(len(buf)),
 	}
 	//err = mag.SQlite.Layer.Upsert(&l)

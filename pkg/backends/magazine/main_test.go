@@ -55,12 +55,13 @@ var (
 			"type":"layers",
 			"diff_ids":["sha256:8d3ac3489996423f53d6087c81180006263b79f206d3fdec9e66f0e27ceb8759","sha256:aff8eba572d7cf1d51ae8245ac42189a896b0d0f069ad5f130795916ade7587a"]}}`)
 	BlobUp_FeaturetestGeneric = types.OCIBlobUpload{
-		Digest:     featureTestGenericCfgDigest,
-		UUID:       uuid.New(),
-		UploadedBy: "test",
-		Repo:       "qnib/featuretest",
-		BlobType:   "config",
-		Data:       featureTestGenericCfg,
+		Digest:        featureTestGenericCfgDigest,
+		UUID:          uuid.New(),
+		UploadUser:    "test",
+		UploadProfile: "generic",
+		Repo:          "qnib/featuretest",
+		BlobType:      "config",
+		Data:          featureTestGenericCfg,
 	}
 )
 

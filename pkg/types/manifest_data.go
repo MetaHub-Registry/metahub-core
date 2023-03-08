@@ -111,7 +111,7 @@ func (m ManifestData) WriteWWW(w http.ResponseWriter) {
 	b := m.Data
 	dig := digest.FromBytes(b)
 	if dig.String() != m.Digest {
-		logrus.Error("Digest mismatch")
+		logrus.Error("Digest mismatch for ManifestData")
 	}
 	w.Header().Set("Content-Type", m.MediaType)
 	w.Header().Set("Docker-Content-Digest", m.Digest)

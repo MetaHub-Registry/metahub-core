@@ -15,6 +15,9 @@ func (n Neo) Rule_Create(ctx context.Context, r types.Rule) (ruleID int64, err e
 		return
 	}
 	label := fmt.Sprintf("%s:%s", r.Name, r.Tag)
+	if r.Tag == "" {
+		label = r.Name
+	}
 	q := `CREATE (r:Rule {name: "%s", tag: "%s", label: "%s", type: "%s", op: "%s", key: "%s", value: "%s"}) RETURN id(r) AS ID`
 	query := fmt.Sprintf(q, r.Name, r.Tag, label, r.Type, r.Op, r.Key, r.Value)
 	res, err := n.Execute(query)
@@ -146,6 +149,12 @@ func (n Neo) Rule_EvalAll(ctx context.Context) (err error) {
 				err = errors.Wrap(err, fmt.Sprintf("failed to eval rule: %s:%s", r.Name, r.Tag))
 				return
 			}
+		case types.RuleTypePlatform:
+			err = n.Rule_EvalPlatformRule(ctx, r)
+			if err != nil {
+				err = errors.Wrap(err, fmt.Sprintf("failed to eval rule: %s:%s", r.Name, r.Tag))
+				return
+			}
 		default:
 			err = fmt.Errorf("unknown rule type: %s", r.Type)
 			return
@@ -154,6 +163,29 @@ func (n Neo) Rule_EvalAll(ctx context.Context) (err error) {
 	}
 	return
 
+}
+
+func (n Neo) Rule_EvalPlatformRule(ctx context.Context, r types.Rule) (err error) {
+	q := fmt.Sprintf(`MATCH (p:Platform) WHERE p.%s = "%s"`, r.Key, r.Value)
+	q += ` RETURN id(p) as platformID, p.os as platformOS, p.arch as platformArch, p.variant as platformVariant`
+	//fmt.Printf("Query: \n%s\n", q)
+	res, err := n.Query(q)
+	if err != nil {
+		return
+	}
+	for _, ele := range res {
+		p, err := PlatformFromResult(ele)
+		if err != nil {
+			return err
+		}
+		if p.EvalRule(r) {
+			err = n.Rule_Platform_Success(ctx, r.ID, p.ID)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return
 }
 
 func (n Neo) Rule_EvalAnnotationRule(ctx context.Context, r types.Rule) (err error) {
@@ -205,6 +237,32 @@ func (n Neo) Rule_Annotation_Success(ctx context.Context, ruleID, annotationID i
 	q += ` WHERE id(r) = %d AND id(a) = %d`
 	q += ` MERGE (r)-[:%s]->(a)`
 	query := fmt.Sprintf(q, ruleID, annotationID, types.RelationSuccess)
+	_, err = n.Execute(query)
+	return
+}
+
+func (n Neo) Rule_GetSuccessPlatform(ctx context.Context, r types.Rule) (ps []types.Platform, err error) {
+	q := fmt.Sprintf(`MATCH (r:Rule)-[%s]->(n:Platform) WHERE id(r) = %d`, types.RelationSuccess, r.ID)
+	q += ` RETURN id(n) AS platformID, n.arch AS platformArch, n.os AS platformOS, n.variant AS platformVariant`
+	res, err := n.Query(q)
+	if err != nil {
+		return
+	}
+	ps = make([]types.Platform, 0)
+	for _, ele := range res {
+		p, err := PlatformFromResult(ele)
+		if err != nil {
+			return ps, err
+		}
+		ps = append(ps, p)
+	}
+	return
+}
+func (n Neo) Rule_Platform_Success(ctx context.Context, ruleID, platformID int64) (err error) {
+	q := `MATCH (r:Rule), (p:Platform)`
+	q += ` WHERE id(r) = %d AND id(p) = %d`
+	q += ` MERGE (r)-[:%s]->(p)`
+	query := fmt.Sprintf(q, ruleID, platformID, types.RelationSuccess)
 	_, err = n.Execute(query)
 	return
 }

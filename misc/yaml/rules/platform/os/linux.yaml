@@ -1,0 +1,6 @@
+name: "platform/os" 
+tag: "linux"
+type: "plat"
+op: "eq"
+key: "os"
+value: "linux"

@@ -38,6 +38,7 @@ func (n Neo) CollectionListing_Get_ByRepoLike(repo string) (cols []types.Collect
 	q := `MATCH (c:Collection)-[:HAS_TAG]->(t) WHERE c.repo =~ "^%s.*"`
 	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
 	query := fmt.Sprintf(q, repo)
+	//fmt.Printf("Query: \n%s\n", query)
 	res, err := n.Query(query)
 	if err != nil {
 		return cols, err

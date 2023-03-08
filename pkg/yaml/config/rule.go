@@ -67,8 +67,8 @@ func LoadRule(ctx context.Context, yamlfile string) (r Rule, err error) {
 	defer span.End()
 	re := regexp.MustCompile(profileRegex)
 	m := utils.ReSubMatchMap(re, yamlfile)
-	name := m["name"]
-	tag := m["tag"]
+	name := m["dir"]
+	tag := m["file"]
 	yamlContent, err := ioutil.ReadFile(yamlfile)
 	if err != nil {
 		l.Errorf("Cannot load manifest config file #%v ", err)
@@ -81,11 +81,11 @@ func LoadRule(ctx context.Context, yamlfile string) (r Rule, err error) {
 		return Rule{}, err
 	}
 	if r.Name != "" && r.Name != name {
-		err = errors.Errorf("rule name %s does not match filename %s; please consider removing name/tag, will be derived by name", r.Name, name)
+		err = errors.Errorf("rule name '%s' does not match directory '%s'; please consider removing name/tag, will be derived by name", r.Name, name)
 		return
 	}
 	if r.Tag != "" && r.Tag != tag {
-		err = errors.Errorf("rule name %s does not match filename %s; please consider removing name/tag, will be derived by name", r.Tag, tag)
+		err = errors.Errorf("rule tag '%s' does not match filename '%s'; please consider removing name/tag, will be derived by name", r.Tag, tag)
 		return
 	}
 	r.Name = name
