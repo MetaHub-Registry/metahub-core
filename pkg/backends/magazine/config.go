@@ -94,7 +94,7 @@ func (mag Magazine) InsertConfig(ctx context.Context, cfg types.Config, up types
 }
 
 func (mag Magazine) ConfigBlob_GetByHTTPRequest(ctx context.Context, r *http.Request) (cfg types.Config, found bool, err error) {
-	req := types.NewRequest(r)
+	req := types.NewRequest(ctx, r)
 	return mag.Minio.GetTypesConfig(ctx, req.Digest)
 }
 

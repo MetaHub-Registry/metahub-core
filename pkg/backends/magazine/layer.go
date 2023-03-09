@@ -81,13 +81,13 @@ func (mag Magazine) StoreLayerUpload(ctx context.Context, bu *types.OCIBlobUploa
 
 func (mag Magazine) Layer_GetPresignedUrlByHTTPRequest(r *http.Request) (psUrl string, err error) {
 	ctx := context.Background()
-	req := types.NewRequest(r)
+	req := types.NewRequest(ctx, r)
 	return mag.Minio.LayerGetPreSignedUrl(ctx, req.Digest)
 }
 
 func (mag Magazine) Layer_GetByHTTPRequest(r *http.Request) (layer types.Layer, found bool, err error) {
 	ctx := context.Background()
-	req := types.NewRequest(r)
+	req := types.NewRequest(ctx, r)
 	//logrus.Debugf("Layer_GetByHTTPRequest: %s", req.String())
 	// Fetch Layer from SQLite
 	layer, found, err = mag.Database.LayerGetByDigest(req.Digest)

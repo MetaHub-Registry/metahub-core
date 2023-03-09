@@ -31,7 +31,7 @@ func Test_ManifestData_CRUD(t *testing.T) {
 	_, found, err := db.ManifestData_GetExactly(arm_mani)
 	assert.NoError(t, err)
 	assert.False(t, found)
-	arm_mani_id, err := db.createManifestData(arm_mani)
+	arm_mani_id, err := db.createManifestData(ctx, arm_mani)
 	assert.NoError(t, err)
 	arm_mani_id_got1, found, err := db.ManifestData_GetExactly(arm_mani)
 	assert.NoError(t, err)
@@ -43,7 +43,7 @@ func Test_ManifestData_CRUD(t *testing.T) {
 	err = db.LinkManifestToManifestData(ctx, maniID, arm_mani_id_got1)
 	assert.NoError(t, err)
 	// Manifest_Get_ByDigest
-	arm_mani_got3, found, err := db.ManifestData_Get_ByDigest(arm_mani.Digest)
+	arm_mani_got3, found, err := db.ManifestData_Get_ByDigest(ctx, arm_mani.Digest)
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, arm_mani_id, arm_mani_got3.ID)
@@ -123,7 +123,7 @@ func Test_ManifestData_Links(t *testing.T) {
 	assert.NoError(t, err)
 	// Actual test
 	arm_mani := types.FT_arm_ManifestData()
-	arm_mani_id, err := db.createManifestData(arm_mani)
+	arm_mani_id, err := db.createManifestData(ctx, arm_mani)
 	assert.NoError(t, err)
 	assert.NotNil(t, arm_mani_id)
 	// Manifest Link To ManifestData
@@ -178,7 +178,7 @@ func Test_ManifestData_Rules(t *testing.T) {
 	assert.NoError(t, err)
 	// Actual test
 	arm_mani := types.FT_arm_ManifestData()
-	arm_mani_id, err := db.createManifestData(arm_mani)
+	arm_mani_id, err := db.createManifestData(ctx, arm_mani)
 	assert.NoError(t, err)
 	assert.NotNil(t, arm_mani_id)
 	// Manifest Link To ManifestData

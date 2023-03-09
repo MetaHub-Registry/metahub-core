@@ -13,11 +13,11 @@ import (
 )
 
 func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
+	logrus.Warnf("Compute Manifest Lists")
 	err = mag.Database.Rule_EvalAll(ctx)
 	if err != nil {
 		return
 	}
-	logrus.Warnf("Compute Manifest Lists")
 	/// TODO: We need
 	/// 1. Generate ExprRes? (a rule<>mdID mapping)
 	rls, err := mag.Database.Rules_GetAll(ctx)
@@ -47,6 +47,9 @@ func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
 	}
 	for _, prf := range prfs {
 		label := fmt.Sprintf("%s:%s", prf.Name, prf.Tag)
+		if prf.Name == "" {
+			label = prf.Tag
+		}
 		logrus.Warnf("Profile: %s", label)
 		if prf.Rule != "" {
 			lbs, err := utils.ExprGetLabels(prf.Rule)
@@ -60,7 +63,7 @@ func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
 			}
 		}
 	}
-	ctpps, err := mag.Database.CollectionTagProfilePair_GetAll()
+	ctpps, err := mag.Database.CollectionTagProfilePair_GetAll(ctx)
 	if err != nil {
 		logrus.Errorf("failed to get profile manifestdata pairs: %v", err)
 		return
@@ -75,11 +78,25 @@ func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
 			MediaType:     "application/vnd.oci.image.index.v1+json",
 			Manifests:     []types.ManifestData{},
 		}
-		// filter manifests through ExprRes
-		ms := er.FilterByCTPP(ctpp)
-		for _, m := range ms {
-			logrus.Warnf("   filtered md: %s", m.Label)
-			ml.Manifests = append(ml.Manifests, m)
+		tmpMDS := er.FilterByCTPP(ctpp)
+		ms := []types.ManifestData{}
+		for _, m := range tmpMDS {
+			prfID := p.ID
+			// TODO: Kick out Manifests with a single FALSE relationship
+			ok, err := mag.Database.ManifestData_CheckProfile(ctx, m, p)
+			if err != nil {
+				logrus.Errorf("Failed to check profile: %v", err)
+				return err
+			}
+			logrus.Warnf("  %t > %d -> filtered md: %s", ok, prfID, m.Label)
+			if ok {
+				ms = append(ms, m)
+				ml.Manifests = append(ml.Manifests, m)
+			}
+		}
+		if len(ms) == 0 {
+			logrus.Warnf("  No Manifests for profile: %s", p.Name)
+			continue
 		}
 		mlBlob := ml.ToOCIBytes()
 		mlDigest := digest.FromBytes(mlBlob)
@@ -124,9 +141,11 @@ func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
 	return
 }
 
-func (mag Magazine) ManifestListGetByRequest(req types.Request) (ml types.ManifestList, found bool, err error) {
+func (mag Magazine) ManifestListGetByRequest(ctx context.Context, req types.Request) (ml types.ManifestList, found bool, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestListGetByRequest")
+	defer span.End()
 	// Fetch ML from SQLite
-	ml, found, err = mag.Database.ManifestList_Get_ByRequest(req)
+	ml, found, err = mag.Database.ManifestList_Get_ByRequest(ctx, req)
 	if err != nil {
 		logrus.Errorf("Failed to get ManifestList from Database: %v", err)
 		return
@@ -139,18 +158,20 @@ func (mag Magazine) ManifestListGetByRequest(req types.Request) (ml types.Manife
 }
 
 func (mag Magazine) ManifestList_GetByHTTPRequest(ctx context.Context, r *http.Request) (ml types.ManifestList, found bool, err error) {
-	req := types.NewRequest(r)
+	ctx, span := tracer.Start(ctx, "ManifestList_GetByHTTPRequest")
+	defer span.End()
+	req := types.NewRequest(ctx, r)
 	msg := fmt.Sprintf("%-5s ManifestListHandler(%s, ", r.Method, req.Repo)
 	if req.Tag == "" {
 		msg += fmt.Sprintf("%s)", req.Digest)
 	} else {
 		msg += fmt.Sprintf("%s)", req.Tag)
 	}
-	if req.Profile != "cpu#generic" {
+	if req.Profile != "generic" {
 		msg += fmt.Sprintf(" - profile: %s", req.Profile)
 	}
 	logrus.Info(msg)
-	ml, found, err = mag.ManifestListGetByRequest(req)
+	ml, found, err = mag.ManifestListGetByRequest(ctx, req)
 	if err != nil {
 		return
 	}

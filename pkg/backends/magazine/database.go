@@ -54,18 +54,19 @@ type Database interface {
 	Manifest_GetAll() (manis []types.Manifest, err error)
 
 	/// ManifestData
-	ManifestData_GetID_ByDigest(dig string) (maniID int64, found bool, err error)
+	ManifestData_GetID_ByDigest(ctx context.Context, dig string) (maniID int64, found bool, err error)
 	ManifestData_Insert(ctx context.Context, mani types.ManifestData) (maniID int64, err error)
-	ManifestData_GetTypes_ByRequest(req types.Request) (res types.ManifestData, found bool, err error)
+	ManifestData_GetTypes_ByRequest(ctx context.Context, req types.Request) (res types.ManifestData, found bool, err error)
 	ManifestData_GetInsert(ctx context.Context, mani *types.ManifestData) (err error)
 	ManifestData_Remove(ctx context.Context, req types.Request) (found bool, err error)
-	ManifestData_GetByCollectionTag(colID, colTagID int64) (manis []types.ManifestData, err error)
+	ManifestData_GetByCollectionTag(ctx context.Context, colID, colTagID int64) (manis []types.ManifestData, err error)
 	ManifestData_GetAll() (manis []types.ManifestData, err error)
 	ManifestData_LinkToOCIv1Config(ctx context.Context, maniID, cfgID int64) (err error)
 	ManifestData_LinkToOCIv1Layer(ctx context.Context, maniID, layerID int64) (err error)
 	ManifestData_AddAnnotations(ctx context.Context, maniID int64, a *types.Annotations) (err error)
 	ManifestData_LinkToAnnotation(ctx context.Context, maniID, annotationID int64) (err error)
 	ManifestData_GetByRule(ctx context.Context, rule types.Rule) (mds []types.ManifestData, err error)
+	ManifestData_CheckProfile(ctx context.Context, md types.ManifestData, prf types.Profile) (ok bool, err error)
 	/******* Manifest OCI Transformation ********/
 	ManifestData_GetID_ByMediaType(ctx context.Context, msID int64, mediaType string) (maniID int64, found bool, err error)
 	/******* ManifestV1 ********/
@@ -74,7 +75,7 @@ type Database interface {
 	/********* Profiles **********/
 	/********* ManifestList **********/
 	ManifestList_Insert(ctx context.Context, ml *types.ManifestList) (err error)
-	ManifestList_Get_ByRequest(req types.Request) (ml types.ManifestList, found bool, err error)
+	ManifestList_Get_ByRequest(ctx context.Context, req types.Request) (ml types.ManifestList, found bool, err error)
 	InsertManifestList(dig digest.Digest, mt string, size int) (mlID int64, err error)
 	/********* Collection **********/
 	CollectionGetAll() (colls []types.Collection, err error)
@@ -84,8 +85,9 @@ type Database interface {
 	CollectionManifest_ByRequest(req types.Request, mani types.ManifestData) (err error)
 	Collection_GetTagsListByRepo(repo string) (tags types.TagResponse, err error)
 	Collection_GetCreate_ByRepoTag(ctx context.Context, repo, tag string) (c types.Collection, found bool, err error)
-	CollectionListing_Get_ByID(colID, colTagID int64) (col types.CollectionListing, err error)
-	CollectionListing_Get_ByRepoLike(repo string) (cols []types.CollectionListing, err error)
+	CollectionListing_Get_ByName(ctx context.Context, repoName, colTagName string) (col types.CollectionListing, err error)
+	CollectionListing_Get_ByID(ctx context.Context, colID, colTagID int64) (col types.CollectionListing, err error)
+	CollectionListing_Get_ByRepoLike(ctx context.Context, repo string) (cols []types.CollectionListing, err error)
 	Collection_Remove(ctx context.Context, c types.Collection) (found bool, err error)
 	/**** CollectionTag ****/
 	CollectionTag_CountRelationships(ctID int64) (count int64, err error)
@@ -125,5 +127,5 @@ type Database interface {
 	Rule_GetByLabel(ctx context.Context, label string) (rule types.Rule, found bool, err error)
 
 	/****** CollectionTagProfilePair ********/
-	CollectionTagProfilePair_GetAll() (ctpps []types.CollectionTagProfilePair, err error)
+	CollectionTagProfilePair_GetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error)
 }
