@@ -462,6 +462,8 @@ func (mag Magazine) RemoveManifestByRequest(req types.Request) (found bool, err 
 // ComputeManifests looks for changes to a manifest (e.g. new annotations), creates new config blobs and subsequently updates the manifest.
 func (mag Magazine) ComputeManifests() (err error) {
 	ctx := context.Background()
+	ctx, span := tracer.Start(ctx, "ComputeManifests")
+	defer span.End()
 	/*****
 	* We are going to
 	1. Get all manifest(standins)
@@ -485,11 +487,10 @@ func (mag Magazine) ComputeManifests() (err error) {
 		logrus.Error(err)
 		return
 	}
-	_ = ctx
 	for _, mani := range manis {
 		logrus.Infof("Manifest: %s/%s:%s", mani.Upstream.Reg, mani.Upstream.Repo, mani.Upstream.Tag)
 		for _, maniData := range mani.Manifests {
-			logrus.Infof("ManifestData (%-20s): %s (Annotations: %d)", maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys))
+			logrus.Infof("ManifestData (%-20s): %s (Annotations: %d, Layers:%d)", maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
 			logrus.Warnf("  >> Annotations: %v", mani.Annotations.Keys)
 			///TODO: Need to add the annotations to the config
 			err = mag.CreateOCIv1(ctx, mani, maniData)

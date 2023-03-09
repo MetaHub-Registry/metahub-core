@@ -19,7 +19,7 @@ import (
 )
 
 var (
-	tracer = otel.Tracer("metalib/magazin")
+	tracer = otel.Tracer("metalib/magazine")
 )
 
 type Magazine struct {
@@ -87,7 +87,7 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, err error) {
 		logrus.Warn("Tracing is disabled (tracing.name/tracing.endpoint is empty)")
 	}
 	if trEnd != "" {
-		logrus.Infof("Tracing endpoint: %s", trEnd)
+		logrus.Infof("Tracing endpoint '%s': %s", svcName, trEnd)
 		tr, err := tracing.InitTracer(svcName, trEnd)
 		if err != nil {
 			logrus.Fatalf("Could not initialize jaeger tracer: %s", err.Error())

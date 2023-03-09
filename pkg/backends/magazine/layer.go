@@ -143,8 +143,8 @@ func (mag Magazine) GetLayerByOCIManifest(oMani types.OCIManifest) (layers []typ
 	return layers, nil
 }
 
-func (mag Magazine) Layers_CreateOCIv1LayerDescriptors(ctx context.Context, layerIn []types.Layer) (res map[int64]v1.Descriptor, err error) {
-	res = make(map[int64]v1.Descriptor)
+func (mag Magazine) Layers_CreateOCIv1LayerDescriptors(ctx context.Context, layerIn []types.Layer) (res []LayerDesc, err error) {
+	res = []LayerDesc{}
 	var mt string
 	for _, l := range layerIn {
 		switch l.MediaType {
@@ -167,7 +167,16 @@ func (mag Magazine) Layers_CreateOCIv1LayerDescriptors(ctx context.Context, laye
 			logrus.Error(err)
 			return res, err
 		}
-		res[lID] = d
+		ld := LayerDesc{
+			LayerID:    lID,
+			Descriptor: d,
+		}
+		res = append(res, ld)
 	}
 	return
+}
+
+type LayerDesc struct {
+	LayerID    int64
+	Descriptor v1.Descriptor
 }

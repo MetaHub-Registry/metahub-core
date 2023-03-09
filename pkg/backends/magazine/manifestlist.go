@@ -81,14 +81,12 @@ func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
 		tmpMDS := er.FilterByCTPP(ctpp)
 		ms := []types.ManifestData{}
 		for _, m := range tmpMDS {
-			prfID := p.ID
 			// TODO: Kick out Manifests with a single FALSE relationship
 			ok, err := mag.Database.ManifestData_CheckProfile(ctx, m, p)
 			if err != nil {
 				logrus.Errorf("Failed to check profile: %v", err)
 				return err
 			}
-			logrus.Warnf("  %t > %d -> filtered md: %s", ok, prfID, m.Label)
 			if ok {
 				ms = append(ms, m)
 				ml.Manifests = append(ml.Manifests, m)
