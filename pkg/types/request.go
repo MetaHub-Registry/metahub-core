@@ -1,8 +1,10 @@
 package types
 
 import (
+	plainCtx "context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -13,6 +15,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/context"
 	"github.com/sirupsen/logrus"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+)
+
+var (
+	userReg = regexp.MustCompile(`(?P<user>[\w\-\.\_]+)(\/(?P<profile>[\/\w\-\.\_#]+))?`)
 )
 
 type Request struct {
@@ -36,7 +45,9 @@ type Request struct {
 	ContentType    string `json:"content-type"`
 }
 
-func NewRequest(r *http.Request) Request {
+func NewRequest(ctx plainCtx.Context, r *http.Request) Request {
+	ctx, span := tracer.Start(ctx, "NewRequest")
+	defer span.End()
 	//dumpedReq, _ := httputil.DumpRequest(r, false)
 	//logrus.Errorf("Request:#### \n%s\n####", dumpedReq)
 	req := Request{
@@ -68,7 +79,7 @@ func NewRequest(r *http.Request) Request {
 	case "HTTP/2.0":
 		req.Protocol = "https"
 	}
-	ctx := r.Context()
+
 	srvAddrVal := ctx.Value(http.LocalAddrContextKey)
 	srvAddr := ""
 	if srvAddrVal != nil {
@@ -103,7 +114,30 @@ func NewRequest(r *http.Request) Request {
 	vP := context.Get(r, "profileName")
 	if vP != nil {
 		profile = vP.(string)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", fmt.Sprintf("found profileName '%s' in request,", profile)),
+		))
+	} else {
+		m := utils.ReSubMatchMap(userReg, user)
+		if _, ok := m["user"]; !ok {
+			logrus.Errorf("Failed to extract user from: %s", user)
+		} else {
+			user = m["user"]
+			// FIXME: Why is the profileName not carried over?
+			if _, ok := m["profile"]; ok {
+				profile = m["profile"]
+				span.AddEvent("log", trace.WithAttributes(
+					attribute.String("log.severity", "debug"),
+					attribute.String("log.message", fmt.Sprintf("found profile '%s' encoded in username '%s'", profile, user)),
+				))
+			}
+		}
 	}
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.message", fmt.Sprintf("user:'%s' / profile:'%s'", user, profile)),
+	))
 	rnge := r.Header.Get("Content-Range")
 	req.RangeStartByte = -1
 	req.RangeBytes = -1

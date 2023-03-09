@@ -9,6 +9,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (n Neo) Profile_GetInsert(ctx context.Context, p *types.Profile) (err error) {
@@ -182,6 +184,8 @@ func (n Neo) ProfileFromResult(res types.Result) (p types.Profile, err error) {
 	return
 }
 func (n Neo) Profile_FromManifestDataID(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
+	ctx, span := tracer.Start(ctx, "Profile_FromManifestDataID")
+	defer span.End()
 	prfs, e := n.Profile_FromManifestDataID_ViaAnnotations(ctx, mdID)
 	if e != nil {
 		err = errors.Wrap(e, "failed to get profiles via annotations for ManifestData")
@@ -197,10 +201,16 @@ func (n Neo) Profile_FromManifestDataID(ctx context.Context, mdID int64) (prfs [
 }
 
 func (n Neo) Profile_FromManifestDataID_ViaAnnotations(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
+	_, span := tracer.Start(ctx, "Profile_FromManifestDataID_ViaAnnotations")
+	defer span.End()
 	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[]-(a:Annotation)-[]-(md:ManifestData) WHERE id(md) = %d`, mdID)
 	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule`
 	res, err := n.Query(q)
 	//fmt.Printf("Query: \n%s\n", q)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
 	if err != nil {
 		return
 	}
@@ -217,11 +227,17 @@ func (n Neo) Profile_FromManifestDataID_ViaAnnotations(ctx context.Context, mdID
 }
 
 func (n Neo) Profile_FromManifestDataID_ViaPlatform(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
+	_, span := tracer.Start(ctx, "Profile_FromManifestDataID_ViaPlatform")
+	defer span.End()
 	rel := types.RelationSuccess
 	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[%s]->(p:Platform)<-[:IS]-(m:Manifest)-[:CREATED]-(md:ManifestData) WHERE id(md) = %d`, rel, mdID)
 	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule`
 	res, err := n.Query(q)
 	//fmt.Printf("Query: \n%s\n", q)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
 	if err != nil {
 		return
 	}

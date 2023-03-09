@@ -188,7 +188,34 @@ func (n Neo) Rule_EvalPlatformRule(ctx context.Context, r types.Rule) (err error
 	return
 }
 
+func (n Neo) Rule_EvalAnnotationRule_NULL(ctx context.Context, r types.Rule) (err error) {
+	if r.Op != "null" {
+		err = fmt.Errorf("invalid op for annotation rule: %s", r.Op)
+		return
+	}
+	q := `MATCH (a:Annotation) WHERE a.key =~ "%s"`
+	q += ` RETURN id(a) as annotationID, a.key as annotationKey, a.value as annotationValue`
+	query := fmt.Sprintf(q, r.Key)
+	res, err := n.Query(query)
+	if err != nil {
+		return
+	}
+	for _, ele := range res {
+		a, err := AnnotationFromResult(ele)
+		if err != nil {
+			return err
+		}
+		err = n.Rule_Annotation_Failure(ctx, r.ID, a.ID)
+		if err != nil {
+			return err
+		}
+	}
+	return
+}
 func (n Neo) Rule_EvalAnnotationRule(ctx context.Context, r types.Rule) (err error) {
+	if r.Op == "null" {
+		return n.Rule_EvalAnnotationRule_NULL(ctx, r)
+	}
 	q := `MATCH (a:Annotation) WHERE a.key = "%s"`
 	q += ` RETURN id(a) as annotationID, a.key as annotationKey, a.value as annotationValue`
 	query := fmt.Sprintf(q, r.Key)
@@ -237,6 +264,15 @@ func (n Neo) Rule_Annotation_Success(ctx context.Context, ruleID, annotationID i
 	q += ` WHERE id(r) = %d AND id(a) = %d`
 	q += ` MERGE (r)-[:%s]->(a)`
 	query := fmt.Sprintf(q, ruleID, annotationID, types.RelationSuccess)
+	_, err = n.Execute(query)
+	return
+}
+
+func (n Neo) Rule_Annotation_Failure(ctx context.Context, ruleID, annotationID int64) (err error) {
+	q := `MATCH (r:Rule), (a:Annotation)`
+	q += ` WHERE id(r) = %d AND id(a) = %d`
+	q += ` MERGE (r)-[:%s]->(a)`
+	query := fmt.Sprintf(q, ruleID, annotationID, types.RelationFailure)
 	_, err = n.Execute(query)
 	return
 }

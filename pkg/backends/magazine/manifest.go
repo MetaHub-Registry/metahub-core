@@ -190,7 +190,7 @@ func (mag Magazine) NeoLinkManifestToPlatform(ctx context.Context, maniID, platI
 }
 
 func (mag Magazine) Manifest_GetByHTTPRequest(ctx context.Context, r *http.Request) (m types.ManifestData, found bool, err error) {
-	req := types.NewRequest(r)
+	req := types.NewRequest(ctx, r)
 	if req.Profile == "" {
 		return
 	}
@@ -217,8 +217,8 @@ func (mag Magazine) Manifest_GetByHTTPRequest(ctx context.Context, r *http.Reque
 	return
 }
 
-func (mag Magazine) Manifest_DeleteByHTTPRequest(r *http.Request) (err error) {
-	req := types.NewRequest(r)
+func (mag Magazine) Manifest_DeleteByHTTPRequest(ctx context.Context, r *http.Request) (err error) {
+	req := types.NewRequest(ctx, r)
 	msg := fmt.Sprintf("%-5s DeleteManifestHandler(%s, ", r.Method, req.Repo)
 	if req.Tag == "" {
 		msg += fmt.Sprintf("%s)", req.Digest)
@@ -249,7 +249,7 @@ func (mag Magazine) Manifest_GetByRequest(ctx context.Context, req types.Request
 	ctx, span := tracer.Start(ctx, "Manifest_GetByRequest")
 	defer span.End()
 	// Fetch Manifest from SQLite
-	m, found, err = mag.Database.ManifestData_GetTypes_ByRequest(req)
+	m, found, err = mag.Database.ManifestData_GetTypes_ByRequest(ctx, req)
 	if err != nil {
 		err = errors.Wrap(err, "failed to get Manifest from Database")
 		return

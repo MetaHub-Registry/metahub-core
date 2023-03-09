@@ -41,7 +41,7 @@ func (a Annotation) evalRule(op, v string) bool {
 	case "le":
 		return a.Value <= v
 	case "null":
-		return a.Value == ""
+		return true
 	case "re":
 		// regex
 		re := regexp.MustCompile(v)

@@ -143,7 +143,7 @@ func (n Neo) CollectionTag_DetachFromCollection(cID, ctID int64) (err error) {
 	q := `MATCH (c:Collection)-[r:HAS_TAG]->(t:Tag) WHERE id(c) = %d AND id(t) = %d`
 	q += ` DELETE r`
 	query := fmt.Sprintf(q, cID, ctID)
-	fmt.Printf("!!! Query: \n%s\n", query)
+	//fmt.Printf("!!! Query: \n%s\n", query)
 	_, err = n.Execute(query)
 	if err != nil {
 		return

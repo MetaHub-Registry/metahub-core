@@ -10,6 +10,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (n Neo) ManifestData_V1_GetInsert(ctx context.Context, maniSiID int64, mani v1.Descriptor) (maniID int64, found bool, err error) {
@@ -147,7 +149,7 @@ func (n Neo) ManifestData_GetAllByManifestID(ctx context.Context, msID int64) (m
 	}
 	manis = make([]types.ManifestData, 0)
 	for _, r := range res {
-		m, e := n.ManifestDataFromResult(r)
+		m, e := n.ManifestDataFromResult(ctx, r)
 		if e != nil {
 			err = e
 			return
@@ -245,28 +247,38 @@ func (n Neo) ManifestData_AddAnnotations(ctx context.Context, maniID int64, as *
 	return
 }
 
-func (n Neo) ManifestData_GetTypes_ByRequest(req types.Request) (res types.ManifestData, found bool, err error) {
+func (n Neo) ManifestData_GetTypes_ByRequest(ctx context.Context, req types.Request) (res types.ManifestData, found bool, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestData_CheckProfile")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("req.Digest").String(req.Digest),
+		attribute.Key("req.Host").String(req.Host),
+		attribute.Key("req.Repo").String(req.Repo),
+		attribute.Key("req.Tag").String(req.Tag),
+		attribute.Key("req.Profile").String(req.Profile),
+	)
 	if req.Digest != "" {
-		return n.ManifestData_Get_ByDigest(req.Digest)
+		return n.ManifestData_Get_ByDigest(ctx, req.Digest)
 	} else if req.Tag != "" {
 		up := types.Upstream{
 			Reg:  req.Host,
 			Repo: req.Repo,
 			Tag:  req.Tag,
 		}
-		return n.ManifestData_Get_ByUpstream(up)
+		return n.ManifestData_Get_ByUpstream(ctx, up)
 	}
 	return
 }
 
-func (n Neo) ManifestData_GetID_ByDigest(dig string) (maniID int64, found bool, err error) {
-	m, found, err := n.ManifestData_Get_ByDigest(dig)
+func (n Neo) ManifestData_GetID_ByDigest(ctx context.Context, dig string) (maniID int64, found bool, err error) {
+	m, found, err := n.ManifestData_Get_ByDigest(ctx, dig)
 	if err != nil || !found {
 		return
 	}
 	maniID = m.ID
 	return
 }
+
 func (n Neo) ManifestData_GetByRule(ctx context.Context, rule types.Rule) (mds []types.ManifestData, err error) {
 	mds, e := n.ManifestData_GetByAnnotationRule(ctx, rule)
 	if e != nil {
@@ -292,7 +304,7 @@ func (n Neo) ManifestData_GetByPlatformRule(ctx context.Context, rule types.Rule
 	//fmt.Printf("query: \n%s\n", q)
 	res, err := n.Query(q)
 	for _, r := range res {
-		m, e := n.ManifestDataFromResult(r)
+		m, e := n.ManifestDataFromResult(ctx, r)
 		if e != nil {
 			err = errors.Wrap(e, "failed to get manifest from result")
 			return
@@ -315,6 +327,32 @@ func (n Neo) ManifestData_GetByPlatformRule(ctx context.Context, rule types.Rule
 	return
 }
 
+func (n Neo) ManifestData_CheckProfile(ctx context.Context, md types.ManifestData, prf types.Profile) (ok bool, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestData_CheckProfile")
+	_ = ctx
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("md.label").String(md.Label),
+		attribute.Key("profile.name").String(prf.Name),
+	)
+	q := fmt.Sprintf(`MATCH (md:ManifestData)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule)<-[:USES]-(p:Profile)`, types.RelationFailure)
+	q += fmt.Sprintf(` WHERE id(md) = %d AND id(p) = %d RETURN count(a) AS countAnnotations`, md.ID, prf.ID)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
+	res, _, err := n.QueryOne(q)
+	if err != nil {
+		return
+	}
+	cnt, err := res.GetInt("countAnnotations")
+	if err != nil {
+		return
+	}
+	ok = cnt == 0
+	return
+}
+
 func (n Neo) ManifestData_GetByAnnotationRule(ctx context.Context, rule types.Rule) (mds []types.ManifestData, err error) {
 	rel := types.RelationSuccess
 	q := fmt.Sprintf(`MATCH (u:Upstream)-[]-(m:Manifest)-[:CREATED]-(md:ManifestData)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule) WHERE id(r) = %d`, rel, rule.ID)
@@ -325,7 +363,7 @@ func (n Neo) ManifestData_GetByAnnotationRule(ctx context.Context, rule types.Ru
 	//fmt.Printf("query: \n%s\n", q)
 	res, err := n.Query(q)
 	for _, r := range res {
-		m, e := n.ManifestDataFromResult(r)
+		m, e := n.ManifestDataFromResult(ctx, r)
 		if e != nil {
 			err = errors.Wrap(e, "failed to get manifest from result")
 			return
@@ -361,7 +399,7 @@ func (n Neo) ManifestData_Get_ByID(ctx context.Context, mID int64) (m types.Mani
 	if !found {
 		return
 	}
-	m, err = n.ManifestDataFromResult(res)
+	m, err = n.ManifestDataFromResult(ctx, res)
 	if err != nil {
 		err = errors.Wrap(err, "failed to get manifest from result")
 		return
@@ -376,6 +414,8 @@ func (n Neo) ManifestData_Get_ByID(ctx context.Context, mID int64) (m types.Mani
 }
 
 func (n Neo) ManifestData_LinkToConfig(ctx context.Context, maniID, cfgID int64) (err error) {
+	ctx, span := tracer.Start(ctx, "ManifestData_LinkToConfig")
+	defer span.End()
 	q := `MATCH (m:ManifestData),(c:Config) WHERE id(m) = %d AND id(c) = %d`
 	q += ` MERGE (m)-[:USES]->(c)`
 	query := fmt.Sprintf(q, maniID, cfgID)
@@ -391,6 +431,8 @@ func (n Neo) ManifestData_LinkToConfig(ctx context.Context, maniID, cfgID int64)
 }
 
 func (n Neo) ManifestData_LinkToLayer(ctx context.Context, maniID, layerID int64, idx int) (err error) {
+	ctx, span := tracer.Start(ctx, "ManifestData_LinkToLayer")
+	defer span.End()
 	q := `MATCH (m:ManifestData),(l:Layer) WHERE id(m) = %d AND id(l) = %d`
 	q += ` MERGE (m)-[:HAS {order: %d}]->(l)`
 	query := fmt.Sprintf(q, maniID, layerID, idx)
@@ -405,7 +447,9 @@ func (n Neo) ManifestData_LinkToLayer(ctx context.Context, maniID, layerID int64
 }
 
 func (n Neo) ManifestData_Remove(ctx context.Context, req types.Request) (found bool, err error) {
-	mani, found, err := n.ManifestData_GetTypes_ByRequest(req)
+	ctx, span := tracer.Start(ctx, "ManifestData_Remove")
+	defer span.End()
+	mani, found, err := n.ManifestData_GetTypes_ByRequest(ctx, req)
 	if err != nil {
 		err = errors.Wrap(err, "failed to get manifest by id")
 		return
@@ -425,8 +469,9 @@ func (n Neo) ManifestData_Remove(ctx context.Context, req types.Request) (found 
 	return
 }
 
-func (n Neo) createManifestData(mani types.ManifestData) (maniID int64, err error) {
-	ctx := context.Background()
+func (n Neo) createManifestData(ctx context.Context, mani types.ManifestData) (maniID int64, err error) {
+	ctx, span := tracer.Start(ctx, "createManifestData")
+	defer span.End()
 	label := utils.CreateLabelFromTypeAndDigest(mani.MediaType, mani.Digest)
 	q := `CREATE (m:ManifestData {digest: "%s", mediaType: "%s", size: %d, label: "%s"}) RETURN id(m) AS manifestID`
 	query := fmt.Sprintf(q, mani.Digest, mani.MediaType, mani.Size, label)
@@ -500,7 +545,13 @@ func (n Neo) ManifestData_GetExactly(mani types.ManifestData) (maniID int64, suc
 	return
 }
 
-func (n Neo) ManifestData_Get_ByDigest(dig string) (m types.ManifestData, found bool, err error) {
+func (n Neo) ManifestData_Get_ByDigest(ctx context.Context, dig string) (m types.ManifestData, found bool, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestData_Get_ByDigest")
+	_ = ctx
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("digest").String(dig),
+	)
 	q := `MATCH (md:ManifestData)-[r]-(m:Manifest)-[]->(u:Upstream) WHERE md.digest = "%s"`
 	q += ` RETURN id(md) AS manifestID, md.digest AS manifestDigest, md.mediaType AS manifestMediaType, md.size AS manifestSize,`
 	q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag,`
@@ -514,7 +565,7 @@ func (n Neo) ManifestData_Get_ByDigest(dig string) (m types.ManifestData, found 
 	if !found {
 		return
 	}
-	m, err = n.ManifestDataFromResult(res)
+	m, err = n.ManifestDataFromResult(ctx, res)
 	if err != nil {
 		err = errors.Wrap(err, "failed to get manifest from result")
 		return
@@ -528,7 +579,10 @@ func (n Neo) ManifestData_Get_ByDigest(dig string) (m types.ManifestData, found 
 	return
 }
 
-func (n Neo) ManifestData_Get_ByUpstream(up types.Upstream) (m types.ManifestData, found bool, err error) {
+func (n Neo) ManifestData_Get_ByUpstream(ctx context.Context, up types.Upstream) (m types.ManifestData, found bool, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestData_Get_ByUpstream")
+	_ = ctx
+	defer span.End()
 	// FIXME: We need to filter the MDs based on CREATED and manipulations
 	//        ->
 	q := `MATCH (md:ManifestData)-[r]-(m:Manifest)-[:UPSTREAM]->(u:Upstream) WHERE u.reg = "%s" AND u.repo = "%s" AND u.tag = "%s"`
@@ -544,7 +598,7 @@ func (n Neo) ManifestData_Get_ByUpstream(up types.Upstream) (m types.ManifestDat
 	if !found {
 		return
 	}
-	m, err = n.ManifestDataFromResult(res)
+	m, err = n.ManifestDataFromResult(ctx, res)
 	if err != nil {
 		err = errors.Wrap(err, "failed to get manifest from result")
 		return
@@ -592,8 +646,9 @@ func ManifestDataFromRecord(res neo4j.Result) (m types.ManifestData, err error) 
 	return
 }
 
-func (n Neo) ManifestDataFromResult(res types.Result) (m types.ManifestData, err error) {
-	ctx := context.Background()
+func (n Neo) ManifestDataFromResult(ctx context.Context, res types.Result) (m types.ManifestData, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestDataFromResult")
+	defer span.End()
 	err = res.CheckKeys("manifestID", "manifestDigest", "manifestMediaType", "manifestSize")
 	if err != nil {
 		return
@@ -624,7 +679,9 @@ func (n Neo) ManifestDataFromResult(res types.Result) (m types.ManifestData, err
 	return
 }
 
-func (n Neo) ManifestData_GetByCollectionTag(colID, colTagID int64) (manis []types.ManifestData, err error) {
+func (n Neo) ManifestData_GetByCollectionTag(ctx context.Context, colID, colTagID int64) (manis []types.ManifestData, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestData_GetByCollectionTag")
+	defer span.End()
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	q := `MATCH (p:Platform)-[r]-(m:Manifest)-[]-(u:Upstream)`
@@ -636,13 +693,15 @@ func (n Neo) ManifestData_GetByCollectionTag(colID, colTagID int64) (manis []typ
 	q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag,`
 	q += ` id(cfg) AS configID, cfg.digest AS configDigest, cfg.mediaType AS configMediaType, cfg.size AS configSize`
 	query := fmt.Sprintf(q, colID, colTagID)
-	//fmt.Printf("query: \n%s\n", query)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", query),
+	))
 	input := map[string]interface{}{}
 	result, err := session.Run(query, input)
 	if err != nil {
 		return
 	}
-	ctx := context.Background()
 	manis = make([]types.ManifestData, 0)
 	for result.Next() {
 		p, e := PlatformFromRecord(result)
@@ -685,8 +744,21 @@ func (n Neo) ManifestData_GetByCollectionTag(colID, colTagID int64) (manis []typ
 			continue
 		}
 		for _, prf := range prfs {
-			m.Profile = prf
-			manis = append(manis, m)
+			ok, e := n.ManifestData_CheckProfile(ctx, m, prf)
+			if e != nil {
+				logrus.Errorf("Failed to check profile: %v", err)
+				return
+			}
+			msg := fmt.Sprintf("  %t > %d -> filtered md: %s", ok, prf.ID, m.Label)
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "debug"),
+				attribute.String("log.message", msg),
+			))
+			logrus.Warn(msg)
+			if ok {
+				m.Profile = prf
+				manis = append(manis, m)
+			}
 		}
 	}
 	return
@@ -741,7 +813,9 @@ func (n Neo) ManifestData_GetByManifestList(mlID int64) (manifests []types.Manif
 }
 
 func (n Neo) ManifestData_GetInsert(ctx context.Context, mani *types.ManifestData) (err error) {
-	m, found, err := n.ManifestData_Get_ByDigest(mani.Digest)
+	ctx, span := tracer.Start(ctx, "ManifestData_GetInsert")
+	defer span.End()
+	m, found, err := n.ManifestData_Get_ByDigest(ctx, mani.Digest)
 	if err != nil {
 		logrus.Error(err)
 		return
@@ -750,7 +824,7 @@ func (n Neo) ManifestData_GetInsert(ctx context.Context, mani *types.ManifestDat
 		mani.ID = m.ID
 		return
 	}
-	maniID, err := n.createManifestData(*mani)
+	maniID, err := n.createManifestData(ctx, *mani)
 	if err != nil {
 		logrus.Error(err)
 		return

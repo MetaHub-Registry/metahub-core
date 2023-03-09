@@ -1,15 +1,25 @@
 package neo
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
-func (n Neo) CollectionListing_Get_ByID(colID, colTagID int64) (col types.CollectionListing, err error) {
+func (n Neo) CollectionListing_Get_ByID(ctx context.Context, colID, colTagID int64) (col types.CollectionListing, err error) {
+	ctx, span := tracer.Start(ctx, "CollectionListing_Get_ByName")
+	defer span.End()
+	_ = ctx
 	q := `MATCH (c:Collection)-[:HAS_TAG]->(t) WHERE id(c) = %d AND id(t) = %d`
 	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
 	query := fmt.Sprintf(q, colID, colTagID)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", query),
+	))
 	res, found, err := n.QueryOne(query)
 	if err != nil {
 		return col, err
@@ -22,7 +32,7 @@ func (n Neo) CollectionListing_Get_ByID(colID, colTagID int64) (col types.Collec
 		return
 	}
 	// Fill Manifests
-	manis, err := n.ManifestData_GetByCollectionTag(col.ID, col.ColTag.ID)
+	manis, err := n.ManifestData_GetByCollectionTag(ctx, col.ID, col.ColTag.ID)
 	if err != nil {
 		return
 	}
@@ -34,11 +44,54 @@ func (n Neo) CollectionListing_Get_ByID(colID, colTagID int64) (col types.Collec
 	return
 }
 
-func (n Neo) CollectionListing_Get_ByRepoLike(repo string) (cols []types.CollectionListing, err error) {
+func (n Neo) CollectionListing_Get_ByName(ctx context.Context, repoName, colTagName string) (col types.CollectionListing, err error) {
+	ctx, span := tracer.Start(ctx, "CollectionListing_Get_ByName")
+	defer span.End()
+	_ = ctx
+	q := `MATCH (c:Collection)-[:HAS_TAG]->(t) WHERE c.repo = "%s" AND t.name = "%s"`
+	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
+	query := fmt.Sprintf(q, repoName, colTagName)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", query),
+	))
+	res, found, err := n.QueryOne(query)
+	if err != nil {
+		return col, err
+	}
+	if !found {
+		return col, fmt.Errorf("collection with name '%s' and tag '%s' not found", repoName, colTagName)
+	}
+	col, err = CollectionListingFromResult(res)
+	if err != nil {
+		return
+	}
+	// Fill Manifests
+	manis, err := n.ManifestData_GetByCollectionTag(ctx, col.ID, col.ColTag.ID)
+	if err != nil {
+		return
+	}
+	for _, m := range manis {
+		k := fmt.Sprintf("%s/%s:%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag)
+		col.Manifests[k] = m
+		col.ManifestCount++
+	}
+	return
+}
+
+func (n Neo) CollectionListing_Get_ByRepoLike(ctx context.Context, repo string) (cols []types.CollectionListing, err error) {
+	ctx, span := tracer.Start(ctx, "CollectionListing_Get_ByRepoLike")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("repo").String(repo),
+	)
 	q := `MATCH (c:Collection)-[:HAS_TAG]->(t) WHERE c.repo =~ "^%s.*"`
 	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
 	query := fmt.Sprintf(q, repo)
-	//fmt.Printf("Query: \n%s\n", query)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", query),
+	))
 	res, err := n.Query(query)
 	if err != nil {
 		return cols, err
@@ -49,7 +102,7 @@ func (n Neo) CollectionListing_Get_ByRepoLike(repo string) (cols []types.Collect
 			return cols, err
 		}
 		// Fill Manifests
-		manis, e := n.ManifestData_GetByCollectionTag(col.ID, col.ColTag.ID)
+		manis, e := n.ManifestData_GetByCollectionTag(ctx, col.ID, col.ColTag.ID)
 		if e != nil {
 			return cols, e
 		}

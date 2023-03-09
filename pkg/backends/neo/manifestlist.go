@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 func (n Neo) GetManifestList(dig digest.Digest, mt string, size int) (mlID int64, success bool, err error) {
@@ -196,7 +197,16 @@ func (n Neo) InsertManifestList(dig digest.Digest, mt string, size int) (mlID in
 	return
 }
 
-func (n Neo) ManifestList_Get_ByRequest(req types.Request) (ml types.ManifestList, found bool, err error) {
+func (n Neo) ManifestList_Get_ByRequest(ctx context.Context, req types.Request) (ml types.ManifestList, found bool, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestList_Get_ByRequest")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("req.Digest").String(req.Digest),
+		attribute.Key("req.Host").String(req.Host),
+		attribute.Key("req.Repo").String(req.Repo),
+		attribute.Key("req.Tag").String(req.Tag),
+		attribute.Key("req.Profile").String(req.Profile),
+	)
 	/* TODO: Need to implement ManifestList_Get_ByRequest */
 	// TODO: Do we have a tag or just a digest?
 	logrus.Infof("Query for ML of name '%s' and tag '%s' / dig:'%s'", req.Repo, req.Tag, utils.ShortenDigest(req.Digest))
@@ -229,10 +239,10 @@ func (n Neo) ManifestList_Get_ByRequest(req types.Request) (ml types.ManifestLis
 	q += ` RETURN id(md) as manifestID, md.digest as manifestDigest, md.mediaType as manifestMediaType,`
 	q += ` md.size as manifestSize,`
 	q += ` id(p) as platformID, p.os as platformOS, p.arch as platformArch, p.variant as platformVariant`
-	fmt.Printf("Query: \n%s\n", q)
+	//fmt.Printf("Query: \n%s\n", q)
 	rs, err := n.Query(q)
 	for _, r := range rs {
-		m, err := n.ManifestDataFromResult(r)
+		m, err := n.ManifestDataFromResult(ctx, r)
 		if err != nil {
 			logrus.Error(err)
 			continue

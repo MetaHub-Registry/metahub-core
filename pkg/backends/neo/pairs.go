@@ -1,20 +1,25 @@
 package neo
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
-func (n Neo) CollectionTagProfilePair_GetAll() (ctpps []types.CollectionTagProfilePair, err error) {
-	ctpps, e := n.CollectionTagProfilePair_Annotation_GetAll()
+func (n Neo) CollectionTagProfilePair_GetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error) {
+	ctx, span := tracer.Start(ctx, "CollectionTagProfilePair_GetAll")
+	defer span.End()
+	ctpps, e := n.CollectionTagProfilePair_Annotation_GetAll(ctx)
 	if e != nil {
 		err = errors.Wrap(e, "failed to get CollectionTagProfilePairs with annotations")
 		return
 	}
-	ctpps2, e := n.CollectionTagProfilePair_Platform_GetAll()
+	ctpps2, e := n.CollectionTagProfilePair_Platform_GetAll(ctx)
 	if e != nil {
 		err = errors.Wrap(e, "failed to get CollectionTagProfilePairs with platforms")
 		return
@@ -23,13 +28,19 @@ func (n Neo) CollectionTagProfilePair_GetAll() (ctpps []types.CollectionTagProfi
 	return
 }
 
-func (n Neo) CollectionTagProfilePair_Platform_GetAll() (ctpps []types.CollectionTagProfilePair, err error) {
+func (n Neo) CollectionTagProfilePair_Platform_GetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error) {
+	ctx, span := tracer.Start(ctx, "CollectionTagProfilePair_Platform_GetAll")
+	defer span.End()
 	rel := types.RelationSuccess
 	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(Rule)-[%s]->(p:Platform)<-[:IS]-(m:Manifest)-[:CREATED]-(md:ManifestData)`, rel)
 	q += ` MATCH (c:Collection)-[:UPSTREAM]->(m)<-[:UPSTREAM]-(t:Tag)`
 	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule,`
 	q += ` id(c) AS collectionID, c.repo AS collectionRepo,`
 	q += ` id(t) AS tagID, t.name AS tagName`
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
 	res, err := n.Query(q)
 	if err != nil {
 		logrus.Error(err)
@@ -59,7 +70,7 @@ func (n Neo) CollectionTagProfilePair_Platform_GetAll() (ctpps []types.Collectio
 		}
 
 		/// Get Manifests for this Collection/Tag
-		mds, err := n.ManifestData_GetByCollectionTag(c.ID, t.ID)
+		mds, err := n.ManifestData_GetByCollectionTag(ctx, c.ID, t.ID)
 		if err != nil {
 			logrus.Error(err)
 			return ctpps, err
@@ -76,7 +87,9 @@ func (n Neo) CollectionTagProfilePair_Platform_GetAll() (ctpps []types.Collectio
 	return
 }
 
-func (n Neo) CollectionTagProfilePair_Annotation_GetAll() (ctpps []types.CollectionTagProfilePair, err error) {
+func (n Neo) CollectionTagProfilePair_Annotation_GetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error) {
+	ctx, span := tracer.Start(ctx, "CollectionTagProfilePair_Annotation_GetAll")
+	defer span.End()
 	q := `MATCH (prf:Profile)-[:USES]->(Rule)-[:TRUE]->(Annotation)<-[:HAS_ANNOTATION]-(:ManifestData)<-[:CREATED]-(m:Manifest)`
 	q += ` MATCH (c:Collection)-[:UPSTREAM]->(m)<-[:UPSTREAM]-(t:Tag)`
 	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule,`
@@ -111,7 +124,7 @@ func (n Neo) CollectionTagProfilePair_Annotation_GetAll() (ctpps []types.Collect
 		}
 
 		/// Get Manifests for this Collection/Tag
-		mds, err := n.ManifestData_GetByCollectionTag(c.ID, t.ID)
+		mds, err := n.ManifestData_GetByCollectionTag(ctx, c.ID, t.ID)
 		if err != nil {
 			logrus.Error(err)
 			return ctpps, err

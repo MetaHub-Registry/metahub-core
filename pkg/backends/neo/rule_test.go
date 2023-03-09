@@ -103,6 +103,52 @@ func Test_Rule_EvalAnnotationRule(t *testing.T) {
 	assert.Equal(t, r, gotR)
 }
 
+func Test_Rule_EvalAnnotationRule_Noop(t *testing.T) {
+	ctx := context.Background()
+	_ = ctx
+	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
+	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target:platform")
+	//bs.PostTestSleep = 120
+	br, err := SetupTest(bs)
+	_ = br
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs)
+	// Actual Test
+	_, found, err := db.Rule_GetByLabel(ctx, "target:platform")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.False(t, found)
+	r := types.Rule{
+		Name:  "cpu",
+		Tag:   "noop",
+		Type:  "anno",
+		Op:    "null",
+		Key:   "org.supercontainers.hardware.cpu.*",
+		Value: "",
+	}
+	rID, err := db.Rule_GetCreate(ctx, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.ID = rID
+	err = db.Rule_EvalAnnotationRule(ctx, r)
+	assert.NoError(t, err)
+	q := fmt.Sprintf(`MATCH (r:Rule) WHERE id(r) = %d RETURN id(r) AS rID`, rID)
+	_, found, err = db.QueryOne(q)
+	if err != nil || !found {
+		t.Fatal("Rule not found")
+	}
+	gotR, found, err := db.Rule_GetByLabel(ctx, "cpu:noop")
+	if err != nil || !found {
+		t.Fatal("Rule not found")
+	}
+	assert.Equal(t, r, gotR)
+}
+
 func Test_Rule_EvalAll(t *testing.T) {
 	ctx := context.Background()
 	bs := utils.NewBootstrap()

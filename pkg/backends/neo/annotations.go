@@ -6,6 +6,8 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (n Neo) Config_AddLabels(ctx context.Context, cfgID int64, as *types.Annotations) (err error) {
@@ -23,8 +25,14 @@ func (n Neo) Config_AddLabels(ctx context.Context, cfgID int64, as *types.Annota
 }
 
 func (n Neo) Labels_GetByConfigID(ctx context.Context, cfgID int64) (as types.Annotations, err error) {
+	ctx, span := tracer.Start(ctx, "CollectionListing_Get_ByName")
+	defer span.End()
 	q := fmt.Sprintf(`MATCH (cfg:Config)-[:HAS_LABEL]->(l:Label) WHERE id(cfg) = %d`, cfgID)
 	q += ` RETURN id(l) AS labelID, l.key AS labelKey, l.value AS labelValue`
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
 	res, err := n.Query(q)
 	if err != nil {
 		return
@@ -44,6 +52,8 @@ func (n Neo) Labels_GetByConfigID(ctx context.Context, cfgID int64) (as types.An
 }
 
 func (n Neo) GetAnnotationsByManifestDataID(ctx context.Context, msID int64) (as types.Annotations, err error) {
+	_, span := tracer.Start(ctx, "GetAnnotationsByManifestDataID")
+	defer span.End()
 	q := fmt.Sprintf(`MATCH (md:ManifestData)-[:HAS_ANNOTATION]->(a:Annotation) WHERE id(md) = %d`, msID)
 	q += ` RETURN id(a) AS annotationID, a.key AS annotationKey, a.value AS annotationValue`
 	res, err := n.Query(q)
