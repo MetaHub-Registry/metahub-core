@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
@@ -15,6 +14,8 @@ import (
 )
 
 func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMani types.ManifestData) (err error) {
+	ctx, span := tracer.Start(ctx, "CreateOCIv1")
+	defer span.End()
 	// TODO: Check if OCIv1 is already present
 	msID := mani.ID
 	_, found, err := mag.Database.ManifestData_GetID_ByMediaType(ctx, msID, "application/vnd.oci.image.manifest.v1+json")
@@ -68,7 +69,7 @@ func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMa
 		return
 	}
 	for _, l := range layerMap {
-		m.Layers = append(m.Layers, l)
+		m.Layers = append(m.Layers, l.Descriptor)
 	}
 	//TODO: Generate Manifest: `oci.image.manifest.v1`
 	////// Add Annotations
@@ -105,8 +106,8 @@ func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMa
 		return
 	}
 	////// Link ManifestData to Layers
-	for layerID := range layerMap {
-		err = mag.Database.ManifestData_LinkToOCIv1Layer(ctx, maniID, layerID)
+	for _, ld := range layerMap {
+		err = mag.Database.ManifestData_LinkToOCIv1Layer(ctx, maniID, ld.LayerID)
 		if err != nil {
 			logrus.Error(err)
 			return
@@ -164,7 +165,7 @@ func (mag Magazine) GenerateOCIv1Config(ctx context.Context, maniSI types.Manife
 		}
 	}
 	v1Cfg.Config.Env = es.ToSlice()
-	now := time.Now()
+	/*now := time.Now()
 	mhHist := v1.History{
 		Created:    &now,
 		CreatedBy:  "org.metahub-registry.v1",
@@ -172,6 +173,7 @@ func (mag Magazine) GenerateOCIv1Config(ctx context.Context, maniSI types.Manife
 		EmptyLayer: true,
 	}
 	v1Cfg.History = append(v1Cfg.History, mhHist)
+	*/
 	// TODO: Manipulate Config
 	// -> ENV, CMD, ENTRYPOINT, VOLUME, EXPOSE, USER, WORKDIR, HEALTHCHECK, SHELL
 	return
