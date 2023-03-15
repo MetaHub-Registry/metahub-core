@@ -66,7 +66,7 @@ func (s Sqlite) LoginUserWithHash(username, pwhash string) (err error) {
 	return
 }
 
-func (s Sqlite) LoginUserScope(username, password string, req types.Request) (status int, pl helper.ErrorPayload, err error) {
+func (s Sqlite) LoginUserScope(username, password string, req types.Request) (status int, role string, pl helper.ErrorPayload, err error) {
 	// check login and return token
 	u, err := s.User.GetByUsername(username)
 	if err != nil {
@@ -75,12 +75,12 @@ func (s Sqlite) LoginUserScope(username, password string, req types.Request) (st
 			"User not found",
 			helper.NewDetailFromReq(req),
 		)
-		return http.StatusNotFound, pl, nil
+		return http.StatusNotFound, role, pl, nil
 	}
 	match, err := u.PasswordMatches(password)
 	if err != nil {
 		logrus.Error(err)
-		return http.StatusInternalServerError, pl, err
+		return http.StatusInternalServerError, role, pl, err
 	}
 	if !match {
 		pl = helper.NewErrPayload(
@@ -89,7 +89,7 @@ func (s Sqlite) LoginUserScope(username, password string, req types.Request) (st
 			helper.NewDetailFromReq(req),
 		)
 		logrus.Error("wrong credentials")
-		return http.StatusUnauthorized, pl, nil
+		return http.StatusUnauthorized, role, pl, nil
 	}
 	switch req.Method {
 	case "PUT", "POST", "DELETE", "PATCH":
@@ -99,10 +99,10 @@ func (s Sqlite) LoginUserScope(username, password string, req types.Request) (st
 				"wrong privileges",
 				helper.NewDetailFromReq(req),
 			)
-			return http.StatusUnauthorized, pl, nil
+			return http.StatusUnauthorized, role, pl, nil
 		}
 	}
-	return http.StatusOK, pl, nil
+	return http.StatusOK, u.Role, pl, nil
 }
 func (s Sqlite) LoginUser(username, password string) (err error) {
 	logrus.Debug(">> LoginUser")

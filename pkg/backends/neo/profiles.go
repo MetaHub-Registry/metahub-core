@@ -339,8 +339,8 @@ func (n Neo) ProfileAuthorizedPushHandler(ctx context.Context, req types.Request
 		return
 	}
 	// Only allow uploads to a repo prefixed with the profile name
-	if !strings.HasPrefix(req.Repo+"/", req.User) {
-		err = fmt.Errorf("user '%s' is not allowed to push to repo '%s'", req.User, req.Repo)
+	if !strings.HasPrefix(req.Repo+"/", req.User) && req.UserRole != "admin" {
+		err = fmt.Errorf("user '%s' (role: %s) is not allowed to push to repo '%s'", req.User, req.UserRole, req.Repo)
 		span.RecordError(err)
 		return
 	}

@@ -494,7 +494,9 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 		err = errors.Wrap(err, "failed to LinkCollectionTagToManifest")
 		return
 	}
-	// TODO: Compute Manifest List
+	// TODO: Compute Manifests
+	//err = mag.ComputeManifest(ctx, m)
+	// TODO: Compute ManifestLists
 	/*
 		err = mag.Database.ComputeManifestlists_ForCollection(ctx, col)
 		if err != nil {
@@ -532,6 +534,50 @@ func (mag Magazine) RemoveManifestByRequest(req types.Request) (found bool, err 
 }
 
 // ComputeManifests looks for changes to a manifest (e.g. new annotations), creates new config blobs and subsequently updates the manifest.
+func (mag Magazine) ComputeManifest(ctx context.Context, mani types.Manifest) (err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "magazine/manifest.go",
+		"func":    "ComputeManifest",
+		"mani":    mani.ID,
+		"name":    mani.Upstream.String(),
+	})
+	ctx, span := tracer.Start(ctx, "ComputeManifest")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("mani.id").Int64(mani.ID),
+		attribute.Key("mani.name").String(mani.Upstream.String()),
+	)
+	l.Infof("Manifest: %s/%s:%s", mani.Upstream.Reg, mani.Upstream.Repo, mani.Upstream.Tag)
+	for _, maniData := range mani.Manifests {
+		if maniData.MediaType == v1.MediaTypeImageManifest {
+			msg := fmt.Sprintf("[SKIP] ManifestData %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "debug"),
+				attribute.String("log.message", msg),
+			))
+			l.Info(msg)
+			continue
+		}
+		msg := fmt.Sprintf("ManifestData %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
+		l.Info(msg)
+		if len(mani.Annotations.Keys) > 0 {
+			l.Infof("  >> Annotations: %v", mani.Annotations.Keys)
+		}
+		///TODO: Need to add the annotations to the config
+		err = mag.CreateOCIv1(ctx, mani, maniData)
+		if err != nil {
+			l.Error(err)
+			return
+		}
+	}
+	return
+}
+
+// ComputeManifests looks for changes to a manifest (e.g. new annotations), creates new config blobs and subsequently updates the manifest.
 func (mag Magazine) ComputeManifests(ctx context.Context) (err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "magazine/manifest.go",
@@ -539,46 +585,17 @@ func (mag Magazine) ComputeManifests(ctx context.Context) (err error) {
 	})
 	ctx, span := tracer.Start(ctx, "ComputeManifests")
 	defer span.End()
-	/*****
-	* We are going to
-	1. Get all manifest(standins)
-	2. Get the ORIGINAL ManifestData node attached to the Manifest(SI)
-	2.1 Generate OCI Version
-	   A. Generate `oci.image.config.v1`
-		   	A.a Copy the config, put Annotations in it as labels -> store it as
-		     -> check for collissions between the manifest annotations and already present labels
-		   	A.b Any manipulation we want to do? ENV, CMD, ENTRYPOINTS?
-	   B. Generate Layers: Create OCI layer media-types:  application/vnd.oci.image.layer.v1.tar[+gzip]
-			B.a just create a new discriptor with a new media type
-	   C. Generate Manifest: `oci.image.manifest.v1`
-		    C.a extract labels, and attach the onces with reverseDNS as annotations to the OCI manifest
-				-> check for collissions (even though a. should have taken care of that)
-			C.b attach the config and layers to the OCI manifest
-			C.c more manipulations? Extra Layer?
-	***/
 	// 	1. Get all manifest(standins)
 	manis, err := mag.Database.Manifest_GetAll(ctx)
 	if err != nil {
-		logrus.Error(err)
+		l.Error(err)
 		return
 	}
 	for _, mani := range manis {
-		l.Infof("Manifest: %s/%s:%s", mani.Upstream.Reg, mani.Upstream.Repo, mani.Upstream.Tag)
-		for _, maniData := range mani.Manifests {
-			if maniData.MediaType == v1.MediaTypeImageManifest {
-				l.Infof("[SKIP] ManifestData %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
-				continue
-			}
-			l.Infof("ManifestData %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
-			if len(mani.Annotations.Keys) > 0 {
-				logrus.Warnf("  >> Annotations: %v", mani.Annotations.Keys)
-			}
-			///TODO: Need to add the annotations to the config
-			err = mag.CreateOCIv1(ctx, mani, maniData)
-			if err != nil {
-				logrus.Error(err)
-				return
-			}
+		err = mag.ComputeManifest(ctx, mani)
+		if err != nil {
+			l.Error(err)
+			return
 		}
 	}
 	return
