@@ -180,3 +180,19 @@ type LayerDesc struct {
 	LayerID    int64
 	Descriptor v1.Descriptor
 }
+
+func (mag Magazine) Layers_DeleteUnused(ctx context.Context) (err error) {
+	_, span := tracer.Start(ctx, "Layers_DeleteUnused")
+	defer span.End()
+	err = mag.Database.Layers_DeleteUnused(ctx)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to delete unused layers")
+		return
+	}
+	err = mag.Database.BlobUpload_DeleteUnused(ctx)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to delete unused blobUploads")
+		return
+	}
+	return
+}

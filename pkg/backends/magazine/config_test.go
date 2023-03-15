@@ -19,7 +19,7 @@ func Test_Config_StoreConfigUpload(t *testing.T) {
 	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
 	//bs.PostTestSleep = 300
-	_, err := mag.SetupTest(bs)
+	_, err := mag.SetupTest(ctx, bs)
 	if err != nil {
 		t.Fatal(err)
 	}

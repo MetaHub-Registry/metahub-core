@@ -35,7 +35,7 @@ var cfgWithLabels = []byte(`{
 func Test_CachManifest(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
-	_, err := mag.SetupTest(bs)
+	_, err := mag.SetupTest(ctx, bs)
 	assert.NoError(t, err)
 	defer TeardownTest(bs)
 	// Test
@@ -72,8 +72,11 @@ func Test_StoreManifestUpload_OCIManifest(t *testing.T) {
 	bs.AddBootstrap("config:ft_arm")
 	bs.AddBootstrap("layer:0:ft_arm64")
 	bs.AddBootstrap("layer:1:ft_arm64")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("rules:rules/generic/linux.yaml")
+	bs.AddBootstrap("profile:profiles/generic.yaml")
 	//bs.PostTestSleep = 300
-	_, err := mag.SetupTest(bs)
+	_, err := mag.SetupTest(ctx, bs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +87,7 @@ func Test_StoreManifestUpload_OCIManifest(t *testing.T) {
 	req := types.Request{
 		Repo:    "qnib/plain-featuretest",
 		Tag:     "20220715-arm64-generic",
-		User:    "test",
+		User:    "qnib",
 		Profile: "generic",
 		Digest:  inMani.Digest,
 	}
@@ -111,9 +114,10 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer(t *testing.T) {
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("users")
 	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
+	bs.AddBootstrap("rules:rules/generic/linux.yaml")
+	bs.AddBootstrap("profile:profiles/generic.yaml")
 	//bs.PostTestSleep = 300
-	_, err := mag.SetupTest(bs)
+	_, err := mag.SetupTest(ctx, bs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,11 +138,15 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer(t *testing.T) {
 	req := types.Request{
 		Repo:        "oci/conformance",
 		Tag:         "test0",
+		Profile:     "generic",
+		User:        "oci",
 		ContentType: "application/vnd.oci.image.manifest.v1+json",
 	}
 	// Upload Manifest with Embedded Config
 	mani, err := mag.StoreManifestUpload(ctx, req, buf)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, bufDig.String(), mani.Digest)
 	// Check if config is in DB
 	cfgs, found, err := mag.Database.Config_GetByDigest("sha256:65b1de14a76de70a46ff0839ab79775aceb96ee12069fb6ed45bc35f958fdbcb")
@@ -169,8 +177,10 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer_with_Labels(t *tes
 	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
 	bs.AddBootstrap("profile:profiles/mpi/mpich/generic.yaml")
 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
+	bs.AddBootstrap("rules:rules/generic/linux.yaml")
+	bs.AddBootstrap("profile:profiles/generic.yaml")
 	//bs.PostTestSleep = 300
-	_, err := mag.SetupTest(bs)
+	_, err := mag.SetupTest(ctx, bs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,6 +219,8 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer_with_Labels(t *tes
 		Host:        "localhost",
 		Repo:        "oci/conformance",
 		Tag:         "test0",
+		Profile:     "generic",
+		User:        "oci",
 		ContentType: "application/vnd.oci.image.manifest.v1+json",
 	}
 	// Upload Manifest with Embedded Config
@@ -234,7 +246,7 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer_with_Labels(t *tes
 	}
 	assert.Equal(t, cfgDigest, cfgObj.Digest)
 	// Check Collections
-	manis, err := mag.Database.Manifest_GetAll()
+	manis, err := mag.Database.Manifest_GetAll(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

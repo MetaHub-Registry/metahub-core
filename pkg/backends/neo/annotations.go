@@ -6,8 +6,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/metahub-registry/metahub-core/pkg/types"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 func (n Neo) Config_AddLabels(ctx context.Context, cfgID int64, as *types.Annotations) (err error) {
@@ -25,14 +23,8 @@ func (n Neo) Config_AddLabels(ctx context.Context, cfgID int64, as *types.Annota
 }
 
 func (n Neo) Labels_GetByConfigID(ctx context.Context, cfgID int64) (as types.Annotations, err error) {
-	ctx, span := tracer.Start(ctx, "CollectionListing_Get_ByName")
-	defer span.End()
 	q := fmt.Sprintf(`MATCH (cfg:Config)-[:HAS_LABEL]->(l:Label) WHERE id(cfg) = %d`, cfgID)
 	q += ` RETURN id(l) AS labelID, l.key AS labelKey, l.value AS labelValue`
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
-	))
 	res, err := n.Query(q)
 	if err != nil {
 		return

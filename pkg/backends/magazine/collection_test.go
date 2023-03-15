@@ -36,7 +36,7 @@ func Test_Collection_ComputeManifest(t *testing.T) {
 	bs.AddBootstrap("collection:ft_generic")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 300
-	br, err := mag.SetupTest(bs)
+	br, err := mag.SetupTest(ctx, bs)
 	_ = br
 	//br.PrintDict()
 	if err != nil {
@@ -59,7 +59,7 @@ func Test_Collection_ComputeManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Actual test
-	err = mag.ComputeManifests()
+	err = mag.ComputeManifests(ctx)
 	assert.NoError(t, err)
 	err = mag.Database.Rule_EvalAll(ctx)
 	assert.NoError(t, err)

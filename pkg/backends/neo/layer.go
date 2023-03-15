@@ -353,3 +353,29 @@ func (n Neo) Layer_DescriporGetInsert(ctx context.Context, desc v1.Descriptor) (
 	}
 	return
 }
+
+func (n Neo) Layers_DeleteUnused(ctx context.Context) (err error) {
+	_, span := tracer.Start(ctx, "Layers_DeleteUnused")
+	defer span.End()
+	q := `MATCH (l:Layer) WHERE NOT (l)<-[:HAS]-(:ManifestData) DETACH DELETE l RETURN count(l) AS deletedLayers`
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
+	res, err := n.Execute(q)
+	if err != nil {
+		err = errors.Wrap(err, "failed to delete unused layers")
+		return
+	}
+	deletedLayers, err := res.GetInt("deletedLayers")
+	if err != nil {
+		err = errors.Wrap(err, "failed to get count of deleted layers")
+		return
+	}
+	msg := fmt.Sprintf("Deleted %d layers", deletedLayers)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.message", msg),
+	))
+	return
+}

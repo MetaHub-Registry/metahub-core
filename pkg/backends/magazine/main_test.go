@@ -86,7 +86,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	err = gdb.Setup()
+	err = gdb.Setup(ctx)
 	if err != nil {
 		logrus.Fatal(err)
 	}

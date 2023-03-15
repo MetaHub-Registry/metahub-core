@@ -28,7 +28,7 @@ func Test_TagList(t *testing.T) {
 	bs.AddBootstrap("collection:ft_arm64")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 300
-	br, err := mag.SetupTest(bs)
+	br, err := mag.SetupTest(ctx, bs)
 	assert.NoError(t, err)
 	defer TeardownTest(bs)
 	_ = br

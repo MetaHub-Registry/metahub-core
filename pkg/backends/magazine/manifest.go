@@ -7,13 +7,16 @@ import (
 	"net/http"
 
 	"github.com/opencontainers/go-digest"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/backends/minio"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 	ycfg "github.com/metahub-registry/metahub-core/pkg/yaml/config"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (mag Magazine) GetManifest(ctx context.Context, m ycfg.Manifest) (mani types.ManifestData, err error) {
@@ -177,7 +180,7 @@ func (mag Magazine) LinkManifestToManifestData(ctx context.Context, maniID, mani
 	return mag.Database.LinkManifestToManifestData(ctx, maniID, maniDataID, props...)
 }
 
-func (mag Magazine) NeoLinkManifestToConfig(ctx context.Context, maniID, cfgID int64) (err error) {
+func (mag Magazine) NeoLinkManifestDataToConfig(ctx context.Context, maniID, cfgID int64) (err error) {
 	return mag.Database.ManifestData_LinkToConfig(ctx, maniID, cfgID)
 }
 
@@ -263,6 +266,8 @@ func (mag Magazine) Manifest_GetByRequest(ctx context.Context, req types.Request
 
 // storeManifestUpload_OCIManifest
 func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req types.Request, buf []byte) (mani types.Manifest, ociMani types.OCIManifest, err error) {
+	ctx, span := tracer.Start(ctx, "storeManifestUpload_OCIManifest")
+	defer span.End()
 	ociMani = types.OCIManifest{
 		MediaType: req.ContentType,
 	}
@@ -307,8 +312,47 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 			Size:      l.Size,
 		})
 	}
+	prf, found, e := mag.Database.Profile_Get_ByLabel(ctx, req.Profile)
+	if e != nil {
+		err = errors.Wrapf(e, "failed to get profile '%s' from database", prf.Label)
+		return
+	}
+	if !found {
+		err = fmt.Errorf("profile '%s' not found", prf.Label)
+		return
+	}
+	md, found, e := mag.Database.ManifestData_GetPushed_ByProfile(ctx, up, prf)
+	if e != nil {
+		err = errors.Wrapf(e, "failed to get ManifestData for profile '%s' from database", prf.Label)
+		return
+	}
+	if found {
+		msg := fmt.Sprintf("manifest '%s' already pushed for profile: '%s'", up.String(), prf.Label)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
+		if dig.String() != md.Digest {
+			msg = fmt.Sprintf("incoming manifest ('%s') is different from already present manifest ('%s')", utils.ShortenDigest(dig.String()), utils.ShortenDigest(md.Digest))
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "debug"),
+				attribute.String("log.message", msg),
+			))
+			// TODO: Remove manifestdata already pushed
+			err = mag.Database.ManifestData_Delete(ctx, md)
+
+		} else {
+			msg = fmt.Sprintf("incoming manifest ('%s') is the same as already present manifest ('%s')", utils.ShortenDigest(dig.String()), utils.ShortenDigest(md.Digest))
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "debug"),
+				attribute.String("log.message", msg),
+			))
+		}
+
+	}
+
 	// Store ManifestData (the actual Manifest with digest and all)
-	md := types.ManifestData{
+	md = types.ManifestData{
 		Digest:    dig.String(),
 		MediaType: ociMani.MediaType,
 		Data:      buf,
@@ -326,6 +370,26 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 		err = errors.Wrap(err, "failed to mag.LinkManifestToManifestData")
 		return
 	}
+	err = mag.Database.LinkManifestDataToProfile(ctx, md.ID, prf.ID)
+	if err != nil {
+		err = errors.Wrap(err, "failed to mag.LinkManifestToManifestData")
+		return
+	}
+	// Remove orhpaned layers
+
+	err = mag.Layers_DeleteUnused(ctx)
+	if err != nil {
+		err = errors.Wrap(err, "failed to delete unused layers")
+		span.RecordError(err)
+		return
+	}
+	// Remove orhpaned config
+	err = mag.Configs_DeleteUnused(ctx)
+	if err != nil {
+		err = errors.Wrap(err, "failed to delete unused config")
+		span.RecordError(err)
+		return
+	}
 	return
 }
 
@@ -333,12 +397,17 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 	/// TODO: Can this be dratically simplified?
 	ctx, span := tracer.Start(ctx, "StoreManifestUpload")
 	defer span.End()
+	span.SetAttributes(
+		attribute.Key("repo").String(req.Repo),
+		attribute.Key("body-length").Int(len(buf)),
+		attribute.Key("profile").String(req.Profile),
+	)
 	var ociMani types.OCIManifest
 	// Put Manifest Blob into Minio
 	m, ociMani, err := mag.storeManifestUpload_OCIManifest(ctx, req, buf)
 	switch len(m.Manifests) {
 	default:
-		err = fmt.Errorf("expect to have  to store Manifest")
+		err = fmt.Errorf("expect to have to store Manifest")
 		return
 	case 1:
 		md = m.Manifests[0]
@@ -360,7 +429,10 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 	//logrus.Infof("Found Config: ID:%d #Labels:%d", cfg.ID, len(cfg.Labels.Map))
 	md.Config = cfg
 	// Link Manifest to Config
-	logrus.Warnf("Linking Manifest to Config: '%d' -> '%d'", md.ID, cfg.ID)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.message", fmt.Sprintf("Linking Manifest to Config: '%d' -> '%d'", md.ID, cfg.ID)),
+	))
 	err = mag.Database.ManifestData_LinkToConfig(ctx, md.ID, cfg.ID)
 	if err != nil {
 		err = errors.Wrap(err, "failed to mag.LinkManifestToConfig")
@@ -460,8 +532,11 @@ func (mag Magazine) RemoveManifestByRequest(req types.Request) (found bool, err 
 }
 
 // ComputeManifests looks for changes to a manifest (e.g. new annotations), creates new config blobs and subsequently updates the manifest.
-func (mag Magazine) ComputeManifests() (err error) {
-	ctx := context.Background()
+func (mag Magazine) ComputeManifests(ctx context.Context) (err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "magazine/manifest.go",
+		"func":    "ComputeManifests",
+	})
 	ctx, span := tracer.Start(ctx, "ComputeManifests")
 	defer span.End()
 	/*****
@@ -482,16 +557,22 @@ func (mag Magazine) ComputeManifests() (err error) {
 			C.c more manipulations? Extra Layer?
 	***/
 	// 	1. Get all manifest(standins)
-	manis, err := mag.Database.Manifest_GetAll()
+	manis, err := mag.Database.Manifest_GetAll(ctx)
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
 	for _, mani := range manis {
-		logrus.Infof("Manifest: %s/%s:%s", mani.Upstream.Reg, mani.Upstream.Repo, mani.Upstream.Tag)
+		l.Infof("Manifest: %s/%s:%s", mani.Upstream.Reg, mani.Upstream.Repo, mani.Upstream.Tag)
 		for _, maniData := range mani.Manifests {
-			logrus.Infof("ManifestData (%-20s): %s (Annotations: %d, Layers:%d)", maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
-			logrus.Warnf("  >> Annotations: %v", mani.Annotations.Keys)
+			if maniData.MediaType == v1.MediaTypeImageManifest {
+				l.Infof("[SKIP] ManifestData %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
+				continue
+			}
+			l.Infof("ManifestData %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
+			if len(mani.Annotations.Keys) > 0 {
+				logrus.Warnf("  >> Annotations: %v", mani.Annotations.Keys)
+			}
 			///TODO: Need to add the annotations to the config
 			err = mag.CreateOCIv1(ctx, mani, maniData)
 			if err != nil {
@@ -500,6 +581,5 @@ func (mag Magazine) ComputeManifests() (err error) {
 			}
 		}
 	}
-	// TODO:
 	return
 }

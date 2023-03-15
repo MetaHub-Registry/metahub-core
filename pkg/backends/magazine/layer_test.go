@@ -10,7 +10,7 @@ import (
 
 func Test_CacheLayers(t *testing.T) {
 	bs := utils.NewBootstrap()
-	_, err := mag.SetupTest(bs)
+	_, err := mag.SetupTest(ctx, bs)
 	assert.NoError(t, err)
 	defer TeardownTest(bs)
 	// Test

@@ -1,6 +1,7 @@
 package neo
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -17,7 +18,7 @@ import (
 )
 
 var (
-	tracer = otel.Tracer("metalib/neo")
+	tracer = otel.Tracer("magazine")
 )
 
 type NeoConfig struct {
@@ -32,12 +33,14 @@ type Neo struct {
 	Enabled   bool
 	neoDriver neo4j.Driver
 	neoConfig NeoConfig
+	Args      map[string]string
 }
 
 func NewNeo(ncfg NeoConfig) (n Neo) {
 	return Neo{
 		Enabled:   true,
 		neoConfig: ncfg,
+		Args:      map[string]string{},
 	}
 }
 
@@ -79,6 +82,7 @@ func New(cfgFile string) (Neo, error) {
 	n = Neo{
 		Enabled:   true,
 		neoConfig: ncfg,
+		Args:      map[string]string{},
 	}
 	err = n.Connect()
 	if err != nil {
@@ -100,7 +104,9 @@ func (n *Neo) Connect() (err error) {
 	return
 }
 
-func (n Neo) Setup() (err error) {
+func (n Neo) Setup(ctx context.Context) (err error) {
+	_, span := tracer.Start(ctx, "Neo.Setup")
+	defer span.End()
 	n.neoDriver, err = neo4j.NewDriver(n.neoConfig.URL, neo4j.BasicAuth(n.neoConfig.User, n.neoConfig.Passwd, ""))
 	if err != nil {
 		logrus.Errorf("Error creating neo driver: %s\n", err)

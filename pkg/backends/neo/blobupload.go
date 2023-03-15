@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/metahub-registry/metahub-core/pkg/tracing"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
@@ -99,7 +100,7 @@ func (n Neo) BlobUpload_Update_ByUUID(ctx context.Context, i *types.OCIBlobUploa
 }
 
 func (n Neo) BlobUpload_Complete(ctx context.Context, i *types.OCIBlobUpload) (err error) {
-	_, span := tracer.Start(ctx, "UploadChunk_Create")
+	_, span := tracer.Start(ctx, "BlobUpload_Complete")
 	defer span.End()
 	span.SetAttributes(
 		attribute.Key("id").Int64(i.ID),
@@ -212,5 +213,31 @@ func OCIBlobUploadFromResult(res types.Result) (ct types.OCIBlobUpload, err erro
 		UUID:          uuid.MustParse(blobuploadUUID),
 		Location:      blobuploadLocation,
 	}
+	return
+}
+
+func (n Neo) BlobUpload_DeleteUnused(ctx context.Context) (err error) {
+	_, span := tracer.Start(ctx, "BlobUpload_DeleteUnused")
+	defer span.End()
+	q := `MATCH (bu:BlobUpload)-[:CHUNK]->(bc:BlobChunk) WHERE NOT (bu)-[:IS]-() DETACH DELETE bu,bc RETURN count(bu) AS delCnt`
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
+	res, err := n.Execute(q)
+	if err != nil {
+		err = errors.Wrap(err, "failed to delete unused BlobUploads")
+		return
+	}
+	delCnt, err := res.GetInt("delCnt")
+	if err != nil {
+		err = errors.Wrap(err, "failed to get count of deleted BlobUploads")
+		return
+	}
+	msg := fmt.Sprintf("Deleted %d BlobUploads", delCnt)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.message", msg),
+	))
 	return
 }

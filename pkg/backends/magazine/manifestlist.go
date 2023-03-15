@@ -9,10 +9,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
-	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
 func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
+	ctx, span := tracer.Start(ctx, "ComputeManifestlists")
+	defer span.End()
 	logrus.Warnf("Compute Manifest Lists")
 	err = mag.Database.Rule_EvalAll(ctx)
 	if err != nil {
@@ -35,35 +36,50 @@ func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
 			return
 		}
 		for _, md := range mds {
-			logrus.Warnf("  manifestdata: %s", md.Label)
+			//logrus.Warnf("  manifestdata: %s", md.Label)
 			er.Add(label, md)
 		}
 	}
+	repoRegex, ok := mag.Config.Args["repoRegex"]
+	if !ok || repoRegex == "" {
+		repoRegex = ".*"
+	}
+	tagRegex, ok := mag.Config.Args["tagRegex"]
+	if !ok || tagRegex == "" {
+		tagRegex = ".*"
+	}
+	prfRegex, ok := mag.Config.Args["profileRegex"]
+	if !ok || prfRegex == "" {
+		prfRegex = ".*"
+	}
 	/// 2. Query for profiles (set of rules) and output the manifestdata that evals true for all rules of a profile
-	prfs, err := mag.Database.GetProfiles()
-	if err != nil {
-		logrus.Errorf("failed to get profiles: %v", err)
-		return
-	}
-	for _, prf := range prfs {
-		label := fmt.Sprintf("%s:%s", prf.Name, prf.Tag)
-		if prf.Name == "" {
-			label = prf.Tag
+	/*
+		prfs, err := mag.Database.Profiles_Get_ByRegexLabel(ctx, prfRegex)
+		if err != nil {
+			logrus.Errorf("failed to get profiles: %v", err)
+			return
 		}
-		logrus.Warnf("Profile: %s", label)
-		if prf.Rule != "" {
-			lbs, err := utils.ExprGetLabels(prf.Rule)
-			if err != nil {
-				logrus.Errorf("failed to get labels from rule: %v", err)
-				return err
+		for _, prf := range prfs {
+			label := fmt.Sprintf("%s:%s", prf.Name, prf.Tag)
+			if prf.Name == "" {
+				label = prf.Tag
 			}
-			mds := er.GetManifestdataForRules(lbs.ToSlice()...)
-			for _, md := range mds {
-				logrus.Warnf("  manifestdata: %s", md.Label)
+			logrus.Warnf("Profile: %s", label)
+			if prf.Rule != "" {
+				lbs, err := utils.ExprGetLabels(prf.Rule)
+				if err != nil {
+					logrus.Errorf("failed to get labels from rule: %v", err)
+					return err
+				}
+				mds := er.GetManifestdataForRules(lbs.ToSlice()...)
+				for _, md := range mds {
+					logrus.Warnf("  manifestdata: %s", md.Label)
+				}
 			}
 		}
-	}
-	ctpps, err := mag.Database.CollectionTagProfilePair_GetAll(ctx)
+	*/
+	ctpps, err := mag.Database.CollectionTagProfilePair_GetRegexFiltered(ctx, repoRegex, tagRegex, prfRegex)
+	//ctpps, err := mag.Database.CollectionTagProfilePair_GetAll(ctx)
 	if err != nil {
 		logrus.Errorf("failed to get profile manifestdata pairs: %v", err)
 		return
