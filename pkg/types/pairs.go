@@ -36,12 +36,14 @@ func NewCollectionTagProfilePair(c Collection, t CollectionTag, p Profile) (pp C
 	}
 	return
 }
+
 func (pmdps *CollectionTagProfilePair) AddRule(label string) error {
 	if !pmdps.Rules.Contains(label) {
 		pmdps.Rules.Add(label)
 	}
 	return nil
 }
+
 func (pmdps *CollectionTagProfilePair) AddManifest(md ManifestData) error {
 	if md.MediaType != "application/vnd.oci.image.manifest.v1+json" {
 		logrus.Warnf("Skip manifest with type: %s", md.MediaType)
@@ -53,4 +55,8 @@ func (pmdps *CollectionTagProfilePair) AddManifest(md ManifestData) error {
 		pmdps.Manifests = append(pmdps.Manifests, md)
 	}
 	return nil
+}
+
+func (ctpp CollectionTagProfilePair) String() string {
+	return fmt.Sprintf("Collection: [%d]%s:%s[%d] [%s:%s]", ctpp.Collection.ID, ctpp.Collection.Repo, ctpp.Tag.Tag, ctpp.Tag.ID, ctpp.Profile.Name, ctpp.Profile.Tag)
 }

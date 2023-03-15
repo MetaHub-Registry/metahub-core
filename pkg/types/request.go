@@ -33,6 +33,7 @@ type Request struct {
 	Tag            string `json:"tag"`
 	Digest         string `json:"digest"`
 	Platform       string `json:"platform"`
+	UserRole       string `json:"user_role"`
 	User           string `json:"user"`
 	Profile        string `json:"profile"`
 	Length         int    `json:"length"`
@@ -91,6 +92,7 @@ func NewRequest(ctx plainCtx.Context, r *http.Request) Request {
 	req.Host = srvAddr
 	repo := filepath.Join(parRepo, parImg)
 	user := "anonymous"
+	userRole := "user"
 	profile := "generic"
 	authorizationHeader := r.Header.Get("authorization")
 	if authorizationHeader != "" {
@@ -106,6 +108,10 @@ func NewRequest(ctx plainCtx.Context, r *http.Request) Request {
 		} else {
 			user = parts[0]
 		}
+	}
+	vUR := context.Get(r, "userRole")
+	if vUR != nil {
+		userRole = vUR.(string)
 	}
 	vU := context.Get(r, "userName")
 	if vU != nil {
@@ -182,6 +188,7 @@ func NewRequest(ctx plainCtx.Context, r *http.Request) Request {
 	req.Tag = tag
 	req.Digest = dig
 	req.User = user
+	req.UserRole = userRole
 	req.Profile = profile
 	req.Length = cntLen
 	req.Range = rnge
