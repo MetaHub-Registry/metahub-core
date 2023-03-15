@@ -26,7 +26,7 @@ func (mag Magazine) ComputeManifestlist_ForCTTP(ctx context.Context, er *types.E
 	l.Infof("Collection: [%d]%s:%s[%d] [%s:%s]", c.ID, c.Repo, ct.Tag, ct.ID, ctpp.Profile.Name, ctpp.Profile.Tag)
 	ml := types.ManifestList{
 		SchemaVersion: 2,
-		MediaType:     v1.MediaTypeImageManifest,
+		MediaType:     v1.MediaTypeImageIndex,
 		Manifests:     []types.ManifestData{},
 	}
 	tmpMDS := er.FilterByCTPP(ctpp)
