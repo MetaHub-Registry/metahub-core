@@ -28,6 +28,46 @@ func (n Neo) CollectionTagProfilePair_GetAll(ctx context.Context) (ctpps []types
 	return
 }
 
+func (n Neo) CollectionTagProfilePair_GetRegexFiltered(ctx context.Context, repoRegex, tagRegex, prfRegex string) (ctpps []types.CollectionTagProfilePair, err error) {
+	ctx, span := tracer.Start(ctx, "CollectionTagProfilePair_GetRegexFiltered")
+	defer span.End()
+	ctpps, e := n.CollectionTagProfilePair_Annotation_GetRegexFiltered(ctx, repoRegex, tagRegex, prfRegex)
+	if e != nil {
+		err = errors.Wrap(e, "failed to get CollectionTagProfilePairs with annotations")
+		return
+	}
+	ctpps2, e := n.CollectionTagProfilePair_Platform_GetRegexFiltered(ctx, repoRegex, tagRegex, prfRegex)
+	if e != nil {
+		err = errors.Wrap(e, "failed to get CollectionTagProfilePairs with platforms")
+		return
+	}
+	ctpps = append(ctpps, ctpps2...)
+	return
+}
+
+func (n Neo) CollectionTagProfilePair_Platform_GetRegexFiltered(ctx context.Context, repoRegex, tagRegex, prfRegex string) (ctpps []types.CollectionTagProfilePair, err error) {
+	ctx, span := tracer.Start(ctx, "CollectionTagProfilePair_Platform_GetAll")
+	defer span.End()
+	rel := types.RelationSuccess
+	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(Rule)-[%s]->(p:Platform)<-[:IS]-(m:Manifest)-[:CREATED]-(md:ManifestData)`, rel)
+	q += fmt.Sprintf(` WHERE prf.label =~ "%s"`, prfRegex)
+	q += ` MATCH (c:Collection)-[:UPSTREAM]->(m)<-[:UPSTREAM]-(t:Tag)`
+	q += fmt.Sprintf(` WHERE c.repo =~ "%s" AND t.name =~ "%s"`, repoRegex, tagRegex)
+	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule,`
+	q += ` id(c) AS collectionID, c.repo AS collectionRepo,`
+	q += ` id(t) AS tagID, t.name AS tagName`
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
+	res, err := n.Query(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	return n.collectionTagProfilePair_FromResult(ctx, res)
+}
+
 func (n Neo) CollectionTagProfilePair_Platform_GetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error) {
 	ctx, span := tracer.Start(ctx, "CollectionTagProfilePair_Platform_GetAll")
 	defer span.End()
@@ -46,45 +86,29 @@ func (n Neo) CollectionTagProfilePair_Platform_GetAll(ctx context.Context) (ctpp
 		logrus.Error(err)
 		return
 	}
-	ctpps = []types.CollectionTagProfilePair{}
-	for _, r := range res {
-		p, err := n.ProfileFromResult(r)
-		if err != nil {
-			logrus.Error(err)
-			continue
-		}
-		c, err := CollectionFromResult(r)
-		if err != nil {
-			logrus.Error(err)
-			continue
-		}
-		t, err := CollectionTagFromResult(r)
-		if err != nil {
-			logrus.Error(err)
-			continue
-		}
-		ctpp, err := types.NewCollectionTagProfilePair(c, t, p)
-		if err != nil {
-			logrus.Error(err)
-			return ctpps, err
-		}
+	return n.collectionTagProfilePair_FromResult(ctx, res)
+}
 
-		/// Get Manifests for this Collection/Tag
-		mds, err := n.ManifestData_GetByCollectionTag(ctx, c.ID, t.ID)
-		if err != nil {
-			logrus.Error(err)
-			return ctpps, err
-		}
-		for _, md := range mds {
-			err = ctpp.AddManifest(md)
-			if err != nil {
-				logrus.Error(err)
-				return ctpps, err
-			}
-		}
-		ctpps = append(ctpps, ctpp)
+func (n Neo) CollectionTagProfilePair_Annotation_GetRegexFiltered(ctx context.Context, repoRegex, tagRegex, profileRegex string) (ctpps []types.CollectionTagProfilePair, err error) {
+	ctx, span := tracer.Start(ctx, "CollectionTagProfilePair_Annotation_GetRegexFiltered")
+	defer span.End()
+	q := `MATCH (prf:Profile)-[:USES]->(Rule)-[:TRUE]->(Annotation)<-[:HAS_ANNOTATION]-(:ManifestData)<-[:CREATED]-(m:Manifest)`
+	q += fmt.Sprintf(` WHERE prf.label =~ "%s"`, profileRegex)
+	q += ` MATCH (c:Collection)-[:UPSTREAM]->(m)<-[:UPSTREAM]-(t:Tag)`
+	q += fmt.Sprintf(` WHERE c.repo =~ "%s" AND t.name =~ "%s"`, repoRegex, tagRegex)
+	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule,`
+	q += ` id(c) AS collectionID, c.repo AS collectionRepo,`
+	q += ` id(t) AS tagID, t.name AS tagName`
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
+	res, err := n.Query(q)
+	if err != nil {
+		logrus.Error(err)
+		return
 	}
-	return
+	return n.collectionTagProfilePair_FromResult(ctx, res)
 }
 
 func (n Neo) CollectionTagProfilePair_Annotation_GetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error) {
@@ -95,11 +119,19 @@ func (n Neo) CollectionTagProfilePair_Annotation_GetAll(ctx context.Context) (ct
 	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule,`
 	q += ` id(c) AS collectionID, c.repo AS collectionRepo,`
 	q += ` id(t) AS tagID, t.name AS tagName`
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
 	res, err := n.Query(q)
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
+	return n.collectionTagProfilePair_FromResult(ctx, res)
+}
+
+func (n Neo) collectionTagProfilePair_FromResult(ctx context.Context, res []types.Result) (ctpps []types.CollectionTagProfilePair, err error) {
 	ctpps = []types.CollectionTagProfilePair{}
 	for _, r := range res {
 		p, err := n.ProfileFromResult(r)

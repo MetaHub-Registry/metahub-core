@@ -9,6 +9,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (n Neo) Manifest_LinkToAnnotation(ctx context.Context, maniID, annotationID int64) (err error) {
@@ -157,20 +159,24 @@ func (n Neo) LinkManifestToManifestData(ctx context.Context, maniID, maniDataID 
 	return
 }
 
-func (n Neo) Manifest_GetAll() (manis []types.Manifest, err error) {
+func (n Neo) Manifest_GetAll(ctx context.Context) (manis []types.Manifest, err error) {
+	ctx, span := tracer.Start(ctx, "Manifest_GetAll")
+	defer span.End()
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	q := `MATCH (p:Platform)-[]-(m:Manifest)-[]-(u:Upstream)`
 	q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
 	q += ` id(m) AS manifestID,`
 	q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag`
-	//fmt.Printf("query: \n%s\n", q)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
 	input := map[string]interface{}{}
 	result, err := session.Run(q, input)
 	if err != nil {
 		return
 	}
-	ctx := context.Background()
 	manis = make([]types.Manifest, 0)
 	for result.Next() {
 		p, e := PlatformFromRecord(result)

@@ -125,12 +125,14 @@ func NewRequest(ctx plainCtx.Context, r *http.Request) Request {
 		} else {
 			user = m["user"]
 			// FIXME: Why is the profileName not carried over?
-			if _, ok := m["profile"]; ok {
-				profile = m["profile"]
-				span.AddEvent("log", trace.WithAttributes(
-					attribute.String("log.severity", "debug"),
-					attribute.String("log.message", fmt.Sprintf("found profile '%s' encoded in username '%s'", profile, user)),
-				))
+			if prf, ok := m["profile"]; ok {
+				if prf != "" {
+					profile = prf
+					span.AddEvent("log", trace.WithAttributes(
+						attribute.String("log.severity", "debug"),
+						attribute.String("log.message", fmt.Sprintf("found profile '%s' encoded in username '%s'", profile, user)),
+					))
+				}
 			}
 		}
 	}

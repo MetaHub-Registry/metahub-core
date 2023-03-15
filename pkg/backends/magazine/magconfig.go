@@ -6,6 +6,7 @@ type MagConfig struct {
 	RedirectDoc string
 	AuthURL     string
 	Tracing     TraceCfg
+	Args        map[string]string
 }
 
 type TraceCfg struct {

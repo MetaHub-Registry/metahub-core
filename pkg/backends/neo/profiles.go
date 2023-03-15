@@ -3,6 +3,7 @@ package neo
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
 	"github.com/pkg/errors"
@@ -11,6 +12,10 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+)
+
+var (
+	returnStatementProfile = `id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule, prf.label AS profileLabel`
 )
 
 func (n Neo) Profile_GetInsert(ctx context.Context, p *types.Profile) (err error) {
@@ -52,10 +57,14 @@ func (n Neo) Profile_GetInsert(ctx context.Context, p *types.Profile) (err error
 	}
 	return
 }
-
-func (n Neo) Profile_Get_ByNameTag(ctx context.Context, name, tag string) (p types.Profile, found bool, err error) {
-	q := fmt.Sprintf(`MATCH (prf:Profile) WHERE prf.name = "%s" AND prf.tag = "%s"`, name, tag)
-	q += ` RETURN id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule`
+func (n Neo) Profile_Get_ByLabel(ctx context.Context, label string) (p types.Profile, found bool, err error) {
+	_, span := tracer.Start(ctx, "Profile_Get_ByLabel")
+	defer span.End()
+	q := fmt.Sprintf(`MATCH (prf:Profile) WHERE prf.label = "%s"`, label)
+	q += fmt.Sprintf(` RETURN %s`, returnStatementProfile)
+	span.AddEvent("query", trace.WithAttributes(
+		attribute.String("query", q),
+	))
 	res, found, err := n.QueryOne(q)
 	if err != nil || !found {
 		return
@@ -64,9 +73,45 @@ func (n Neo) Profile_Get_ByNameTag(ctx context.Context, name, tag string) (p typ
 	return
 }
 
-func (n Neo) GetProfiles() (ps []types.Profile, err error) {
+func (n Neo) Profile_Get_ByNameTag(ctx context.Context, name, tag string) (p types.Profile, found bool, err error) {
+	q := fmt.Sprintf(`MATCH (prf:Profile) WHERE prf.name = "%s" AND prf.tag = "%s"`, name, tag)
+	q += fmt.Sprintf(` RETURN %s`, returnStatementProfile)
+	res, found, err := n.QueryOne(q)
+	if err != nil || !found {
+		return
+	}
+	p, err = n.ProfileFromResult(res)
+	return
+}
+
+func (n Neo) Profiles_Get_ByRegexLabel(ctx context.Context, labelRegex string) (ps []types.Profile, err error) {
+	_, span := tracer.Start(ctx, "Profiles_Get_ByRegexLabel")
+	defer span.End()
+	q := fmt.Sprintf(`MATCH (prf:Profile) WHERE prf.label =~ "%s"`, labelRegex)
+	q += fmt.Sprintf(` RETURN %s`, returnStatementProfile)
+	logrus.Fatalf("q: %s", q)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
+	res, err := n.Query(q)
+	ps = make([]types.Profile, 0)
+	for _, r := range res {
+		p, err := n.ProfileFromResult(r)
+		if err != nil {
+			logrus.Error(err)
+			continue
+		}
+		ps = append(ps, p)
+	}
+	return
+}
+
+func (n Neo) GetProfiles(ctx context.Context) (ps []types.Profile, err error) {
+	_, span := tracer.Start(ctx, "GetProfiles")
+	defer span.End()
 	q := `MATCH (prf:Profile)`
-	q += ` RETURN id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule`
+	q += fmt.Sprintf(` RETURN %s`, returnStatementProfile)
 	res, err := n.Query(q)
 	ps = make([]types.Profile, 0)
 	for _, r := range res {
@@ -166,11 +211,13 @@ func (n Neo) ProfileFromResult(res types.Result) (p types.Profile, err error) {
 	name, _ := res.GetStr("profileName")
 	tag, _ := res.GetStr("profileTag")
 	profileRule, _ := res.GetStr("profileRule")
+	profileLabel, _ := res.GetStr("profileLabel")
 	p = types.Profile{
 		ID:            id,
 		Name:          name,
 		Tag:           tag,
 		Rule:          profileRule,
+		Label:         profileLabel,
 		Manipulations: []string{},
 	}
 	// TODO: Evaluate the rule string and get the rules attached?
@@ -204,7 +251,7 @@ func (n Neo) Profile_FromManifestDataID_ViaAnnotations(ctx context.Context, mdID
 	_, span := tracer.Start(ctx, "Profile_FromManifestDataID_ViaAnnotations")
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[]-(a:Annotation)-[]-(md:ManifestData) WHERE id(md) = %d`, mdID)
-	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule`
+	q += fmt.Sprintf(` RETURN DISTINCT %s`, returnStatementProfile)
 	res, err := n.Query(q)
 	//fmt.Printf("Query: \n%s\n", q)
 	span.AddEvent("log", trace.WithAttributes(
@@ -231,7 +278,7 @@ func (n Neo) Profile_FromManifestDataID_ViaPlatform(ctx context.Context, mdID in
 	defer span.End()
 	rel := types.RelationSuccess
 	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[%s]->(p:Platform)<-[:IS]-(m:Manifest)-[:CREATED]-(md:ManifestData) WHERE id(md) = %d`, rel, mdID)
-	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule`
+	q += fmt.Sprintf(` RETURN DISTINCT %s`, returnStatementProfile)
 	res, err := n.Query(q)
 	//fmt.Printf("Query: \n%s\n", q)
 	span.AddEvent("log", trace.WithAttributes(
@@ -249,6 +296,123 @@ func (n Neo) Profile_FromManifestDataID_ViaPlatform(ctx context.Context, mdID in
 			continue
 		}
 		prfs = append(prfs, p)
+	}
+	return
+}
+
+func (n Neo) EvalUploadProfile(ctx context.Context, mani types.Manifest, origMani types.ManifestData) (err error) {
+	ctx, span := tracer.Start(ctx, "EvalUploadProfile")
+	defer span.End()
+	_ = ctx
+	q := fmt.Sprintf(`MATCH (bu:BlobUpload)-[:IS]->(cfg:Config) WHERE id(cfg) = %d`, origMani.Config.ID)
+	q += ` RETURN id(bu) AS blobUploadID, bu.upload_profile AS blobUploadProfile`
+	res, found, err := n.QueryOne(q)
+	if err != nil {
+		return
+	}
+	if !found {
+		err = fmt.Errorf("no blob upload found for config %d", origMani.Config.ID)
+		return
+	}
+	blobUploadID, _ := res.GetInt64("blobUploadID")
+	blobUploadProfile, _ := res.GetStr("blobUploadProfile")
+	logrus.Fatalf("blobUploadProfile[%-4d]: %s", blobUploadID, blobUploadProfile)
+
+	return
+}
+
+func (n Neo) ProfileAuthorizedPushHandler(ctx context.Context, req types.Request) (prf types.Profile, err error) {
+	ctx, span := tracer.Start(ctx, "ProfileAuthorizedPushHandler")
+	defer span.End()
+	// check if profile already has a manifest uploaded
+	prf, found, e := n.Profile_Get_ByLabel(ctx, req.Profile)
+
+	if e != nil {
+		err = errors.Wrapf(e, "failed to get profile '%s'", req.Profile)
+		span.RecordError(err)
+		return
+
+	}
+	if !found {
+		err = fmt.Errorf("profile '%s' not found", req.Profile)
+		span.RecordError(err)
+		return
+	}
+	// Only allow uploads to a repo prefixed with the profile name
+	if !strings.HasPrefix(req.Repo+"/", req.User) {
+		err = fmt.Errorf("user '%s' is not allowed to push to repo '%s'", req.User, req.Repo)
+		span.RecordError(err)
+		return
+	}
+	return
+}
+
+func (n Neo) Profile_GetUploadedBy_ViaManifestDataID(ctx context.Context, maniID int64) (p types.Profile, found bool, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "neo/profiles.go",
+		"func":    "Profile_GetUploadedBy_ViaManifestDataID",
+		"maniID":  maniID,
+	})
+	_, span := tracer.Start(ctx, "Profile_GetUploadedBy_BiaManifestDataID")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("maniID").Int64(maniID),
+	)
+	q := `MATCH (prf:Profile)<-[:UPLOADED_BY]-(md:ManifestData)`
+	q += fmt.Sprintf(` WHERE id(md) = %d`, maniID)
+	q += fmt.Sprintf(` RETURN %s`, returnStatementProfile)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
+	l.Debug(q)
+	res, found, err := n.QueryOne(q)
+	if err != nil || !found {
+		return
+	}
+	p, err = n.ProfileFromResult(res)
+	return
+}
+
+func (n Neo) Profile_UnwindRules(ctx context.Context, prfID, maniID int64) (err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "neo/profiles.go",
+		"func":    "Profile_UnwindRules",
+		"maniID":  maniID,
+		"prfID":   prfID,
+	})
+	_, span := tracer.Start(ctx, "Profile_GetUploadedBy_BiaManifestDataID")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("maniID").Int64(maniID),
+		attribute.Key("prfID").Int64(prfID),
+	)
+	q := `MATCH (prf:Profile)-[:USES]->(r:Rule)`
+	q += fmt.Sprintf(` WHERE id(prf) = %d`, prfID)
+	q += ` RETURN id(r) as ruleID, r.op as ruleOp, r.name as ruleName,`
+	q += ` r.type AS ruleType, r.tag as ruleTag, r.key as ruleKey, r.value as ruleValue`
+	l.Debug(q)
+	res, err := n.Query(q)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to unwind rules for profile %d", prfID)
+		return
+	}
+	for _, ele := range res {
+		r, _ := RuleFromResult(ele)
+		l.Debug("rule: ", r.ToString())
+		if r.Type == types.RuleTypeAnnotation && r.Op == "eq" {
+			a := types.NewAnnotation(r.Key, r.Value)
+			aID, err := n.Annotation_GetInsert(ctx, a)
+			if err != nil {
+				err = errors.Wrapf(err, "failed to get annotation %s:%s", a.Key, a.Value)
+				return err
+			}
+			e := n.ManifestData_LinkToAnnotation(ctx, maniID, aID)
+			if e != nil {
+				err = errors.Wrapf(e, "failed to link manifestData '%d' with  annotation %d", maniID, aID)
+				return err
+			}
+		}
 	}
 	return
 }

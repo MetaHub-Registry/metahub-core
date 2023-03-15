@@ -10,6 +10,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (n Neo) GetManifestList(dig digest.Digest, mt string, size int) (mlID int64, success bool, err error) {
@@ -218,6 +219,10 @@ func (n Neo) ManifestList_Get_ByRequest(ctx context.Context, req types.Request) 
 	}
 	q += fmt.Sprintf(` MATCH (ml)<-[:REF]-(prf:Profile) WHERE prf.label = "%s"`, req.Profile)
 	q += ` RETURN id(ml) as manifestlistID, ml.digest as manifestlistDigest, ml.mediaType as manifestlistMediaType, ml.size as manifestlistSize`
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
 	res, found, err := n.QueryOne(q)
 	if err != nil {
 		logrus.Error(err)

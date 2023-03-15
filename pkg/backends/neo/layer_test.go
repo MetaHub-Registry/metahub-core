@@ -13,11 +13,9 @@ func Test_Layer_CRUD(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
-	/*
-		bs.SetYAMLPrefix("../../../misc/yaml")
-		bs.AddBootstrap("platforms:generic")
-		bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
-	*/
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 60
 	br, err := SetupTest(bs)

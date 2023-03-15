@@ -38,7 +38,7 @@ func Test_Profile_CRUD(t *testing.T) {
 	_, found, err = db.Profile_Get_ByNameTag(ctx, "foo", "tag1")
 	assert.NoError(t, err)
 	assert.False(t, found)
-	prfs, err := db.GetProfiles()
+	prfs, err := db.GetProfiles(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(prfs))
 	// Create first profile
@@ -53,7 +53,7 @@ func Test_Profile_CRUD(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, pFooID, gotPrf1.ID)
-	prfs, err = db.GetProfiles()
+	prfs, err = db.GetProfiles(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(prfs))
 	// GetInsert

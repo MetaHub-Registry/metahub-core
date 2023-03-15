@@ -35,7 +35,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	err = db.Setup()
+	err = db.Setup(ctx)
 	if err != nil {
 		logrus.Fatal(err)
 	}

@@ -136,12 +136,14 @@ func (n Neo) Rules_GetAll(ctx context.Context) (rules []types.Rule, err error) {
 }
 
 func (n Neo) Rule_EvalAll(ctx context.Context) (err error) {
+	ctx, span := tracer.Start(ctx, "Rule_EvalAll")
+	defer span.End()
 	rls, err := n.Rules_GetAll(ctx)
 	if err != nil {
 		return
 	}
 	for _, r := range rls {
-		logrus.Warnf("Eval rule: %s:%s [%s]", r.Name, r.Tag, r.Type)
+		//logrus.Warnf("Eval rule: %s:%s [%s]", r.Name, r.Tag, r.Type)
 		switch r.Type {
 		case types.RuleTypeAnnotation:
 			err = n.Rule_EvalAnnotationRule(ctx, r)
@@ -213,6 +215,8 @@ func (n Neo) Rule_EvalAnnotationRule_NULL(ctx context.Context, r types.Rule) (er
 	return
 }
 func (n Neo) Rule_EvalAnnotationRule(ctx context.Context, r types.Rule) (err error) {
+	ctx, span := tracer.Start(ctx, "Rule_EvalAnnotationRule")
+	defer span.End()
 	if r.Op == "null" {
 		return n.Rule_EvalAnnotationRule_NULL(ctx, r)
 	}

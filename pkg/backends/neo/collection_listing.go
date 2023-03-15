@@ -10,7 +10,7 @@ import (
 )
 
 func (n Neo) CollectionListing_Get_ByID(ctx context.Context, colID, colTagID int64) (col types.CollectionListing, err error) {
-	ctx, span := tracer.Start(ctx, "CollectionListing_Get_ByName")
+	ctx, span := tracer.Start(ctx, "CollectionListing_Get_ByID")
 	defer span.End()
 	_ = ctx
 	q := `MATCH (c:Collection)-[:HAS_TAG]->(t) WHERE id(c) = %d AND id(t) = %d`

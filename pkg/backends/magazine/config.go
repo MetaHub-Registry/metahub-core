@@ -100,7 +100,7 @@ func (mag Magazine) ConfigBlob_GetByHTTPRequest(ctx context.Context, r *http.Req
 
 // Take in a manifest with a config DIGEST and return the config from Blob Storage
 func (mag Magazine) Config_Get_ByManifest(ctx context.Context, req types.Request, oMani types.OCIManifest) (cfg types.Config, v1Img v1.Image, found bool, err error) {
-	ctx, span := tracer.Start(ctx, "StoreConfigUpload")
+	ctx, span := tracer.Start(ctx, "Config_Get_ByManifest")
 	defer span.End()
 	span.SetAttributes(
 		attribute.Key("host").String(req.Host),
@@ -117,7 +117,10 @@ func (mag Magazine) Config_Get_ByManifest(ctx context.Context, req types.Request
 	if !cfgFound {
 		logrus.Errorf("Config '%s' not found '%s'. Insert with ID %d ", utils.ShortenDigest(cfg.Digest), label, cfg.ID)
 	} else {
-		logrus.Errorf("Config '%s' found: %s", utils.ShortenDigest(cfg.Digest), label)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", fmt.Sprintf("Config '%s' found: %s", utils.ShortenDigest(cfg.Digest), label)),
+		))
 	}
 	v1Img, v1Found, err := mag.Minio.GetConfig(ctx, oMani.Config.Digest.String())
 	if err != nil {
@@ -264,4 +267,20 @@ func (mag Magazine) Config_GetInsert_ByOCIManifest(ctx context.Context, ociMani 
 
 func (mag Magazine) Config_AddLabel(ctx context.Context, cfgID int64, a types.Annotation) (err error) {
 	return mag.Database.Config_AddLabel(ctx, cfgID, a)
+}
+
+func (mag Magazine) Configs_DeleteUnused(ctx context.Context) (err error) {
+	_, span := tracer.Start(ctx, "Config_DeleteUnused")
+	defer span.End()
+	err = mag.Database.Configs_DeleteUnused(ctx)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to delete unused layers")
+		return
+	}
+	err = mag.Database.BlobUpload_DeleteUnused(ctx)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to delete unused blobUploads")
+		return
+	}
+	return
 }

@@ -1,6 +1,7 @@
 package magazine
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -29,7 +30,7 @@ type Magazine struct {
 	Config         MagConfig
 }
 
-func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, err error) {
+func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Context, err error) {
 	cfgFile, _ := cmd.Flags().GetString("config")
 	// viper
 	viper.SetConfigType("yaml")
@@ -75,11 +76,22 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, err error) {
 		logrus.Infof("Redirect frontend to: %s", fr)
 	}
 	au := viper.GetString("auth.url")
+	// Flags
+	profileRegex, _ := cmd.Flags().GetString("profile")
+	repoRegex, _ := cmd.Flags().GetString("repo")
+	tagRegex, _ := cmd.Flags().GetString("tag")
 	cfg := MagConfig{
 		RedirectDoc: fr,
 		AuthURL:     au,
 		Tracing:     TraceCfg{Enabled: false},
+		Args: map[string]string{
+			"profileRegex": profileRegex,
+			"repoRegex":    repoRegex,
+			"tagRegex":     tagRegex,
+		},
 	}
+
+	ctx = cmd.Context()
 	// Tracing
 	trEnd := viper.GetString("tracing.endpoint")
 	svcName := viper.GetString("tracing.name")
@@ -98,6 +110,10 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, err error) {
 			Tracer:   tr,
 		}
 		cfg.Tracing = trCfg
+		c, span := tracer.Start(cmd.Context(), "NewMagazine")
+		ctx = c
+		defer span.End()
+
 	}
 	m = Magazine{
 		Minio:  min,
@@ -117,7 +133,7 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, err error) {
 		logrus.Fatal(err)
 	}
 	m.Database = neo4j
-	err = m.Database.Setup()
+	err = m.Database.Setup(ctx)
 	if err != nil {
 		err = errors.Wrapf(err, "failed to setup neo4j backend")
 		logrus.Fatal(err)
@@ -126,7 +142,7 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, err error) {
 	return
 }
 
-func (mag Magazine) SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
+func (mag Magazine) SetupTest(ctx context.Context, bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 	logrus.Info("> SetupTest")
 	//return
 	br = utils.NewBootstrapResult()
@@ -140,13 +156,13 @@ func (mag Magazine) SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err
 				return
 			}
 		case "computeManifests":
-			err := mag.ComputeManifests()
+			err := mag.ComputeManifests(ctx)
 			if err != nil {
 				err = errors.Wrap(err, "while SetupTest: ComputeManifests")
 				return br, err
 			}
 		case "computeManifestlists":
-			err := mag.ComputeManifests()
+			err := mag.ComputeManifests(ctx)
 			if err != nil {
 				err = errors.Wrap(err, "while SetupTest: computeManifestlists")
 				return br, err

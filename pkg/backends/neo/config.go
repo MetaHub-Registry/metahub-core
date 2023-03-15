@@ -376,3 +376,29 @@ func ConfigFromRecord(res neo4j.Result) (c types.Config, err error) {
 	c.Size = v.(int64)
 	return
 }
+
+func (n Neo) Configs_DeleteUnused(ctx context.Context) (err error) {
+	_, span := tracer.Start(ctx, "Config_DeleteUnused")
+	defer span.End()
+	q := `MATCH (c:Config) WHERE NOT (c)<-[:USES]-(:ManifestData) DETACH DELETE c RETURN count(c) AS deletedConfigs`
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
+	res, err := n.Execute(q)
+	if err != nil {
+		err = errors.Wrap(err, "failed to delete unused configs")
+		return
+	}
+	deletedConfigs, err := res.GetInt("deletedConfigs")
+	if err != nil {
+		err = errors.Wrap(err, "failed to get count of deleted configs")
+		return
+	}
+	msg := fmt.Sprintf("Deleted %d configs", deletedConfigs)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.message", msg),
+	))
+	return
+}

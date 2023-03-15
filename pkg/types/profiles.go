@@ -2,6 +2,7 @@ package types
 
 type Profile struct {
 	ID            int64    `json:"id"`
+	Label         string   `json:"label"`
 	Name          string   `json:"name"`
 	Tag           string   `json:"tag"`
 	Rule          string   `json:"rule"`
