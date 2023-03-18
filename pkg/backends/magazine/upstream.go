@@ -14,7 +14,7 @@ func (mag Magazine) NeoInsertUpstream(ctx context.Context, up types.Upstream) (u
 		Digest: up.Digest.String(),
 	}
 
-	res, _, err := mag.Database.Upstream_GetInsert_ByRequest(req)
+	res, _, err := mag.Database.Upstream_GetInsert_ByRequest(ctx, req)
 	if err != nil {
 		return
 	}

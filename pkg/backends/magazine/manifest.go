@@ -75,6 +75,12 @@ func (mag Magazine) Manifest_LabelsToAnnotations(mani types.Manifest) (anno type
 */
 
 func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani types.ManifestData, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "magazine/manifest.go",
+		"func":    "CachManifest",
+	})
+	ctx, span := tracer.Start(ctx, "CachManifest")
+	defer span.End()
 	up, err := m.ToUpstreamTriple()
 	if err != nil {
 		logrus.Error(err)
@@ -87,7 +93,12 @@ func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani typ
 		logrus.Error(err)
 		return
 	}
-	logrus.Infof("Caching manifest for %-101s -> %t", up.GetLabel(), isCached)
+	msg := fmt.Sprintf("Caching manifest for %-101s -> %t", up.GetLabel(), isCached)
+	l.Info(msg)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.message", msg),
+	))
 	if !isCached {
 		/****** Manifest not already there
 		TODO: Depending on the media type, we are going to create different nodes within the graph
@@ -95,12 +106,12 @@ func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani typ
 		b, blob, err := upstream.GetManifestByUpstreamTripleByTag(ctx, up)
 		if err != nil {
 			err = errors.Wrapf(err, "failed to GetManifestByUpstreamTripleByTag")
-			logrus.Error(err)
+			l.Error(err)
 			return mani, err
 		}
 		rawMani, err := minio.RawManifestFromBlob(b)
 		if err != nil {
-			logrus.Error(err)
+			l.Error(err)
 			return mani, err
 		}
 		switch blob.MediaType {
@@ -110,14 +121,14 @@ func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani typ
 		case "application/vnd.docker.distribution.manifest.v2+json":
 			up.Digest = rawMani.ConfigInfo().Digest
 		default:
-			logrus.Fatalf("Unknown media type: %s", blob.MediaType)
+			l.Fatalf("Unknown media type: %s", blob.MediaType)
 		}
 		//logrus.Fatalf("blobMeta: %v", blob)
 		// We need to make sure that the config-blob is cached
 		cfgByte, cfgBlob, err := upstream.GetBlobByUpstreamTriple(ctx, up)
 		if err != nil {
 			err = errors.Wrapf(err, "failed to GetBlobByUpstreamTriple")
-			logrus.Error(err)
+			l.Error(err)
 			return mani, err
 		}
 		err = mag.Minio.PutConfig(ctx, cfgByte, cfgBlob.Digest.String())
@@ -128,26 +139,27 @@ func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani typ
 		// The blob 'b' is the original data blob (matching the digest), it contains refrerences to the config and layers
 		mani, err = mag.Minio.NewManifestFromBytes(b)
 		if err != nil {
-			logrus.Error(err)
+			l.Error(err)
 			return mani, err
 		}
 		up.Digest = digest.FromBytes(b)
 		up.Size = blob.Size
 		err = mag.Minio.PutManifest(ctx, b, up)
 		if err != nil {
-			logrus.Error(err)
+			l.Error(err)
 			return mani, err
 		}
 		mani.Data = b
 		if err != nil {
-			logrus.Error(err)
+			l.Error(err)
 			return mani, err
 		}
 	}
 	mani.Upstream = types.Upstream{
-		Reg:  up.Reg,
-		Repo: up.Repo,
-		Tag:  up.Tag,
+		Reg:    up.Reg,
+		Repo:   up.Repo,
+		Tag:    up.Tag,
+		Digest: up.Digest,
 	}
 	return
 }
@@ -266,39 +278,56 @@ func (mag Magazine) Manifest_GetByRequest(ctx context.Context, req types.Request
 
 // storeManifestUpload_OCIManifest
 func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req types.Request, buf []byte) (mani types.Manifest, ociMani types.OCIManifest, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "magazine/manifest.go",
+		"func":    "storeManifestUpload_OCIManifest",
+		"reg":     req.Host,
+		"repo":    req.Repo,
+		"tag":     req.Tag,
+		"profile": req.Profile,
+	})
 	ctx, span := tracer.Start(ctx, "storeManifestUpload_OCIManifest")
 	defer span.End()
+	span.SetAttributes(
+		attribute.Key("reg").String(req.Host),
+		attribute.Key("repo").String(req.Repo),
+		attribute.Key("tag").String(req.Tag),
+		attribute.Key("profile").String(req.Profile),
+	)
 	ociMani = types.OCIManifest{
 		MediaType: req.ContentType,
 	}
 	err = json.Unmarshal(buf, &ociMani)
 	if err != nil {
 		err = errors.Wrapf(err, "failed to unmarshal OCI Manifest '%s'", string(buf))
+		l.Error(err)
 		return mani, ociMani, err
 	}
 	dig := digest.FromBytes(buf)
 	req.Digest = dig.String()
 	if req.Digest != "" && req.Digest != dig.String() {
 		err = fmt.Errorf("digest mismatch: %s != %s", req.Digest, dig.String())
+		l.Error(err)
 		return
 	}
 	err = mag.Minio.ManifestsPutObj(ctx, dig.String(), buf)
 	if err != nil {
-		logrus.Error(err)
+		l.Error(err)
 		return
 	}
 	// Store Manifest (the standin under which all ManifestData are stored)
 	up := types.Upstream{
-		Reg:  req.Host,
-		Repo: req.Repo,
-		Tag:  req.Tag,
+		Reg:    req.Host,
+		Repo:   req.Repo,
+		Tag:    req.Tag,
+		Digest: dig,
 	}
 	mani = types.Manifest{
 		Upstream:  up,
 		Manifests: []types.ManifestData{},
 	}
 
-	mID, err := mag.Database.Manifest_GetInsert(ctx, mani)
+	mID, err := mag.Database.Manifest_GetInsertWithRequest(ctx, mani, req)
 	if err != nil {
 		err = errors.Wrap(err, "failed to get Manifest from Database")
 		return
@@ -395,6 +424,15 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 
 func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, buf []byte) (md types.ManifestData, err error) {
 	/// TODO: Can this be dratically simplified?
+	l := logrus.WithFields(logrus.Fields{
+		"package": "magazine/manifest.go",
+		"func":    "StoreManifestUpload",
+		"repo":    req.Repo,
+		"tag":     req.Tag,
+		"digest":  utils.ShortenDigest(req.Digest),
+	})
+	dig := digest.FromBytes(buf)
+	req.Digest = dig.String()
 	ctx, span := tracer.Start(ctx, "StoreManifestUpload")
 	defer span.End()
 	span.SetAttributes(
@@ -402,6 +440,8 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 		attribute.Key("body-length").Int(len(buf)),
 		attribute.Key("profile").String(req.Profile),
 	)
+	l.Info("Start")
+
 	var ociMani types.OCIManifest
 	// Put Manifest Blob into Minio
 	m, ociMani, err := mag.storeManifestUpload_OCIManifest(ctx, req, buf)
@@ -410,7 +450,15 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 		err = fmt.Errorf("expect to have to store Manifest")
 		return
 	case 1:
+		label := fmt.Sprintf("%s/%s:%s@%s", req.Host, req.Repo, req.Tag, req.Profile)
+		msg := fmt.Sprintf("init ManifestData with label '%s' and digest '%s' from first manifest in storeManifestUpload_OCIManifest", label, utils.ShortenDigest(req.Digest))
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
 		md = m.Manifests[0]
+		md.Digest = req.Digest
+		md.Label = label
 	}
 	if err != nil {
 		err = errors.Wrap(err, "failed to mag.storeManifestUpload_OCIManifest")
@@ -440,15 +488,15 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 	}
 	/// Extract Platform (Will be put in by Config_GetInsert_ByOCIManifest in case it is embedded)
 	if v1Img.Architecture == "" {
-		logrus.Infof("cfg: %v", cfg)
-		logrus.Fatal("architecture should not be empty")
+		l.Infof("cfg: %v", cfg)
+		l.Fatal("architecture should not be empty")
 	}
 	plat := types.Platform{
 		Arch:    v1Img.Architecture,
 		OS:      v1Img.OS,
 		Variant: v1Img.Variant,
 	}
-	err = mag.Database.Platform_GetInsert(&plat)
+	err = mag.Database.Platform_GetInsert(ctx, &plat)
 	if err != nil {
 		err = errors.Wrap(err, "failed to Database.Platform_GetInsert")
 		return
@@ -467,12 +515,13 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 	*/
 	req.Platform = plat.GetTag()
 	// Fetch/Create Upstream
-	up, _, err := mag.Database.Upstream_GetInsert_ByRequest(req)
+	up, _, err := mag.Database.Upstream_GetInsert_ByRequest(ctx, req)
 	if err != nil {
 		err = errors.Wrap(err, "failed to Upstream.GetCreateByRequest")
 		return
 	}
 	m.Upstream = up
+	md.Upstream = up
 	err = mag.Database.Manifest_LinkToUpstream(ctx, m.ID, up.ID)
 	if err != nil {
 		err = errors.Wrap(err, "failed to LinkManifestToUpstream")
@@ -494,16 +543,6 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 		err = errors.Wrap(err, "failed to LinkCollectionTagToManifest")
 		return
 	}
-	// TODO: Compute Manifests
-	//err = mag.ComputeManifest(ctx, m)
-	// TODO: Compute ManifestLists
-	/*
-		err = mag.Database.ComputeManifestlists_ForCollection(ctx, col)
-		if err != nil {
-			err = errors.Wrap(err, "failed to ComputeManifestlists_ForCollection")
-			return
-		}
-	*/
 	return
 }
 
@@ -585,6 +624,10 @@ func (mag Magazine) ComputeManifests(ctx context.Context) (err error) {
 	})
 	ctx, span := tracer.Start(ctx, "ComputeManifests")
 	defer span.End()
+	err = mag.Database.Rule_EvalAll(ctx)
+	if err != nil {
+		return
+	}
 	// 	1. Get all manifest(standins)
 	manis, err := mag.Database.Manifest_GetAll(ctx)
 	if err != nil {

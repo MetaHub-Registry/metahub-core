@@ -20,9 +20,10 @@ func (m Manifest) ToUpstreamTriple() (u upstream.UpstreamTriple, err error) {
 		return
 	}
 	u = upstream.UpstreamTriple{
-		Reg:  reg,
-		Repo: repo,
-		Tag:  tag,
+		Reg:    reg,
+		Repo:   repo,
+		Tag:    tag,
+		Digest: digest.Digest(m.Digest),
 		Platform: platform.Platform{
 			Architecture: m.Platform.Architecture,
 			OS:           m.Platform.OS,

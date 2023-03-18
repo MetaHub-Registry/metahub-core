@@ -185,9 +185,10 @@ func (n Neo) Setup_Rules(bs utils.Bootstrap, br *utils.BootstrapResult, d string
 
 func (n Neo) Setup_Platforms(br *utils.BootstrapResult, plts []types.Platform) (err error) {
 	//logrus.Info("> Setup_Platforms")
+	ctx := context.Background()
 	// Create platforms
 	for _, p := range plts {
-		err := n.Platform_GetInsert(&p)
+		err := n.Platform_GetInsert(ctx, &p)
 		if err != nil {
 			return err
 		}
@@ -246,7 +247,7 @@ func (n Neo) Setup_Layer(br *utils.BootstrapResult, ly types.Layer, bootstrapstr
 }
 
 func (n Neo) Setup_Upstream(br *utils.BootstrapResult, up types.Upstream, label string) (err error) {
-	id, err := n.CreateUpstream(up)
+	id, err := n.CreateUpstream(context.Background(), up)
 	if err != nil {
 		return err
 	}

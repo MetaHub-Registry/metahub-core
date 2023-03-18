@@ -27,10 +27,15 @@ func Test_Manifest_CR(t *testing.T) {
 	}
 	defer db.TeardownTest(bs)
 	// Actual test
+	/// Get Upstream
 	upID, err := br.GetInt64("upstream:ft_arm64#id")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, found, err := db.Manifest_Get(upID)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.False(t, found)
 	/// create Manifest
 	maniID, err := db.Manifest_Create(upID)

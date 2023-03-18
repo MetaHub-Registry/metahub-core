@@ -22,10 +22,10 @@ func Test_CollectionTag_CRUD(t *testing.T) {
 	_, found, err := db.CollectionTag_GetByTag("test")
 	assert.NoError(t, err)
 	assert.False(t, found)
-	ct_got, err := db.CollectionTag_GetCreate("test")
+	ct_got, err := db.CollectionTag_GetCreate(ctx, "test")
 	assert.NoError(t, err)
 	assert.NotNil(t, ct_got.ID)
-	ct_got2, err := db.CollectionTag_GetCreate("test")
+	ct_got2, err := db.CollectionTag_GetCreate(ctx, "test")
 	assert.NoError(t, err)
 	assert.Equal(t, ct_got.ID, ct_got2.ID)
 }
@@ -62,7 +62,7 @@ func Test_CollectionTag_LinkCollection(t *testing.T) {
 	_, found, err := db.CollectionTag_GetByTag("test")
 	assert.NoError(t, err)
 	assert.False(t, found)
-	ct_got, err := db.CollectionTag_GetCreate("test")
+	ct_got, err := db.CollectionTag_GetCreate(ctx, "test")
 	assert.NoError(t, err)
 	assert.NotNil(t, ct_got.ID)
 	// CT

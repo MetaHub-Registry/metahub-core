@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	tracer = otel.Tracer("magazine")
+	tracer = otel.Tracer("neo")
 )
 
 type NeoConfig struct {
@@ -130,7 +130,7 @@ func (n Neo) Setup(ctx context.Context) (err error) {
 			attr: []string{"label"},
 		}, {
 			name: "Upstream",
-			attr: []string{"label"},
+			attr: []string{"digest", "label"},
 		}, {
 			name: "Rule",
 			attr: []string{"label"},

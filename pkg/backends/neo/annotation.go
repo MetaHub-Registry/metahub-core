@@ -7,6 +7,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -62,11 +64,16 @@ func (n Neo) Annotation_GetInsert(ctx context.Context, in types.Annotation) (aID
 }
 
 func (n Neo) Annotation_EvalRule(ctx context.Context, a types.Annotation) (err error) {
-	q := `MATCH (r:Rule) WHERE r.key = "%s" AND r.type = "%s"`
+	ctx, span := tracer.Start(ctx, "Annotation_EvalRule")
+	defer span.End()
+	q := fmt.Sprintf(`MATCH (r:Rule) WHERE r.key = "%s" AND r.type = "%s"`, a.Key, types.RuleTypeAnnotation)
 	q += ` RETURN id(r) as ruleID, r.op as ruleOp, r.name as ruleName,`
 	q += ` r.type AS ruleType, r.tag as ruleTag, r.key as ruleKey, r.value as ruleValue`
-	query := fmt.Sprintf(q, a.Key, types.RuleTypeAnnotation)
-	res, err := n.Query(query)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
+	res, err := n.Query(q)
 	if err != nil {
 		return
 	}
@@ -87,9 +94,17 @@ func (n Neo) Annotation_EvalRule(ctx context.Context, a types.Annotation) (err e
 		}
 
 		if a.EvalRule(r) {
-			logrus.Warnf("rule[%d] %s=%s matched annotation[%d] %s=%s", r.ID, r.Key, r.Value, a.ID, a.Key, a.Value)
+			msg := fmt.Sprintf("rule[%d] %s=%s matched annotation[%d] %s=%s", r.ID, r.Key, r.Value, a.ID, a.Key, a.Value)
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "debug"),
+				attribute.String("log.message", msg),
+			))
 			err = n.Rule_Annotation_Success(ctx, r.ID, a.ID)
 			if err != nil {
+				span.AddEvent("log", trace.WithAttributes(
+					attribute.String("log.severity", "error"),
+					attribute.String("log.error", err.Error()),
+				))
 				return err
 			}
 		}

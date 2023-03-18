@@ -230,7 +230,14 @@ func (n Neo) ProfileFromResult(res types.Result) (p types.Profile, err error) {
 	*/
 	return
 }
+
 func (n Neo) Profile_FromManifestDataID(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "neo/profiles.go",
+		"func":    "Profile_FromManifestDataID",
+		"maniID":  mdID,
+	})
+	_ = l
 	ctx, span := tracer.Start(ctx, "Profile_FromManifestDataID")
 	defer span.End()
 	prfs, e := n.Profile_FromManifestDataID_ViaAnnotations(ctx, mdID)
@@ -248,12 +255,17 @@ func (n Neo) Profile_FromManifestDataID(ctx context.Context, mdID int64) (prfs [
 }
 
 func (n Neo) Profile_FromManifestDataID_ViaAnnotations(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "neo/profiles.go",
+		"func":    "Profile_FromManifestDataID_ViaAnnotations",
+		"maniID":  mdID,
+	})
 	_, span := tracer.Start(ctx, "Profile_FromManifestDataID_ViaAnnotations")
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[]-(a:Annotation)-[]-(md:ManifestData) WHERE id(md) = %d`, mdID)
 	q += fmt.Sprintf(` RETURN DISTINCT %s`, returnStatementProfile)
 	res, err := n.Query(q)
-	//fmt.Printf("Query: \n%s\n", q)
+	l.Debug(q)
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
 		attribute.String("log.query", q),
@@ -265,7 +277,7 @@ func (n Neo) Profile_FromManifestDataID_ViaAnnotations(ctx context.Context, mdID
 	for _, r := range res {
 		p, err := n.ProfileFromResult(r)
 		if err != nil {
-			logrus.Error(err)
+			l.Error(err)
 			continue
 		}
 		prfs = append(prfs, p)
@@ -274,13 +286,18 @@ func (n Neo) Profile_FromManifestDataID_ViaAnnotations(ctx context.Context, mdID
 }
 
 func (n Neo) Profile_FromManifestDataID_ViaPlatform(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "neo/profiles.go",
+		"func":    "Profile_FromManifestDataID_ViaPlatform",
+		"maniID":  mdID,
+	})
 	_, span := tracer.Start(ctx, "Profile_FromManifestDataID_ViaPlatform")
 	defer span.End()
 	rel := types.RelationSuccess
-	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[%s]->(p:Platform)<-[:IS]-(m:Manifest)-[:CREATED]-(md:ManifestData) WHERE id(md) = %d`, rel, mdID)
+	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[%s]->(p:Platform)<-[:IS]-(m:Manifest)-[]-(md:ManifestData) WHERE id(md) = %d`, rel, mdID)
 	q += fmt.Sprintf(` RETURN DISTINCT %s`, returnStatementProfile)
 	res, err := n.Query(q)
-	//fmt.Printf("Query: \n%s\n", q)
+	l.Debug(q)
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
 		attribute.String("log.query", q),

@@ -7,7 +7,7 @@ import (
 )
 
 func (mag Magazine) NeoInsertPlatform(ctx context.Context, plat types.Platform) (platID int64, err error) {
-	err = mag.Database.Platform_GetInsert(&plat)
+	err = mag.Database.Platform_GetInsert(ctx, &plat)
 	if err != nil {
 		return
 	}
