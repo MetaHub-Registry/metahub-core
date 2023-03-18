@@ -19,6 +19,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
+var (
+	tr = otel.Tracer("upstream")
+)
+
 func GetBlobByUpstreamTriple(ctx context.Context, up UpstreamTriple) (b []byte, blob mhTypes.BlobMeta, err error) {
 	shortDig := utils.ShortenDigest(up.Digest.String())
 	l := logrus.WithFields(logrus.Fields{
@@ -31,7 +35,7 @@ func GetBlobByUpstreamTriple(ctx context.Context, up UpstreamTriple) (b []byte, 
 	if up.Digest.String() == "" {
 		l.Fatal("No digest provided")
 	}
-	tr := otel.Tracer("neomin")
+
 	blobUrl := fmt.Sprintf("%s/%s", up.Reg, up.Repo)
 	ctx, span := tr.Start(ctx, "GetBlobByUpstreamTriple")
 	span.SetAttributes(attribute.Key("url").String(blobUrl))
@@ -71,7 +75,6 @@ func GetBlobByUpstreamTripleByDigest(ctx context.Context, up UpstreamTriple, dig
 	if dig == "" {
 		logrus.Fatal("No digest provided")
 	}
-	tr := otel.Tracer("neomin")
 	blobUrl := fmt.Sprintf("%s/%s", up.Reg, up.Repo)
 	ctx, span := tr.Start(ctx, "GetBlobByUpstreamTripleByDigest")
 	span.SetAttributes(attribute.Key("url").String(blobUrl))
@@ -108,7 +111,6 @@ func GetManifestByUpstreamTripleByTag(ctx context.Context, up UpstreamTriple) (b
 		"tag":        up.Tag,
 		"registry":   up.Reg,
 	})
-	tr := otel.Tracer("neomin")
 	blobUrl := fmt.Sprintf("%s/%s:%s", up.Reg, up.Repo, up.Tag)
 	logrus.Info("blobUrl: ", blobUrl)
 	ctx, span := tr.Start(ctx, "GetBlobByUpstreamTriple")

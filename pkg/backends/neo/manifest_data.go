@@ -35,13 +35,14 @@ func (n Neo) ManifestData_V1_GetInsert(ctx context.Context, maniSiID int64, mani
 			return
 		}
 	}
+	NodeRel := "CREATED"
 	// Link to manifest standin
 	q := `MATCH (md:ManifestData), (m:Manifest) WHERE id(md) = %d AND id(m) = %d`
-	q += ` MERGE (m)-[:CREATED]->(md)`
+	q += fmt.Sprintf(` MERGE (m)-[:%s]->(md)`, NodeRel)
 	query := fmt.Sprintf(q, maniID, maniSiID)
 	_, err = n.Execute(query)
 	if err != nil {
-		err = errors.Wrap(err, "failed to create (m)-[:CREATED]->(md)")
+		err = errors.Wrapf(err, "failed to create (m)-[:%s]->(md)", NodeRel)
 		return
 	}
 	return
@@ -92,7 +93,43 @@ func (n Neo) ManifestData_Get_ByProfileMediaType(ctx context.Context, mID, prfID
 	return
 }
 
-func (n Neo) ManifestData_GetParsedID_ByMediaType(ctx context.Context, msID int64, mediaType string) (maniID int64, found bool, err error) {
+func (n Neo) ManifestData_GetParsedNodeRel_ByMediaType(ctx context.Context, msID int64, mediaType string) (nr types.NodeRel, found bool, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package":   "magazine/manifest_data.go",
+		"func":      "ManifestData_GetParsedNodeRel_ByMediaType",
+		"mani.ID":   msID,
+		"mediaType": mediaType,
+	})
+	_, span := tracer.Start(ctx, "ManifestData_GetParsedNodeRel_ByMediaType")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("mani.id").Int64(msID),
+		attribute.Key("mani.media_type").String(mediaType),
+	)
+	q := fmt.Sprintf(`MATCH (md:ManifestData)-[rel]-(m:Manifest) WHERE id(m) = %d AND md.mediaType = "%s"`, msID, mediaType)
+	q += ` RETURN id(md) AS manifestID, TYPE(rel) AS relType`
+	res, found, err := n.QueryOne(q)
+	if err != nil || !found {
+		l.Debug(q)
+		l.Warn("Not able to found manifestData for manifestID: ", msID)
+		return
+	}
+	maniID, err := res.GetInt64("manifestID")
+	if err != nil {
+		err = errors.Wrap(err, "failed to get manifestID from result while getting manifest by digest and mediaType")
+		return
+	}
+	relType, err := res.GetStr("relType")
+	if err != nil {
+		err = errors.Wrap(err, "failed to get relType from result while getting manifest by digest and mediaType")
+		return
+	}
+	nr = types.NewNodeRel(maniID, relType)
+	l.Debugf("%s -> NodeRel: %d [%s]", q, nr.NodeID, nr.NodeRel)
+	return
+}
+
+func (n Neo) ManifestData_GetParsedID_ByMediaType(ctx context.Context, msID int64, mediaType string, relType string) (maniID int64, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package":   "magazine/manifest_data.go",
 		"func":      "ManifestData_GetParsedID_ByMediaType",
@@ -105,18 +142,20 @@ func (n Neo) ManifestData_GetParsedID_ByMediaType(ctx context.Context, msID int6
 		attribute.Key("mani.id").Int64(msID),
 		attribute.Key("mani.media_type").String(mediaType),
 	)
-	q := `MATCH (md:ManifestData)-[:ORIGINAL]-(m:Manifest) WHERE id(m) = %d AND md.mediaType = "%s"`
+	q := fmt.Sprintf(`MATCH (md:ManifestData)-[:%s]-(m:Manifest) WHERE id(m) = %d AND md.mediaType = "%s"`, relType, msID, mediaType)
 	q += ` RETURN id(md) AS manifestID`
-	query := fmt.Sprintf(q, msID, mediaType)
-
-	res, found, err := n.QueryOne(query)
+	res, found, err := n.QueryOne(q)
 	if err != nil || !found {
-		l.Debug(query)
+		l.Debug(q)
 		l.Warn("Not able to found manifestData for manifestID: ", msID)
 		return
 	}
 	maniID, err = res.GetInt64("manifestID")
-	l.Debugf("%s -> maniID: %d", query, maniID)
+	if err != nil {
+		err = errors.Wrap(err, "failed to get manifestID from result while getting manifest by digest and mediaType")
+		return
+	}
+	l.Debugf("%s -> maniID: %d", q, maniID)
 	return
 }
 
@@ -157,7 +196,7 @@ func (n Neo) ManifestData_GetAll() (manis []types.ManifestData, err error) {
 	q += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
 	q += ` id(m) AS manifestID,`
 	q += ` id(md) AS manifestDataID, md.digest AS manifestDataDigest, md.mediaType AS manifestDataMediaType, md.size AS manifestDataSize,`
-	q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag,`
+	q += ` ` + UpstreamReturn + `,`
 	q += ` id(cfg) AS configID, cfg.digest AS configDigest, cfg.mediaType AS configMediaType, cfg.size AS configSize`
 	//fmt.Printf("query: \n%s\n", q)
 	input := map[string]interface{}{}
@@ -374,7 +413,8 @@ func (n Neo) ManifestData_GetByPlatformRule(ctx context.Context, rule types.Rule
 	q += ` MATCH (u:Upstream)-[]-(m)`
 	q += ` RETURN id(md) AS manifestID, md.digest AS manifestDigest, md.mediaType AS manifestMediaType, md.size AS manifestSize, md.label AS manifestLabel,`
 	q += ` id(p) AS platformID, p.os AS platformOS, p.arch AS platformArch, p.variant AS platformVariant,`
-	q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag`
+	q += ` ` + UpstreamReturn
+
 	//fmt.Printf("query: \n%s\n", q)
 	res, err := n.Query(q)
 	for _, r := range res {
@@ -433,7 +473,7 @@ func (n Neo) ManifestData_GetByAnnotationRule(ctx context.Context, rule types.Ru
 	q += ` MATCH (m)-[:IS]->(p:Platform)`
 	q += ` RETURN id(md) AS manifestID, md.digest AS manifestDigest, md.mediaType AS manifestMediaType, md.size AS manifestSize, md.label AS manifestLabel,`
 	q += ` id(p) AS platformID, p.os AS platformOS, p.arch AS platformArch, p.variant AS platformVariant,`
-	q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag`
+	q += ` ` + UpstreamReturn
 	//fmt.Printf("query: \n%s\n", q)
 	res, err := n.Query(q)
 	for _, r := range res {
@@ -463,7 +503,7 @@ func (n Neo) ManifestData_GetByAnnotationRule(ctx context.Context, rule types.Ru
 func (n Neo) ManifestData_Get_ByID(ctx context.Context, mID int64) (m types.ManifestData, found bool, err error) {
 	q := `MATCH (md:ManifestData)-[]-(m:Manifest)-[:UPSTREAM]->(u:Upstream) WHERE id(m) = %d`
 	q += ` RETURN id(md) AS manifestID, md.digest AS manifestDigest, md.mediaType AS manifestMediaType, md.size AS manifestSize,`
-	q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag`
+	q += ` ` + UpstreamReturn
 	query := fmt.Sprintf(q, mID)
 	//fmt.Printf("Q: %s\n", query)
 	res, found, err := n.QueryOne(query)
@@ -628,7 +668,7 @@ func (n Neo) ManifestData_Get_ByDigest(ctx context.Context, dig string) (m types
 	)
 	q := `MATCH (md:ManifestData)-[r]-(m:Manifest)-[]->(u:Upstream) WHERE md.digest = "%s"`
 	q += ` RETURN id(md) AS manifestID, md.digest AS manifestDigest, md.mediaType AS manifestMediaType, md.size AS manifestSize,`
-	q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag,`
+	q += ` ` + UpstreamReturn + `,`
 	q += ` type(r) AS relType`
 	query := fmt.Sprintf(q, dig)
 	//fmt.Printf("Q: \n%s\n", query)
@@ -760,25 +800,34 @@ func (n Neo) ManifestDataFromResult(ctx context.Context, res types.Result) (m ty
 }
 
 func (n Neo) ManifestData_GetByCollectionTag(ctx context.Context, colID, colTagID int64) (manis []types.ManifestData, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package":  "magazine/manifest_data.go",
+		"func":     "ManifestData_GetByCollectionTag",
+		"colID":    colID,
+		"colTagID": colTagID,
+	})
 	ctx, span := tracer.Start(ctx, "ManifestData_GetByCollectionTag")
 	defer span.End()
+	l.Info("START")
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	q := `MATCH (p:Platform)-[r]-(m:Manifest)-[]-(u:Upstream)`
-	q += ` MATCH (c:Collection)-[:UPSTREAM]->(m)-[:CREATED]-(md:ManifestData)-[:USES]->(cfg:Config) WHERE id(c) = %d`
-	q += ` MATCH (t:Tag)-[:UPSTREAM]->(m) WHERE id(t) = %d`
+	q += fmt.Sprintf(` MATCH (c:Collection)-[:UPSTREAM]->(m)-[:CREATED]-(md:ManifestData)-[:USES]->(cfg:Config) WHERE id(c) = %d`, colID)
+	q += fmt.Sprintf(` MATCH (t:Tag)-[:UPSTREAM]->(m) WHERE id(t) = %d`, colTagID)
+	//q += ` MATCH (md)-[]-(prf:Profile)`
 	q += ` RETURN type(r) AS manifestdataRelType,`
 	q += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
 	q += ` id(md) AS manifestDataID, md.digest AS manifestDataDigest, md.label AS manifestDataLabel, md.mediaType AS manifestDataMediaType, md.size AS manifestDataSize,`
-	q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag,`
+	q += UpstreamReturn + ` ,`
+	//q += returnStatementProfile + ` ,`
 	q += ` id(cfg) AS configID, cfg.digest AS configDigest, cfg.mediaType AS configMediaType, cfg.size AS configSize`
-	query := fmt.Sprintf(q, colID, colTagID)
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", query),
+		attribute.String("log.query", q),
 	))
+	l.Debug(q)
 	input := map[string]interface{}{}
-	result, err := session.Run(query, input)
+	result, err := session.Run(q, input)
 	if err != nil {
 		return
 	}
@@ -804,6 +853,13 @@ func (n Neo) ManifestData_GetByCollectionTag(ctx context.Context, colID, colTagI
 			err = e
 			return
 		}
+		/*
+			prf, e := ProfileFromRecord(result)
+			if e != nil {
+				err = e
+				return
+			}
+		*/
 		anno, e := n.Labels_GetByConfigID(ctx, c.ID)
 		if e != nil {
 			err = e
@@ -814,6 +870,8 @@ func (n Neo) ManifestData_GetByCollectionTag(ctx context.Context, colID, colTagI
 		m.Config = c
 		m.Platform = p
 		m.Upstream = u
+		//m.Upstream.Profile = prf.Label
+		//m.Profile = prf
 		prfs, e := n.Profile_FromManifestDataID(ctx, m.ID)
 		if e != nil {
 			err = errors.Wrap(e, "failed to get profiles for manifest data")
@@ -826,7 +884,7 @@ func (n Neo) ManifestData_GetByCollectionTag(ctx context.Context, colID, colTagI
 		for _, prf := range prfs {
 			ok, e := n.ManifestData_CheckProfile(ctx, m, prf)
 			if e != nil {
-				logrus.Errorf("Failed to check profile: %v", err)
+				l.Errorf("Failed to check profile: %v", err)
 				return
 			}
 			msg := fmt.Sprintf("  %t > %d -> filtered md: %s", ok, prf.ID, m.Label)
@@ -834,8 +892,9 @@ func (n Neo) ManifestData_GetByCollectionTag(ctx context.Context, colID, colTagI
 				attribute.String("log.severity", "debug"),
 				attribute.String("log.message", msg),
 			))
-			logrus.Warn(msg)
+			l.Debug(msg)
 			if ok {
+				m.Upstream.Profile = prf.Label
 				m.Profile = prf
 				manis = append(manis, m)
 			}
@@ -852,7 +911,7 @@ func (n Neo) ManifestData_GetByManifestList(mlID int64) (manifests []types.Manif
 	q += ` RETURN type(r) AS manifestdataRelType,`
 	q += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
 	q += ` id(md) AS manifestID, md.digest AS manifestDigest, md.mediaType AS manifestMediaType, md.size AS manifestSize,`
-	q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag,`
+	q += ` ` + UpstreamReturn + `,`
 	q += ` id(cfg) AS configID, cfg.digest AS configDigest, cfg.mediaType AS configMediaType, cfg.size AS configSize`
 	input := map[string]interface{}{}
 	query := fmt.Sprintf(q, mlID)

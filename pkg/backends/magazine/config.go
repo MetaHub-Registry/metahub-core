@@ -115,7 +115,7 @@ func (mag Magazine) Config_Get_ByManifest(ctx context.Context, req types.Request
 		return
 	}
 	if !cfgFound {
-		logrus.Errorf("Config '%s' not found '%s'. Insert with ID %d ", utils.ShortenDigest(cfg.Digest), label, cfg.ID)
+		logrus.Debugf("Config '%s' not found '%s'. Insert with ID %d ", utils.ShortenDigest(cfg.Digest), label, cfg.ID)
 	} else {
 		span.AddEvent("log", trace.WithAttributes(
 			attribute.String("log.severity", "debug"),
@@ -270,7 +270,7 @@ func (mag Magazine) Config_AddLabel(ctx context.Context, cfgID int64, a types.An
 }
 
 func (mag Magazine) Configs_DeleteUnused(ctx context.Context) (err error) {
-	_, span := tracer.Start(ctx, "Config_DeleteUnused")
+	_, span := tracer.Start(ctx, "Configs_DeleteUnused")
 	defer span.End()
 	err = mag.Database.Configs_DeleteUnused(ctx)
 	if err != nil {

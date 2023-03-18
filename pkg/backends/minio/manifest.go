@@ -19,15 +19,18 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-var aliasPrefix = "aliases"
+var (
+	aliasPrefix = "aliases"
+	tracer      = otel.Tracer("minio")
+)
 
 func (m Minio) GetManifest(ctx context.Context, up upstream.UpstreamTriple) (res types.ManifestData, isCached bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "backends/minio",
 		"func":    "GetManifest",
 	})
-	tr := otel.Tracer("neomin")
-	ctx, span := tr.Start(ctx, "GetManifest")
+
+	ctx, span := tracer.Start(ctx, "GetManifest")
 	span.SetAttributes(
 		attribute.Key("reg").String(up.Reg),
 		attribute.Key("repo").String(up.Repo),
@@ -60,8 +63,7 @@ func (m Minio) PutManifest(ctx context.Context, b []byte, up upstream.UpstreamTr
 		"package": "backends/minio",
 		"func":    "PutManifest",
 	})
-	tr := otel.Tracer("neomin")
-	ctx, span := tr.Start(ctx, "PutManifestObj")
+	ctx, span := tracer.Start(ctx, "PutManifestObj")
 	span.SetAttributes(
 		attribute.Key("reg").String(up.Reg),
 		attribute.Key("repo").String(up.Repo),
@@ -149,8 +151,7 @@ func (m Minio) RemoveManifestAliases() (err error) {
 		"func":       "RemoveManifestAliases",
 	})
 	l.Info("Start")
-	tr := otel.Tracer("neomin")
-	ctx, span := tr.Start(context.Background(), "RemoveManifestAliases")
+	ctx, span := tracer.Start(context.Background(), "RemoveManifestAliases")
 	defer span.End()
 	cli := m.BucketConfig[manifestsBucketKey].Client
 	objectCh := cli.ListObjects(ctx, m.GetManifestsBucketName(), minio.ListObjectsOptions{

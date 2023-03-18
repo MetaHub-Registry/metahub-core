@@ -152,6 +152,11 @@ func (mag Magazine) Layers_CreateOCIv1LayerDescriptors(ctx context.Context, laye
 			mt = v1.MediaTypeImageLayerGzip
 		case "application/vnd.docker.image.rootfs.diff.tar":
 			mt = v1.MediaTypeImageLayer
+		case v1.MediaTypeImageLayerGzip:
+			mt = v1.MediaTypeImageLayerGzip
+		case v1.MediaTypeImageLayer:
+			mt = v1.MediaTypeImageLayer
+
 		default:
 			err = fmt.Errorf("unknown media type: %s", l.MediaType)
 			return

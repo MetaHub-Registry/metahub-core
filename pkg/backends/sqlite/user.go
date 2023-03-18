@@ -67,9 +67,14 @@ func (s Sqlite) LoginUserWithHash(username, pwhash string) (err error) {
 }
 
 func (s Sqlite) LoginUserScope(username, password string, req types.Request) (status int, role string, pl helper.ErrorPayload, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "sqlite/user.go",
+		"func":    "LoginUserScope",
+	})
 	// check login and return token
 	u, err := s.User.GetByUsername(username)
 	if err != nil {
+		l.Errorf("user '%s' not found", username)
 		pl = helper.NewErrPayload(
 			"UNAUTHORIZED",
 			"User not found",
@@ -77,9 +82,10 @@ func (s Sqlite) LoginUserScope(username, password string, req types.Request) (st
 		)
 		return http.StatusNotFound, role, pl, nil
 	}
+	//l.Debugf("Found user '%s' (role:%s) in database", u.UserName, u.Role)
 	match, err := u.PasswordMatches(password)
 	if err != nil {
-		logrus.Error(err)
+		l.Error(err)
 		return http.StatusInternalServerError, role, pl, err
 	}
 	if !match {
@@ -88,7 +94,7 @@ func (s Sqlite) LoginUserScope(username, password string, req types.Request) (st
 			"wrong credentials",
 			helper.NewDetailFromReq(req),
 		)
-		logrus.Error("wrong credentials")
+		l.Error("wrong credentials")
 		return http.StatusUnauthorized, role, pl, nil
 	}
 	switch req.Method {
@@ -99,13 +105,18 @@ func (s Sqlite) LoginUserScope(username, password string, req types.Request) (st
 				"wrong privileges",
 				helper.NewDetailFromReq(req),
 			)
+			l.Error("wrong privileges for PUT/POST/PATCH/DELETE")
 			return http.StatusUnauthorized, role, pl, nil
 		}
 	}
 	return http.StatusOK, u.Role, pl, nil
 }
 func (s Sqlite) LoginUser(username, password string) (err error) {
-	logrus.Debug(">> LoginUser")
+	l := logrus.WithFields(logrus.Fields{
+		"package": "sqlite/user.go",
+		"func":    "LoginUser",
+	})
+	_ = l
 	// check login and return token
 	u, err := s.User.GetByUsername(username)
 	if err != nil {

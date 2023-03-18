@@ -80,6 +80,7 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 	profileRegex, _ := cmd.Flags().GetString("profile")
 	repoRegex, _ := cmd.Flags().GetString("repo")
 	tagRegex, _ := cmd.Flags().GetString("tag")
+	manifest, _ := cmd.Flags().GetString("manifest")
 	cfg := MagConfig{
 		RedirectDoc: fr,
 		AuthURL:     au,
@@ -88,6 +89,7 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 			"profileRegex": profileRegex,
 			"repoRegex":    repoRegex,
 			"tagRegex":     tagRegex,
+			"manifest":     manifest,
 		},
 	}
 

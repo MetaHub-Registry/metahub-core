@@ -8,6 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 func (n Neo) CollectionTag_Create(tag string) (ct types.CollectionTag, err error) {
@@ -20,7 +21,12 @@ func (n Neo) CollectionTag_Create(tag string) (ct types.CollectionTag, err error
 	return CollectionTagFromResult(res)
 }
 
-func (n Neo) CollectionTag_GetCreate(tag string) (ct types.CollectionTag, err error) {
+func (n Neo) CollectionTag_GetCreate(ctx context.Context, tag string) (ct types.CollectionTag, err error) {
+	_, span := tracer.Start(ctx, "CollectionTag_GetCreate")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("tag").String(tag),
+	)
 	ct, found, err := n.CollectionTag_GetByTag(tag)
 	if err != nil {
 		return
@@ -32,6 +38,12 @@ func (n Neo) CollectionTag_GetCreate(tag string) (ct types.CollectionTag, err er
 }
 
 func (n Neo) LinkCollectionTagToManifest(ctx context.Context, colTagID, maniID int64) (err error) {
+	_, span := tracer.Start(ctx, "LinkCollectionTagToManifest")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("colTagID").Int64(colTagID),
+		attribute.Key("maniID").Int64(maniID),
+	)
 	q := `MATCH (t:Tag), (m:Manifest) WHERE id(t) = %d AND id(m) = %d`
 	q += ` MERGE (t)-[:UPSTREAM]->(m)`
 	query := fmt.Sprintf(q, colTagID, maniID)

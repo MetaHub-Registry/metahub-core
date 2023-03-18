@@ -1,6 +1,7 @@
 package neo
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,7 +10,7 @@ import (
 )
 
 func Test_Upstream_Create(t *testing.T) {
-	//ctx := context.Background()
+	ctx := context.Background()
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	br, err := SetupTest(bs)
@@ -18,15 +19,16 @@ func Test_Upstream_Create(t *testing.T) {
 	defer db.TeardownTest(bs)
 	// Actual test
 	up := types.Upstream{
-		Reg:  "foo.bar",
-		Repo: "qnib/featuretest",
-		Tag:  "2022.12.03",
+		Reg:    "foo.bar",
+		Repo:   "qnib/featuretest",
+		Tag:    "2022.12.03",
+		Digest: "sha256:1234567890123456789012345678901234567890123456789012345678901234",
 	}
 
-	upID, err := db.CreateUpstream(up)
+	upID, err := db.CreateUpstream(ctx, up)
 	assert.NoError(t, err)
 	assert.NotNil(t, upID)
-	r, err := db.Query("MATCH (n:Upstream) RETURN id(n) AS upstreamID, n.reg AS upstreamReg, n.repo AS upstreamRepo, n.tag AS upstreamTag")
+	r, err := db.Query("MATCH (u:Upstream) RETURN " + UpstreamReturn)
 	assert.NoError(t, err)
 	assert.Len(t, r, 1)
 	r0 := r[0]
@@ -45,7 +47,7 @@ func Test_Upstream_Create(t *testing.T) {
 }
 
 func Test_Upstream_CRUD(t *testing.T) {
-	//ctx := context.Background()
+	ctx := context.Background()
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 60
@@ -55,17 +57,18 @@ func Test_Upstream_CRUD(t *testing.T) {
 	defer db.TeardownTest(bs)
 	// Actual test
 	up := types.Upstream{
-		Reg:  "foo.bar",
-		Repo: "qnib/featuretest",
-		Tag:  "2022.12.03",
+		Reg:    "foo.bar",
+		Repo:   "qnib/featuretest",
+		Tag:    "2022.12.03",
+		Digest: "sha256:1234567890123456789012345678901234567890123456789012345678901234",
 	}
-	_, found, err := db.GetUpstream(up)
+	_, found, err := db.GetUpstream(ctx, up)
 	assert.NoError(t, err)
 	assert.False(t, found)
-	upID, err := db.CreateUpstream(up)
+	upID, err := db.CreateUpstream(ctx, up)
 	assert.NoError(t, err)
 	assert.NotNil(t, upID)
-	gotUpID, found, err := db.Upstream_Get(up)
+	gotUpID, found, err := db.Upstream_Get(ctx, up)
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, upID, gotUpID)
@@ -74,21 +77,23 @@ func Test_Upstream_CRUD(t *testing.T) {
 	assert.Equal(t, up.Reg, gotUp.Reg)
 	// Insert the same
 	reqFooBar := types.Request{
-		Host: "foo.bar",
-		Repo: "qnib/featuretest",
-		Tag:  "2022.12.03",
+		Host:   "foo.bar",
+		Repo:   "qnib/featuretest",
+		Tag:    "2022.12.03",
+		Digest: "sha256:1234567890123456789012345678901234567890123456789012345678901234",
 	}
-	gotUpFooBar, found, err := db.Upstream_GetInsert_ByRequest(reqFooBar)
+	gotUpFooBar, found, err := db.Upstream_GetInsert_ByRequest(ctx, reqFooBar)
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, gotUp.ID, gotUpFooBar.ID)
 	// Insert BarFoo
 	req := types.Request{
-		Host: "bar.foo",
-		Repo: "qnib/test",
-		Tag:  "2022.12.03",
+		Host:   "bar.foo",
+		Repo:   "qnib/test",
+		Tag:    "2022.12.03",
+		Digest: "sha256:5434567890123456789012345678901234567890123456789012345678901234",
 	}
-	gotUp2, found, err := db.Upstream_GetInsert_ByRequest(req)
+	gotUp2, found, err := db.Upstream_GetInsert_ByRequest(ctx, req)
 	assert.NoError(t, err)
 	assert.False(t, found)
 	assert.Equal(t, "bar.foo", gotUp2.Reg)

@@ -50,7 +50,7 @@ func (b OCIBlobUpload) WriteOCIPatchResponse(w http.ResponseWriter) {
 }
 
 func (b OCIBlobUpload) WriteOCIPutResponse(w http.ResponseWriter) {
-	logrus.Warnf("Set Location in WriteOCIPutResponse to '%s'", b.Location)
+	logrus.Debugf("Set Location in WriteOCIPutResponse to '%s'", b.Location)
 	w.Header().Set("Location", b.Location)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(b.Data)))
 	w.Header().Set("Range", fmt.Sprintf("%d-%d", b.RangeStart, b.RangeStop))

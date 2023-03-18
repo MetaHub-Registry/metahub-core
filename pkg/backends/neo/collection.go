@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	yamlCfg "github.com/metahub-registry/metahub-core/pkg/yaml/config"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 func (n Neo) Collection_GetID_ByYaml(ycol yamlCfg.ManifestCollection) (colID, colTagID int64, found bool, err error) {
@@ -141,11 +142,17 @@ func (n Neo) Collection_Create_ByRequest(req types.Request) (col types.Collectio
 }
 
 func (n Neo) Collection_GetCreate_ByRepoTag(ctx context.Context, repo, tag string) (c types.Collection, found bool, err error) {
-	ct, err := n.CollectionTag_GetCreate(tag)
+	ctx, span := tracer.Start(ctx, "Collection_GetCreate_ByRepoTag")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("repo").String(repo),
+		attribute.Key("tag").String(tag),
+	)
+	ct, err := n.CollectionTag_GetCreate(ctx, tag)
 	if err != nil {
 		return
 	}
-	c, found, err = n.Collection_GetCreate_ByRepo(repo)
+	c, found, err = n.Collection_GetCreate_ByRepo(ctx, repo)
 	if err != nil {
 		return
 	}
@@ -161,7 +168,12 @@ func (n Neo) Collection_GetCreate_ByRepoTag(ctx context.Context, repo, tag strin
 	return
 }
 
-func (n Neo) Collection_Get_ByRepo(repo string) (c types.Collection, found bool, err error) {
+func (n Neo) Collection_Get_ByRepo(ctx context.Context, repo string) (c types.Collection, found bool, err error) {
+	_, span := tracer.Start(ctx, "Collection_Get_ByRepo")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("repo").String(repo),
+	)
 	q := `MATCH (c:Collection {repo: "%s"}) RETURN id(c) AS collectionID`
 	query := fmt.Sprintf(q, repo)
 	res, found, err := n.QueryOne(query)
@@ -181,8 +193,8 @@ func (n Neo) Collection_Get_ByRepo(repo string) (c types.Collection, found bool,
 	return
 }
 
-func (n Neo) Collection_GetCreate_ByRepo(repo string) (c types.Collection, found bool, err error) {
-	c, found, err = n.Collection_Get_ByRepo(repo)
+func (n Neo) Collection_GetCreate_ByRepo(ctx context.Context, repo string) (c types.Collection, found bool, err error) {
+	c, found, err = n.Collection_Get_ByRepo(ctx, repo)
 	if err != nil {
 		return
 	}
@@ -273,6 +285,12 @@ func ManifestListFromRecord(res neo4j.Result) (ml types.ManifestList, err error)
 }
 
 func (n Neo) LinkCollectionToManifest(ctx context.Context, colID, maniID int64) (err error) {
+	_, span := tracer.Start(ctx, "LinkCollectionToManifest")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("colID").Int64(colID),
+		attribute.Key("maniID").Int64(maniID),
+	)
 	q := `MATCH (c:Collection), (m:Manifest) WHERE id(c) = %d AND id(m) = %d`
 	q += ` MERGE (c)-[:UPSTREAM]->(m)`
 	query := fmt.Sprintf(q, colID, maniID)
@@ -364,7 +382,7 @@ func (n Neo) getCollectionFilterPairs(q string) (cfps []types.CollectionFilterPa
 		q += ` WHERE id(c) = %d AND id(f) = %d AND id(t) = %d`
 		q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
 		q += ` id(m) AS manifestID, m.digest AS manifestDigest, m.mediaType AS manifestMediaType, m.size AS manifestSize,`
-		q += ` id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag,`
+		q += ` ` + UpstreamReturn + `,`
 		q += ` id(cfg) AS configID, cfg.digest AS configDigest, cfg.mediaType AS configMediaType, cfg.size AS configSize`
 		query := fmt.Sprintf(q, t.collectionID, t.filterID, t.tagID)
 		//logrus.Warnf("query: %s", query)
@@ -592,6 +610,7 @@ func CollectionListingFromResult(res types.Result) (col types.CollectionListing,
 	colRepo, _ := res.GetStr("collectionRepo")
 	ct, err := CollectionTagFromResult(res)
 	if err != nil {
+		logrus.Error(err)
 		return
 	}
 	col = types.CollectionListing{

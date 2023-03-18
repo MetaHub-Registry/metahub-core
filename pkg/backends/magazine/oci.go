@@ -191,10 +191,11 @@ func (mag Magazine) CreateOCIv1_ParsedManifest(ctx context.Context, mani types.M
 		"func":    "CreateOCIv1_ParsedManifest",
 		"mani.ID": mani.ID,
 	})
+	l.Infof("Creating OCIv1 manifest for Manifest.ID")
 	ctx, span := tracer.Start(ctx, "CreateOCIv1")
 	defer span.End()
-	// TODO: Check if OCIv1 is already present
-	_, found, err := mag.Database.ManifestData_GetParsedID_ByMediaType(ctx, mani.ID, "application/vnd.oci.image.manifest.v1+json")
+	// TODO: Get parsed manifests
+	_, found, err := mag.Database.ManifestData_GetParsedID_ByMediaType(ctx, mani.ID, v1.MediaTypeImageManifest, "PARSED")
 	if err != nil {
 		return
 	}

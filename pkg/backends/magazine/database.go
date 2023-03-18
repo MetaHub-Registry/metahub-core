@@ -24,9 +24,9 @@ type Database interface {
 	EmptyData(emptyAll bool) error
 	TeardownTest(bs utils.Bootstrap)
 	/*******  Platform ********/
-	Platform_GetInsert(p *types.Platform) error
+	Platform_GetInsert(ctx context.Context, p *types.Platform) error
 	/******* Upstream ********/
-	Upstream_GetInsert_ByRequest(req types.Request) (up types.Upstream, found bool, err error)
+	Upstream_GetInsert_ByRequest(ctx context.Context, req types.Request) (up types.Upstream, found bool, err error)
 
 	/********* Annotation/Labels *********/
 	Config_AddLabels(ctx context.Context, cfgID int64, a *types.Annotations) (err error)
@@ -53,12 +53,14 @@ type Database interface {
 	/********* Manifest **********/
 	Manifest_GetInsert(ctx context.Context, mani types.Manifest) (maniID int64, err error)
 	Manifest_GetAll(ctx context.Context) (manis []types.Manifest, err error)
-
+	Manifest_GetByLabel(ctx context.Context, colName string) (mani types.Manifest, err error)
+	Manifest_GetByUpstreamDigest(ctx context.Context, dig string) (mani types.Manifest, found bool, err error)
 	/// ManifestData
 	ManifestData_GetID_ByDigest(ctx context.Context, dig string) (maniID int64, found bool, err error)
 	ManifestData_Insert(ctx context.Context, mani types.ManifestData) (maniID int64, err error)
 	ManifestData_GetTypes_ByRequest(ctx context.Context, req types.Request) (res types.ManifestData, found bool, err error)
 	ManifestData_GetInsert(ctx context.Context, mani *types.ManifestData) (err error)
+	Manifest_GetInsertWithRequest(ctx context.Context, m types.Manifest, req types.Request) (maniID int64, err error)
 	ManifestData_Remove(ctx context.Context, req types.Request) (found bool, err error)
 	ManifestData_GetByCollectionTag(ctx context.Context, colID, colTagID int64) (manis []types.ManifestData, err error)
 	ManifestData_GetAll() (manis []types.ManifestData, err error)
@@ -72,7 +74,7 @@ type Database interface {
 	ManifestData_Delete(ctx context.Context, mani types.ManifestData) (err error)
 	/******* Manifest OCI Transformation ********/
 	ManifestData_GetID_ByMediaType(ctx context.Context, msID int64, mediaType string) (maniID int64, found bool, err error)
-	ManifestData_GetParsedID_ByMediaType(ctx context.Context, msID int64, mediaType string) (maniID int64, found bool, err error)
+	ManifestData_GetParsedID_ByMediaType(ctx context.Context, msID int64, mediaType, relType string) (maniID int64, found bool, err error)
 	ManifestData_Get_ByProfileMediaType(ctx context.Context, mID, prfID int64, mediaType string) (maniID int64, found bool, err error)
 	/******* ManifestV1 ********/
 	ManifestData_V1_GetInsert(ctx context.Context, maniSiID int64, mani v1.Descriptor) (maniID int64, found bool, err error)

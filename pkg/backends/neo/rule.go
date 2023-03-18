@@ -214,6 +214,7 @@ func (n Neo) Rule_EvalAnnotationRule_NULL(ctx context.Context, r types.Rule) (er
 	}
 	return
 }
+
 func (n Neo) Rule_EvalAnnotationRule(ctx context.Context, r types.Rule) (err error) {
 	ctx, span := tracer.Start(ctx, "Rule_EvalAnnotationRule")
 	defer span.End()
@@ -298,6 +299,7 @@ func (n Neo) Rule_GetSuccessPlatform(ctx context.Context, r types.Rule) (ps []ty
 	}
 	return
 }
+
 func (n Neo) Rule_Platform_Success(ctx context.Context, ruleID, platformID int64) (err error) {
 	q := `MATCH (r:Rule), (p:Platform)`
 	q += ` WHERE id(r) = %d AND id(p) = %d`

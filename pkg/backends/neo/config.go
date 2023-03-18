@@ -11,6 +11,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -59,28 +60,40 @@ func (n Neo) Config_GetByDigest(dig string) (cfgs []types.Config, found bool, er
 }
 
 func (n Neo) Config_GetByDigestAndType(ctx context.Context, dig, mediaType string) (cfg types.Config, found bool, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "neo/config.go",
+		"func":    "Config_GetByDigestAndType",
+	})
 	ctx, span := tracer.Start(ctx, "Config_GetByDigestAndType")
 	_ = ctx
 	defer span.End()
+	if dig == "" {
+		err = errors.New("digest is empty")
+		l.Error(err)
+		span.RecordError(err)
+		return
+	}
 	span.SetAttributes(
 		attribute.Key("dig").String(utils.ShortenDigest(dig)),
 		attribute.Key("mediaType").String(mediaType),
 	)
-	q := `MATCH (n:Config) WHERE n.digest = "%s"`
+	q := fmt.Sprintf(`MATCH (n:Config) WHERE n.digest = "%s"`, dig)
 	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.mediaType AS configMediaType, n.size AS configSize`
-	query := fmt.Sprintf(q, dig)
+	l.Debug(q)
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", query),
+		attribute.String("log.query", q),
 	))
-	res, err := n.Query(query)
+	res, err := n.Query(q)
 	if err != nil {
 		logrus.Errorf("Failed to run query: %s", err)
 		return
 	}
 	if len(res) == 0 {
 		// found is false by default
-		tracing.SpanLog(span, "warn", "No config found with digest '%s'", utils.ShortenDigest(dig))
+		msg := fmt.Sprintf("No config found with digest '%s'", utils.ShortenDigest(dig))
+		tracing.SpanLog(span, "warn", msg)
+		l.Debug(msg)
 		return
 	}
 	cfgs := make([]types.Config, 0)
@@ -88,6 +101,7 @@ func (n Neo) Config_GetByDigestAndType(ctx context.Context, dig, mediaType strin
 		cfg, err = ConfigFromResult(r)
 		if err != nil {
 			err = errors.Wrap(err, "failed to create config from DB result")
+			l.Error(err)
 			span.RecordError(err)
 			return
 		}
@@ -123,7 +137,7 @@ func (n Neo) Config_GetByDigestAndType(ctx context.Context, dig, mediaType strin
 			))
 			label := utils.CreateLabelFromTypeAndDigest(mediaType, cfg.Digest)
 			qDef := fmt.Sprintf(`CREATE (n:Config {digest: "%s", mediaType: "%s", size: %d, label: "%s"})`, cfg.Digest, mediaType, cfg.Size, label)
-			//qDef += ` RETURN id(n) AS ID`
+			l.Debug(qDef)
 			span.AddEvent("log", trace.WithAttributes(
 				attribute.String("log.severity", "debug"),
 				attribute.String("log.query", qDef),
@@ -132,6 +146,7 @@ func (n Neo) Config_GetByDigestAndType(ctx context.Context, dig, mediaType strin
 			if e != nil {
 				err = errors.Wrap(e, "failed while creating new layer with different mediatype")
 				span.RecordError(err)
+				l.Error(err)
 				return
 			}
 			q := fmt.Sprintf(`MATCH (n:Config) WHERE n.digest = "%s" AND n.mediaType = "%s" AND n.size = %d RETURN id(n) AS ID`, cfg.Digest, mediaType, cfg.Size)
@@ -139,20 +154,24 @@ func (n Neo) Config_GetByDigestAndType(ctx context.Context, dig, mediaType strin
 				attribute.String("log.severity", "debug"),
 				attribute.String("log.query", q),
 			))
+			l.Debug(q)
 			resQ, found, e := n.QueryOne(q)
 			if e != nil {
 				err = errors.Wrap(e, "failed to QueryOne")
 				span.RecordError(err)
+				l.Error(err)
 				return cfg, false, err
 			}
 			if !found {
 				err = errors.New("failed to find new config")
+				l.Error(err)
 				span.RecordError(err)
 				return cfg, false, err
 			}
 			cfgID, e := resQ.GetInt64("ID")
 			if e != nil {
 				err = errors.Wrap(e, "failed to get cfgID")
+				l.Error(err)
 				span.RecordError(err)
 				return cfg, false, err
 			}
@@ -183,11 +202,25 @@ func (n Neo) ConfigDeleteByDigest(dig string) (err error) {
 }
 
 func (n Neo) Config_GetInsert_ByOCIManifest(ctx context.Context, ociMani types.OCIManifest, label string) (cfg types.Config, found bool, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package":      "neo/config.go",
+		"func":         "Config_GetInsert_ByOCIManifest",
+		"cfgDigest":    utils.ShortenDigest(ociMani.Config.Digest.String()),
+		"cfgMediaType": utils.ShortenMediaType(ociMani.Config.MediaType),
+	})
+
 	ctx, span := tracer.Start(ctx, "Config_GetInsert_ByOCIManifest")
 	defer span.End()
+	if ociMani.Config.Digest.String() == "" {
+		err = fmt.Errorf("config digest is emtpy")
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
+		l.Error(err)
+		return
+	}
 	cfg, found, err = n.Config_GetByDigestAndType(ctx, ociMani.Config.Digest.String(), ociMani.Config.MediaType)
 	if err != nil {
-		logrus.Error(err)
+		l.Error(err)
 		return
 	}
 	if found {
@@ -195,16 +228,9 @@ func (n Neo) Config_GetInsert_ByOCIManifest(ctx context.Context, ociMani types.O
 			attribute.String("log.severity", "debug"),
 			attribute.String("log.message", "config found"),
 		))
+		l.Debug("config found")
 		return
 	}
-	// Create Config from ociMani
-	/*
-		a, err := types.NewAnnotationsFromMap(ociMani.Config.Annotations)
-		if err != nil {
-			logrus.Error(err)
-			return
-		}
-	*/
 	cfg = types.Config{
 		Digest:    ociMani.Config.Digest.String(),
 		MediaType: ociMani.Config.MediaType,
@@ -378,7 +404,7 @@ func ConfigFromRecord(res neo4j.Result) (c types.Config, err error) {
 }
 
 func (n Neo) Configs_DeleteUnused(ctx context.Context) (err error) {
-	_, span := tracer.Start(ctx, "Config_DeleteUnused")
+	_, span := tracer.Start(ctx, "Configs_DeleteUnused")
 	defer span.End()
 	q := `MATCH (c:Config) WHERE NOT (c)<-[:USES]-(:ManifestData) DETACH DELETE c RETURN count(c) AS deletedConfigs`
 	span.AddEvent("log", trace.WithAttributes(

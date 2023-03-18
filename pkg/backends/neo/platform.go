@@ -1,6 +1,7 @@
 package neo
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
@@ -8,13 +9,15 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 )
 
-func (n Neo) Platform_GetInsert(p *types.Platform) (err error) {
-	platID, success, err := n.GetPlatform(*p)
+func (n Neo) Platform_GetInsert(ctx context.Context, p *types.Platform) (err error) {
+	ctx, span := tracer.Start(ctx, "Platform_GetInsert")
+	defer span.End()
+	platID, success, err := n.GetPlatform(ctx, *p)
 	if err != nil {
 		return
 	}
 	if !success {
-		platID, err = n.CreatePlatform(*p)
+		platID, err = n.CreatePlatform(ctx, *p)
 		if err != nil {
 			return
 		}
@@ -36,7 +39,7 @@ func (n Neo) Platform_GetByID(platID int64) (plat types.Platform, found bool, er
 	return
 }
 
-func (n Neo) GetPlatform(plat types.Platform) (platID int64, success bool, err error) {
+func (n Neo) GetPlatform(ctx context.Context, plat types.Platform) (platID int64, success bool, err error) {
 	q := `MATCH (n:Platform) WHERE n.arch = "%s" AND n.os = "%s" AND n.variant = "%s" RETURN id(n) AS ID`
 	query := fmt.Sprintf(q, plat.Arch, plat.OS, plat.Variant)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
@@ -58,7 +61,7 @@ func (n Neo) GetPlatform(plat types.Platform) (platID int64, success bool, err e
 	return
 }
 
-func (n Neo) CreatePlatform(plat types.Platform) (platID int64, err error) {
+func (n Neo) CreatePlatform(ctx context.Context, plat types.Platform) (platID int64, err error) {
 	q := `CREATE (n:Platform {arch: "%s", os: "%s", variant: "%s", label: "%s"}) RETURN id(n) AS ID`
 	label := fmt.Sprintf("%s/%s", plat.OS, plat.Arch)
 	if plat.Variant != "" {
