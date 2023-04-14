@@ -61,6 +61,6 @@ func Test_Profile_LoadProfile_Generic(t *testing.T) {
 	}
 	assert.Equal(t, "", f2.Name)
 	assert.Equal(t, "generic", f2.Tag)
-	assert.Equal(t, "generic:linux=true", f2.Rule)
+	assert.Equal(t, "os:linux=true && cpu:noop=true", f2.Rule)
 
 }

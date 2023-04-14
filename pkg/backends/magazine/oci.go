@@ -22,7 +22,7 @@ func (mag Magazine) CreateOCIv1_UploadedBy(ctx context.Context, mani types.Manif
 		"func":    "CreateOCIv1_UploadedBy",
 		"mani.ID": mani.ID,
 	})
-	ctx, span := tracer.Start(ctx, "CreateOCIv1")
+	ctx, span := tracer.Start(ctx, "CreateOCIv1_UploadedBy")
 	defer span.End()
 	// Get UPLOADED Manifests
 	prf, found, e := mag.Database.Profile_GetUploadedBy_ViaManifestDataID(ctx, origMani.ID)
@@ -44,7 +44,7 @@ func (mag Magazine) CreateOCIv1_UploadedBy(ctx context.Context, mani types.Manif
 			attribute.String("log.severity", "debug"),
 			attribute.String("log.message", msg),
 		))
-		l.Debug(msg)
+		l.Info(msg)
 		return
 	} else {
 		msg := fmt.Sprintf("OCIv1 manifest NOT present for Manifest.ID: %d", mani.ID)
@@ -52,18 +52,20 @@ func (mag Magazine) CreateOCIv1_UploadedBy(ctx context.Context, mani types.Manif
 			attribute.String("log.severity", "debug"),
 			attribute.String("log.message", msg),
 		))
-		l.Debug(msg)
-	}
-	maniID, e := mag.OCI_CreateBaseManifest(ctx, mani, origMani)
-	if e != nil {
-		err = errors.Wrap(e, "failed to create base manifest")
-		return
+		l.Info(msg)
 	}
 	prf, found, e = mag.Database.Profile_GetUploadedBy_ViaManifestDataID(ctx, origMani.ID)
 	if e != nil {
 		err = errors.Wrapf(e, "failed to get Profile for ManifestData.ID: %d", origMani.ID)
 		return
 	}
+
+	maniID, e := mag.OCI_CreateBaseManifest(ctx, mani, origMani, prf.ID)
+	if e != nil {
+		err = errors.Wrap(e, "failed to create base manifest")
+		return
+	}
+
 	if found {
 		msg := fmt.Sprintf("Profile '%s' did the upload", prf.Label)
 		l.Debug(msg)
@@ -88,7 +90,7 @@ func (mag Magazine) CreateOCIv1_UploadedBy(ctx context.Context, mani types.Manif
 	return
 }
 
-func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manifest, origMani types.ManifestData) (maniID int64, err error) {
+func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prfID int64) (maniID int64, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "magazine/oci.go",
 		"func":    "OCI_CreateBaseManifest",
@@ -103,10 +105,22 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 		},
 		MediaType: v1.MediaTypeImageManifest,
 	}
+	rs, e := mag.Database.Profile_GetAnnoEqRules(ctx, prfID)
+	if e != nil {
+		err = errors.Wrapf(e, "failed to get anno rules for profile %d", prfID)
+		return
+	}
 	// ///// A. Generate `oci.image.config.v1`
 	cfg, err := mag.GenerateOCIv1Config(ctx, mani, origMani)
 	if err != nil {
 		return
+	}
+	for _, r := range rs {
+		if r.Type == types.RuleTypeAnnotation && r.Op == "eq" {
+			cfg.Config.Labels[r.Key] = r.Value
+			k := utils.UpLabelKey(r.Key)
+			cfg.Config.Env = append(cfg.Config.Env, fmt.Sprintf("%s=%s", k, r.Value))
+		}
 	}
 	cfgDesc, err := mag.GenerateOCIv1ConfigDescriptor(ctx, cfg)
 	if err != nil {
@@ -192,8 +206,14 @@ func (mag Magazine) CreateOCIv1_ParsedManifest(ctx context.Context, mani types.M
 		"mani.ID": mani.ID,
 	})
 	l.Infof("Creating OCIv1 manifest for Manifest.ID")
-	ctx, span := tracer.Start(ctx, "CreateOCIv1")
+	ctx, span := tracer.Start(ctx, "CreateOCIv1_ParsedManifest")
 	defer span.End()
+	// TODO: Is the manifest in question uploaded or parsed?
+	// -> If not parsed - skip!
+	if origMani.Type != "PARSED" {
+		l.Warnf("Manifest.ID: %d is not parsed (%s), skipping", mani.ID, origMani.Type)
+		return
+	}
 	// TODO: Get parsed manifests
 	_, found, err := mag.Database.ManifestData_GetParsedID_ByMediaType(ctx, mani.ID, v1.MediaTypeImageManifest, "PARSED")
 	if err != nil {
@@ -203,7 +223,7 @@ func (mag Magazine) CreateOCIv1_ParsedManifest(ctx context.Context, mani types.M
 		l.Debugf("OCIv1 manifest already present for Manifest.ID: %d", mani.ID)
 		return
 	}
-	maniID, e := mag.OCI_CreateBaseManifest(ctx, mani, origMani)
+	maniID, e := mag.OCI_CreateBaseManifest(ctx, mani, origMani, 0)
 	if e != nil {
 		err = errors.Wrap(e, "failed to create base manifest")
 		return
@@ -228,7 +248,7 @@ func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMa
 		"func":    "CreateOCIv1",
 		"mani.ID": mani.ID,
 	})
-	_ = l
+	l.Debugf("Creating OCIv1 manifest for Manifest.ID: %d", mani.ID)
 	ctx, span := tracer.Start(ctx, "CreateOCIv1")
 	defer span.End()
 	err = mag.CreateOCIv1_UploadedBy(ctx, mani, origMani)
@@ -245,6 +265,8 @@ func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMa
 }
 
 func (mag Magazine) GenerateOCIv1Config(ctx context.Context, maniSI types.Manifest, origMani types.ManifestData) (v1Cfg v1.Image, err error) {
+	ctx, span := tracer.Start(ctx, "GenerateOCIv1Config")
+	defer span.End()
 	// TODO: Fetch config from Minio
 	v1Cfg, found, err := mag.Minio.GetConfig(ctx, origMani.Config.Digest)
 	if err != nil {
@@ -253,6 +275,54 @@ func (mag Magazine) GenerateOCIv1Config(ctx context.Context, maniSI types.Manife
 	if !found {
 		err = fmt.Errorf("config with digest '%s' not found in object store", origMani.Config.Digest)
 		return
+	}
+	msg := fmt.Sprintf("cfg.Labels: %d", len(v1Cfg.Config.Labels))
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.message", msg),
+	))
+	for k, v := range v1Cfg.Config.Labels {
+		msg := fmt.Sprintf("cfg.Labels-%s=%s", k, v)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
+	}
+	msg = fmt.Sprintf("origMani.Config.Labels: %d", len(origMani.Config.Labels.ToMap()))
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.message", msg),
+	))
+	for k, v := range origMani.Config.Labels.ToMap() {
+		msg := fmt.Sprintf("origMani.Config.Labels-%s=%s", k, v)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
+	}
+	msg = fmt.Sprintf("origMani.Annotations: %d", len(origMani.Annotations.ToMap()))
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.message", msg),
+	))
+	for k, v := range origMani.Annotations.ToMap() {
+		msg := fmt.Sprintf("origMani.Annotations-%s=%s", k, v)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
+	}
+	msg = fmt.Sprintf("maniSI.Annotations: %d", len(maniSI.Annotations.ToMap()))
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.message", msg),
+	))
+	for k, v := range maniSI.Annotations.ToMap() {
+		msg := fmt.Sprintf("maniSI.Annotations-%s=%s", k, v)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
 	}
 	es := utils.NewEnvStore()
 	// Put Labels into Env
@@ -265,10 +335,20 @@ func (mag Magazine) GenerateOCIv1Config(ctx context.Context, maniSI types.Manife
 		cur, ok := v1Cfg.Config.Labels[k]
 		if ok {
 			if cur != v {
-				logrus.Warnf("Label '%s' already present in config: '%s'", k, cur)
+				msg := fmt.Sprintf("Label '%s' already present in config: '%s'", k, cur)
+				span.AddEvent("log", trace.WithAttributes(
+					attribute.String("log.severity", "warn"),
+					attribute.String("log.message", msg),
+				))
+				logrus.Warn(msg)
 			}
 		} else {
-			logrus.Debugf("origMani.Config.Labels: Add label '%s' with value '%s'", k, v)
+			msg := fmt.Sprintf("origMani.Config.Labels: Add label '%s' with value '%s'", k, v)
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "debug"),
+				attribute.String("log.message", msg),
+			))
+			logrus.Debug(msg)
 			v1Cfg.Config.Labels[k] = v
 			es.Add(k, v)
 		}
@@ -281,10 +361,20 @@ func (mag Magazine) GenerateOCIv1Config(ctx context.Context, maniSI types.Manife
 			cur, ok := v1Cfg.Config.Labels[k]
 			if ok {
 				if cur != v {
-					logrus.Warnf("Label '%s' already present in config: '%s'", k, cur)
+					msg := fmt.Sprintf("Label '%s' already present in config: '%s'", k, cur)
+					span.AddEvent("log", trace.WithAttributes(
+						attribute.String("log.severity", "warn"),
+						attribute.String("log.message", msg),
+					))
+					logrus.Warn(msg)
 				}
 			} else {
-				logrus.Debugf("maniSI.Annotations: Add label '%s' with value '%s'", k, v)
+				msg := fmt.Sprintf("maniSI.Annotations: Add label '%s' with value '%s'", k, v)
+				span.AddEvent("log", trace.WithAttributes(
+					attribute.String("log.severity", "debug"),
+					attribute.String("log.message", msg),
+				))
+				logrus.Debug(msg)
 				v1Cfg.Config.Labels[k] = v
 				es.Add(k, v)
 

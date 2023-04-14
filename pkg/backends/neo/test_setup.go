@@ -262,7 +262,7 @@ func (n Neo) Setup_Manifest_FT_mpich_amd64(br *utils.BootstrapResult) (err error
 	if err != nil {
 		return err
 	}
-	up, err := n.Upstream_Get_ByID(upID)
+	up, err := n.Upstream_Get_ByID(ctx, upID)
 	if err != nil {
 		return err
 	}
@@ -328,7 +328,7 @@ func (n Neo) Setup_Manifest_FT_amd64(br *utils.BootstrapResult) (err error) {
 	if err != nil {
 		return err
 	}
-	up, err := n.Upstream_Get_ByID(upID)
+	up, err := n.Upstream_Get_ByID(ctx, upID)
 	if err != nil {
 		return err
 	}
@@ -392,7 +392,7 @@ func (n Neo) Setup_Manifest_FT_arm64(br *utils.BootstrapResult) (err error) {
 	if err != nil {
 		return err
 	}
-	up, err := n.Upstream_Get_ByID(upID)
+	up, err := n.Upstream_Get_ByID(ctx, upID)
 	if err != nil {
 		return err
 	}

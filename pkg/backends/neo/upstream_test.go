@@ -72,7 +72,7 @@ func Test_Upstream_CRUD(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, upID, gotUpID)
-	gotUp, err := db.Upstream_Get_ByID(upID)
+	gotUp, err := db.Upstream_Get_ByID(ctx, upID)
 	assert.NoError(t, err)
 	assert.Equal(t, up.Reg, gotUp.Reg)
 	// Insert the same

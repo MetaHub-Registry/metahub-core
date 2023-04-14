@@ -262,7 +262,7 @@ func (n Neo) Profile_FromManifestDataID_ViaAnnotations(ctx context.Context, mdID
 	})
 	_, span := tracer.Start(ctx, "Profile_FromManifestDataID_ViaAnnotations")
 	defer span.End()
-	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[]-(a:Annotation)-[]-(md:ManifestData) WHERE id(md) = %d`, mdID)
+	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[:%s]-(a:Annotation)-[]-(md:ManifestData) WHERE id(md) = %d`, types.RelationSuccess, mdID)
 	q += fmt.Sprintf(` RETURN DISTINCT %s`, returnStatementProfile)
 	res, err := n.Query(q)
 	l.Debug(q)
@@ -275,12 +275,34 @@ func (n Neo) Profile_FromManifestDataID_ViaAnnotations(ctx context.Context, mdID
 	}
 	prfs = make([]types.Profile, 0)
 	for _, r := range res {
-		p, err := n.ProfileFromResult(r)
-		if err != nil {
+		p, e := n.ProfileFromResult(r)
+		if e != nil {
+			err = errors.Wrap(e, "failed to get profile from result")
 			l.Error(err)
 			continue
 		}
-		prfs = append(prfs, p)
+		q := fmt.Sprintf(`MATCH (md:ManifestData)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule)<-[:USES]-(p:Profile)`, types.RelationFailure)
+		q += fmt.Sprintf(` WHERE id(md) = %d AND id(p) = %d RETURN count(a) AS countAnnotations`, mdID, p.ID)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.query", q),
+		))
+		res, _, e := n.QueryOne(q)
+		if e != nil {
+			err = errors.Wrap(e, "failed to get QueryOne")
+			l.Error(err)
+			continue
+		}
+		cnt, e := res.GetInt("countAnnotations")
+		if e != nil {
+			err = errors.Wrap(e, "failed to get countAnnotations")
+			l.Error(err)
+
+			return
+		}
+		if cnt == 0 {
+			prfs = append(prfs, p)
+		}
 	}
 	return
 }
@@ -294,7 +316,7 @@ func (n Neo) Profile_FromManifestDataID_ViaPlatform(ctx context.Context, mdID in
 	_, span := tracer.Start(ctx, "Profile_FromManifestDataID_ViaPlatform")
 	defer span.End()
 	rel := types.RelationSuccess
-	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[%s]->(p:Platform)<-[:IS]-(m:Manifest)-[]-(md:ManifestData) WHERE id(md) = %d`, rel, mdID)
+	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[:%s]->(p:Platform)<-[:IS]-(m:Manifest)-[]-(md:ManifestData) WHERE id(md) = %d`, rel, mdID)
 	q += fmt.Sprintf(` RETURN DISTINCT %s`, returnStatementProfile)
 	res, err := n.Query(q)
 	l.Debug(q)
@@ -312,7 +334,27 @@ func (n Neo) Profile_FromManifestDataID_ViaPlatform(ctx context.Context, mdID in
 			logrus.Error(err)
 			continue
 		}
-		prfs = append(prfs, p)
+		q := fmt.Sprintf(`MATCH (md:ManifestData)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule)<-[:USES]-(p:Profile)`, types.RelationFailure)
+		q += fmt.Sprintf(` WHERE id(md) = %d AND id(p) = %d RETURN count(a) AS countAnnotations`, mdID, p.ID)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.query", q),
+		))
+		res, _, e := n.QueryOne(q)
+		if e != nil {
+			err = errors.Wrap(e, "failed to get QueryOne")
+			l.Error(err)
+			continue
+		}
+		cnt, e := res.GetInt("countAnnotations")
+		if e != nil {
+			err = errors.Wrap(e, "failed to get countAnnotations")
+			l.Error(err)
+			continue
+		}
+		if cnt == 0 {
+			prfs = append(prfs, p)
+		}
 	}
 	return
 }
@@ -391,17 +433,15 @@ func (n Neo) Profile_GetUploadedBy_ViaManifestDataID(ctx context.Context, maniID
 	return
 }
 
-func (n Neo) Profile_UnwindRules(ctx context.Context, prfID, maniID int64) (err error) {
+func (n Neo) Profile_GetAnnoEqRules(ctx context.Context, prfID int64) (rs []types.Rule, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "neo/profiles.go",
-		"func":    "Profile_UnwindRules",
-		"maniID":  maniID,
+		"func":    "Profile_GetAnnoRules",
 		"prfID":   prfID,
 	})
-	_, span := tracer.Start(ctx, "Profile_GetUploadedBy_BiaManifestDataID")
+	_, span := tracer.Start(ctx, "Profile_GetAnnoRules")
 	defer span.End()
 	span.SetAttributes(
-		attribute.Key("maniID").Int64(maniID),
 		attribute.Key("prfID").Int64(prfID),
 	)
 	q := `MATCH (prf:Profile)-[:USES]->(r:Rule)`
@@ -414,8 +454,35 @@ func (n Neo) Profile_UnwindRules(ctx context.Context, prfID, maniID int64) (err 
 		err = errors.Wrapf(err, "failed to unwind rules for profile %d", prfID)
 		return
 	}
+	rs = make([]types.Rule, 0)
 	for _, ele := range res {
 		r, _ := RuleFromResult(ele)
+		if r.Type == types.RuleTypeAnnotation && r.Op == "eq" {
+			rs = append(rs, r)
+		}
+	}
+	return
+}
+
+func (n Neo) Profile_UnwindRules(ctx context.Context, prfID, maniID int64) (err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "neo/profiles.go",
+		"func":    "Profile_UnwindRules",
+		"maniID":  maniID,
+		"prfID":   prfID,
+	})
+	_, span := tracer.Start(ctx, "Profile_UnwindRules")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("maniID").Int64(maniID),
+		attribute.Key("prfID").Int64(prfID),
+	)
+	rs, e := n.Profile_GetAnnoEqRules(ctx, prfID)
+	if e != nil {
+		err = errors.Wrapf(e, "failed to get anno rules for profile %d", prfID)
+		return
+	}
+	for _, r := range rs {
 		l.Debug("rule: ", r.ToString())
 		if r.Type == types.RuleTypeAnnotation && r.Op == "eq" {
 			a := types.NewAnnotation(r.Key, r.Value)

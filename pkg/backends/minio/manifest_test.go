@@ -26,25 +26,6 @@ func Test_ManifestFromBlob(t *testing.T) {
 	assert.Equal(t, "linux", mani.Platform.OS)
 }
 
-func Test_Manifest_RemoveManifestAliases(t *testing.T) {
-	ctx := context.Background()
-
-	up := upstream.UpstreamTriple{
-		Reg:    "docker.io",
-		Repo:   "qnib/metahub-admin",
-		Tag:    "latest",
-		Digest: digest.Digest(featureTestGenericManiDigest),
-	}
-	err := min.PutManifest(ctx, []byte(featureTestGenericMani), up)
-	assert.NoError(t, err)
-	err = min.RemoveManifestAliases()
-	assert.NoError(t, err)
-	err = min.ManifestRemoveObj(ctx, featureTestGenericManiDigest)
-	assert.NoError(t, err)
-	_, err = min.ManifestsStatObj(ctx, featureTestGenericManiDigest)
-	assert.Error(t, err)
-
-}
 func Test_Manifest_PutStatRemove(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()

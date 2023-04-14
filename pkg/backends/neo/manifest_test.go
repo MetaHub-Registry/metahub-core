@@ -38,7 +38,7 @@ func Test_Manifest_CR(t *testing.T) {
 	}
 	assert.False(t, found)
 	/// create Manifest
-	maniID, err := db.Manifest_Create(upID)
+	maniID, err := db.Manifest_Create(ctx, upID)
 	assert.NoError(t, err)
 	/// get Manifest
 	gotManiID, found, err := db.Manifest_Get(upID)
@@ -71,7 +71,7 @@ func Test_Manifest_GetInsert(t *testing.T) {
 	assert.NoError(t, err)
 	assert.False(t, found)
 	/// create Manifest
-	up, err := db.Upstream_Get_ByID(upID)
+	up, err := db.Upstream_Get_ByID(ctx, upID)
 	assert.NoError(t, err)
 	mani := types.Manifest{
 		Upstream: up,

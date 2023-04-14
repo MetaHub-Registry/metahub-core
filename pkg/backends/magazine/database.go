@@ -22,11 +22,13 @@ type Database interface {
 	BootstrapTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error)                  // BootstrapTest sets up the database backend for testing
 	BootstrapTestWithBR(b string, bs utils.Bootstrap, br *utils.BootstrapResult) (err error) // BootstrapTest sets up the database backend for testing
 	EmptyData(emptyAll bool) error
+	EmptyData_KeepUpstream() error
 	TeardownTest(bs utils.Bootstrap)
 	/*******  Platform ********/
 	Platform_GetInsert(ctx context.Context, p *types.Platform) error
 	/******* Upstream ********/
 	Upstream_GetInsert_ByRequest(ctx context.Context, req types.Request) (up types.Upstream, found bool, err error)
+	Upstream_Get_ByRequest(ctx context.Context, req types.Request) (up types.Upstream, found bool, err error)
 
 	/********* Annotation/Labels *********/
 	Config_AddLabels(ctx context.Context, cfgID int64, a *types.Annotations) (err error)
@@ -130,6 +132,7 @@ type Database interface {
 	ProfileAuthorizedPushHandler(ctx context.Context, req types.Request) (prf types.Profile, err error)
 	Profile_GetUploadedBy_ViaManifestDataID(ctx context.Context, maniID int64) (p types.Profile, found bool, err error)
 	Profile_UnwindRules(ctx context.Context, prfID, maniID int64) (err error)
+	Profile_GetAnnoEqRules(ctx context.Context, prfID int64) (rs []types.Rule, err error)
 	// Rules
 	Rule_EvalAnnotationRule(ctx context.Context, r types.Rule) (err error)
 	Rule_Get(ctx context.Context, r types.Rule) (ruleID int64, found bool, err error)

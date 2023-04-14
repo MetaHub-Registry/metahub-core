@@ -1,0 +1,6 @@
+name: "cpu" 
+tag: "noop"
+type: "anno"
+op: "null"
+key: "org.supercontainers.hardware.cpu.*"
+value: ""

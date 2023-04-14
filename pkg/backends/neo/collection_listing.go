@@ -20,7 +20,7 @@ func (n Neo) CollectionListing_Get_ByID(ctx context.Context, colID, colTagID int
 	ctx, span := tracer.Start(ctx, "CollectionListing_Get_ByID")
 	defer span.End()
 	_ = ctx
-	l.Info("START")
+	_ = l
 	q := fmt.Sprintf(`MATCH (c:Collection)-[:HAS_TAG]->(t) WHERE id(c) = %d AND id(t) = %d`, colID, colTagID)
 	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
 	span.AddEvent("log", trace.WithAttributes(
