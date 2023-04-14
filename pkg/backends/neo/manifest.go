@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -54,7 +55,7 @@ func (n Neo) Manifest_GetInsertWithRequest(ctx context.Context, m types.Manifest
 		l.Debugf("Manifest found: %d", maniID)
 	} else {
 		// Create ManifestStandin
-		maniID, err = n.Manifest_CreateWithRequest(up.ID, req)
+		maniID, err = n.Manifest_CreateWithRequest(ctx, up.ID, req)
 		if err != nil {
 			logrus.Error(err)
 			return
@@ -112,7 +113,7 @@ func (n Neo) Manifest_GetInsert(ctx context.Context, m types.Manifest) (maniID i
 		l.Debugf("Manifest found: %d", maniID)
 	} else {
 		// Create ManifestStandin
-		maniID, err = n.Manifest_Create(up.ID)
+		maniID, err = n.Manifest_Create(ctx, up.ID)
 		if err != nil {
 			logrus.Error(err)
 			return
@@ -139,13 +140,15 @@ func (n Neo) Manifest_GetInsert(ctx context.Context, m types.Manifest) (maniID i
 	return
 }
 
-func (n Neo) Manifest_Create(upID int64) (msID int64, err error) {
+func (n Neo) Manifest_Create(ctx context.Context, upID int64) (msID int64, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "neo/manifest.go",
 		"func":    "Manifest_Create",
 		"upID":    upID,
 	})
-	up, err := n.Upstream_Get_ByID(upID)
+	ctx, span := tracer.Start(ctx, "Manifest_Create")
+	defer span.End()
+	up, err := n.Upstream_Get_ByID(ctx, upID)
 	if err != nil {
 		err = errors.Wrap(err, "failed to get upstream")
 		l.Error(err)
@@ -156,6 +159,7 @@ func (n Neo) Manifest_Create(upID int64) (msID int64, err error) {
 		"package":  "neo/manifest.go",
 		"func":     "Manifest_Create",
 		"upID":     upID,
+		"digest":   utils.ShortenDigest(up.Digest.String()),
 		"upstream": label,
 	})
 
@@ -172,13 +176,15 @@ func (n Neo) Manifest_Create(upID int64) (msID int64, err error) {
 	return
 }
 
-func (n Neo) Manifest_CreateWithRequest(upID int64, req types.Request) (msID int64, err error) {
+func (n Neo) Manifest_CreateWithRequest(ctx context.Context, upID int64, req types.Request) (msID int64, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "neo/manifest.go",
 		"func":    "Manifest_Create",
 		"upID":    upID,
 	})
-	up, err := n.Upstream_Get_ByID(upID)
+	ctx, span := tracer.Start(ctx, "Manifest_CreateWithRequest")
+	defer span.End()
+	up, err := n.Upstream_Get_ByID(ctx, upID)
 	if err != nil {
 		err = errors.Wrap(err, "failed to get upstream")
 		l.Error(err)

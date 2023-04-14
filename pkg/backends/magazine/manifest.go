@@ -20,16 +20,46 @@ import (
 )
 
 func (mag Magazine) GetManifest(ctx context.Context, m ycfg.Manifest) (mani types.ManifestData, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "magazine/manifest.go",
+		"func":    "GetManifest",
+	})
+	_, span := tracer.Start(ctx, "GetManifest")
+	defer span.End()
 	up, err := m.ToUpstreamTriple()
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
+	l = l.WithFields(logrus.Fields{
+		"reg":    up.Reg,
+		"repo":   up.Repo,
+		"tag":    up.Tag,
+		"digest": up.Digest,
+	})
+	req := types.Request{
+		Host: up.Reg,
+		Repo: up.Repo,
+		Tag:  up.Tag,
+	}
+	// TODO: 2023-04-05 check for upstream in graph
+	u, found, e := mag.Database.Upstream_Get_ByRequest(ctx, req)
+	if e != nil {
+		err = errors.Wrap(e, "failed to get upstream")
+		l.Error(err)
+		return
+	}
+	up.Digest = u.Digest
+	if !found {
+		err = errors.New("upstream not found")
+		l.Error(err)
+		return
+	}
 	// The Manifest cached has a Data filed with the original data blob (matching the digest)
 	// in addition it has fields populated with the parsed data.
-	mani, isCached, err := mag.Minio.GetManifest(ctx, up)
+	mani, isCached, err := mag.Minio.GetCachedManifest(ctx, up.Digest)
 	if err != nil {
-		logrus.Error(err)
+		l.Error(err)
 		return
 	}
 	if !isCached {
@@ -86,20 +116,42 @@ func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani typ
 		logrus.Error(err)
 		return
 	}
-	// The Manifest cached has a Data filed with the original data blob (matching the digest)
-	// in addition it has fields populated with the parsed data.
-	mani, isCached, err := mag.Minio.GetManifest(ctx, up)
+	req := types.Request{
+		Host: up.Reg,
+		Repo: up.Repo,
+		Tag:  up.Tag,
+	}
+	u, found, e := mag.Database.Upstream_Get_ByRequest(ctx, req)
+	if e != nil {
+		err = errors.Wrap(e, "failed to get upstream")
+		l.Error(err)
+		return
+	}
+	if found {
+		// TODO: 2021-04-05 we need an option to invalidate the cached upstream objects
+		mani, isCached, e := mag.Minio.GetCachedManifest(ctx, u.Digest)
+		if e != nil {
+			err = errors.Wrap(e, "failed to get upstream")
+			l.Error(err)
+			return mani, err
+		}
+		if !isCached {
+			err = errors.New("manifest is not cached")
+		}
+		return mani, err
+	}
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
-	msg := fmt.Sprintf("Caching manifest for %-101s -> %t", up.GetLabel(), isCached)
+	msg := fmt.Sprintf("Caching manifest for %-101s -> %t", up.GetLabel(), found)
 	l.Info(msg)
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
 		attribute.String("log.message", msg),
 	))
-	if !isCached {
+	if !found {
+		l.Warnf("Manifest not cached, yet")
 		/****** Manifest not already there
 		TODO: Depending on the media type, we are going to create different nodes within the graph
 		*/
@@ -142,18 +194,29 @@ func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani typ
 			l.Error(err)
 			return mani, err
 		}
-		up.Digest = digest.FromBytes(b)
+		up.Digest = digest.Digest(mani.Digest)
 		up.Size = blob.Size
 		err = mag.Minio.PutManifest(ctx, b, up)
 		if err != nil {
 			l.Error(err)
 			return mani, err
 		}
-		mani.Data = b
-		if err != nil {
+		// TODO: Add Upstream with digest to graph
+		u := types.Upstream{
+			Reg:    up.Reg,
+			Repo:   up.Repo,
+			Tag:    up.Tag,
+			Digest: up.Digest,
+		}
+		upID, e := mag.NeoInsertUpstream(ctx, u)
+		if e != nil {
+			err = errors.Wrap(e, "failed to NeoInsertUpstream")
 			l.Error(err)
+			span.RecordError(err)
 			return mani, err
 		}
+		_ = upID
+		mani.Data = b
 	}
 	mani.Upstream = types.Upstream{
 		Reg:    up.Reg,
@@ -440,7 +503,7 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 		attribute.Key("body-length").Int(len(buf)),
 		attribute.Key("profile").String(req.Profile),
 	)
-	l.Info("Start")
+	_ = l
 
 	var ociMani types.OCIManifest
 	// Put Manifest Blob into Minio
@@ -597,7 +660,7 @@ func (mag Magazine) ComputeManifest(ctx context.Context, mani types.Manifest) (e
 			l.Info(msg)
 			continue
 		}
-		msg := fmt.Sprintf("ManifestData %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
+		msg := fmt.Sprintf(">> ManifestData %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
 		span.AddEvent("log", trace.WithAttributes(
 			attribute.String("log.severity", "debug"),
 			attribute.String("log.message", msg),

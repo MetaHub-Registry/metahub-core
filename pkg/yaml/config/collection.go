@@ -66,7 +66,12 @@ func FindManifestCollections(ctx context.Context, cacheDir string) (cfgs map[str
 			l.Warnf("Issue reading %s: %x, skipping.\n", mfile, err)
 			continue
 		}
-
+		if manifest.Name == "" {
+			manifest.Name = repo
+		}
+		if manifest.Tag == "" {
+			manifest.Tag = tag
+		}
 		// Required to have name and tag
 		if manifest.Name != repo || manifest.Tag != tag {
 			l.Warnf("Manifest %s defines the repo (%s) and tag (%s)via path", mfile, repo, tag)

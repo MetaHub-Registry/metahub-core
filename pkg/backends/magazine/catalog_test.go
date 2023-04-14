@@ -21,7 +21,6 @@ func Test_Basic(t *testing.T) {
 	res, err := mag.Collections_GetCatalog(req)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(res.Repos))
-	// TODO: add setup collection to make this work
 	//assert.Equal(t, 3, len(res.Repos))
 }
 
