@@ -135,6 +135,7 @@ func (n Neo) ManifestData_GetParsedID_ByMediaType(ctx context.Context, msID int6
 		"func":      "ManifestData_GetParsedID_ByMediaType",
 		"mani.ID":   msID,
 		"mediaType": mediaType,
+		"relType":   relType,
 	})
 	_, span := tracer.Start(ctx, "ManifestData_GetParsedID_ByMediaType")
 	defer span.End()
@@ -150,6 +151,7 @@ func (n Neo) ManifestData_GetParsedID_ByMediaType(ctx context.Context, msID int6
 		l.Warn("Not able to found manifestData for manifestID: ", msID)
 		return
 	}
+	l.Info(q)
 	maniID, err = res.GetInt64("manifestID")
 	if err != nil {
 		err = errors.Wrap(err, "failed to get manifestID from result while getting manifest by digest and mediaType")
@@ -248,13 +250,21 @@ func (n Neo) ManifestData_GetAll() (manis []types.ManifestData, err error) {
 }
 
 func (n Neo) ManifestData_GetAllByManifestID(ctx context.Context, msID int64) (manis []types.ManifestData, err error) {
-	q := `MATCH (ms:Manifest)-[r]->(m:ManifestData) WHERE id(ms) = %d`
+	ctx, span := tracer.Start(ctx, "ManifestData_GetAllByManifestID")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("maniID").Int64(msID),
+	)
+	q := fmt.Sprintf(`MATCH (ms:Manifest)-[r]->(m:ManifestData) WHERE id(ms) = %d`, msID)
 	q += ` MATCH (m)-[]-(cfg:Config)`
 	q += ` RETURN id(m) AS manifestID, m.digest AS manifestDigest, m.mediaType AS manifestMediaType, m.size AS manifestSize,`
 	q += ` id(cfg) AS configID, cfg.digest AS configDigest, cfg.mediaType AS configMediaType, cfg.size AS configSize,`
-	q += ` type(r) AS manifestOrigin`
-	query := fmt.Sprintf(q, msID)
-	res, err := n.Query(query)
+	q += ` type(r) AS manifestdataRelType`
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
+	res, err := n.Query(q)
 	if err != nil {
 		logrus.Error(err)
 		return
@@ -669,9 +679,8 @@ func (n Neo) ManifestData_Get_ByDigest(ctx context.Context, dig string) (m types
 	q := `MATCH (md:ManifestData)-[r]-(m:Manifest)-[]->(u:Upstream) WHERE md.digest = "%s"`
 	q += ` RETURN id(md) AS manifestID, md.digest AS manifestDigest, md.mediaType AS manifestMediaType, md.size AS manifestSize,`
 	q += ` ` + UpstreamReturn + `,`
-	q += ` type(r) AS relType`
+	q += ` type(r) AS manifestdataRelType`
 	query := fmt.Sprintf(q, dig)
-	//fmt.Printf("Q: \n%s\n", query)
 	res, found, err := n.QueryOne(query)
 	if err != nil {
 		return
@@ -769,6 +778,8 @@ func ManifestDataFromRecord(res neo4j.Result) (m types.ManifestData, err error) 
 }
 
 func (n Neo) ManifestDataFromResult(ctx context.Context, res types.Result) (m types.ManifestData, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestDataFromResult")
+	defer span.End()
 	err = res.CheckKeys("manifestID", "manifestDigest", "manifestMediaType", "manifestSize")
 	if err != nil {
 		return
@@ -780,10 +791,40 @@ func (n Neo) ManifestDataFromResult(ctx context.Context, res types.Result) (m ty
 	manifestOrigin, _ := res.GetStr("manifestOrigin")
 	manifestLabel, _ := res.GetStr("manifestLabel")
 	manifestdataRelType, _ := res.GetStr("manifestdataRelType")
+	span.SetAttributes(
+		attribute.Key("maniID").Int64(maniID),
+		attribute.Key("manifestSize").Int64(manifestSize),
+		attribute.Key("manifestDigest").String(manifestDigest),
+		attribute.Key("manifestMediaType").String(manifestMediaType),
+		attribute.Key("manifestOrigin").String(manifestOrigin),
+		attribute.Key("manifestLabel").String(manifestLabel),
+		attribute.Key("manifestdataRelType").String(manifestdataRelType),
+	)
 	// Get Annotations for ManifestData
 	annos, err := n.GetAnnotationsByManifestDataID(ctx, maniID)
 	if err != nil {
 		err = errors.Wrap(err, "failed to get annotations for manifest data")
+		return
+	}
+	uploadProfiles, err := n.Profile_FromManifestDataID(ctx, maniID)
+	if err != nil {
+		err = errors.Wrap(err, "failed to get profile for manifest data")
+		span.RecordError(err)
+		return
+	}
+	var uploadProfile types.Profile
+	switch len(uploadProfiles) {
+	case 0:
+		msg := "No profile uploaded this manifest"
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
+	case 1:
+		uploadProfile = uploadProfiles[0]
+	default:
+		err = fmt.Errorf("expected 1 profile for manifest data, got %d", len(uploadProfiles))
+		span.RecordError(err)
 		return
 	}
 	m = types.ManifestData{
@@ -794,6 +835,7 @@ func (n Neo) ManifestDataFromResult(ctx context.Context, res types.Result) (m ty
 		Label:       manifestLabel,
 		Origin:      manifestOrigin,
 		Type:        manifestdataRelType,
+		Profile:     uploadProfile,
 		Annotations: annos,
 	}
 	return
@@ -808,7 +850,7 @@ func (n Neo) ManifestData_GetByCollectionTag(ctx context.Context, colID, colTagI
 	})
 	ctx, span := tracer.Start(ctx, "ManifestData_GetByCollectionTag")
 	defer span.End()
-	l.Info("START")
+	_ = l
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	q := `MATCH (p:Platform)-[r]-(m:Manifest)-[]-(u:Upstream)`
@@ -825,7 +867,7 @@ func (n Neo) ManifestData_GetByCollectionTag(ctx context.Context, colID, colTagI
 		attribute.String("log.severity", "debug"),
 		attribute.String("log.query", q),
 	))
-	l.Debug(q)
+	//l.Debug(q)
 	input := map[string]interface{}{}
 	result, err := session.Run(q, input)
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	"github.com/opencontainers/go-digest"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -47,7 +48,39 @@ func (n Neo) Upstream_GetInsert_ByRequest(ctx context.Context, req types.Request
 	return
 }
 
-func (n Neo) Upstream_Get_ByID(upID int64) (up types.Upstream, err error) {
+func (n Neo) Upstream_Get_ByRequest(ctx context.Context, req types.Request) (up types.Upstream, found bool, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "neo/upstream.go",
+		"func":    "Upstream_Get_ByRequest",
+		"host":    req.Host,
+		"repo":    req.Repo,
+		"tag":     req.Tag,
+		"digest":  utils.ShortenDigest(req.Digest),
+	})
+	_ = l
+	ctx, span := tracer.Start(ctx, "Upstream_Get_ByRequest")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("host").String(req.Host),
+		attribute.Key("repo").String(req.Repo),
+		attribute.Key("tag").String(req.Tag),
+		attribute.Key("digest").String(utils.ShortenDigest(req.Digest)),
+	)
+	up = types.Upstream{
+		Reg:    req.Host,
+		Repo:   req.Repo,
+		Tag:    req.Tag,
+		Digest: digest.Digest(req.Digest),
+	}
+	up.ID, found, err = n.Upstream_Get(ctx, up)
+	if !found {
+		return
+	}
+	up, err = n.Upstream_Get_ByID(ctx, up.ID)
+	return
+}
+
+func (n Neo) Upstream_Get_ByID(ctx context.Context, upID int64) (up types.Upstream, err error) {
 	q := fmt.Sprintf(`MATCH (u:Upstream) WHERE id(u) = %d`, upID)
 	q += ` RETURN ` + UpstreamReturn
 
@@ -75,7 +108,10 @@ func (n Neo) Upstream_Get(ctx context.Context, up types.Upstream) (upID int64, s
 		attribute.Key("upstream").String(up.String()),
 	)
 	q := `MATCH (u:Upstream)`
-	q += fmt.Sprintf(` WHERE u.reg = "%s" AND u.repo = "%s" AND u.tag = "%s" AND u.digest = "%s"`, up.Reg, up.Repo, up.Tag, up.Digest)
+	q += fmt.Sprintf(` WHERE u.reg = "%s" AND u.repo = "%s" AND u.tag = "%s"`, up.Reg, up.Repo, up.Tag)
+	if up.Digest.String() != "" {
+		q += fmt.Sprintf(` AND u.digest = "%s"`, up.Digest.String())
+	}
 	q += ` RETURN id(u) AS ID`
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
@@ -98,6 +134,7 @@ func (n Neo) Upstream_Get(ctx context.Context, up types.Upstream) (upID int64, s
 		upID = v.(int64)
 		success = true
 	}
+	l.Debugf("upstream: %s, found: %t", up.String(), success)
 	return
 }
 
@@ -114,8 +151,11 @@ func (n Neo) CreateUpstream(ctx context.Context, up types.Upstream) (upID int64,
 	})
 	_, span := tracer.Start(ctx, "CreateUpstream")
 	defer span.End()
-
-	q := fmt.Sprintf(`CREATE (u:Upstream {reg: "%s", repo: "%s", tag: "%s", label: "%s", digest: "%s"`, up.Reg, up.Repo, up.Tag, label, up.Digest)
+	if up.Digest.String() == "" {
+		err = fmt.Errorf("CreateUpstream: digest is empty")
+		return
+	}
+	q := fmt.Sprintf(`CREATE (u:Upstream {reg: "%s", repo: "%s", tag: "%s", label: "%s"`, up.Reg, up.Repo, up.Tag, label)
 	if up.Digest.String() != "" {
 		q += fmt.Sprintf(`,digest: "%s"`, up.Digest.String())
 	}
@@ -168,7 +208,11 @@ func UpstreamFromRecord(res neo4j.Result) (u types.Upstream, err error) {
 	}
 	for idx, key := range keys {
 		v := record.Values[idx]
-		r.Add(key, v)
+		err = r.Add(key, v)
+		if err != nil {
+			logrus.Errorf("Error adding key: %s\n", err)
+			return
+		}
 	}
 	return UpstreamFromResult(r)
 }

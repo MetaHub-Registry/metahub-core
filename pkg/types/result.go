@@ -20,7 +20,7 @@ func NewResult() Result {
 	}
 }
 
-func (r *Result) Add(key string, val interface{}) {
+func (r *Result) Add(key string, val interface{}) (err error) {
 	switch val.(type) {
 	case string:
 		r.Strings[key] = val.(string)
@@ -35,8 +35,9 @@ func (r *Result) Add(key string, val interface{}) {
 			r.Strings[key] = str
 		}
 	default:
-		panic(fmt.Sprintf("unknown type for key '%s': %T", key, val))
+		return fmt.Errorf("unknown type for key '%s': %T", key, val)
 	}
+	return
 }
 
 func (r Result) GetStr(key string) (val string, err error) {

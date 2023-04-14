@@ -6,6 +6,8 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (n Neo) Config_AddLabels(ctx context.Context, cfgID int64, as *types.Annotations) (err error) {
@@ -48,10 +50,15 @@ func (n Neo) GetAnnotationsByManifestDataID(ctx context.Context, msID int64) (as
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (md:ManifestData)-[:HAS_ANNOTATION]->(a:Annotation) WHERE id(md) = %d`, msID)
 	q += ` RETURN id(a) AS annotationID, a.key AS annotationKey, a.value AS annotationValue`
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
 	res, err := n.Query(q)
 	if err != nil {
 		return
 	}
+
 	as = types.NewAnnotations()
 	for _, r := range res {
 		aTmp, e := AnnotationsFromResult(r)

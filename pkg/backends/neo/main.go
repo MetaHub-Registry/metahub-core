@@ -165,6 +165,7 @@ func (n Neo) Setup(ctx context.Context) (err error) {
 			logrus.Fatal(err.Error())
 		}
 	}
+
 	logrus.Info("Neo4j Setup Done")
 	return
 }
@@ -173,17 +174,17 @@ func (n Neo) EmptyData(all bool) (err error) {
 	return n.EmptyGraph()
 }
 
+func (n Neo) EmptyData_KeepUpstream() (err error) {
+	logrus.Warn("Neo.EmptyData_KeepUpstream")
+	q := `MATCH (n) WHERE NOT "Upstream" IN LABELS(n) DETACH DELETE n`
+	_, err = n.Execute(q)
+	return
+}
+
 func (n Neo) EmptyGraph() (err error) {
 	logrus.Warn("Neo.EmptyGraph")
-	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
-	if err != nil {
-		logrus.Errorf("Error creating neo session: %s\n", err)
-		return
-	}
-	defer session.Close()
-	input := map[string]interface{}{}
 	q := `MATCH (n) DETACH DELETE n`
-	_, err = session.Run(q, input)
+	_, err = n.Execute(q)
 	return
 }
 
@@ -210,7 +211,11 @@ func (n Neo) Execute(q string) (res types.Result, err error) {
 		}
 		for idx, key := range keys {
 			v := record.Values[idx]
-			res.Add(key, v)
+			e := res.Add(key, v)
+			if e != nil {
+				err = errors.Wrap(e, "Error adding key to result")
+				return res, err
+			}
 		}
 	}
 	return
@@ -239,7 +244,11 @@ func (n Neo) QueryOne(q string) (res types.Result, found bool, err error) {
 		res = types.NewResult()
 		for idx, key := range keys {
 			v := record.Values[idx]
-			res.Add(key, v)
+			e := res.Add(key, v)
+			if e != nil {
+				err = errors.Wrap(e, "Error adding key to result")
+				return res, found, err
+			}
 		}
 		found = true
 	}
@@ -270,7 +279,11 @@ func (n Neo) Query(q string) (res []types.Result, err error) {
 		row := types.NewResult()
 		for idx, key := range keys {
 			v := record.Values[idx]
-			row.Add(key, v)
+			e := row.Add(key, v)
+			if e != nil {
+				err = errors.Wrap(e, "Error adding key to row")
+				return res, err
+			}
 		}
 		res = append(res, row)
 	}
