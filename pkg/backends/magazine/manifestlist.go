@@ -135,7 +135,66 @@ func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
 		prfRegex = ".*"
 	}
 	ctpps, err := mag.Database.CollectionTagProfilePair_GetRegexFiltered(ctx, repoRegex, tagRegex, prfRegex)
-	//ctpps, err := mag.Database.CollectionTagProfilePair_GetAll(ctx)
+	if err != nil {
+		l.Errorf("failed to get profile manifestdata pairs: %v", err)
+		return
+	}
+	for _, ctpp := range ctpps {
+		err = mag.ComputeManifestlist_ForCTTP(ctx, er, ctpp)
+		if err != nil {
+			err = errors.Wrapf(err, "failed to compute manifestlist for cttp: %v", ctpp)
+			continue
+		}
+	}
+	return
+}
+
+// ComputeManifestlists_ForManiProfile computes manifestlists for a given Manifest and Profile
+func (mag Magazine) ComputeManifestlists_ForManiProfile(ctx context.Context, maniID, prfID int64) (err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "magazine/manifestlist.go",
+		"func":    "ComputeManifestlists_ForManiProfile",
+	})
+	ctx, span := tracer.Start(ctx, "ComputeManifestlists_ForManiProfile")
+	defer span.End()
+	l.Info("Compute Manifest Lists")
+	err = mag.Database.Rule_EvalAll(ctx)
+	if err != nil {
+		return
+	}
+	/// TODO: We need
+	/// 1. Generate ExprRes? (a rule<>mdID mapping)
+	rls, err := mag.Database.Rules_GetAll(ctx)
+	if err != nil {
+		logrus.Errorf("failed to get rules: %v", err)
+		return
+	}
+	er := types.NewExprRes()
+	for _, rl := range rls {
+		label := fmt.Sprintf("%s:%s", rl.Name, rl.Tag)
+		l.Warnf("Rule: %s", label)
+		mds, e := mag.Database.ManifestData_GetByRule(ctx, rl)
+		if e != nil {
+			err = errors.Wrapf(e, "failed to get manifestdata by rule: %v", err)
+			return
+		}
+		for _, md := range mds {
+			er.Add(label, md)
+		}
+	}
+	repoRegex, ok := mag.Config.Args["repoRegex"]
+	if !ok || repoRegex == "" {
+		repoRegex = ".*"
+	}
+	tagRegex, ok := mag.Config.Args["tagRegex"]
+	if !ok || tagRegex == "" {
+		tagRegex = ".*"
+	}
+	prfRegex, ok := mag.Config.Args["profileRegex"]
+	if !ok || prfRegex == "" {
+		prfRegex = ".*"
+	}
+	ctpps, err := mag.Database.CollectionTagProfilePair_GetRegexFiltered(ctx, repoRegex, tagRegex, prfRegex)
 	if err != nil {
 		l.Errorf("failed to get profile manifestdata pairs: %v", err)
 		return

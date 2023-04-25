@@ -8,12 +8,17 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/upstream"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 	yamlCfg "github.com/metahub-registry/metahub-core/pkg/yaml/config"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
-func (n Neo) Collection_GetID_ByYaml(ycol yamlCfg.ManifestCollection) (colID, colTagID int64, found bool, err error) {
-	col, found, err := n.GetCollection(ycol)
+func (n Neo) Collection_GetID_ByYaml(ctx context.Context, ycol yamlCfg.ManifestCollection) (colID, colTagID int64, found bool, err error) {
+	ctx, span := tracer.Start(ctx, "Collection_GetID_ByYaml")
+	defer span.End()
+	col, found, err := n.GetCollection(ctx, ycol)
 	if err != nil || !found {
 		return 0, 0, false, err
 	}
@@ -22,8 +27,8 @@ func (n Neo) Collection_GetID_ByYaml(ycol yamlCfg.ManifestCollection) (colID, co
 	return
 }
 
-func (n Neo) Collection_Create_ByYaml(ycol yamlCfg.ManifestCollection) (colID, colTagID int64, err error) {
-	return n.CreateCollection(ycol)
+func (n Neo) Collection_Create_ByYaml(ctx context.Context, ycol yamlCfg.ManifestCollection) (colID, colTagID int64, err error) {
+	return n.CreateCollection(ctx, ycol)
 }
 
 func (n Neo) GetCollectionTag(repo, tag string) (resCol types.Collection, found bool, err error) {
@@ -37,7 +42,9 @@ func (n Neo) GetCollectionTag(repo, tag string) (resCol types.Collection, found 
 	return
 }
 
-func (n Neo) GetCollection(col yamlCfg.ManifestCollection) (resCol types.Collection, found bool, err error) {
+func (n Neo) GetCollection(ctx context.Context, col yamlCfg.ManifestCollection) (resCol types.Collection, found bool, err error) {
+	_, span := tracer.Start(ctx, "GetCollection")
+	defer span.End()
 	q := `MATCH (c:Collection)-[:HAS_TAG]->(t) WHERE c.repo = "%s" AND t.name = "%s" RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
 	query := fmt.Sprintf(q, col.Name, col.Tag)
 	res, found, err := n.QueryOne(query)
@@ -50,6 +57,72 @@ func (n Neo) GetCollection(col yamlCfg.ManifestCollection) (resCol types.Collect
 
 func (n Neo) CollectionGetAll() (collections []types.Collection, err error) {
 	return n.GetAllCollections()
+}
+
+func (n Neo) CollectionExists(ctx context.Context, up upstream.UpstreamTriple) (found bool, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "neo/collection.go",
+		"func":    "CollectionExists",
+		"repo":    up.Repo,
+		"tag":     up.Tag,
+		"digest":  utils.ShortenDigest(up.Digest.String()),
+	})
+	_, span := tracer.Start(ctx, "CollectionExists")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("repo").String(up.Repo),
+		attribute.Key("tag").String(up.Tag),
+		attribute.Key("digest").String(utils.ShortenDigest(up.Digest.String())),
+	)
+
+	q := fmt.Sprintf(`MATCH (c:Collection)-[:HAS_TAG]->(t:Tag) WHERE c.repo = "%s" AND t.name = "%s"`, up.Repo, up.Tag)
+	if up.Digest.String() != "" {
+		q = `MATCH (md:ManifestData)-[]-(m:Manifest)<-[:UPSTREAM]-(c:Collection)-[:HAS_TAG]->(t:Tag)-[:UPSTREAM]->(m)`
+		q += fmt.Sprintf(`WHERE c.repo = "%s" AND md.digest = "%s"`, up.Repo, up.Digest.String())
+	}
+	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
+	res, found, err := n.QueryOne(q)
+	if err != nil {
+		msg := "query execution failed"
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", msg),
+		))
+		l.Error(msg)
+		err = errors.Wrap(err, msg)
+		return found, err
+	}
+	if !found {
+		msg := "collection not found"
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
+		l.Debug(msg)
+		return found, nil
+	}
+	colID, err := res.GetInt64("collectionID")
+	if err != nil {
+		msg := "colID could not be found"
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", msg),
+		))
+		err = errors.Wrap(err, msg)
+		l.Error(msg)
+		return found, err
+	}
+	msg := fmt.Sprintf("collection found: ID %d", colID)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.message", msg),
+	))
+	l.Debug(msg)
+	return found, nil
 }
 
 func (n Neo) Collection_Get_ByRepoTag(repo, tag string) (c types.Collection, found bool, err error) {
@@ -216,8 +289,9 @@ func (n Neo) Collection_GetCreate_ByRepo(ctx context.Context, repo string) (c ty
 	return
 }
 
-func (n Neo) CreateCollection(col yamlCfg.ManifestCollection) (colId, colTagId int64, err error) {
-	ctx := context.Background()
+func (n Neo) CreateCollection(ctx context.Context, col yamlCfg.ManifestCollection) (colId, colTagId int64, err error) {
+	ctx, span := tracer.Start(ctx, "CreateCollection")
+	defer span.End()
 	c, _, err := n.Collection_GetCreate_ByRepoTag(ctx, col.Name, col.Tag)
 	if err != nil {
 		return

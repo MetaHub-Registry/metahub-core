@@ -210,6 +210,14 @@ func (req Request) String() string {
 
 func extractRepoName(r *http.Request) (repo, img, ref string) {
 	repo = chi.URLParam(r, "repo")
+	repo2 := chi.URLParam(r, "repo2")
+	if repo2 != "" {
+		repo = filepath.Join(repo, repo2)
+	}
+	repo3 := chi.URLParam(r, "repo3")
+	if repo3 != "" {
+		repo = filepath.Join(repo, repo3)
+	}
 	img = chi.URLParam(r, "image")
 	ref = chi.URLParam(r, "reference")
 	return

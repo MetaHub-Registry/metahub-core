@@ -16,6 +16,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	ycfg "github.com/metahub-registry/metahub-core/pkg/yaml/config"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -42,7 +43,7 @@ func (mag Magazine) GetManifest(ctx context.Context, m ycfg.Manifest) (mani type
 		Repo: up.Repo,
 		Tag:  up.Tag,
 	}
-	// TODO: 2023-04-05 check for upstream in graph
+	// 2023-04-05 check for upstream in graph
 	u, found, e := mag.Database.Upstream_Get_ByRequest(ctx, req)
 	if e != nil {
 		err = errors.Wrap(e, "failed to get upstream")
@@ -113,7 +114,7 @@ func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani typ
 	defer span.End()
 	up, err := m.ToUpstreamTriple()
 	if err != nil {
-		logrus.Error(err)
+		l.Error(err)
 		return
 	}
 	req := types.Request{
@@ -141,7 +142,7 @@ func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani typ
 		return mani, err
 	}
 	if err != nil {
-		logrus.Error(err)
+		l.Error(err)
 		return
 	}
 	msg := fmt.Sprintf("Caching manifest for %-101s -> %t", up.GetLabel(), found)
@@ -152,9 +153,7 @@ func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani typ
 	))
 	if !found {
 		l.Warnf("Manifest not cached, yet")
-		/****** Manifest not already there
-		TODO: Depending on the media type, we are going to create different nodes within the graph
-		*/
+		// ***** Manifest not already there
 		b, blob, err := upstream.GetManifestByUpstreamTripleByTag(ctx, up)
 		if err != nil {
 			err = errors.Wrapf(err, "failed to GetManifestByUpstreamTripleByTag")
@@ -175,7 +174,6 @@ func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani typ
 		default:
 			l.Fatalf("Unknown media type: %s", blob.MediaType)
 		}
-		//logrus.Fatalf("blobMeta: %v", blob)
 		// We need to make sure that the config-blob is cached
 		cfgByte, cfgBlob, err := upstream.GetBlobByUpstreamTriple(ctx, up)
 		if err != nil {
@@ -185,7 +183,7 @@ func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani typ
 		}
 		err = mag.Minio.PutConfig(ctx, cfgByte, cfgBlob.Digest.String())
 		if err != nil {
-			logrus.Error(err)
+			l.Error(err)
 			return mani, err
 		}
 		// The blob 'b' is the original data blob (matching the digest), it contains refrerences to the config and layers
@@ -228,6 +226,8 @@ func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani typ
 }
 
 func (mag Magazine) ManifestData_Insert(ctx context.Context, m types.ManifestData) (maniID int64, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestData_Insert")
+	defer span.End()
 	if m.Digest == m.Config.Digest {
 		logrus.Fatalf("NeoInsertManifest: Manifest.Digest and Manifest.Config.Digest are equal - something went wrong\n Digest:    %s\n ConfigDig: %s ", m.Digest, m.Config.Digest)
 	}
@@ -237,6 +237,11 @@ func (mag Magazine) ManifestData_Insert(ctx context.Context, m types.ManifestDat
 
 // TODO: Rename to NeoInsertManifestData
 func (mag Magazine) NeoInsertManifestData(ctx context.Context, msID int64, m types.ManifestData, props ...string) (maniID int64, err error) {
+	ctx, span := tracer.Start(ctx, "NeoInsertManifestData")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("maniID").Int64(msID),
+	)
 	maniID, err = mag.ManifestData_Insert(ctx, m)
 	if err != nil {
 		logrus.Error(err)
@@ -457,12 +462,12 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 		return
 	}
 	mani.Manifests = append(mani.Manifests, md)
-	err = mag.LinkManifestToManifestData(ctx, mID, md.ID, "ORIGINAL")
+	err = mag.LinkManifestToManifestData(ctx, mID, md.ID, "UPLOADED_BY")
 	if err != nil {
 		err = errors.Wrap(err, "failed to mag.LinkManifestToManifestData")
 		return
 	}
-	err = mag.Database.LinkManifestDataToProfile(ctx, md.ID, prf.ID)
+	err = mag.Database.LinkManifestDataToProfile(ctx, md.ID, prf.ID, "UPLOADED_BY")
 	if err != nil {
 		err = errors.Wrap(err, "failed to mag.LinkManifestToManifestData")
 		return
@@ -635,6 +640,72 @@ func (mag Magazine) RemoveManifestByRequest(req types.Request) (found bool, err 
 	return
 }
 
+func (mag Magazine) ComputeManifestForProfile(ctx context.Context, mani types.Manifest, prfID int64) (err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "magazine/manifest.go",
+		"func":    "ComputeManifest",
+		"mani":    mani.ID,
+		"name":    mani.Upstream.String(),
+	})
+	ctx, span := tracer.Start(ctx, "ComputeManifest")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("mani.id").Int64(mani.ID),
+		attribute.Key("mani.name").String(mani.Upstream.String()),
+	)
+	// Get Profile
+	prf, found, err := mag.Database.Profile_Get_ByID(ctx, prfID)
+	if err != nil {
+		err = errors.Wrap(err, "failed to Database.Profile_Get_ByID")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		l.Error(err)
+		return
+	}
+	if !found {
+		err = errors.Errorf("Profile not found: %d", prfID)
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		l.Error(err)
+		return
+	}
+	l.Warnf("Manifest: %s/%s:%s", mani.Upstream.Reg, mani.Upstream.Repo, mani.Upstream.Tag)
+	for _, maniData := range mani.Manifests {
+		if maniData.MediaType == v1.MediaTypeImageManifest {
+			msg := fmt.Sprintf("[SKIP] ManifestData %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "debug"),
+				attribute.String("log.message", msg),
+			))
+			l.Warn(msg)
+			continue
+		}
+		msg := fmt.Sprintf(">> ManifestData %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
+		l.Warn(msg)
+		if len(mani.Annotations.Keys) > 0 {
+			l.Infof("  >> Annotations: %v", mani.Annotations.Keys)
+		}
+		///TODO: Need to add the annotations to the config
+		_, e := mag.CreateOCIv1_ForProfile(ctx, mani, maniData, prf)
+		if e != nil {
+			err = errors.Wrapf(e, "while in ComputeManifest")
+			l.Error(err)
+			return
+		}
+	}
+	return
+}
+
 // ComputeManifests looks for changes to a manifest (e.g. new annotations), creates new config blobs and subsequently updates the manifest.
 func (mag Magazine) ComputeManifest(ctx context.Context, mani types.Manifest) (err error) {
 	l := logrus.WithFields(logrus.Fields{
@@ -649,7 +720,7 @@ func (mag Magazine) ComputeManifest(ctx context.Context, mani types.Manifest) (e
 		attribute.Key("mani.id").Int64(mani.ID),
 		attribute.Key("mani.name").String(mani.Upstream.String()),
 	)
-	l.Infof("Manifest: %s/%s:%s", mani.Upstream.Reg, mani.Upstream.Repo, mani.Upstream.Tag)
+	l.Warnf("Manifest: %s/%s:%s", mani.Upstream.Reg, mani.Upstream.Repo, mani.Upstream.Tag)
 	for _, maniData := range mani.Manifests {
 		if maniData.MediaType == v1.MediaTypeImageManifest {
 			msg := fmt.Sprintf("[SKIP] ManifestData %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
@@ -657,7 +728,7 @@ func (mag Magazine) ComputeManifest(ctx context.Context, mani types.Manifest) (e
 				attribute.String("log.severity", "debug"),
 				attribute.String("log.message", msg),
 			))
-			l.Info(msg)
+			l.Warn(msg)
 			continue
 		}
 		msg := fmt.Sprintf(">> ManifestData %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
@@ -665,13 +736,14 @@ func (mag Magazine) ComputeManifest(ctx context.Context, mani types.Manifest) (e
 			attribute.String("log.severity", "debug"),
 			attribute.String("log.message", msg),
 		))
-		l.Info(msg)
+		l.Warn(msg)
 		if len(mani.Annotations.Keys) > 0 {
 			l.Infof("  >> Annotations: %v", mani.Annotations.Keys)
 		}
 		///TODO: Need to add the annotations to the config
-		err = mag.CreateOCIv1(ctx, mani, maniData)
-		if err != nil {
+		_, e := mag.CreateOCIv1(ctx, mani, maniData)
+		if e != nil {
+			err = errors.Wrapf(e, "while in ComputeManifest")
 			l.Error(err)
 			return
 		}

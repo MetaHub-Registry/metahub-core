@@ -64,3 +64,120 @@ func Test_Profile_CRUD(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, pGen.ID)
 }
+
+func Test_Profile_FromManifestID(t *testing.T) {
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
+	bs.AddBootstrap("rules:rules/cpu/zen3.yaml")
+	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target.microarch:zen3")
+	bs.AddBootstrap("profile:profiles/cpu/zen3.yaml")
+	bs.AddBootstrap("config:ft_arm64")
+	bs.AddBootstrap("config:ft_amd64")
+	bs.AddBootstrap("config:ft_zen3")
+	bs.AddBootstrap("upstream:ft_arm64")
+	bs.AddBootstrap("upstream:ft_amd64")
+	bs.AddBootstrap("upstream:ft_zen3")
+	bs.AddBootstrap("manifest:ft_amd64")
+	bs.AddBootstrap("manifest:ft_arm64")
+	bs.AddBootstrap("manifest:ft_zen3")
+	bs.AddBootstrap("collection:ft_generic")
+	bs.AddBootstrap("collection:ft_amd64")
+	bs.AddBootstrap("collection:ft_zen3")
+	bs.AddBootstrap("layer:0:ft_arm64")
+	bs.AddBootstrap("layer:1:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_amd64")
+	bs.AddBootstrap("layer:1:ft_amd64")
+	bs.AddBootstrap("layer:0:ft_zen3")
+	bs.AddBootstrap("layer:1:ft_zen3")
+	bs.AddBootstrap("manifestdata:ft_arm64")
+	bs.AddBootstrap("manifestdata:ft_amd64")
+	bs.AddBootstrap("manifestdata:ft_zen3")
+	bs.SetEmptyAll()
+	//bs.PostTestSleep = 180
+	br, err := SetupTest(bs)
+	_ = br
+	if err != nil {
+		t.Log(err)
+		db.TeardownTest(bs)
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs)
+	// Actual test
+	maniID, err := br.GetInt64("manifest:ft_arm64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prfs, err := db.Profile_FromManifestID(ctx, maniID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, len(prfs))
+	// AMD
+	maniID_AMD, err := br.GetInt64("manifest:ft_amd64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prfs_AMD, err := db.Profile_FromManifestID(ctx, maniID_AMD)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, len(prfs_AMD))
+	// Zen3
+
+	maniID_zen3, err := br.GetInt64("manifest:ft_zen3#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prfs_zen3, err := db.Profile_FromManifestID(ctx, maniID_zen3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, len(prfs_zen3))
+}
+
+func Test_Profile_FromManifestID_Zen3(t *testing.T) {
+	ctx := context.Background()
+	_ = ctx
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:amd64")
+	bs.AddBootstrap("rules:rules/cpu/zen3.yaml")
+	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target.microarch:zen3")
+	bs.AddBootstrap("profile:profiles/cpu/zen3.yaml")
+	bs.AddBootstrap("config:ft_zen3")
+	bs.AddBootstrap("upstream:ft_zen3")
+	bs.AddBootstrap("manifest:ft_zen3")
+	bs.AddBootstrap("collection:ft_zen3")
+	bs.AddBootstrap("layer:0:ft_zen3")
+	bs.AddBootstrap("layer:1:ft_zen3")
+	bs.AddBootstrap("manifestdata:ft_zen3")
+	bs.SetEmptyAll()
+	//bs.PostTestSleep = 180
+	br, err := SetupTest(bs)
+	_ = br
+	if err != nil {
+		t.Log(err)
+		db.TeardownTest(bs)
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs)
+	// Actual test
+	err = db.Rule_EvalAll(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Zen3
+	maniID_zen3, err := br.GetInt64("manifest:ft_zen3#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prfs_zen3, err := db.Profile_FromManifestID(ctx, maniID_zen3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, len(prfs_zen3))
+}

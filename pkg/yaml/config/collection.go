@@ -30,6 +30,12 @@ type ManifestCollection struct {
 	Manifests []Manifest `yaml:"manifests"`
 }
 
+func NewManifestCollection(name, tag string) (mc ManifestCollection) {
+	mc.Name = name
+	mc.Tag = tag
+	return
+}
+
 type Platform struct {
 	Os       string   `yaml:"os"`
 	Arch     string   `yaml:"arch"`

@@ -6,8 +6,10 @@ import (
 
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
 	"github.com/opencontainers/go-digest"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -239,12 +241,15 @@ func (n Neo) ManifestList_Get_ByRequest(ctx context.Context, req types.Request) 
 		return
 	}
 	// TODO: Fetch all INCLUDES for ManifestList
-	q = fmt.Sprintf(`MATCH (ml:ManifestList)-[:INCLUDES]->(md:ManifestData) WHERE id(ml) = %d`, ml.ID)
+	q = fmt.Sprintf(`MATCH (prf:Profile)-[:REF]->(ml:ManifestList)-[:INCLUDES]->(md:ManifestData) WHERE id(ml) = %d AND prf.label = "%s"`, ml.ID, req.Profile)
 	q += ` MATCH (md)<-[]-(m:Manifest)-[:IS]->(p:Platform)`
 	q += ` RETURN id(md) as manifestID, md.digest as manifestDigest, md.mediaType as manifestMediaType,`
 	q += ` md.size as manifestSize,`
 	q += ` id(p) as platformID, p.os as platformOS, p.arch as platformArch, p.variant as platformVariant`
-	//fmt.Printf("Query: \n%s\n", q)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
 	rs, err := n.Query(q)
 	for _, r := range rs {
 		m, err := n.ManifestDataFromResult(ctx, r)
@@ -280,4 +285,81 @@ func ManifestListFromResult(res types.Result) (ml types.ManifestList, err error)
 		Size:          size,
 	}
 	return
+}
+
+func (n Neo) ManifestListExists(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "neo/manifestlist.go",
+		"func":    "ManifestListExists",
+		"repo":    up.Repo,
+		"tag":     up.Tag,
+		"digest":  utils.ShortenDigest(up.Digest.String()),
+		"profile": up.Profile,
+	})
+	ctx, span := tracer.Start(ctx, "ManifestListExists")
+	_ = ctx
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("repo").String(up.Repo),
+		attribute.Key("tag").String(up.Tag),
+		attribute.Key("profile").String(up.Profile),
+		attribute.Key("digest").String(utils.ShortenDigest(up.Digest.String())),
+	)
+	q := `MATCH (prf:Profile)-[:REF]->(ml:ManifestList)<-[:REF]-(c:Collection)-[:HAS_TAG]->(t:Tag)-[:REF]->(ml)`
+	if up.Digest.String() != "" {
+		q += fmt.Sprintf(` WHERE prf.label = "%s" AND c.repo = "%s" AND ml.digest = "%s"`, up.Profile, up.Repo, up.Digest.String())
+	} else {
+		q += fmt.Sprintf(` WHERE prf.label = "%s" AND c.repo = "%s" AND t.name = "%s"`, up.Profile, up.Repo, up.Tag)
+	}
+	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo, ml.mediaType AS mediaType`
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
+	res, found, e := n.QueryOne(q)
+	if e != nil {
+		msg := "query execution failed"
+		err = errors.Wrap(e, msg)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", msg),
+		))
+		span.RecordError(err)
+		l.Error(msg)
+		return "", false, err
+	}
+	if !found {
+		msg := "collection not found"
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
+		l.Debug(msg)
+		return "", false, nil
+	}
+	md, err := res.GetStr("mediaType")
+	if err != nil {
+		msg := "failed to get mediaType from record"
+		err = errors.Wrap(err, msg)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", msg),
+		))
+		span.RecordError(err)
+		l.Error(msg)
+		return "", false, err
+	}
+	colID, err := res.GetInt64("collectionID")
+	if err != nil {
+		msg := "colID could not be found"
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", msg),
+		))
+		err = errors.Wrap(err, msg)
+		l.Error(msg)
+		return "", false, err
+	}
+	l.Debugf("found collection with id %d and manifestList with type '%s'", colID, md)
+	return md, true, nil
 }

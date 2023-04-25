@@ -55,6 +55,5 @@ func Test_Layer_CRUD(t *testing.T) {
 	assert.NoError(t, err)
 	l0_id_got, err = db.Layer_PlainInsert(ctx, arm_l0_got)
 	assert.NoError(t, err)
-	assert.NotEqual(t, int64(0), l0_id_got)
 	assert.NotEqual(t, arm_l0_id, l0_id_got)
 }

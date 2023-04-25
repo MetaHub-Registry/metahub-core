@@ -7,6 +7,13 @@ func FT_yamlCollection_generic() ManifestCollection {
 	}
 }
 
+func FT_yamlCollection_zen3() ManifestCollection {
+	return ManifestCollection{
+		Name: "qnib/featuretest",
+		Tag:  "zen3",
+	}
+}
+
 func FT_yamlCollection_arm64() ManifestCollection {
 	return ManifestCollection{
 		Name: "qnib/featuretest",

@@ -1,3 +1,1 @@
-name: "cpu"
-tag: "generic"
-rule: cpu:generic=true
+rule: os:linux=true && cpu:noop=true

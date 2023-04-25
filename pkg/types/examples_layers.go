@@ -44,11 +44,47 @@ func FT_amd64_Layer1() Layer {
 	}
 }
 
+func FT_zen3_Layer0() Layer {
+	ref := FT_zen3_Layer0Reference()
+	return Layer{
+		Digest:    ref.Digest.String(),
+		Size:      ref.Size,
+		MediaType: ref.MediaType,
+		Data:      FT_amd_Layer0Byte(),
+	}
+}
+
+func FT_zen3_Layer1() Layer {
+	ref := FT_zen3_Layer1Reference()
+	return Layer{
+		Digest:    ref.Digest.String(),
+		Size:      ref.Size,
+		MediaType: ref.MediaType,
+		Data:      FT_amd_Layer1Byte(),
+	}
+}
+
 func FT_amd_Layer0Reference() distribution.Descriptor {
 	return distribution.Descriptor{
 		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
 		Size:      2796496,
 		Digest:    "sha256:88ecf269dec31566a8e6b05147732fe34d32bc608de0d636dffaba659230a515",
+	}
+}
+
+func FT_zen3_Layer1Reference() distribution.Descriptor {
+	return distribution.Descriptor{
+		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
+		Size:      364,
+		Digest:    "sha256:40a6b36cce2bd722e56eb5afc76842d2600de949b417307051d38c5a5654a708",
+	}
+}
+
+func FT_zen3_Layer0Reference() distribution.Descriptor {
+	return distribution.Descriptor{
+		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
+		Size:      3374563,
+		Digest:    "sha256:f56be85fc22e46face30e2c3de3f7fe7c15f8fd7c4e5add29d7f64b87abdaa09",
 	}
 }
 

@@ -64,17 +64,18 @@ func Test_CachManifest(t *testing.T) {
 
 }
 
-func Test_StoreManifestUpload_OCIManifest(t *testing.T) {
+func Test_storeManifestUpload_OCIManifest(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("users")
-	bs.AddBootstrap("config:ft_arm")
+	bs.AddBootstrap("config:ft_arm64")
 	bs.AddBootstrap("layer:0:ft_arm64")
 	bs.AddBootstrap("layer:1:ft_arm64")
 	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("rules:rules/generic/linux.yaml")
-	bs.AddBootstrap("profile:profiles/generic.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
 	//bs.PostTestSleep = 300
 	_, err := mag.SetupTest(ctx, bs)
 	if err != nil {
@@ -88,7 +89,7 @@ func Test_StoreManifestUpload_OCIManifest(t *testing.T) {
 		Repo:    "qnib/plain-featuretest",
 		Tag:     "20220715-arm64-generic",
 		User:    "qnib",
-		Profile: "generic",
+		Profile: "cpu#generic",
 		Digest:  inMani.Digest,
 	}
 	m, ociMani, err := mag.storeManifestUpload_OCIManifest(ctx, req, inMani.Data)
@@ -114,8 +115,9 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer(t *testing.T) {
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("users")
 	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("rules:rules/generic/linux.yaml")
-	bs.AddBootstrap("profile:profiles/generic.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
 	//bs.PostTestSleep = 300
 	_, err := mag.SetupTest(ctx, bs)
 	if err != nil {
@@ -138,7 +140,7 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer(t *testing.T) {
 	req := types.Request{
 		Repo:        "oci/conformance",
 		Tag:         "test0",
-		Profile:     "generic",
+		Profile:     "cpu#generic",
 		User:        "oci",
 		ContentType: "application/vnd.oci.image.manifest.v1+json",
 	}
@@ -174,11 +176,10 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer_with_Labels(t *tes
 	bs.AddBootstrap("users")
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("rules:rules/mpi/mpich.yaml")
-	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
 	bs.AddBootstrap("profile:profiles/mpi/mpich/generic.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
-	bs.AddBootstrap("rules:rules/generic/linux.yaml")
-	bs.AddBootstrap("profile:profiles/generic.yaml")
 	//bs.PostTestSleep = 300
 	_, err := mag.SetupTest(ctx, bs)
 	if err != nil {
@@ -219,7 +220,7 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer_with_Labels(t *tes
 		Host:        "localhost",
 		Repo:        "oci/conformance",
 		Tag:         "test0",
-		Profile:     "generic",
+		Profile:     "cpu#generic",
 		User:        "oci",
 		ContentType: "application/vnd.oci.image.manifest.v1+json",
 	}
@@ -255,4 +256,74 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer_with_Labels(t *tes
 	}
 	gotMani := manis[0]
 	assert.Equal(t, "oci/conformance", gotMani.Upstream.Repo)
+}
+
+func Test_Manifest_ComputeManifestForProfile(t *testing.T) {
+	ctx := context.Background()
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
+	bs.AddBootstrap("config:ft_arm64")
+	bs.AddBootstrap("config:ft_amd64")
+	bs.AddBootstrap("upstream:ft_arm64")
+	bs.AddBootstrap("upstream:ft_amd64")
+	bs.AddBootstrap("manifest:ft_arm64")
+	bs.AddBootstrap("manifest:ft_amd64")
+	bs.AddBootstrap("layer:0:ft_arm64")
+	bs.AddBootstrap("layer:1:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_amd64")
+	bs.AddBootstrap("layer:1:ft_amd64")
+	bs.AddBootstrap("manifestdata:ft_arm64")
+	bs.AddBootstrap("manifestdata:ft_amd64")
+	bs.AddBootstrap("collection:ft_generic")
+	bs.SetEmptyAll()
+	//bs.PostTestSleep = 300
+	br, err := mag.SetupTest(ctx, bs)
+	_ = br
+	//br.PrintDict()
+	if err != nil {
+		TeardownTest(bs)
+		t.Fatal(err)
+	}
+	defer TeardownTest(bs)
+	// Actual Test
+	err = mag.Database.Rule_EvalAll(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maniID, err := br.GetInt64("manifest:ft_amd64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prfID, err := br.GetInt64("profile:cpu:generic#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("Profile ID: %d // ManiID: %d", prfID, maniID)
+	mani, found, err := mag.Database.Manifest_GetByID(ctx, maniID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("Manifest not found")
+	}
+	// Actual test
+	err = mag.ComputeManifestForProfile(ctx, mani, prfID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = mag.Database.Rule_EvalAll(ctx)
+	assert.NoError(t, err)
+	// Check if the manifest is in the collection
+	mdID, found, e := mag.Database.ManifestData_GetID_ByMediaType(ctx, mani.ID, "application/vnd.oci.image.manifest.v1+json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !found {
+		t.Fatal("ManifestData not found")
+	}
+	assert.NotEqual(t, mdID, maniID)
 }

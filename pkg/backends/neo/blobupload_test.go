@@ -14,7 +14,7 @@ func Test_Blobupload_CRU(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
-	bs.AddBootstrap("config:ft_arm")
+	bs.AddBootstrap("config:ft_arm64")
 	bs.AddBootstrap("layer:0:ft_arm64")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 90
@@ -75,7 +75,7 @@ func Test_BlobChunk_CRU(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
-	bs.AddBootstrap("config:ft_arm")
+	bs.AddBootstrap("config:ft_arm64")
 	bs.AddBootstrap("layer:0:ft_arm64")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 90

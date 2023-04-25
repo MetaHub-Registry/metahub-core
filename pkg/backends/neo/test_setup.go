@@ -279,12 +279,6 @@ func (n Neo) Setup_Manifest_FT_mpich_amd64(br *utils.BootstrapResult) (err error
 		return fmt.Errorf("platformID '%d' not found", plaID)
 	}
 	as := types.NewAnnotations()
-	if err = as.AddNewAnnotation("org.supercontainers.hardware.cpu.target", "platform"); err != nil {
-		return err
-	}
-	if err = as.AddNewAnnotation("org.supercontainers.hardware.cpu.target.platform", "amd64"); err != nil {
-		return err
-	}
 	if err = as.AddNewAnnotation("org.supercontainers.mpi.implementation", "mpich"); err != nil {
 		return err
 	}
@@ -345,12 +339,6 @@ func (n Neo) Setup_Manifest_FT_amd64(br *utils.BootstrapResult) (err error) {
 		return fmt.Errorf("platformID '%d' not found", plaID)
 	}
 	as := types.NewAnnotations()
-	if err = as.AddNewAnnotation("org.supercontainers.hardware.cpu.target", "platform"); err != nil {
-		return err
-	}
-	if err = as.AddNewAnnotation("org.supercontainers.hardware.cpu.target.platform", "amd64"); err != nil {
-		return err
-	}
 	m := types.Manifest{
 		Upstream:    up,
 		Platform:    plat,
@@ -408,17 +396,9 @@ func (n Neo) Setup_Manifest_FT_arm64(br *utils.BootstrapResult) (err error) {
 	if !found {
 		return fmt.Errorf("platform not found")
 	}
-	as := types.NewAnnotations()
-	if err = as.AddNewAnnotation("org.supercontainers.hardware.cpu.target", "platform"); err != nil {
-		return err
-	}
-	if err = as.AddNewAnnotation("org.supercontainers.hardware.cpu.target.platform", "arm64"); err != nil {
-		return err
-	}
 	m := types.Manifest{
-		Upstream:    up,
-		Platform:    plat,
-		Annotations: as,
+		Upstream: up,
+		Platform: plat,
 	}
 	maniID, err := n.Manifest_GetInsert(ctx, m)
 	br.Add("manifest:ft_arm64#id", fmt.Sprint(maniID))
@@ -449,11 +429,72 @@ func (n Neo) Setup_Manifest_FT_arm64(br *utils.BootstrapResult) (err error) {
 	return
 }
 
+func (n Neo) Setup_Manifest_FT_zen3(br *utils.BootstrapResult) (err error) {
+	ctx := context.Background()
+	// Add Manifest
+	/// Get Upstream
+	upID, err := br.GetInt64("upstream:ft_zen3#id")
+	if err != nil {
+		return err
+	}
+	up, err := n.Upstream_Get_ByID(ctx, upID)
+	if err != nil {
+		return err
+	}
+	/// Get Platform
+	plaID, err := br.GetInt64("platform:linux/amd64#id")
+	if err != nil {
+		return err
+	}
+	plat, found, err := n.Platform_GetByID(plaID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("platform not found")
+	}
+	as := types.NewAnnotations()
+	z3 := types.NewAnnotation("org.supercontainers.hardware.cpu.target.microarch", "zen3")
+	as.AddAnnotation(z3)
+	m := types.Manifest{
+		Upstream:    up,
+		Platform:    plat,
+		Annotations: as,
+	}
+	maniID, err := n.Manifest_GetInsert(ctx, m)
+	br.Add("manifest:ft_zen3#id", fmt.Sprint(maniID))
+	if err != nil {
+		return err
+	}
+	err = n.Manifest_LinkToUpstream(ctx, maniID, upID)
+	if err != nil {
+		return err
+	}
+	// Link Platform
+	err = n.LinkManifestToPlatform(ctx, maniID, plaID)
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	// Link Config
+	config_id, err := br.GetInt64("config:ft_zen3#id")
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	err = n.ManifestData_LinkToConfig(ctx, maniID, config_id)
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	return
+}
+
 func (n Neo) Setup_Collection_FT_amd64(br *utils.BootstrapResult) (err error) {
 	ctx := context.Background()
 	// Add Collection
 	yamlCol := config.FT_yamlCollection_amd64()
-	colID, colTagID, err := n.CreateCollection(yamlCol)
+	colID, colTagID, err := n.CreateCollection(ctx, yamlCol)
 	if err != nil {
 		return err
 	}
@@ -484,7 +525,7 @@ func (n Neo) Setup_Collection_FT_arm64(br *utils.BootstrapResult) (err error) {
 	ctx := context.Background()
 	// Add Collection
 	yamlCol := config.FT_yamlCollection_arm64()
-	colID, colTagID, err := n.CreateCollection(yamlCol)
+	colID, colTagID, err := n.CreateCollection(ctx, yamlCol)
 	if err != nil {
 		return err
 	}
@@ -515,7 +556,7 @@ func (n Neo) Setup_Collection_FT_generic(br *utils.BootstrapResult) (err error) 
 	ctx := context.Background()
 	// Add Collection
 	yamlCol := config.FT_yamlCollection_generic()
-	colID, colTagID, err := n.CreateCollection(yamlCol)
+	colID, colTagID, err := n.CreateCollection(ctx, yamlCol)
 	if err != nil {
 		return err
 	}
@@ -526,6 +567,37 @@ func (n Neo) Setup_Collection_FT_generic(br *utils.BootstrapResult) (err error) 
 	}
 	// Link Collection To Manifest
 	for _, mani := range []string{"manifest:ft_arm64#id", "manifest:ft_amd64#id"} {
+		maniID, err := br.GetInt64(mani)
+		if err != nil {
+			return err
+		}
+		err = n.LinkCollectionToManifest(ctx, colID, maniID)
+		if err != nil {
+			return err
+		}
+		err = n.LinkCollectionTagToManifest(ctx, colTagID, maniID)
+		if err != nil {
+			return err
+		}
+	}
+	return
+}
+
+func (n Neo) Setup_Collection_FT_zen3(br *utils.BootstrapResult) (err error) {
+	ctx := context.Background()
+	// Add Collection
+	yamlCol := config.FT_yamlCollection_zen3()
+	colID, colTagID, err := n.CreateCollection(ctx, yamlCol)
+	if err != nil {
+		return err
+	}
+	br.Add("collection:ft#id", fmt.Sprint(colID))
+	br.Add("tag:zen3#id", fmt.Sprint(colTagID))
+	if err != nil {
+		return err
+	}
+	// Link Collection To Manifest
+	for _, mani := range []string{"manifest:ft_zen3#id"} {
 		maniID, err := br.GetInt64(mani)
 		if err != nil {
 			return err
