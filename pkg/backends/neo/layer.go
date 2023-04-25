@@ -11,6 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/tracing"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -378,4 +379,122 @@ func (n Neo) Layers_DeleteUnused(ctx context.Context) (err error) {
 		attribute.String("log.message", msg),
 	))
 	return
+}
+
+func (n Neo) Layer_GetUpstreamRegistry(ctx context.Context, up upstream.UpstreamTriple) (registry string, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "neo/layer.go",
+		"func":    "Layer_GetUpstreamRegistry",
+		"repo":    up.Repo,
+		"tag":     up.Tag,
+		"digest":  utils.ShortenDigest(up.Digest.String()),
+	})
+	ctx, span := tracer.Start(ctx, "neo.Layer_GetUpstreamRegistry")
+	_ = ctx
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("repo").String(up.Repo),
+		attribute.Key("tag").String(up.Tag),
+		attribute.Key("digest").String(utils.ShortenDigest(up.Digest.String())),
+	)
+	q := `MATCH (l:Layer)<-[:HAS]-(md:ManifestData)<-[]-(m:Manifest)-[:UPSTREAM]-(u:Upstream) `
+	q += fmt.Sprintf(` WHERE l.digest = "%s" AND l.mediaType ="%s"`, up.Digest.String(), up.MediaType)
+	q += " RETURN u.reg AS registry"
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
+	res, found, e := n.QueryOne(q)
+	if e != nil {
+		msg := "query execution failed"
+		err = errors.Wrap(e, msg)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", msg),
+		))
+		span.RecordError(err)
+		l.Error(msg)
+		return "", err
+	}
+	if !found {
+		err = errors.New("upstream registry not found")
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err)
+		return "", err
+	}
+	reg, err := res.GetStr("registry")
+	if err != nil {
+		msg := "failed to get registry from result"
+		err = errors.Wrap(err, msg)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", msg),
+		))
+		span.RecordError(err)
+		l.Error(err)
+		return "", err
+	}
+	return reg, nil
+}
+
+func (n Neo) LayerExists(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "neo/layer.go",
+		"func":    "LayerExists",
+		"repo":    up.Repo,
+		"tag":     up.Tag,
+		"digest":  utils.ShortenDigest(up.Digest.String()),
+	})
+	ctx, span := tracer.Start(ctx, "neo.LayerExists")
+	_ = ctx
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("repo").String(up.Repo),
+		attribute.Key("tag").String(up.Tag),
+		attribute.Key("digest").String(utils.ShortenDigest(up.Digest.String())),
+	)
+	q := fmt.Sprintf(`MATCH (l:Layer) WHERE l.digest = "%s" RETURN l.mediaType AS mediaType`, up.Digest.String())
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
+	res, found, e := n.QueryOne(q)
+	if e != nil {
+		msg := "query execution failed"
+		err = errors.Wrap(e, msg)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", msg),
+		))
+		span.RecordError(err)
+		l.Error(msg)
+		return "", false, err
+	}
+	if !found {
+		msg := "layer not found"
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
+		l.Debug(msg)
+		return "", false, nil
+	}
+	md, err := res.GetStr("mediaType")
+	if err != nil {
+		msg := "failed to get mediaType from result"
+		err = errors.Wrap(err, msg)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", msg),
+		))
+		span.RecordError(err)
+		l.Error(msg)
+		return "", false, err
+	}
+	l.Debugf("found layer with type '%s'", md)
+	return md, true, nil
 }

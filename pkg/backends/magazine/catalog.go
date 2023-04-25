@@ -22,7 +22,7 @@ func (mag Magazine) Collections_GetCatalog(req types.Request) (res types.Catalog
 	}
 	repos := r.Values()
 	sort.Strings(repos)
-	// TODO: add pagination
+	// [ ] FEAT: add pagination
 	for _, repo := range repos {
 		if repo != "" {
 			res.Repos = append(res.Repos, repo)

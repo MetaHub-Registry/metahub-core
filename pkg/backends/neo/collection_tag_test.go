@@ -37,7 +37,7 @@ func Test_CollectionTag_LinkCollection(t *testing.T) {
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
-	bs.AddBootstrap("config:ft_arm")
+	bs.AddBootstrap("config:ft_arm64")
 	bs.AddBootstrap("config:ft_amd64")
 	bs.AddBootstrap("upstream:ft_arm64")
 	bs.AddBootstrap("upstream:ft_amd64")

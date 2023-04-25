@@ -187,7 +187,7 @@ func (m Minio) SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err erro
 func (m Minio) BootstrapTestWithBR(b string, br *utils.BootstrapResult) (err error) {
 	ctx := context.Background()
 	switch b {
-	case "config:ft_arm":
+	case "config:ft_arm64":
 		err = Setup_Config_FT_arm64(&m, br)
 		if err != nil {
 			err = errors.Wrapf(err, "while '%s'", b)

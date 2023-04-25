@@ -30,7 +30,7 @@ func Test_Catalog_ARM64(t *testing.T) {
 	bs.AddBootstrap("users")
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
-	bs.AddBootstrap("config:ft_arm")
+	bs.AddBootstrap("config:ft_arm64")
 	bs.AddBootstrap("upstream:ft_arm64")
 	bs.AddBootstrap("layer:0:ft_arm64")
 	bs.AddBootstrap("layer:1:ft_arm64")

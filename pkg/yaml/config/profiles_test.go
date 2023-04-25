@@ -55,11 +55,11 @@ func Test_Profile_LoadProfile(t *testing.T) {
 	assert.Equal(t, "cpu:skylake_avx512=true", f1.Rule)
 }
 func Test_Profile_LoadProfile_Generic(t *testing.T) {
-	f2, err := LoadProfile(ctx, filepath.Join(profileDir, "/generic.yaml"))
+	f2, err := LoadProfile(ctx, filepath.Join(profileDir, "/cpu/generic.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, "", f2.Name)
+	assert.Equal(t, "cpu", f2.Name)
 	assert.Equal(t, "generic", f2.Tag)
 	assert.Equal(t, "os:linux=true && cpu:noop=true", f2.Rule)
 

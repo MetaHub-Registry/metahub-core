@@ -2,15 +2,21 @@ package neo
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/metahub-registry/metahub-core/pkg/tracing"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-var db Neo
+var (
+	db      Neo
+	ctx     context.Context
+	svcName = "neo-test"
+)
 
 func TestMain(m *testing.M) {
 	logrus.Info("Start TestMain")
@@ -20,13 +26,36 @@ func TestMain(m *testing.M) {
 		logrus.Fatal(err)
 	}
 	defer neoC.Terminate(ctx)
-	ncfg := NeoConfig{
-		DbName: neoDb,
-		User:   neoUser,
-		Passwd: neoPasswd,
-		URL:    neoC.BoltURI,
-		HTTP:   neoC.HttpURI,
+	//jeager
+	jeagerC, err := tracing.SetupJeager(ctx)
+	if err != nil {
+		logrus.Fatal(err)
 	}
+	defer jeagerC.Terminate(ctx)
+	trEnd := fmt.Sprintf("http://%s/api/traces", jeagerC.ThriftURI)
+	logrus.Infof("Tracing endpoint '%s': %s", svcName, trEnd)
+	tr, err := tracing.InitTracer(svcName, trEnd)
+	if err != nil {
+		logrus.Fatalf("Could not initialize jaeger tracer: %s", err.Error())
+	}
+	trCfg := tracing.TraceCfg{
+		Enabled:  true,
+		Endpoint: jeagerC.ThriftURI,
+		Tracer:   tr,
+	}
+	ncfg := NeoConfig{
+		DbName:  neoDb,
+		User:    neoUser,
+		Passwd:  neoPasswd,
+		URL:     neoC.BoltURI,
+		HTTP:    neoC.HttpURI,
+		Tracing: trCfg,
+		Args: map[string]string{
+			"TEST_JAEGER_HTTP":   jeagerC.HttpURI,
+			"TEST_JAEGER_THRIFT": jeagerC.ThriftURI,
+		},
+	}
+
 	db = Neo{
 		Enabled:   true,
 		neoConfig: ncfg,

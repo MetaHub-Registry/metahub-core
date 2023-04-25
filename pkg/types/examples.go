@@ -36,6 +36,9 @@ var (
 		{Arch: "arm64", Variant: "v8", OS: "linux"},
 		{Arch: "riscv64", Variant: "", OS: "linux"},
 	}
+	Example_PlatformAMD64 = []Platform{
+		{Arch: "amd64", Variant: "", OS: "linux"},
+	}
 )
 
 func Example_Platform_amd64() Platform {
@@ -71,6 +74,19 @@ func FT_amd64_b109_ConfigByte() []byte {
 		panic(err)
 	}
 	return dat
+}
+
+func FT_zen3_ConfigByte() []byte {
+	dat, err := f.ReadFile("data/cfg/d33f8ced1dadd99fcf8f210cc846322b69e9065ddf10ceb09ff244b624dcbcc2.json")
+	if err != nil {
+		panic(err)
+	}
+	return dat
+}
+
+func FT_zen3_Config() Config {
+	cfg, _ := NewConfigFromBytes(FT_zen3_ConfigByte())
+	return cfg
 }
 
 func FT_amd64_Config() Config {
@@ -121,6 +137,16 @@ func FT_amd_Upstream() Upstream {
 		Digest: digest.Digest("sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5"),
 	}
 }
+
+func FT_zen3_Upstream() Upstream {
+	return Upstream{
+		Reg:    "registry.gitlab.com",
+		Repo:   "qnib-pub-containers/qnib/plain-featuretest",
+		Tag:    "3-17-3-amd64-cpu_zen3",
+		Digest: digest.Digest("sha256:927c3c3f99b1ac9432187ce831541fcf6fca81c051dfdb87fbab303e1a25e780"),
+	}
+}
+
 func FT_amd64_Upstream() Upstream {
 	return Upstream{
 		Reg:    "registry.gitlab.com",

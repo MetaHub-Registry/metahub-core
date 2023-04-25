@@ -14,3 +14,8 @@ type TraceCfg struct {
 	Tracer   trace.Tracer
 	Endpoint string
 }
+
+func (mag Magazine) GetConfig(k string) (v string, ok bool) {
+	v, ok = mag.Config.Args[k]
+	return
+}

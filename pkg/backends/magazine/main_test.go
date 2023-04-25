@@ -2,6 +2,7 @@ package magazine
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
@@ -10,7 +11,9 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/backends/minio"
 	"github.com/metahub-registry/metahub-core/pkg/backends/neo"
 	"github.com/metahub-registry/metahub-core/pkg/backends/sqlite"
+	"github.com/metahub-registry/metahub-core/pkg/tracing"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"github.com/metahub-registry/metahub-core/pkg/yaml/config"
 	"golang.org/x/crypto/bcrypt"
@@ -22,7 +25,13 @@ const (
 	neoPasswd = "test"
 )
 
-var mag Magazine
+var (
+	mag             Magazine
+	regHttpURI      string
+	jeagerHttpURI   string
+	jeagerThriftURI string
+	svcName         = "magazine-test"
+)
 
 var (
 	featureTestGenericCfgDigest = "sha256:b109e1dac65af00234a8a7f817dcb1e18bc18ca97a5b805283995ebf1137e471"
@@ -113,6 +122,21 @@ func TestMain(m *testing.M) {
 		logrus.Fatal(err)
 	}
 	min.BucketCheck()
+	/// Registry
+	regC, err := upstream.SetupRegistry(ctx)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer regC.Terminate(ctx)
+	regHttpURI = regC.HttpURI
+	//jeager
+	jeagerC, err := tracing.SetupJeager(ctx)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer jeagerC.Terminate(ctx)
+	jeagerHttpURI = jeagerC.HttpURI
+	jeagerThriftURI = jeagerC.ThriftURI
 	/// SQLite
 	f, err := os.CreateTemp("", "sqlite-test")
 	if err != nil {
@@ -125,10 +149,30 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
+	trEnd := fmt.Sprintf("http://%s/api/traces", jeagerC.ThriftURI)
+	logrus.Infof("Tracing endpoint '%s': %s", svcName, trEnd)
+	tr, err := tracing.InitTracer(svcName, trEnd)
+	if err != nil {
+		logrus.Fatalf("Could not initialize jaeger tracer: %s", err.Error())
+	}
+	trCfg := TraceCfg{
+		Enabled:  true,
+		Endpoint: jeagerC.ThriftURI,
+		Tracer:   tr,
+	}
 	mag = Magazine{
 		Minio:          min,
 		Database:       gdb,
 		UserManagement: sq,
+		Config: MagConfig{
+			Tracing: trCfg,
+		},
+	}
+	mag.Config.Args = map[string]string{
+		"TEST_REGISTRY":      regC.HttpURI,
+		"TEST_JAEGER_HTTP":   jeagerC.HttpURI,
+		"TEST_JAEGER_THRIFT": jeagerC.ThriftURI,
+		"registries":         regC.HttpURI,
 	}
 	code := m.Run()
 	os.Exit(code)
@@ -136,7 +180,14 @@ func TestMain(m *testing.M) {
 }
 
 func TeardownTest(bs utils.Bootstrap) {
-	logrus.Info("> TeardownTest")
+	logrus.Info("> magazine.TeardownTest")
+	if bs.PostTestSleep > 0 {
+		logrus.Infof("Sleep %d seconds before teardown", bs.PostTestSleep)
+		jh, ok := mag.Config.Args["TEST_JAEGER_HTTP"]
+		if ok {
+			logrus.Infof("Jaeger HTTP: http://%s", jh)
+		}
+	}
 	mag.Minio.PreTearDown(bs)
 	mag.Database.TeardownTest(bs)
 	err := mag.Minio.EmptyAll()

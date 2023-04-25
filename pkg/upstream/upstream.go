@@ -13,6 +13,7 @@ import (
 	"github.com/regclient/regclient/types/platform"
 	"github.com/regclient/regclient/types/ref"
 	"github.com/sirupsen/logrus"
+	"github.com/metahub-registry/metahub-core/pkg/regcli"
 	mhTypes "github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel"
@@ -35,15 +36,13 @@ func GetBlobByUpstreamTriple(ctx context.Context, up UpstreamTriple) (b []byte, 
 	if up.Digest.String() == "" {
 		l.Fatal("No digest provided")
 	}
-
 	blobUrl := fmt.Sprintf("%s/%s", up.Reg, up.Repo)
 	ctx, span := tr.Start(ctx, "GetBlobByUpstreamTriple")
 	span.SetAttributes(attribute.Key("url").String(blobUrl))
 	span.SetAttributes(attribute.Key("digest").String(shortDig))
 	defer span.End()
 	blob = mhTypes.BlobMeta{}
-	rc := regclient.New()
-
+	rc := regcli.NewRegClient(up.Reg)
 	ref, err := ref.New(blobUrl)
 	if err != nil {
 		l.Errorf("Failed creating ref: %v", err)
@@ -76,13 +75,13 @@ func GetBlobByUpstreamTripleByDigest(ctx context.Context, up UpstreamTriple, dig
 		logrus.Fatal("No digest provided")
 	}
 	blobUrl := fmt.Sprintf("%s/%s", up.Reg, up.Repo)
+	l.Warnf("blobUrl: %s", blobUrl)
 	ctx, span := tr.Start(ctx, "GetBlobByUpstreamTripleByDigest")
 	span.SetAttributes(attribute.Key("url").String(blobUrl))
 	span.SetAttributes(attribute.Key("digest").String(utils.ShortenDigest(dig)))
 	defer span.End()
 	blob = mhTypes.BlobMeta{}
-	rc := regclient.New()
-
+	rc := regcli.NewRegClient(up.Reg)
 	ref, err := ref.New(blobUrl)
 	if err != nil {
 		l.Errorf("Failed creating ref: %v", err)
@@ -93,31 +92,75 @@ func GetBlobByUpstreamTripleByDigest(ctx context.Context, up UpstreamTriple, dig
 	blobReader, err := rc.BlobGet(ctx, ref, desc)
 	if err != nil {
 		err = errors.Wrapf(err, "while rc.BlogGet with digest: %s", dig)
-		l.Fatalf(err.Error())
+		span.RecordError(err)
+		l.Error(err.Error())
+		return
 	}
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(blobReader)
 	b = buf.Bytes()
+
 	blob.Size = int64(len(b))
 	blob.Digest = d
+	return
+}
+
+func GetManifestByUpstreamTripleByDigest(ctx context.Context, up UpstreamTriple) (b []byte, blob mhTypes.BlobMeta, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package":    "neomin",
+		"func":       "GetManifestByUpstreamTripleByDigest",
+		"repository": up.Repo,
+		"digest":     up.Digest.String(),
+		"registry":   up.Reg,
+	})
+	blobUrl := fmt.Sprintf("%s/%s", up.Reg, up.Repo)
+	l.Warnf("blobUrl: %s", blobUrl)
+	ctx, span := tr.Start(ctx, "GetManifestByUpstreamTripleByDigest")
+	span.SetAttributes(attribute.Key("url").String(blobUrl))
+	defer span.End()
+	blob = mhTypes.BlobMeta{}
+	rc := regcli.NewRegClient(up.Reg)
+	ref, err := ref.New(blobUrl)
+	if err != nil {
+		l.Errorf("Failed creating ref: %v", err)
+	}
+	var mani manifest.Manifest
+	// If we have a digest we use it
+	if up.Digest.String() == "" {
+		err = errors.New("No digest provided")
+		return
+	}
+	d := types.Descriptor{
+		MediaType: types.MediaTypeDocker2Manifest,
+		Digest:    up.Digest,
+		Platform:  &platform.Platform{},
+	}
+	mani, err = rc.ManifestGet(ctx, ref, regclient.WithManifestDesc(d))
+	b, err = mani.RawBody()
+	if err != nil {
+		l.Fatalf(err.Error())
+	}
+	blob.Digest = mani.GetDescriptor().Digest
+	blob.Size = mani.GetDescriptor().Size
+	blob.MediaType = mani.GetDescriptor().MediaType
 	return
 }
 
 func GetManifestByUpstreamTripleByTag(ctx context.Context, up UpstreamTriple) (b []byte, blob mhTypes.BlobMeta, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package":    "neomin",
-		"func":       "GetBlobByUpstreamTriple",
+		"func":       "GetManifestByUpstreamTripleByTag",
 		"repository": up.Repo,
 		"tag":        up.Tag,
 		"registry":   up.Reg,
 	})
 	blobUrl := fmt.Sprintf("%s/%s:%s", up.Reg, up.Repo, up.Tag)
-	logrus.Info("blobUrl: ", blobUrl)
-	ctx, span := tr.Start(ctx, "GetBlobByUpstreamTriple")
+	l.Warnf("blobUrl: %s", blobUrl)
+	ctx, span := tr.Start(ctx, "GetManifestByUpstreamTripleByTag")
 	span.SetAttributes(attribute.Key("url").String(blobUrl))
 	defer span.End()
 	blob = mhTypes.BlobMeta{}
-	rc := regclient.New()
+	rc := regcli.NewRegClient(up.Reg)
 
 	ref, err := ref.New(blobUrl)
 	if err != nil {
@@ -147,5 +190,45 @@ func GetManifestByUpstreamTripleByTag(ctx context.Context, up UpstreamTriple) (b
 	if err != nil {
 		l.Fatalf(err.Error())
 	}
+	return
+}
+
+func HeadManifestByUpstreamTripleByTag(ctx context.Context, reg, repo, tag string) (blob mhTypes.BlobMeta, found bool, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package":    "neomin",
+		"func":       "HeadManifestByUpstreamTripleByTag",
+		"repository": repo,
+		"tag":        tag,
+		"reg":        reg,
+	})
+	blobUrl := fmt.Sprintf("%s/%s:%s", reg, repo, tag)
+	l.Warnf("blobUrl: %s ", blobUrl)
+	ctx, span := tr.Start(ctx, "HeadManifestByUpstreamTripleByTag")
+	span.SetAttributes(attribute.Key("url").String(blobUrl))
+	span.SetAttributes(
+		attribute.Key("reg").String(reg),
+		attribute.Key("repo").String(repo),
+		attribute.Key("tag").String(tag),
+	)
+	defer span.End()
+	blob = mhTypes.BlobMeta{}
+	rc := regcli.NewRegClient(reg)
+	ref, err := ref.New(blobUrl)
+	if err != nil {
+		l.Errorf("Failed creating ref: %v", err)
+	}
+	var mani manifest.Manifest
+	// If we have a digest we use it
+	mani, e := rc.ManifestHead(ctx, ref)
+	if e != nil {
+		l.Errorf("Failed getting manifest: %v", e)
+		span.RecordError(e)
+		return
+	}
+	ref.Digest = mani.GetDescriptor().Digest.String()
+	blob.Digest = mani.GetDescriptor().Digest
+	blob.Size = mani.GetDescriptor().Size
+	blob.MediaType = mani.GetDescriptor().MediaType
+	found = true
 	return
 }

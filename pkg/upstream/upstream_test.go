@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/opencontainers/go-digest"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -11,27 +12,79 @@ var ctx = context.Background()
 
 func Test_Config_GetBlobByUpstreamTriple(t *testing.T) {
 	up := UpstreamTriple{
-		Reg:    "registry.gitlab.com",
-		Repo:   "qnib-pub-containers/qnib/plain-featuretest",
-		Tag:    "20220715-arm64-generic",
-		Digest: "sha256:cf5c26263929e84d7373d23b2692222cceceb3175b3325b183ead2ab6b5a5ce3",
+		Reg:    regHttpURI,
+		Repo:   "alpine",
+		Tag:    "3.17.3",
+		Digest: "sha256:51e60588ff2cd9f45792b23de89bfface0a7fbd711d17c5f5ce900a4f6b16260",
 	}
 	b, blobMeta, err := GetBlobByUpstreamTriple(ctx, up)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.NotNil(t, b)
 	assert.NotNil(t, blobMeta)
-
 }
+
+func Test_GetBlobByUpstreamTripleByDigest(t *testing.T) {
+	up := UpstreamTriple{
+		Reg:    regHttpURI,
+		Repo:   "alpine",
+		Tag:    "3.17.2",
+		Digest: digest.Digest("sha256:ff6bdca1701f3a8a67e328815ff2346b0e4067d32ec36b7992c1fdc001dc8517"),
+	}
+	b, blob, err := GetManifestByUpstreamTripleByTag(ctx, up)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotNil(t, b)
+	assert.NotNil(t, blob)
+	//t.Log(string(b))
+	assert.Equal(t, "sha256:ff6bdca1701f3a8a67e328815ff2346b0e4067d32ec36b7992c1fdc001dc8517", digest.FromBytes(b).String())
+}
+
 func Test_GetManifestByUpstreamTripleByTag(t *testing.T) {
 	up := UpstreamTriple{
-		Reg:  "registry.gitlab.com",
-		Repo: "qnib-pub-containers/qnib/plain-featuretest",
-		Tag:  "20220715-arm64-generic",
+		Reg:  regHttpURI,
+		Repo: "alpine",
+		Tag:  "3.17.3",
 	}
 	b, blobMeta, err := GetManifestByUpstreamTripleByTag(ctx, up)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.NotNil(t, b)
 	assert.NotNil(t, blobMeta)
 	assert.Equal(t, "application/vnd.docker.distribution.manifest.v2+json", blobMeta.MediaType)
-	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", blobMeta.Digest.String())
+	assert.Equal(t, "sha256:b5a5b7ce4eabc8414bf367761a28f4e8b16952ce5de537c15ed917b71b245f11", blobMeta.Digest.String())
+}
+
+func Test_GetManifestByUpstreamTripleByDigest(t *testing.T) {
+	up := UpstreamTriple{
+		Reg:    regHttpURI,
+		Repo:   "alpine",
+		Tag:    "3.17.3",
+		Digest: "sha256:b5a5b7ce4eabc8414bf367761a28f4e8b16952ce5de537c15ed917b71b245f11",
+	}
+	b, blobMeta, err := GetManifestByUpstreamTripleByDigest(ctx, up)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotNil(t, b)
+	assert.NotNil(t, blobMeta)
+	assert.Equal(t, "application/vnd.docker.distribution.manifest.v2+json", blobMeta.MediaType)
+	assert.Equal(t, "sha256:b5a5b7ce4eabc8414bf367761a28f4e8b16952ce5de537c15ed917b71b245f11", blobMeta.Digest.String())
+}
+
+func Test_HeadManifestByUpstreamTripleByTag(t *testing.T) {
+	ctx := context.Background()
+
+	blobMeta, found, err := HeadManifestByUpstreamTripleByTag(ctx, regHttpURI, "alpine", "3.17.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.True(t, found)
+	assert.NotNil(t, blobMeta)
+	assert.Equal(t, "application/vnd.docker.distribution.manifest.v2+json", blobMeta.MediaType)
+	assert.Equal(t, "sha256:b5a5b7ce4eabc8414bf367761a28f4e8b16952ce5de537c15ed917b71b245f11", blobMeta.Digest.String())
+
 }

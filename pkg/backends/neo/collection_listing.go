@@ -45,7 +45,7 @@ func (n Neo) CollectionListing_Get_ByID(ctx context.Context, colID, colTagID int
 		return
 	}
 	for _, m := range manis {
-		k := fmt.Sprintf("%s/%s:%s@%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag, m.Profile.Label)
+		k := fmt.Sprintf("%s/%s:%s@%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag, m.Profile)
 		col.Manifests[k] = m
 		col.ManifestCount++
 	}
@@ -88,7 +88,7 @@ func (n Neo) CollectionListing_Get_ByName(ctx context.Context, repoName, colTagN
 		return
 	}
 	for _, m := range manis {
-		k := fmt.Sprintf("%s/%s:%s@%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag, m.Profile.Label)
+		k := fmt.Sprintf("%s/%s:%s@%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag, m.Profile)
 		col.Manifests[k] = m
 		col.ManifestCount++
 	}

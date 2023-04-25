@@ -12,7 +12,39 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel/attribute"
 )
+
+func (mag Magazine) PullLayer(ctx context.Context, up upstream.UpstreamTriple) (err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "magazine/layer.go",
+		"func":    "PullLayer",
+		"reg":     up.Reg,
+		"repo":    up.Repo,
+		"tag":     up.Tag,
+		"digest":  utils.ShortenDigest(up.Digest.String()),
+	})
+	ctx, span := tracer.Start(ctx, "mag.PullLayer")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("repo").String(up.Repo),
+		attribute.Key("tag").String(up.Tag),
+		attribute.Key("digest").String(utils.ShortenDigest(up.Digest.String())),
+	)
+	b, blobs, err := upstream.GetBlobByUpstreamTripleByDigest(ctx, up, up.Digest.String())
+	if err != nil {
+		err = errors.Wrapf(err, "failed to get blob for %s", up.GetLabel())
+		l.Error(err)
+		return err
+	}
+	_ = blobs
+	err = mag.Minio.PutLayer(ctx, b, up.Digest.String())
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	return
+}
 
 func (mag Magazine) CacheLayers(ctx context.Context, mani types.ManifestData) (err error) {
 	up := upstream.UpstreamTriple{
@@ -30,14 +62,7 @@ func (mag Magazine) CacheLayers(ctx context.Context, mani types.ManifestData) (e
 		}
 		logrus.Infof("Caching layer[%-2d] %s for %-90s -> %t", idx, utils.ShortenDigest(layer.Digest), up.GetLabel(), isCached)
 		if !isCached {
-			b, blobs, err := upstream.GetBlobByUpstreamTripleByDigest(ctx, up, layer.Digest)
-			if err != nil {
-				err = errors.Wrapf(err, "failed to get blob for %s", up.GetLabel())
-				logrus.Error(err)
-				return err
-			}
-			_ = blobs
-			err = mag.Minio.PutLayer(ctx, b, layer.Digest)
+			err = mag.PullLayer(ctx, up)
 			if err != nil {
 				logrus.Error(err)
 				return err

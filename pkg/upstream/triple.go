@@ -14,6 +14,7 @@ type UpstreamTriple struct {
 	Tag       string            `json:"tag"`
 	MediaType string            `json:"mediaType"`
 	Size      int64             `json:"size"`
+	Profile   string            `json:"profile"`
 	Digest    digestLib.Digest  `json:"digest"`
 	Platform  platform.Platform `json:"platform"`
 }

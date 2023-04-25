@@ -40,7 +40,39 @@ func FT_amd_ManifestData() ManifestData {
 			OS:      cfg.Cfg.OS,
 			Variant: cfg.Cfg.Variant,
 		},
+		Layers: []Layer{
+			{Digest: l0.Digest.String(), Size: l0.Size, MediaType: l0.MediaType, Data: FT_amd_Layer0Byte()},
+			{Digest: l1.Digest.String(), Size: l1.Size, MediaType: l1.MediaType, Data: FT_amd_Layer1Byte()},
+		},
+	}
+	return mani
+}
 
+func FT_zen3_ManifestData() ManifestData {
+	dat, err := f.ReadFile("data/manifests/5e0d3e9bb9adff191e78f13dc6e79626bf29000648f0fa94ec5a028462ae5e89.json")
+	if err != nil {
+		panic(err)
+	}
+	as := NewAnnotations()
+	z3 := NewAnnotation("org.supercontainers.hardware.cpu.target.microarch", "zen3")
+	as.AddAnnotation(z3)
+	cfg := FT_zen3_Config()
+	l0 := FT_zen3_Layer0Reference()
+	l1 := FT_zen3_Layer1Reference()
+	up := FT_zen3_Upstream()
+	mani := ManifestData{
+		Digest:    string(digest.FromBytes(dat)),
+		Size:      735,
+		MediaType: "application/vnd.docker.distribution.manifest.v2+json",
+		Data:      dat,
+		Config:    cfg,
+		Upstream:  up,
+		Platform: Platform{
+			Arch:    cfg.Cfg.Architecture,
+			OS:      cfg.Cfg.OS,
+			Variant: cfg.Cfg.Variant,
+		},
+		Annotations: as,
 		Layers: []Layer{
 			{Digest: l0.Digest.String(), Size: l0.Size, MediaType: l0.MediaType, Data: FT_amd_Layer0Byte()},
 			{Digest: l1.Digest.String(), Size: l1.Size, MediaType: l1.MediaType, Data: FT_amd_Layer1Byte()},

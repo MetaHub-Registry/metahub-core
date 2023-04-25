@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mitchellh/go-homedir"
@@ -28,6 +29,10 @@ type Magazine struct {
 	Database       Database
 	UserManagement sqlite.Sqlite
 	Config         MagConfig
+}
+
+func (mag *Magazine) Setup() (err error) {
+	return
 }
 
 func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Context, err error) {
@@ -76,11 +81,23 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 		logrus.Infof("Redirect frontend to: %s", fr)
 	}
 	au := viper.GetString("auth.url")
+	var regList []string
+	regs := viper.GetString("registries")
+	if regs != "" {
+		logrus.Infof("add pull-through registries from config: %s", regs)
+		regList = append(regList, strings.Split(regs, ",")...)
+
+	}
 	// Flags
 	profileRegex, _ := cmd.Flags().GetString("profile")
 	repoRegex, _ := cmd.Flags().GetString("repo")
 	tagRegex, _ := cmd.Flags().GetString("tag")
 	manifest, _ := cmd.Flags().GetString("manifest")
+	flagReg, _ := cmd.Flags().GetString("registries")
+	if flagReg != "" {
+		logrus.Infof("prepend pull-through registries from flags: %s", flagReg)
+		regList = append(strings.Split(flagReg, ","), regList...)
+	}
 	cfg := MagConfig{
 		RedirectDoc: fr,
 		AuthURL:     au,
@@ -90,6 +107,7 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 			"repoRegex":    repoRegex,
 			"tagRegex":     tagRegex,
 			"manifest":     manifest,
+			"registries":   strings.Join(regList, ","),
 		},
 	}
 

@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"github.com/metahub-registry/metahub-core/pkg/tracing"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel"
@@ -22,11 +23,13 @@ var (
 )
 
 type NeoConfig struct {
-	DbName string
-	User   string
-	Passwd string
-	URL    string
-	HTTP   string
+	DbName  string
+	User    string
+	Passwd  string
+	URL     string
+	HTTP    string
+	Args    map[string]string
+	Tracing tracing.TraceCfg
 }
 
 type Neo struct {
@@ -128,9 +131,9 @@ func (n Neo) Setup(ctx context.Context) (err error) {
 		{
 			name: "Profile",
 			attr: []string{"label"},
-		}, {
-			name: "Upstream",
-			attr: []string{"digest", "label"},
+			//}, {
+			//	name: "Upstream",
+			//	attr: []string{"digest", "label"},
 		}, {
 			name: "Rule",
 			attr: []string{"label"},
@@ -328,7 +331,7 @@ func (n Neo) Bootstrap_Annotation(bs utils.Bootstrap, br *utils.BootstrapResult,
 
 func (n Neo) Bootstrap_Config(bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
 	switch b {
-	case "ft_arm":
+	case "ft_arm64":
 		err = n.Setup_Config(br, types.FT_arm_Config(), "ft_arm64")
 		if err != nil {
 			err = errors.Wrapf(err, "while '%s'", b)
@@ -340,7 +343,14 @@ func (n Neo) Bootstrap_Config(bs utils.Bootstrap, br *utils.BootstrapResult, b s
 			err = errors.Wrapf(err, "while '%s'", b)
 			return
 		}
+	case "ft_zen3":
+		err = n.Setup_Config(br, types.FT_zen3_Config(), "ft_zen3")
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
 	}
+
 	return
 }
 
@@ -354,6 +364,12 @@ func (n Neo) Bootstrap_Upstream(bs utils.Bootstrap, br *utils.BootstrapResult, b
 		}
 	case "ft_amd64":
 		err = n.Setup_Upstream(br, types.FT_amd64_Upstream(), "ft_amd64")
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "ft_zen3":
+		err = n.Setup_Upstream(br, types.FT_zen3_Upstream(), "ft_zen3")
 		if err != nil {
 			err = errors.Wrapf(err, "while '%s'", b)
 			return
@@ -384,6 +400,18 @@ func (n Neo) Bootstrap_Layer(bs utils.Bootstrap, br *utils.BootstrapResult, b st
 		}
 	case "1:ft_amd64":
 		err = n.Setup_Layer(br, types.FT_amd64_Layer1(), b)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "0:ft_zen3":
+		err = n.Setup_Layer(br, types.FT_zen3_Layer0(), b)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "1:ft_zen3":
+		err = n.Setup_Layer(br, types.FT_zen3_Layer1(), b)
 		if err != nil {
 			err = errors.Wrapf(err, "while '%s'", b)
 			return
@@ -452,6 +480,12 @@ func (n Neo) BootstrapTestWithBR(b string, bs utils.Bootstrap, br *utils.Bootstr
 			err = errors.Wrap(err, "Setup_Platforms:Generic")
 			return
 		}
+	case "platforms:amd64":
+		err = n.Setup_Platforms(br, types.Example_PlatformAMD64)
+		if err != nil {
+			err = errors.Wrap(err, "Setup_Platforms:AMD64")
+			return
+		}
 	case "manifestdata:ft_arm64":
 		err = n.Setup_ManifestData(br, types.FT_arm_ManifestData(), b)
 		if err != nil {
@@ -464,6 +498,12 @@ func (n Neo) BootstrapTestWithBR(b string, bs utils.Bootstrap, br *utils.Bootstr
 			err = errors.Wrapf(err, "while '%s'", b)
 			return
 		}
+	case "manifestdata:ft_zen3":
+		err = n.Setup_ManifestData(br, types.FT_zen3_ManifestData(), b)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
 	case "manifestlist:ft_generic":
 		err = n.Setup_ManifestList_FT_generic(br)
 		if err != nil {
@@ -472,6 +512,12 @@ func (n Neo) BootstrapTestWithBR(b string, bs utils.Bootstrap, br *utils.Bootstr
 		}
 	case "manifest:ft_arm64":
 		err = n.Setup_Manifest_FT_arm64(br)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "manifest:ft_zen3":
+		err = n.Setup_Manifest_FT_zen3(br)
 		if err != nil {
 			err = errors.Wrapf(err, "while '%s'", b)
 			return
@@ -492,6 +538,12 @@ func (n Neo) BootstrapTestWithBR(b string, bs utils.Bootstrap, br *utils.Bootstr
 		}
 	case "collection:ft_generic":
 		err = n.Setup_Collection_FT_generic(br)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "collection:ft_zen3":
+		err = n.Setup_Collection_FT_zen3(br)
 		if err != nil {
 			err = errors.Wrapf(err, "while '%s'", b)
 			return
@@ -562,6 +614,11 @@ func (n Neo) TeardownTest(bs utils.Bootstrap) {
 			return
 		}
 		bPort := s[2]
+		jHttp, ok := n.neoConfig.Args["TEST_JAEGER_HTTP"]
+		if ok {
+			logrus.Warnf("Tracing: %s", jHttp)
+		}
+
 		logrus.Warnf("http: %s // bolt: %s // BoltPort: %s", n.neoConfig.HTTP, n.neoConfig.URL, bPort)
 		logrus.Warnf("User: %s / Passwd: %s", n.neoConfig.User, n.neoConfig.Passwd)
 		time.Sleep(time.Duration(bs.PostTestSleep) * time.Second)

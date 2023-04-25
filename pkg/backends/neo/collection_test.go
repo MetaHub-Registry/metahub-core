@@ -17,7 +17,7 @@ func Test_Collection_CRUD(t *testing.T) {
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
-	bs.AddBootstrap("config:ft_arm")
+	bs.AddBootstrap("config:ft_arm64")
 	bs.AddBootstrap("config:ft_amd64")
 	bs.AddBootstrap("upstream:ft_arm64")
 	bs.AddBootstrap("upstream:ft_amd64")
@@ -29,7 +29,6 @@ func Test_Collection_CRUD(t *testing.T) {
 	bs.AddBootstrap("layer:1:ft_amd64")
 	bs.AddBootstrap("manifestdata:ft_arm64")
 	bs.AddBootstrap("manifestdata:ft_amd64")
-	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target:platform")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 120
 	br, err := SetupTest(bs)
@@ -44,15 +43,15 @@ func Test_Collection_CRUD(t *testing.T) {
 		Tag:  "latest",
 	}
 	// Get Collection
-	_, found, err := db.GetCollection(col1)
+	_, found, err := db.GetCollection(ctx, col1)
 	assert.NoError(t, err)
 	assert.False(t, found)
 	// Add Collection
-	col1_id, colTag1_ID, err := db.CreateCollection(col1)
+	col1_id, colTag1_ID, err := db.CreateCollection(ctx, col1)
 	_ = colTag1_ID
 	assert.NoError(t, err)
 	assert.NotNil(t, col1_id)
-	col1_got, found, err := db.GetCollection(col1)
+	col1_got, found, err := db.GetCollection(ctx, col1)
 	assert.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, col1_id, col1_got.ID)
@@ -82,7 +81,7 @@ func Test_Collection_ComputeManifest(t *testing.T) {
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("filter:platform-generic")
 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
-	bs.AddBootstrap("config:ft_arm")
+	bs.AddBootstrap("config:ft_arm64")
 	bs.AddBootstrap("config:ft_amd64")
 	bs.AddBootstrap("upstream:ft_arm64")
 	bs.AddBootstrap("upstream:ft_amd64")
@@ -113,7 +112,7 @@ func Test_Collection_ComputeML(t *testing.T) {
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
-	bs.AddBootstrap("config:ft_arm")
+	bs.AddBootstrap("config:ft_arm64")
 	bs.AddBootstrap("config:ft_amd64")
 	bs.AddBootstrap("upstream:ft_arm64")
 	bs.AddBootstrap("upstream:ft_amd64")

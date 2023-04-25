@@ -133,7 +133,7 @@ func (mag Magazine) Config_Get_ByManifest(ctx context.Context, req types.Request
 }
 
 func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUpload, buf []byte) (err error) {
-	// TODO: Wait; we are getting the actual config, not only the descriptor
+	// NOTE: Wait; we are getting the actual config, not only the descriptor
 	ctx, span := tracer.Start(ctx, "StoreConfigUpload")
 	defer span.End()
 	span.SetAttributes(
