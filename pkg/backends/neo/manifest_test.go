@@ -39,10 +39,14 @@ func Test_Manifest_CR(t *testing.T) {
 	assert.False(t, found)
 	/// create Manifest
 	maniID, err := db.Manifest_Create(ctx, upID)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	/// get Manifest
 	gotManiID, found, err := db.Manifest_Get(upID)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.True(t, found)
 	assert.Equal(t, maniID, gotManiID)
 }
@@ -66,21 +70,31 @@ func Test_Manifest_GetInsert(t *testing.T) {
 	defer db.TeardownTest(bs)
 	// Actual test
 	upID, err := br.GetInt64("upstream:ft_arm64#id")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, found, err := db.Manifest_Get(upID)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.False(t, found)
 	/// create Manifest
 	up, err := db.Upstream_Get_ByID(ctx, upID)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	mani := types.Manifest{
 		Upstream: up,
 	}
 	maniID, err := db.Manifest_GetInsert(ctx, mani)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	/// get Manifest
 	gotManiID, found, err := db.Manifest_Get(upID)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.True(t, found)
 	assert.Equal(t, maniID, gotManiID)
 }

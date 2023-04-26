@@ -16,17 +16,25 @@ func Test_CollectionTag_CRUD(t *testing.T) {
 	//bs.PostTestSleep = 60
 	br, err := SetupTest(bs)
 	_ = br
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer db.TeardownTest(bs)
 	// Actual test
 	_, found, err := db.CollectionTag_GetByTag("test")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.False(t, found)
 	ct_got, err := db.CollectionTag_GetCreate(ctx, "test")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.NotNil(t, ct_got.ID)
 	ct_got2, err := db.CollectionTag_GetCreate(ctx, "test")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, ct_got.ID, ct_got2.ID)
 }
 
@@ -56,19 +64,29 @@ func Test_CollectionTag_LinkCollection(t *testing.T) {
 	//bs.PostTestSleep = 90
 	br, err := SetupTest(bs)
 	_ = br
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer db.TeardownTest(bs)
 	// Actual test
 	_, found, err := db.CollectionTag_GetByTag("test")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.False(t, found)
 	ct_got, err := db.CollectionTag_GetCreate(ctx, "test")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.NotNil(t, ct_got.ID)
 	// CT
 	mani_amd_id, err := br.GetInt64("manifest:ft_amd64#id")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = db.LinkCollectionTagToManifest(ctx, ct_got.ID, mani_amd_id)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 }

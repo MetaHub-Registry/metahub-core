@@ -54,7 +54,7 @@ func (mag Magazine) RemoveCollectionByRequest(req types.Request) (found bool, er
 	return mag.Database.Collection_Remove(ctx, c)
 }
 
-func (mag Magazine) HeadManifestNotFound(ctx context.Context, req types.Request) (err error) {
+func (mag Magazine) HeadManifestNotFound(ctx context.Context, req types.Request) (found bool, err error) {
 	ctx, span := tracer.Start(ctx, "HeadManifestNotFound")
 	defer span.End()
 	l := logrus.WithFields(logrus.Fields{
@@ -128,6 +128,7 @@ func (mag Magazine) HeadManifestNotFound(ctx context.Context, req types.Request)
 			attribute.String("log.severity", "debug"),
 			attribute.String("log.message", msg),
 		))
+		found = false
 	}
 	return
 }

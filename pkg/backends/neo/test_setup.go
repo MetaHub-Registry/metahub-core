@@ -232,6 +232,7 @@ func (n Neo) Setup_Config(br *utils.BootstrapResult, cfg types.Config, label str
 	}
 	br.Add(fmt.Sprintf("config:%s#id", label), fmt.Sprint(cfgId))
 	br.Add(fmt.Sprintf("config:%s#digest", label), cfg.Digest)
+	br.Add(fmt.Sprintf("config:%s#mediaType", label), cfg.MediaType)
 	return
 }
 
@@ -243,6 +244,7 @@ func (n Neo) Setup_Layer(br *utils.BootstrapResult, ly types.Layer, bootstrapstr
 	}
 	br.Add(fmt.Sprintf("layer:%s#id", bootstrapstring), fmt.Sprint(lyId))
 	br.Add(fmt.Sprintf("layer:%s#digest", bootstrapstring), ly.Digest)
+	br.Add(fmt.Sprintf("layer:%s#mediaType", bootstrapstring), ly.MediaType)
 	return
 }
 
@@ -302,12 +304,26 @@ func (n Neo) Setup_Manifest_FT_mpich_amd64(br *utils.BootstrapResult) (err error
 		return err
 	}
 	// Link Config
-	arm_config_id, err := br.GetInt64(fmt.Sprintf("config:ft_%s#id", m.Platform.Arch))
+	config_id, err := br.GetInt64(fmt.Sprintf("config:ft_%s#id", m.Platform.Arch))
 	if err != nil {
 		logrus.Error(err)
 		return err
 	}
-	err = n.ManifestData_LinkToConfig(ctx, maniID, arm_config_id)
+	config, found, err := n.Config_GetByID(ctx, config_id)
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	if !found {
+		err = fmt.Errorf("config not found")
+		return
+	}
+	config.MediaType, err = br.Get(fmt.Sprintf("config:ft_%s#mediaType", m.Platform.Arch))
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	err = n.ManifestData_LinkToConfig(ctx, maniID, config)
 	if err != nil {
 		logrus.Error(err)
 		return err
@@ -359,12 +375,26 @@ func (n Neo) Setup_Manifest_FT_amd64(br *utils.BootstrapResult) (err error) {
 		return err
 	}
 	// Link Config
-	arm_config_id, err := br.GetInt64(fmt.Sprintf("config:ft_%s#id", m.Platform.Arch))
+	config_id, err := br.GetInt64(fmt.Sprintf("config:ft_%s#id", m.Platform.Arch))
 	if err != nil {
 		logrus.Error(err)
 		return err
 	}
-	err = n.ManifestData_LinkToConfig(ctx, maniID, arm_config_id)
+	config, found, err := n.Config_GetByID(ctx, config_id)
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	if !found {
+		err = fmt.Errorf("config not found")
+		return
+	}
+	config.MediaType, err = br.Get(fmt.Sprintf("config:ft_%s#mediaType", m.Platform.Arch))
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	err = n.ManifestData_LinkToConfig(ctx, maniID, config)
 	if err != nil {
 		logrus.Error(err)
 		return err
@@ -421,7 +451,21 @@ func (n Neo) Setup_Manifest_FT_arm64(br *utils.BootstrapResult) (err error) {
 		logrus.Error(err)
 		return err
 	}
-	err = n.ManifestData_LinkToConfig(ctx, maniID, arm_config_id)
+	arm_config, found, err := n.Config_GetByID(ctx, arm_config_id)
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	if !found {
+		err = fmt.Errorf("config not found")
+		return
+	}
+	arm_config.MediaType, err = br.Get(fmt.Sprintf("config:ft_%s#mediaType", m.Platform.Arch))
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	err = n.ManifestData_LinkToConfig(ctx, maniID, arm_config)
 	if err != nil {
 		logrus.Error(err)
 		return err
@@ -482,7 +526,21 @@ func (n Neo) Setup_Manifest_FT_zen3(br *utils.BootstrapResult) (err error) {
 		logrus.Error(err)
 		return err
 	}
-	err = n.ManifestData_LinkToConfig(ctx, maniID, config_id)
+	config, found, err := n.Config_GetByID(ctx, config_id)
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	if !found {
+		err = fmt.Errorf("config not found")
+		return
+	}
+	config.MediaType, err = br.Get("config:ft_zen3#mediaType")
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	err = n.ManifestData_LinkToConfig(ctx, maniID, config)
 	if err != nil {
 		logrus.Error(err)
 		return err
@@ -716,7 +774,7 @@ func (n Neo) Cypher_AddCollection_FT_generic(br *utils.BootstrapResult) (err err
 	q += ` MERGE (upArm:Upstream {reg: "metahub-registry.org", repo: "qnib/featuretest", tag: "tag1-linux.arm64"})`
 	q += ` MERGE (upArm)<-[:UPSTREAM]-(mArm)`
 	q += ` MERGE (cfgArm:Config {digest: "digest: sha256:cf5c26263929e84d7373d23b2692222cceceb3175b3325b183ead2ab6b5a5ce3", mediaType: "application/vnd.docker.container.image.v1+json", size: 2191})`
-	q += ` MERGE (mArm)-[:USES]->(cfgArm)`
+	q += ` MERGE (mArm)-[:application/vnd.docker.container.image.v1+json]->(cfgArm)`
 	q += ` MERGE (pAmd:Platform {label: "linux/amd64", arch: "amd64", os: "linux", variant: "", features: ""})`
 	q += ` MERGE (f1)-[:USES]->(pAmd)`
 	q += ` MERGE (mdAmd:ManifestData {digest: "digest: sha256:5bf8eee20fde14eb6e3e924c18fafa4d816e131f315810875136f0438ff7beed", mediaType: "application/vnd.docker.distribution.manifest.v2+json", size: 735})`
@@ -726,7 +784,7 @@ func (n Neo) Cypher_AddCollection_FT_generic(br *utils.BootstrapResult) (err err
 	q += ` MERGE (upAmd:Upstream {reg: "metahub-registry.org", repo: "qnib/featuretest", tag: "tag1-linux.amd64"})`
 	q += ` MERGE (upAmd)<-[:UPSTREAM]-(mAmd)`
 	q += ` MERGE (cfgAmd:Config {digest: "digest: sha256:83fdbde95f56beb69853240df571a7f085c561b4f8d914c5cc5e0f171dcb86df", mediaType: "application/vnd.docker.container.image.v1+json", size: 2191})`
-	q += ` MERGE (mAmd)-[:USES]->(cfgAmd)`
+	q += ` MERGE (mAmd)-[:application/vnd.docker.container.image.v1+json]->(cfgAmd)`
 	query := fmt.Sprintf(q, colID, tagID)
 	_, err = n.Execute(query)
 	return

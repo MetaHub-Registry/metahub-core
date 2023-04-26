@@ -19,26 +19,40 @@ func Test_PutStatRemove(t *testing.T) {
 	ctx := context.Background()
 	layerDig := "sha256:112233445566"
 	err := min.LayerPutObj(ctx, layerDig, layerBlob)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	obj, err := min.LayersStatObj(ctx, layerDig)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.NotNil(t, obj)
 	err = min.LayerRemoveObj(ctx, layerDig)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = min.LayersStatObj(ctx, layerDig)
 	assert.Error(t, err)
 	err = min.PutLayer(ctx, layerBlob, layerDig)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = min.LayersStatObj(ctx, layerDig)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	up := upstream.UpstreamTriple{
 		Digest: digest.Digest(layerDig),
 	}
 	cached, err := min.GetLayer(ctx, up)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.True(t, cached)
 	err = min.LayerRemoveObj(ctx, layerDig)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = min.LayersStatObj(ctx, layerDig)
 	assert.Error(t, err)
 

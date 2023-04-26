@@ -10,9 +10,13 @@ import (
 func Test_Layer_StoreBlobUpload(t *testing.T) {
 	bu, b := types.FT_arm_BlobUpload_Layer0()
 	err := mag.StoreBlobUpload(ctx, &bu, b)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, found, err := mag.Database.LayerGetByDigest(bu.Digest)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.True(t, found)
 }
 
@@ -25,16 +29,22 @@ func Test_Config_StoreBlobUpload(t *testing.T) {
 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
 	bs.SetEmptyAll()
 	_, err := mag.SetupTest(bs)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+}
 	defer TeardownTest(bs)
 	// Tests
 	bu, b := types.FT_arm_BlobUpload_Config()
 	_ = b
 	_, found, err := mag.Database.Config_GetByDigestAndType(bu.Digest, bu.MediaType)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+}
 	assert.False(t, found)
 	err = mag.StoreBlobUpload(ctx, &bu, b)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+}
 	err = mag.StoreBlobUpload(ctx, &bu, []byte(`{"foo":"bar"}`))
 	assert.Error(t, err)
 }

@@ -5,12 +5,28 @@ import (
 	"fmt"
 
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
-func (n Neo) OCIv1Config_GetInsertDescriptor(ctx context.Context, desc v1.Descriptor) (cfgID int64, found bool, err error) {
-	cfgID, found, err = n.Config_GetID_ByDigestAndType(ctx, desc.Digest.String(), desc.MediaType)
+func (n Neo) OCIv1Config_GetInsertDescriptor(ctx context.Context, desc v1.Descriptor) (cfg types.Config, found bool, err error) {
+	shortDig := utils.ShortenDigest(desc.Digest.String())
+	l := logrus.WithFields(logrus.Fields{
+		"package": "neo/config_oci.go",
+		"func":    "OCIv1Config_GetInsertDescriptor",
+		"digest":  shortDig,
+	})
+	ctx, span := tracer.Start(ctx, "OCIv1Config_GetInsertDescriptor")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Key("digest").String(shortDig),
+	)
+	cfg, found, err = n.Config_GetByDigest(ctx, desc.Digest.String())
 	if err != nil {
 		return
 	}
@@ -20,12 +36,28 @@ func (n Neo) OCIv1Config_GetInsertDescriptor(ctx context.Context, desc v1.Descri
 		return
 	}
 	label := utils.CreateLabelFromDescriptor(desc)
-	q := `CREATE (c:Config) SET c.digest = "%s", c.mediaType = "%s", c.size = %d, c.label ="%s" RETURN id(c) as ID`
-	query := fmt.Sprintf(q, desc.Digest.String(), desc.MediaType, desc.Size, label)
-	res, err := n.Execute(query)
+	q := fmt.Sprintf(`CREATE (c:Config) SET c.digest = "%s", c.size = %d, c.label ="%s"`, desc.Digest.String(), desc.Size, label)
+	q += ` RETURN id(c) as configID, c.size AS configSize, c.digest AS configDigest`
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", q),
+	))
+	res, err := n.Execute(q)
 	if err != nil {
 		return
 	}
-	cfgID, err = res.GetInt64("ID")
+	cfg, e := n.ConfigFromResult(ctx, res)
+	if e != nil {
+		err = errors.Wrap(e, "failed to create Config from result")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
+		return
+	}
+	cfg.MediaType = desc.MediaType
 	return
 }

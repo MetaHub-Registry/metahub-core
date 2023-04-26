@@ -68,12 +68,16 @@ func Test_NormalizeRepoName_v0(t *testing.T) {
 	input := "alpine"
 	exp := "docker.io/library/alpine:latest"
 	got, err := NormalizeRepoName(input)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, exp, got)
 	input = "alpine:3.16"
 	exp = "docker.io/library/alpine:3.16"
 	got, err = NormalizeRepoName(input)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, exp, got)
 	input = "-s"
 	_, err = NormalizeRepoName(input)
@@ -84,6 +88,8 @@ func Test_NormalizeRepoName_v1(t *testing.T) {
 	input := "alpine"
 	exp := "docker.io/library/alpine:latest"
 	got, err := NormalizeRepoName(input)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, exp, got)
 }

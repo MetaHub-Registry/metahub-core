@@ -31,6 +31,7 @@ var (
 	jeagerHttpURI   string
 	jeagerThriftURI string
 	svcName         = "magazine-test"
+	debug           = 0
 )
 
 var (

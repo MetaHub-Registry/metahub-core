@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	lep "github.com/mgudov/logic-expression-parser"
-	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
@@ -28,7 +27,9 @@ func Test_Expr_Simple(t *testing.T) {
 	// Actual test
 	///// Eval all rules first
 	err = db.Rule_EvalAll(ctx)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	/// Now tests
 	er := types.NewExprRes()
 	query := `foo:bar=true`

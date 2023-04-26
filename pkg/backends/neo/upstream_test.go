@@ -15,7 +15,9 @@ func Test_Upstream_Create(t *testing.T) {
 	bs.SetEmptyAll()
 	br, err := SetupTest(bs)
 	_ = br
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer db.TeardownTest(bs)
 	// Actual test
 	up := types.Upstream{
@@ -26,23 +28,35 @@ func Test_Upstream_Create(t *testing.T) {
 	}
 
 	upID, err := db.CreateUpstream(ctx, up)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.NotNil(t, upID)
 	r, err := db.Query("MATCH (u:Upstream) RETURN " + UpstreamReturn)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Len(t, r, 1)
 	r0 := r[0]
 	reg, err := r0.GetStr("upstreamReg")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, "foo.bar", reg)
 	repo, err := r0.GetStr("upstreamRepo")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, "qnib/featuretest", repo)
 	tag, err := r0.GetStr("upstreamTag")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, "2022.12.03", tag)
 	gotUp, err := UpstreamFromResult(r0)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, up.Reg, gotUp.Reg)
 }
 
@@ -53,7 +67,9 @@ func Test_Upstream_CRUD(t *testing.T) {
 	//bs.PostTestSleep = 60
 	br, err := SetupTest(bs)
 	_ = br
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer db.TeardownTest(bs)
 	// Actual test
 	up := types.Upstream{
@@ -63,17 +79,25 @@ func Test_Upstream_CRUD(t *testing.T) {
 		Digest: "sha256:1234567890123456789012345678901234567890123456789012345678901234",
 	}
 	_, found, err := db.GetUpstream(ctx, up)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.False(t, found)
 	upID, err := db.CreateUpstream(ctx, up)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.NotNil(t, upID)
 	gotUpID, found, err := db.Upstream_Get(ctx, up)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.True(t, found)
 	assert.Equal(t, upID, gotUpID)
 	gotUp, err := db.Upstream_Get_ByID(ctx, upID)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, up.Reg, gotUp.Reg)
 	// Insert the same
 	reqFooBar := types.Request{
@@ -83,7 +107,9 @@ func Test_Upstream_CRUD(t *testing.T) {
 		Digest: "sha256:1234567890123456789012345678901234567890123456789012345678901234",
 	}
 	gotUpFooBar, found, err := db.Upstream_GetInsert_ByRequest(ctx, reqFooBar)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.True(t, found)
 	assert.Equal(t, gotUp.ID, gotUpFooBar.ID)
 	// Insert BarFoo
@@ -94,7 +120,9 @@ func Test_Upstream_CRUD(t *testing.T) {
 		Digest: "sha256:5434567890123456789012345678901234567890123456789012345678901234",
 	}
 	gotUp2, found, err := db.Upstream_GetInsert_ByRequest(ctx, req)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.False(t, found)
 	assert.Equal(t, "bar.foo", gotUp2.Reg)
 	assert.Equal(t, req.Repo, gotUp2.Repo)

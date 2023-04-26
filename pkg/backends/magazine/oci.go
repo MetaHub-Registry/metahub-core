@@ -406,7 +406,7 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 		return
 	}
 	// ///// A. Generate `oci.image.config.v1`
-	cfg, err := mag.GenerateOCIv1Config(ctx, mani, origMani)
+	v1Cfg, err := mag.GenerateOCIv1Config(ctx, mani, origMani)
 	if err != nil {
 		return
 	}
@@ -423,12 +423,12 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 			attribute.String("log.message", msg),
 		))
 		if r.Type == types.RuleTypeAnnotation && r.Op == "eq" {
-			cfg.Config.Labels[r.Key] = r.Value
+			v1Cfg.Config.Labels[r.Key] = r.Value
 			k := utils.UpLabelKey(r.Key)
-			cfg.Config.Env = append(cfg.Config.Env, fmt.Sprintf("%s=%s", k, r.Value))
+			v1Cfg.Config.Env = append(v1Cfg.Config.Env, fmt.Sprintf("%s=%s", k, r.Value))
 		}
 	}
-	cfgDesc, err := mag.GenerateOCIv1ConfigDescriptor(ctx, cfg)
+	cfgDesc, err := mag.GenerateOCIv1ConfigDescriptor(ctx, v1Cfg)
 	if err != nil {
 		return
 	}
@@ -440,7 +440,7 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 		return
 	}
 	// Put Config into Graph
-	cfgID, _, err := mag.Database.OCIv1Config_GetInsertDescriptor(ctx, cfgDesc)
+	cfg, _, err := mag.Database.OCIv1Config_GetInsertDescriptor(ctx, cfgDesc)
 	if err != nil {
 		return
 	}
@@ -459,7 +459,7 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 		))
 		l.Warnf(msg)
 		a := types.NewAnnotation(k, v)
-		err = mag.Database.Config_AddLabel(ctx, cfgID, a)
+		err = mag.Database.Config_AddLabel(ctx, cfg.ID, a)
 		if err != nil {
 			return
 		}
@@ -501,13 +501,13 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 		return
 	}
 	// //// Link ManifestData to Config
-	err = mag.Database.ManifestData_LinkToOCIv1Config(ctx, maniID, cfgID)
+	err = mag.Database.ManifestData_LinkToOCIv1Config(ctx, maniID, cfg)
 	if err != nil {
 		return
 	}
 	// //// Link ManifestData to Layers
 	for _, ld := range layerMap {
-		err = mag.Database.ManifestData_LinkToOCIv1Layer(ctx, maniID, ld.LayerID)
+		err = mag.Database.ManifestData_LinkToOCIv1Layer(ctx, maniID, ld)
 		if err != nil {
 			l.Error(err)
 			return

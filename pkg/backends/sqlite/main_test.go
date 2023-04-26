@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
@@ -19,7 +18,9 @@ func Test_SetupTeardown(t *testing.T) {
 	bs.AddBootstrap("users")
 	br, err := SetupTest(bs)
 	_ = br
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer TeardownTest(bs)
 }
 

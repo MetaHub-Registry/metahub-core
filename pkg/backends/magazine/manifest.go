@@ -260,12 +260,12 @@ func (mag Magazine) LinkManifestToManifestData(ctx context.Context, maniID, mani
 	return mag.Database.LinkManifestToManifestData(ctx, maniID, maniDataID, props...)
 }
 
-func (mag Magazine) NeoLinkManifestDataToConfig(ctx context.Context, maniID, cfgID int64) (err error) {
-	return mag.Database.ManifestData_LinkToConfig(ctx, maniID, cfgID)
+func (mag Magazine) NeoLinkManifestDataToConfig(ctx context.Context, maniID int64, cfg types.Config) (err error) {
+	return mag.Database.ManifestData_LinkToConfig(ctx, maniID, cfg)
 }
 
-func (mag Magazine) NeoLinkManifestToLayer(ctx context.Context, maniID, lID int64, idx int) (err error) {
-	return mag.Database.ManifestData_LinkToLayer(ctx, maniID, lID, idx)
+func (mag Magazine) NeoLinkManifestToLayer(ctx context.Context, maniID int64, l types.Layer, idx int) (err error) {
+	return mag.Database.ManifestData_LinkToLayer(ctx, maniID, l, idx)
 }
 
 func (mag Magazine) NeoLinkManifestToPlatform(ctx context.Context, maniID, platID int64) (err error) {
@@ -368,21 +368,58 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 	err = json.Unmarshal(buf, &ociMani)
 	if err != nil {
 		err = errors.Wrapf(err, "failed to unmarshal OCI Manifest '%s'", string(buf))
-		l.Error(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return mani, ociMani, err
 	}
+	msg := fmt.Sprintf("unmarshal ociMani: %v", ociMani)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.message", msg),
+	))
+	l.Debug(msg)
 	dig := digest.FromBytes(buf)
 	req.Digest = dig.String()
 	if req.Digest != "" && req.Digest != dig.String() {
 		err = fmt.Errorf("digest mismatch: %s != %s", req.Digest, dig.String())
-		l.Error(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	err = mag.Minio.ManifestsPutObj(ctx, dig.String(), buf)
 	if err != nil {
-		l.Error(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
+	col, _, err := mag.Database.Collection_GetCreate_ByRepoTag(ctx, req.Repo, req.Tag)
+	if err != nil {
+		err = errors.Wrap(err, "failed to get Collection from Database")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
+		return
+	}
+
 	// Store Manifest (the standin under which all ManifestData are stored)
 	up := types.Upstream{
 		Reg:    req.Host,
@@ -398,29 +435,112 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 	mID, err := mag.Database.Manifest_GetInsertWithRequest(ctx, mani, req)
 	if err != nil {
 		err = errors.Wrap(err, "failed to get Manifest from Database")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
+		return
+	}
+	// Link Manifest to Collection
+	e := mag.Database.LinkCollectionToManifest(ctx, col.ID, mID)
+	if e != nil {
+		err = errors.Wrap(e, "failed to LinkCollectionToManifest")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
+		return
+	}
+	e = mag.Database.LinkCollectionTagToManifest(ctx, col.ColTag.ID, mID)
+	if e != nil {
+		err = errors.Wrap(e, "failed to LinkCollectionTagToManifest")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	mani.ID = mID
 	lyrs := []types.Layer{}
-	for _, l := range ociMani.Layers {
+	for idx, lyrDesc := range ociMani.Layers {
+		msg := fmt.Sprintf("Layer %d: %s", idx, utils.ShortenDigest(lyrDesc.Digest.String()))
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
+		l.Debug(msg)
 		lyrs = append(lyrs, types.Layer{
-			Digest:    l.Digest.String(),
-			MediaType: l.MediaType,
-			Size:      l.Size,
+			Digest:    lyrDesc.Digest.String(),
+			MediaType: lyrDesc.MediaType,
+			Size:      lyrDesc.Size,
 		})
+		lyr, e := types.Layer_FromDesc(ctx, lyrDesc)
+		if e != nil {
+			err = errors.Wrap(e, "failed to create Layer from distribution.Descriptor")
+			span.SetStatus(codes.Error, err.Error())
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "error"),
+				attribute.String("log.message", err.Error()),
+			))
+			span.RecordError(err)
+			l.Error(err.Error())
+			return
+		}
+		lyr.ID, e = mag.Database.Layer_PlainInsert(ctx, lyr)
+		if e != nil {
+			err = errors.Wrap(e, "failed to insert layer")
+			span.SetStatus(codes.Error, err.Error())
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "error"),
+				attribute.String("log.message", err.Error()),
+			))
+			span.RecordError(err)
+			l.Error(err.Error())
+			return
+		}
 	}
 	prf, found, e := mag.Database.Profile_Get_ByLabel(ctx, req.Profile)
 	if e != nil {
 		err = errors.Wrapf(e, "failed to get profile '%s' from database", prf.Label)
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	if !found {
 		err = fmt.Errorf("profile '%s' not found", prf.Label)
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	md, found, e := mag.Database.ManifestData_GetPushed_ByProfile(ctx, up, prf)
 	if e != nil {
 		err = errors.Wrapf(e, "failed to get ManifestData for profile '%s' from database", prf.Label)
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	if found {
@@ -458,33 +578,65 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 	}
 	err = mag.Database.ManifestData_GetInsert(ctx, &md)
 	if err != nil {
-		err = errors.Wrap(err, "failed to get ManifestData from Database")
+		err = errors.Wrap(err, "failed to getInsert ManifestData from Database")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	mani.Manifests = append(mani.Manifests, md)
 	err = mag.LinkManifestToManifestData(ctx, mID, md.ID, "UPLOADED_BY")
 	if err != nil {
 		err = errors.Wrap(err, "failed to mag.LinkManifestToManifestData")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	err = mag.Database.LinkManifestDataToProfile(ctx, md.ID, prf.ID, "UPLOADED_BY")
 	if err != nil {
 		err = errors.Wrap(err, "failed to mag.LinkManifestToManifestData")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	// Remove orhpaned layers
-
 	err = mag.Layers_DeleteUnused(ctx)
 	if err != nil {
 		err = errors.Wrap(err, "failed to delete unused layers")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
 		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	// Remove orhpaned config
 	err = mag.Configs_DeleteUnused(ctx)
 	if err != nil {
 		err = errors.Wrap(err, "failed to delete unused config")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
 		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	return
@@ -505,6 +657,8 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 	defer span.End()
 	span.SetAttributes(
 		attribute.Key("repo").String(req.Repo),
+		attribute.Key("tag").String(req.Tag),
+		attribute.Key("digest").String(utils.ShortenDigest(req.Digest)),
 		attribute.Key("body-length").Int(len(buf)),
 		attribute.Key("profile").String(req.Profile),
 	)
@@ -516,6 +670,13 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 	switch len(m.Manifests) {
 	default:
 		err = fmt.Errorf("expect to have to store Manifest")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	case 1:
 		label := fmt.Sprintf("%s/%s:%s@%s", req.Host, req.Repo, req.Tag, req.Profile)
@@ -524,6 +685,7 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 			attribute.String("log.severity", "debug"),
 			attribute.String("log.message", msg),
 		))
+		l.Debug(msg)
 		md = m.Manifests[0]
 		md.Digest = req.Digest
 		md.Label = label
@@ -536,22 +698,46 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 	cfg, v1Img, found, err := mag.Config_Get_ByManifest(ctx, req, ociMani)
 	if err != nil {
 		err = errors.Wrap(err, "failed to mag.Config_Get_ByManifest")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
+	cfg.MediaType = ociMani.Config.MediaType
 	if !found {
 		err = fmt.Errorf("failed to find config for manifest")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	//logrus.Infof("Found Config: ID:%d #Labels:%d", cfg.ID, len(cfg.Labels.Map))
 	md.Config = cfg
 	// Link Manifest to Config
+	msg := fmt.Sprintf("Linking Manifest to Config: '%d' -> '%d'", md.ID, cfg.ID)
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", fmt.Sprintf("Linking Manifest to Config: '%d' -> '%d'", md.ID, cfg.ID)),
+		attribute.String("log.message", msg),
 	))
-	err = mag.Database.ManifestData_LinkToConfig(ctx, md.ID, cfg.ID)
+	l.Debug(msg)
+	err = mag.Database.ManifestData_LinkToConfig(ctx, md.ID, cfg)
 	if err != nil {
 		err = errors.Wrap(err, "failed to mag.LinkManifestToConfig")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	/// Extract Platform (Will be put in by Config_GetInsert_ByOCIManifest in case it is embedded)

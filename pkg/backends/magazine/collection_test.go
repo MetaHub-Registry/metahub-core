@@ -36,7 +36,7 @@ func Test_Collection_HeadManifestNotFound_Manifest(t *testing.T) {
 		Tag:     "manifest",
 		Profile: "cpu#zen2",
 	}
-	err = mag.HeadManifestNotFound(ctx, req2)
+	_, err = mag.HeadManifestNotFound(ctx, req2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func Test_Collection_HeadManifestNotFound_Manifest(t *testing.T) {
 		Tag:     "manifest",
 		Profile: "cpu#zen3",
 	}
-	err = mag.HeadManifestNotFound(ctx, req3)
+	_, err = mag.HeadManifestNotFound(ctx, req3)
 	if err != nil {
 		t.Fatal(err)
 	}

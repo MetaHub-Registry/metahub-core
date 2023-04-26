@@ -36,7 +36,9 @@ func Test_CachManifest(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	_, err := mag.SetupTest(ctx, bs)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer TeardownTest(bs)
 	// Test
 	//mani := types.FT_arm_Manifest()
@@ -50,16 +52,22 @@ func Test_CachManifest(t *testing.T) {
 		},
 	}
 	mani, err := mag.CachManifest(ctx, yMani)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mani.Digest)
 	// Check if layers are cached
 	for _, l := range mani.Layers {
 		psUrl, err := mag.Minio.LayerGetPreSignedUrl(ctx, l.Digest)
-		assert.NoError(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 		assert.NotEmpty(t, psUrl)
 	}
 	mani, err = mag.CachManifest(ctx, yMani)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mani.Digest)
 
 }
@@ -111,6 +119,7 @@ func Test_storeManifestUpload_OCIManifest(t *testing.T) {
 
 func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer(t *testing.T) {
 	bs := utils.NewBootstrap()
+	//debug = 300
 	bs.SetEmptyAll()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("users")
@@ -118,10 +127,18 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer(t *testing.T) {
 	bs.AddBootstrap("rules:rules/os/linux.yaml")
 	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
-	//bs.PostTestSleep = 300
-	_, err := mag.SetupTest(ctx, bs)
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := mag.SetupTest(ctx, bs)
 	if err != nil {
+		TeardownTest(bs)
 		t.Fatal(err)
+	}
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
 	}
 	defer TeardownTest(bs)
 	// Tests
@@ -151,21 +168,27 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer(t *testing.T) {
 	}
 	assert.Equal(t, bufDig.String(), mani.Digest)
 	// Check if config is in DB
-	cfgs, found, err := mag.Database.Config_GetByDigest("sha256:65b1de14a76de70a46ff0839ab79775aceb96ee12069fb6ed45bc35f958fdbcb")
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(cfgs))
-	cfg := cfgs[0]
+	cfg, found, err := mag.Database.Config_GetByDigest(ctx, "sha256:65b1de14a76de70a46ff0839ab79775aceb96ee12069fb6ed45bc35f958fdbcb")
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, "sha256:65b1de14a76de70a46ff0839ab79775aceb96ee12069fb6ed45bc35f958fdbcb", cfg.Digest)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.True(t, found)
 	assert.Equal(t, "application/vnd.oci.image.config.v1+json", cfg.MediaType)
 	// Check for config in Minio
 	cfgObj, err := mag.Minio.ConfigGetObj(ctx, cfg.Digest)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, "sha256:65b1de14a76de70a46ff0839ab79775aceb96ee12069fb6ed45bc35f958fdbcb", cfgObj.Digest)
 	// Check Collections
-	cols, err := mag.Database.CollectionGetAll()
-	assert.NoError(t, err)
+	cols, err := mag.Database.CollectionGetAll(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_ = cols
 	//assert.Equal(t, 1, len(cols))
 }
@@ -231,12 +254,10 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer_with_Labels(t *tes
 	}
 	assert.Equal(t, bufDig.String(), mani.Digest)
 	// Check if config is in DB
-	cfgs, found, err := mag.Database.Config_GetByDigest(cfgDigest)
+	cfg, found, err := mag.Database.Config_GetByDigest(ctx, cfgDigest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, 1, len(cfgs))
-	cfg := cfgs[0]
 	assert.Equal(t, cfgDigest, cfg.Digest)
 	assert.True(t, found)
 	assert.Equal(t, "application/vnd.oci.image.config.v1+json", cfg.MediaType)
@@ -260,6 +281,7 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer_with_Labels(t *tes
 
 func Test_Manifest_ComputeManifestForProfile(t *testing.T) {
 	ctx := context.Background()
+	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("platforms:generic")
@@ -280,10 +302,16 @@ func Test_Manifest_ComputeManifestForProfile(t *testing.T) {
 	bs.AddBootstrap("manifestdata:ft_amd64")
 	bs.AddBootstrap("collection:ft_generic")
 	bs.SetEmptyAll()
-	//bs.PostTestSleep = 300
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+
 	br, err := mag.SetupTest(ctx, bs)
-	_ = br
-	//br.PrintDict()
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
 	if err != nil {
 		TeardownTest(bs)
 		t.Fatal(err)
@@ -316,7 +344,9 @@ func Test_Manifest_ComputeManifestForProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = mag.Database.Rule_EvalAll(ctx)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Check if the manifest is in the collection
 	mdID, found, e := mag.Database.ManifestData_GetID_ByMediaType(ctx, mani.ID, "application/vnd.oci.image.manifest.v1+json")
 	if e != nil {

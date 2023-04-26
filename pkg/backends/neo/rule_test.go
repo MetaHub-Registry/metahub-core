@@ -32,13 +32,19 @@ func Test_Rule_GetCreate(t *testing.T) {
 		Value: "bar0",
 	}
 	_, found, err := db.Rule_Get(ctx, r)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.False(t, found)
 	/// create Rule
 	ruleID, err := db.Rule_Create(ctx, r)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	gotRuleID, found, err := db.Rule_Get(ctx, r)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.True(t, found)
 	assert.Equal(t, ruleID, gotRuleID)
 	r0 := types.Rule{
@@ -50,10 +56,14 @@ func Test_Rule_GetCreate(t *testing.T) {
 		Value: "bar1",
 	}
 	ruleID, err = db.Rule_GetCreate(ctx, r0)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.NotEqual(t, ruleID, gotRuleID)
 	rls, err := db.Rules_GetAll(ctx)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, 2, len(rls))
 }
 
@@ -90,7 +100,9 @@ func Test_Rule_EvalAnnotationRule(t *testing.T) {
 	}
 	r.ID = rID
 	err = db.Rule_EvalAnnotationRule(ctx, r)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	q := fmt.Sprintf(`MATCH (r:Rule) WHERE id(r) = %d RETURN id(r) AS rID`, rID)
 	_, found, err = db.QueryOne(q)
 	if err != nil || !found {
@@ -136,7 +148,9 @@ func Test_Rule_EvalAnnotationRule_Noop(t *testing.T) {
 	}
 	r.ID = rID
 	err = db.Rule_EvalAnnotationRule(ctx, r)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	q := fmt.Sprintf(`MATCH (r:Rule) WHERE id(r) = %d RETURN id(r) AS rID`, rID)
 	_, found, err = db.QueryOne(q)
 	if err != nil || !found {
@@ -167,7 +181,9 @@ func Test_Rule_EvalAll(t *testing.T) {
 	defer db.TeardownTest(bs)
 	// Actual Test
 	err = db.Rule_EvalAll(ctx)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Check rules
 	fbR, found, err := db.Rule_GetByLabel(ctx, "foo:bar")
 	if err != nil || !found {

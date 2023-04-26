@@ -16,7 +16,9 @@ func Test_Filter_CRD(t *testing.T) {
 	a0 := NewAnnotation("foo", "bar")
 	as0.AddAnnotation(a0)
 	err = f0.EvalRules(as0)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	/// False
 	a1 := NewAnnotation("foo", "foo")
 	as1 := NewAnnotations()

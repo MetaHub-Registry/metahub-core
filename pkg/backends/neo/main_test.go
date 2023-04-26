@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/tracing"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
@@ -84,13 +83,21 @@ func Test_NeoTest(t *testing.T) {
 	bs.SetEmptyAll()
 	br, err := SetupTest(bs)
 	_ = br
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer db.TeardownTest(bs)
 	// Actual Tests
 	_, err = db.Query("MATCH (n) RETURN n")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = db.Execute("CREATE (n:Test {name: 'test'})")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = db.Query("MATCH (n:Test) RETURN n.name AS name")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 }

@@ -13,6 +13,8 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (mag Magazine) PullLayer(ctx context.Context, up upstream.UpstreamTriple) (err error) {
@@ -168,11 +170,19 @@ func (mag Magazine) GetLayerByOCIManifest(oMani types.OCIManifest) (layers []typ
 	return layers, nil
 }
 
-func (mag Magazine) Layers_CreateOCIv1LayerDescriptors(ctx context.Context, layerIn []types.Layer) (res []LayerDesc, err error) {
-	res = []LayerDesc{}
+func (mag Magazine) Layers_CreateOCIv1LayerDescriptors(ctx context.Context, layerIn []types.Layer) (res []types.LayerDesc, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "magazine/layer.go",
+		"func":    "Layers_CreateOCIv1LayerDescriptors",
+	})
+
+	ctx, span := tracer.Start(ctx, "Layers_CreateOCIv1LayerDescriptors")
+	defer span.End()
+	res = []types.LayerDesc{}
 	var mt string
-	for _, l := range layerIn {
-		switch l.MediaType {
+	for _, ly := range layerIn {
+		mtLong := utils.ExpandMediaType(ly.MediaType)
+		switch mtLong {
 		case "application/vnd.docker.image.rootfs.diff.tar.gzip":
 			mt = v1.MediaTypeImageLayerGzip
 		case "application/vnd.docker.image.rootfs.diff.tar":
@@ -183,13 +193,21 @@ func (mag Magazine) Layers_CreateOCIv1LayerDescriptors(ctx context.Context, laye
 			mt = v1.MediaTypeImageLayer
 
 		default:
-			err = fmt.Errorf("unknown media type: %s", l.MediaType)
+			err = fmt.Errorf("unknown media type: %s", mtLong)
+			span.SetStatus(codes.Error, err.Error())
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "error"),
+				attribute.String("log.message", err.Error()),
+			))
+			span.RecordError(err)
+			l.Error(err.Error())
+
 			return
 		}
 		d := v1.Descriptor{
 			MediaType: mt,
-			Digest:    digest.Digest(l.Digest),
-			Size:      l.Size,
+			Digest:    digest.Digest(ly.Digest),
+			Size:      ly.Size,
 		}
 		// Put Layer in Graph
 		lID, err := mag.Database.Layer_DescriporGetInsert(ctx, d)
@@ -197,18 +215,13 @@ func (mag Magazine) Layers_CreateOCIv1LayerDescriptors(ctx context.Context, laye
 			logrus.Error(err)
 			return res, err
 		}
-		ld := LayerDesc{
+		ld := types.LayerDesc{
 			LayerID:    lID,
 			Descriptor: d,
 		}
 		res = append(res, ld)
 	}
 	return
-}
-
-type LayerDesc struct {
-	LayerID    int64
-	Descriptor v1.Descriptor
 }
 
 func (mag Magazine) Layers_DeleteUnused(ctx context.Context) (err error) {

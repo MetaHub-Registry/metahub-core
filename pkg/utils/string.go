@@ -88,11 +88,33 @@ func ShortenMediaType(mediatype string) (res string) {
 	r := regexp.MustCompile(`application\/vnd.(.*)`)
 	matches := r.FindStringSubmatch(mediatype)
 	if len(matches) > 1 {
-		res = matches[1]
+		res = strings.ReplaceAll(matches[1], ".", "_")
+		if strings.HasSuffix(res, "+json") {
+			res = strings.ReplaceAll(res, "+json", "JSON")
+		}
+		if strings.HasSuffix(res, "+gzip") {
+			res = strings.ReplaceAll(res, "+gzip", "GZIP")
+		}
 	} else {
 		res = mediatype
 	}
 	return
+}
+
+func ExpandMediaType(mediatype string) string {
+	mt := strings.ReplaceAll(mediatype, "_", ".")
+	mt = strings.ReplaceAll(mt, ":", "+")
+	if strings.HasSuffix(mt, "JSON") {
+		mt = strings.ReplaceAll(mt, "JSON", "+json")
+	}
+	if strings.HasSuffix(mt, "GZIP") {
+		mt = strings.ReplaceAll(mt, "GZIP", "+gzip")
+	}
+	res := fmt.Sprintf("application/vnd.%s", mt)
+	if strings.HasPrefix(mt, "application/vnd.") {
+		return mt
+	}
+	return res
 }
 
 func ShortenDigest(dig string) (res string) {

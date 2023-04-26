@@ -12,6 +12,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	yamlCfg "github.com/metahub-registry/metahub-core/pkg/yaml/config"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -55,8 +56,8 @@ func (n Neo) GetCollection(ctx context.Context, col yamlCfg.ManifestCollection) 
 	return
 }
 
-func (n Neo) CollectionGetAll() (collections []types.Collection, err error) {
-	return n.GetAllCollections()
+func (n Neo) CollectionGetAll(ctx context.Context) (collections []types.Collection, err error) {
+	return n.GetAllCollections(ctx)
 }
 
 func (n Neo) CollectionExists(ctx context.Context, up upstream.UpstreamTriple) (found bool, err error) {
@@ -125,13 +126,25 @@ func (n Neo) CollectionExists(ctx context.Context, up upstream.UpstreamTriple) (
 	return found, nil
 }
 
-func (n Neo) Collection_Get_ByRepoTag(repo, tag string) (c types.Collection, found bool, err error) {
+func (n Neo) Collection_Get_ByRepoTag(ctx context.Context, repo, tag string) (c types.Collection, found bool, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "magazine/collection.go",
+		"func":    "Collection_Get_ByRepoTag",
+		"repo":    repo,
+		"tag":     tag,
+	})
+	_ = l
+	ctx, span := tracer.Start(ctx, "ManifestData_GetByManifestList")
+	defer span.End()
 	q := `MATCH (c:Collection)-[:HAS_TAG]->(t:Tag)-[:REF]->(ml:ManifestList)-[:IMPLEMENTS]->(f) WHERE c.repo = "%s" AND t.name = "%s"`
 	q += ` RETURN id(c) AS collectionID, id(ml) AS manifestListID, id(f) AS filterID,`
 	q += ` c.repo AS collectionRepo, t.name AS tagName, id(t) AS tagID,`
 	q += ` ml.digest AS manifestListDigest, ml.mediaType AS manifestListMediaType, ml.size AS manifestListSize`
 	query := fmt.Sprintf(q, repo, tag)
-	//fmt.Printf("Query: %s\n", query)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.query", query),
+	))
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	input := map[string]interface{}{}
@@ -143,16 +156,37 @@ func (n Neo) Collection_Get_ByRepoTag(repo, tag string) (c types.Collection, fou
 		found = true
 		c, err = CollectionFromRecord(result)
 		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "error"),
+				attribute.String("log.message", err.Error()),
+			))
+			span.RecordError(err)
+			l.Error(err.Error())
 			return
 		}
 		ml, e := ManifestListFromRecord(result)
 		if e != nil {
 			err = e
+			span.SetStatus(codes.Error, err.Error())
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "error"),
+				attribute.String("log.message", err.Error()),
+			))
+			span.RecordError(err)
+			l.Error(err.Error())
 			return
 		}
 		// Get all manifests for this manifestList
-		ml.Manifests, err = n.ManifestData_GetByManifestList(ml.ID)
+		ml.Manifests, err = n.ManifestData_GetByManifestList(ctx, ml.ID)
 		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "error"),
+				attribute.String("log.message", err.Error()),
+			))
+			span.RecordError(err)
+			l.Error(err.Error())
 			return
 		}
 		c.ManifestLists = append(c.ManifestLists, ml)
@@ -161,7 +195,7 @@ func (n Neo) Collection_Get_ByRepoTag(repo, tag string) (c types.Collection, fou
 	return
 }
 
-func (n Neo) GetAllCollections() (collections []types.Collection, err error) {
+func (n Neo) GetAllCollections(ctx context.Context) (collections []types.Collection, err error) {
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	q := `MATCH (c:Collection)-[:HAS_TAG]->(t:Tag)-[:REF]->(ml:ManifestList)-[:IMPLEMENTS]->(f) WHERE ml.label IS NOT NULL`
@@ -189,7 +223,7 @@ func (n Neo) GetAllCollections() (collections []types.Collection, err error) {
 			return
 		}
 		// Get all manifests for this manifestList
-		ml.Manifests, err = n.ManifestData_GetByManifestList(ml.ID)
+		ml.Manifests, err = n.ManifestData_GetByManifestList(ctx, ml.ID)
 		if err != nil {
 			return
 		}
@@ -378,17 +412,17 @@ func (n Neo) LinkCollectionToManifest(ctx context.Context, colID, maniID int64) 
 	return
 }
 
-func (n Neo) GetCollectionFilterPairs_ForCollection(col types.Collection) (cfps []types.CollectionFilterPair, err error) {
+func (n Neo) GetCollectionFilterPairs_ForCollection(ctx context.Context, col types.Collection) (cfps []types.CollectionFilterPair, err error) {
 	// Platform and filters need to be reworked
 	q := `MATCH (t:Tag)-[:UPSTREAM]-(m:Manifest)-[:IS]->(Platform)<-[:USES]-(f:Filter)`
 	q += ` MATCH (c:Collection)-[:UPSTREAM]->(m)`
 	q += ` WHERE c.repo = "%s" AND t.name = "%s"`
 	query := fmt.Sprintf(q, col.Repo, col.ColTag.Tag)
 	//fmt.Printf("Query GetCollectionFilterPairs_ForCollection: \n%s\n", query)
-	return n.getCollectionFilterPairs(query)
+	return n.getCollectionFilterPairs(ctx, query)
 }
 
-func (n Neo) getCollectionFilterPairs(q string) (cfps []types.CollectionFilterPair, err error) {
+func (n Neo) getCollectionFilterPairs(ctx context.Context, q string) (cfps []types.CollectionFilterPair, err error) {
 	q += ` RETURN DISTINCT id(c) AS collectionID, c.repo AS colRepo, id(t) AS tagID, t.name AS tagName,`
 	q += ` id(f) AS filterID, f.label AS filterLabel`
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
@@ -486,7 +520,7 @@ func (n Neo) getCollectionFilterPairs(q string) (cfps []types.CollectionFilterPa
 				err = errors.Wrap(e, "failed to get platform from record")
 				return cfps, err
 			}
-			c, e := ConfigFromRecord(result)
+			c, e := n.ConfigFromRecord(ctx, result)
 			if e != nil {
 				err = errors.Wrap(e, "failed to get config from record")
 				return cfps, err
@@ -511,15 +545,15 @@ func (n Neo) getCollectionFilterPairs(q string) (cfps []types.CollectionFilterPa
 	return
 }
 
-func (n Neo) GetCollectionFilterPairs() (cfps []types.CollectionFilterPair, err error) {
+func (n Neo) GetCollectionFilterPairs(ctx context.Context) (cfps []types.CollectionFilterPair, err error) {
 	q := `MATCH (c:Collection)-[:HAS_TAG]->(t:Tag)-[:UPSTREAM]-(m:Manifest)-[:IS]->(Platform)<-[:USES]-(f:Filter)`
 	q += ` MATCH (c)-[:UPSTREAM]->(m)`
 	//logrus.Infof("query: %s", q)
-	return n.getCollectionFilterPairs(q)
+	return n.getCollectionFilterPairs(ctx, q)
 }
 
-func (n Neo) Collection_GetInsert_ByRequest(req types.Request) (col types.Collection, err error) {
-	col, found, err := n.Collection_Get_ByRepoTag(req.Repo, req.Tag)
+func (n Neo) Collection_GetInsert_ByRequest(ctx context.Context, req types.Request) (col types.Collection, err error) {
+	col, found, err := n.Collection_Get_ByRepoTag(ctx, req.Repo, req.Tag)
 	if err != nil {
 		logrus.Error(err)
 		return
@@ -699,7 +733,7 @@ func CollectionListingFromResult(res types.Result) (col types.CollectionListing,
 }
 
 func (n Neo) Collection_Remove(ctx context.Context, col types.Collection) (found bool, err error) {
-	c, found, err := n.Collection_Get_ByRepoTag(col.Repo, col.Tag)
+	c, found, err := n.Collection_Get_ByRepoTag(ctx, col.Repo, col.Tag)
 	if err != nil {
 		err = errors.Wrap(err, "failed to Collection_GetCreate_ByRepoTag")
 		logrus.Error(err)

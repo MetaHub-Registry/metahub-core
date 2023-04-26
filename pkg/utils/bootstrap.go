@@ -53,14 +53,22 @@ type BootstrapResult struct {
 }
 
 func (br BootstrapResult) PrintDict() {
+	for _, l := range br.ToLines() {
+		logrus.Info(l)
+	}
+}
+
+func (br BootstrapResult) ToLines() []string {
 	keys := []string{}
-	for k, _ := range br.Dict {
+	for k := range br.Dict {
 		keys = append(keys, k)
 	}
+	res := []string{}
 	sort.Strings(keys)
 	for _, k := range keys {
-		logrus.Infof("'%-20s' : '%s'", k, br.Dict[k])
+		res = append(res, fmt.Sprintf("'%-20s' : '%s'", k, br.Dict[k]))
 	}
+	return res
 }
 
 func NewBootstrapResult() BootstrapResult {

@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -29,7 +30,7 @@ func (l Layer) ToDescriptor() distribution.Descriptor {
 }
 
 func (l Layer) WriteWWWHeader(w http.ResponseWriter) {
-	// TODO: Not sure if that is stable over time. We might need to
+	// FIXME: Not sure if that is stable over time.
 	w.Header().Set("Docker-Content-Digest", l.Digest)
 	if w.Header().Get("Content-Length") == "" {
 		w.Header().Set("Content-Length", "0")
@@ -59,5 +60,21 @@ func NewLayerFromBytes(data []byte) (res Layer, err error) {
 		l.Error(err)
 	}
 	res.Data = data
+	return
+}
+
+func Layer_FromDesc(ctx context.Context, lyrDesc distribution.Descriptor) (lyr Layer, err error) {
+	_, span := tracer.Start(ctx, "Layer_FromDesc")
+	defer span.End()
+	l := logrus.WithFields(logrus.Fields{
+		"package": "types/layer.go",
+		"func":    "Layer_FromDesc",
+		"digest":  lyrDesc.Digest.String(),
+	})
+	// TODO: Add annotations
+	_ = l
+	lyr.Digest = lyrDesc.Digest.String()
+	lyr.MediaType = lyrDesc.MediaType
+	lyr.Size = lyrDesc.Size
 	return
 }
