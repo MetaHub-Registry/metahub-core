@@ -86,11 +86,13 @@ func FT_zen3_ConfigByte() []byte {
 
 func FT_zen3_Config() Config {
 	cfg, _ := NewConfigFromBytes(FT_zen3_ConfigByte())
+	cfg.MediaType = "application/vnd.docker.container.image.v1+json"
 	return cfg
 }
 
 func FT_amd64_Config() Config {
 	cfg, _ := NewConfigFromBytes(FT_amd64_ConfigByte())
+	cfg.MediaType = "application/vnd.docker.container.image.v1+json"
 	return cfg
 }
 
@@ -117,6 +119,7 @@ func FT_amd64_OCIManifest() OCIManifest {
 
 func FT_arm_Config() Config {
 	cfg, _ := NewConfigFromBytes(FT_arm_ConfigByte())
+	cfg.MediaType = "application/vnd.docker.container.image.v1+json"
 	return cfg
 }
 

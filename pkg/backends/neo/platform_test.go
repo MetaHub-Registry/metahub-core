@@ -18,27 +18,39 @@ func Test_Platform_CRUD(t *testing.T) {
 	//bs.PostTestSleep = 45
 	br, err := SetupTest(bs)
 	_ = br
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer db.TeardownTest(bs)
 	// Actual test
 	platform_amd64 := types.Platform{Arch: "amd64", Variant: "", OS: "linux"}
 	platform_arm64 := types.Platform{Arch: "arm64", Variant: "", OS: "linux"}
 	_, found, err := db.GetPlatform(ctx, platform_amd64)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.False(t, found)
 	platAmd64ID, err := db.CreatePlatform(ctx, platform_amd64)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.NotNil(t, platAmd64ID)
 	gotPlatAmd64ID, found, err := db.GetPlatform(ctx, platform_amd64)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.True(t, found)
 	assert.Equal(t, platAmd64ID, gotPlatAmd64ID)
 	// GetInsert
 	err = db.Platform_GetInsert(ctx, &platform_amd64)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, platAmd64ID, platform_amd64.ID)
 	// ARM64
 	err = db.Platform_GetInsert(ctx, &platform_arm64)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.NotEqual(t, platform_arm64.ID, platAmd64ID)
 }

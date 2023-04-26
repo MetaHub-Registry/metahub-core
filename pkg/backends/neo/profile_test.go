@@ -33,35 +33,53 @@ func Test_Profile_CRUD(t *testing.T) {
 		Rule: "",
 	}
 	_, found, err := db.GetProfile(pFoo)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.False(t, found)
 	_, found, err = db.Profile_Get_ByNameTag(ctx, "foo", "tag1")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.False(t, found)
 	prfs, err := db.GetProfiles(ctx)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, 0, len(prfs))
 	// Create first profile
 	pFooID, err := db.CreateProfile(pFoo)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.NotNil(t, pFooID)
 	gotPrfFooID, found, err := db.GetProfile(pFoo)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.True(t, found)
 	assert.Equal(t, pFooID, gotPrfFooID)
 	gotPrf1, found, err := db.Profile_Get_ByNameTag(ctx, "foo", "tag1")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.True(t, found)
 	assert.Equal(t, pFooID, gotPrf1.ID)
 	prfs, err = db.GetProfiles(ctx)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, 1, len(prfs))
 	// GetInsert
 	err = db.Profile_GetInsert(ctx, &pFoo)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, pFooID, pFoo.ID)
 	err = db.Profile_GetInsert(ctx, &pGen)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.NotNil(t, pGen.ID)
 }
 

@@ -12,16 +12,26 @@ import (
 
 func Test_Config_StoreConfigUpload(t *testing.T) {
 	bs := utils.NewBootstrap()
+	debug := 0
 	bs.SetEmptyAll()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("users")
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
-	//bs.PostTestSleep = 300
-	_, err := mag.SetupTest(ctx, bs)
+
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := mag.SetupTest(ctx, bs)
 	if err != nil {
+		TeardownTest(bs)
 		t.Fatal(err)
+	}
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
 	}
 	defer TeardownTest(bs)
 	// Tests
@@ -49,27 +59,35 @@ func Test_Config_StoreConfigUpload(t *testing.T) {
 		MediaType: "application/vnd.docker.container.image.v1+json",
 	}
 	// Check if config is NOT in DB
-	_, found, err := mag.Database.Config_GetByDigest(bufDig.String())
-	assert.NoError(t, err)
+	_, found, err := mag.Database.Config_GetByDigest(ctx, bufDig.String())
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.False(t, found)
 	// Check if config is NOT in Minio
 	_, found, err = mag.Minio.GetConfig(ctx, bufDig.String())
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.False(t, found)
 	// Upload Config
 	err = mag.StoreConfigUpload(ctx, &bu, buf)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Check if config is in DB
-	cfgs, found, err := mag.Database.Config_GetByDigest(bufDig.String())
-	assert.NoError(t, err)
+	cfg, found, err := mag.Database.Config_GetByDigest(ctx, bufDig.String())
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.True(t, found)
-	assert.Equal(t, 1, len(cfgs))
-	cfg := cfgs[0]
 	// TODO: check if unknown is correct
-	assert.Equal(t, "unknown", cfg.MediaType)
+	assert.Equal(t, "unknownConfig", cfg.MediaType)
 	//assert.Equal(t, 2, len(cfg.Labels.Map))
 	// Check if config is in Minio
 	_, found, err = mag.Minio.GetConfig(ctx, bufDig.String())
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.True(t, found)
 }

@@ -1,15 +1,16 @@
 package magazine
 
 import (
+	"context"
 	"sort"
 
 	"github.com/chrispappas/golang-generics-set/set"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 )
 
-func (mag Magazine) Collections_GetCatalog(req types.Request) (res types.CatalogResponse, err error) {
+func (mag Magazine) Collections_GetCatalog(ctx context.Context, req types.Request) (res types.CatalogResponse, err error) {
 	// Fetch Layer from SQLite
-	cols, err := mag.Database.CollectionGetAll()
+	cols, err := mag.Database.CollectionGetAll(ctx)
 	if err != nil {
 		return
 	}

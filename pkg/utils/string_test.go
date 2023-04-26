@@ -61,12 +61,12 @@ func Test_shortenMediaType(t *testing.T) {
 		input string
 		exp   string
 	}{
-		{v1.MediaTypeImageManifest, "oci.image.manifest.v1+json"},
-		{v1.MediaTypeImageLayerGzip, "oci.image.layer.v1.tar+gzip"},
-		{v1.MediaTypeImageLayer, "oci.image.layer.v1.tar"},
-		{"application/vnd.docker.image.rootfs.diff.tar.gzip", "docker.image.rootfs.diff.tar.gzip"},
-		{"application/vnd.docker.image.rootfs.diff.tar", "docker.image.rootfs.diff.tar"},
-		{"application/vnd.oci.image.manifest.v1+json", "oci.image.manifest.v1+json"},
+		{v1.MediaTypeImageManifest, "oci_image_manifest_v1JSON"},
+		{v1.MediaTypeImageLayerGzip, "oci_image_layer_v1_tarGZIP"},
+		{v1.MediaTypeImageLayer, "oci_image_layer_v1_tar"},
+		{"application/vnd.docker.image.rootfs.diff.tar.gzip", "docker_image_rootfs_diff_tar_gzip"},
+		{"application/vnd.docker.image.rootfs.diff.tar", "docker_image_rootfs_diff_tar"},
+		{"application/vnd.oci.image.manifest.v1+json", "oci_image_manifest_v1JSON"},
 	}
 	for _, test := range tests {
 		got := ShortenMediaType(test.input)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
@@ -18,6 +19,8 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -213,19 +216,35 @@ func HeadManifestByUpstreamTripleByTag(ctx context.Context, reg, repo, tag strin
 	defer span.End()
 	blob = mhTypes.BlobMeta{}
 	rc := regcli.NewRegClient(reg)
-	ref, err := ref.New(blobUrl)
-	if err != nil {
-		l.Errorf("Failed creating ref: %v", err)
+	upRef, e := ref.New(blobUrl)
+	if e != nil {
+		if strings.HasPrefix(e.Error(), "invalid reference ") {
+			err = errors.Wrap(e, "Failed creating ref, skipping request")
+			msg := fmt.Sprintf("Failed creating ref, skipping request: %s", e.Error())
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "debug"),
+				attribute.String("log.message", msg),
+			))
+			l.Debug(msg)
+			return blob, false, nil
+		}
+		err = errors.Wrap(e, "Failed creating ref")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return
 	}
 	var mani manifest.Manifest
 	// If we have a digest we use it
-	mani, e := rc.ManifestHead(ctx, ref)
+	mani, e = rc.ManifestHead(ctx, upRef)
 	if e != nil {
-		l.Errorf("Failed getting manifest: %v", e)
-		span.RecordError(e)
+		err = errors.Wrap(e, "Failed getting manifest")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		l.Errorf(err.Error())
+		span.RecordError(err)
 		return
 	}
-	ref.Digest = mani.GetDescriptor().Digest.String()
+	upRef.Digest = mani.GetDescriptor().Digest.String()
 	blob.Digest = mani.GetDescriptor().Digest
 	blob.Size = mani.GetDescriptor().Size
 	blob.MediaType = mani.GetDescriptor().MediaType

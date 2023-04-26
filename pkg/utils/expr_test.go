@@ -24,14 +24,18 @@ func Test_EncodeExpression(t *testing.T) {
 	assert.Equal(t, exp1, got1)
 	q2 := ""
 	_, err = EncodeExpression(q2)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 }
 
 func Test_Decode(t *testing.T) {
 	k0 := "f666f6f"
 	g0, err := DecodeKey(k0)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, "foo", g0)
 }
 

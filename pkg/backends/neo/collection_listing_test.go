@@ -26,15 +26,23 @@ func Test_CollectionListing_Get_ByID(t *testing.T) {
 	//bs.PostTestSleep = 300
 	br, err := SetupTest(bs)
 	_ = br
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+}
 	defer db.TeardownTest(bs)
 	// Actual test
 	colID, err := br.GetInt64("collection:ft#id")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+}
 	colTagID, err := br.GetInt64("tag:generic#id")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+}
 	cl, err := db.CollectionListing_Get_ByID(colID, colTagID)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+}
 	assert.Equal(t, colID, cl.ID)
 	assert.Equal(t, colTagID, cl.ColTag.ID)
 	assert.Equal(t, "generic", cl.ColTag.Tag)
@@ -43,13 +51,19 @@ func Test_CollectionListing_Get_ByID(t *testing.T) {
 	assert.NotEqual(t, 0, len(cl.Manifests), fmt.Sprintf("Expected manifest to be present: %+v", cl.Manifests))
 		// Like
 	cls, err := db.CollectionListing_Get_ByRepoLike("")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+}
 	assert.Equal(t, 2, len(cls))
 	cls, err = db.CollectionListing_Get_ByRepoLike("qnib")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+}
 	assert.Equal(t, 2, len(cls))
 	cls, err = db.CollectionListing_Get_ByRepoLike("qnib/nope")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+}
 	assert.Equal(t, 0, len(cls))
 }
 */

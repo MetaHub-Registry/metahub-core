@@ -16,10 +16,14 @@ func Test_ManifestFromBlob(t *testing.T) {
 	// TODO: Bootstrap config correctly
 	bs.AddBootstrap("config:ft_amd64_b109")
 	_, err := min.SetupTest(bs)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer min.PreTearDown(bs)
 	mani, err := min.NewManifestFromBytes(featureTestGenericMani)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, "application/vnd.docker.distribution.manifest.v2+json", mani.MediaType)
 	assert.Equal(t, 2, len(mani.Layers))
 	assert.Equal(t, "amd64", mani.Platform.Arch)
@@ -30,17 +34,25 @@ func Test_Manifest_PutStatRemove(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	_, err := min.SetupTest(bs)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer min.PreTearDown(bs)
 	// Test
 	ctx := context.Background()
 	err = min.ManifestsPutObj(ctx, featureTestGenericManiDigest, []byte(featureTestGenericMani))
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	obj, err := min.ManifestsStatObj(ctx, featureTestGenericManiDigest)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.NotNil(t, obj)
 	err = min.ManifestRemoveObj(ctx, featureTestGenericManiDigest)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = min.ManifestsStatObj(ctx, featureTestGenericManiDigest)
 	assert.Error(t, err)
 	up := upstream.UpstreamTriple{
@@ -50,16 +62,24 @@ func Test_Manifest_PutStatRemove(t *testing.T) {
 		Digest: digest.Digest(featureTestGenericManiDigest),
 	}
 	err = min.PutManifest(ctx, []byte(featureTestGenericMani), up)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	obj, err = min.ManifestsStatObj(ctx, featureTestGenericManiDigest)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.NotNil(t, obj)
 	mani, isCached, err := min.GetManifest(ctx, up)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.True(t, isCached)
 	assert.Equal(t, "application/vnd.docker.distribution.manifest.v2+json", mani.MediaType)
 	err = min.ManifestRemoveObj(ctx, featureTestGenericManiDigest)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = min.ManifestsStatObj(ctx, featureTestGenericManiDigest)
 	assert.Error(t, err)
 }

@@ -52,7 +52,7 @@ func (mag Magazine) BlobDelete(ctx context.Context, req types.Request) (err erro
 		return err
 	}
 	// Not a layer, so it must be a config
-	_, found, err = mag.Database.Config_GetByDigest(req.Digest)
+	_, found, err = mag.Database.Config_GetByDigest(ctx, req.Digest)
 	if err != nil {
 		return err
 	}
@@ -78,7 +78,6 @@ func (mag Magazine) BlobExists(ctx context.Context, up upstream.UpstreamTriple) 
 		"digest":  utils.ShortenDigest(up.Digest.String()),
 	})
 	ctx, span := tracer.Start(ctx, "magazine.BlobExists")
-	_ = ctx
 	defer span.End()
 	span.SetAttributes(
 		attribute.Key("repo").String(up.Repo),
@@ -98,6 +97,12 @@ func (mag Magazine) BlobExists(ctx context.Context, up upstream.UpstreamTriple) 
 		return "", false, err
 	}
 	if found {
+		msg := fmt.Sprintf("config found with mediatype: %s", md)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
+		l.Debug(msg)
 		return md, found, nil
 	}
 	md, found, e = mag.Database.LayerExists(ctx, up)

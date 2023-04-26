@@ -9,17 +9,23 @@ func Test_Basic(t *testing.T) {
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 300
 	_, err := mag.SetupTest(bs)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+}
 	defer TeardownTest(bs)
 	// Test
 	cols, err := mag.Database.CollectionGetAll()
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+}
 	assert.Equal(t, 1, len(cols), cols)
 	req := types.Request{
 		Repo: "qnib",
 	}
 	res, err := mag.Collections_GetCatalog(req)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+}
 	assert.Equal(t, 1, len(res.Repos))
 	//assert.Equal(t, 3, len(res.Repos))
 }
@@ -40,17 +46,23 @@ func Test_Catalog_ARM64(t *testing.T) {
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 300
 	_, err := mag.SetupTest(bs)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+}
 	defer TeardownTest(bs)
 	// Test
 	cols, err := mag.Database.CollectionGetAll()
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+}
 	assert.Equal(t, 1, len(cols), cols)
 	req := types.Request{
 		Repo: "qnib",
 	}
 	res, err := mag.Collections_GetCatalog(req)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+}
 	assert.Equal(t, 1, len(res.Repos))
 
 }

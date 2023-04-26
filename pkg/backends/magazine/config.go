@@ -154,7 +154,7 @@ func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUplo
 	// Insert Config into Backend
 	cfg := types.Config{
 		Digest:    bu.Digest,
-		MediaType: "unknown",
+		MediaType: v1.MediaTypeImageConfig,
 		Size:      int64(len(buf)),
 		Data:      buf,
 		Cfg:       c,

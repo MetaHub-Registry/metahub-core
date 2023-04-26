@@ -616,7 +616,7 @@ func (n Neo) TeardownTest(bs utils.Bootstrap) {
 		bPort := s[2]
 		jHttp, ok := n.neoConfig.Args["TEST_JAEGER_HTTP"]
 		if ok {
-			logrus.Warnf("Tracing: %s", jHttp)
+			logrus.Warnf("Tracing: http://%s", jHttp)
 		}
 
 		logrus.Warnf("http: %s // bolt: %s // BoltPort: %s", n.neoConfig.HTTP, n.neoConfig.URL, bPort)

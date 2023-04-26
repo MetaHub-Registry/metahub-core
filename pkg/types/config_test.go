@@ -9,7 +9,9 @@ import (
 
 func Test_NewConfigFromBytes(t *testing.T) {
 	cfg, err := NewConfigFromBytes(FT_arm_ConfigByte())
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, "arm64", cfg.Cfg.Architecture)
 	if len(cfg.Cfg.Config.Env) != 3 {
 		t.Logf("Env: %#v", cfg.Cfg.Config.Env)
@@ -27,7 +29,9 @@ func Test_NewConfigFromBytes(t *testing.T) {
 
 func Test_Config_ToDescriptor(t *testing.T) {
 	cfg, err := NewConfigFromBytes(FT_arm_ConfigByte())
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	desc := cfg.ToDescriptor()
 	assert.Equal(t, "application/vnd.docker.container.image.v1+json", desc.MediaType)
 	assert.Equal(t, "sha256:cf5c26263929e84d7373d23b2692222cceceb3175b3325b183ead2ab6b5a5ce3", desc.Digest.String())
@@ -36,7 +40,9 @@ func Test_Config_ToDescriptor(t *testing.T) {
 
 func Test_Config_WriteWWWHeader(t *testing.T) {
 	cfg, err := NewConfigFromBytes(FT_arm_ConfigByte())
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	rr := httptest.NewRecorder()
 	cfg.WriteWWW(rr)
 	assert.Equal(t, "application/vnd.docker.container.image.v1+json", rr.Header().Get("Content-Type"))
@@ -47,7 +53,9 @@ func Test_Config_WriteWWWHeader(t *testing.T) {
 
 func Test_ToOCISpecV1Image(t *testing.T) {
 	cfg0, err := NewConfigFromBytes(FT_arm_ConfigByte())
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	v1 := cfg0.ToOCISpecV1Image()
 	assert.Equal(t, "arm64", v1.Architecture)
 	assert.Equal(t, "linux", v1.OS)
