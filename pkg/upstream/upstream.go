@@ -158,16 +158,28 @@ func GetManifestByUpstreamTripleByTag(ctx context.Context, up UpstreamTriple) (b
 		"registry":   up.Reg,
 	})
 	blobUrl := fmt.Sprintf("%s/%s:%s", up.Reg, up.Repo, up.Tag)
-	l.Warnf("blobUrl: %s", blobUrl)
 	ctx, span := tr.Start(ctx, "GetManifestByUpstreamTripleByTag")
 	span.SetAttributes(attribute.Key("url").String(blobUrl))
 	defer span.End()
+	msg := fmt.Sprintf("BlobURL: '%s'", blobUrl)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.message", msg),
+	))
+	l.Debug(msg)
 	blob = mhTypes.BlobMeta{}
 	rc := regcli.NewRegClient(up.Reg)
-
-	ref, err := ref.New(blobUrl)
-	if err != nil {
-		l.Errorf("Failed creating ref: %v", err)
+	ref, e := ref.New(blobUrl)
+	if e != nil {
+		err = errors.Wrap(e, "while creating ref from blobUrl")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
+		return
 	}
 	var mani manifest.Manifest
 	// If we have a digest we use it
@@ -176,7 +188,15 @@ func GetManifestByUpstreamTripleByTag(ctx context.Context, up UpstreamTriple) (b
 	} else {
 		mani, err = rc.ManifestHead(ctx, ref)
 		if err != nil {
-			l.Fatalf(err.Error())
+			err = errors.Wrap(e, "while ManifestHead")
+			span.SetStatus(codes.Error, err.Error())
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "error"),
+				attribute.String("log.message", err.Error()),
+			))
+			span.RecordError(err)
+			l.Error(err.Error())
+			return
 		}
 		ref.Digest = mani.GetDescriptor().Digest.String()
 		blob.Digest = mani.GetDescriptor().Digest
@@ -191,7 +211,15 @@ func GetManifestByUpstreamTripleByTag(ctx context.Context, up UpstreamTriple) (b
 	mani, err = rc.ManifestGet(ctx, ref, regclient.WithManifestDesc(d))
 	b, err = mani.RawBody()
 	if err != nil {
-		l.Fatalf(err.Error())
+		err = errors.Wrap(e, "while ManifestGet")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
+		return
 	}
 	return
 }
@@ -204,9 +232,8 @@ func HeadManifestByUpstreamTripleByTag(ctx context.Context, reg, repo, tag strin
 		"tag":        tag,
 		"reg":        reg,
 	})
-	blobUrl := fmt.Sprintf("%s/%s:%s", reg, repo, tag)
-	l.Warnf("blobUrl: %s ", blobUrl)
 	ctx, span := tr.Start(ctx, "HeadManifestByUpstreamTripleByTag")
+	blobUrl := fmt.Sprintf("%s/%s:%s", reg, repo, tag)
 	span.SetAttributes(attribute.Key("url").String(blobUrl))
 	span.SetAttributes(
 		attribute.Key("reg").String(reg),
@@ -214,6 +241,12 @@ func HeadManifestByUpstreamTripleByTag(ctx context.Context, reg, repo, tag strin
 		attribute.Key("tag").String(tag),
 	)
 	defer span.End()
+	msg := fmt.Sprintf("blobUrl: %s ", blobUrl)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.message", msg),
+	))
+	l.Debug(msg)
 	blob = mhTypes.BlobMeta{}
 	rc := regcli.NewRegClient(reg)
 	upRef, e := ref.New(blobUrl)
@@ -225,6 +258,7 @@ func HeadManifestByUpstreamTripleByTag(ctx context.Context, reg, repo, tag strin
 				attribute.String("log.severity", "debug"),
 				attribute.String("log.message", msg),
 			))
+			span.SetStatus(codes.Error, err.Error())
 			l.Debug(msg)
 			return blob, false, nil
 		}
@@ -248,6 +282,12 @@ func HeadManifestByUpstreamTripleByTag(ctx context.Context, reg, repo, tag strin
 	blob.Digest = mani.GetDescriptor().Digest
 	blob.Size = mani.GetDescriptor().Size
 	blob.MediaType = mani.GetDescriptor().MediaType
+	msg = fmt.Sprintf("HEAD sucessfull: %s size:%d ", utils.ShortenDigest(blob.Digest.String()), blob.Size)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.message", msg),
+	))
+	l.Debug(msg)
 	found = true
 	return
 }

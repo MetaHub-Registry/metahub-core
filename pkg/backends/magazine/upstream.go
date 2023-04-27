@@ -392,12 +392,36 @@ func (mag Magazine) UpstreamBlob_InsertIndex(ctx context.Context, req types.Requ
 		}
 		l.Warnf("Found %d manifests", len(ml.Manifests))
 		for _, m := range ml.Manifests {
-			err := mag.upstreamBlob_Insert(ctx, req, m.Digest)
-			if err != nil {
-				l.Error(err.Error())
-				span.RecordError(err)
-				return err
+			msg := fmt.Sprintf("Found Manifest with Platform.Arch %s", m.Platform.Architecture)
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "debug"),
+				attribute.String("log.message", msg),
+			))
+			l.Debug(msg)
+			switch m.Platform.Architecture {
+			case "amd64":
+				err := mag.upstreamBlob_Insert(ctx, req, m.Digest)
+				if err != nil {
+					l.Error(err.Error())
+					span.RecordError(err)
+					return err
+				}
+			case "arm64":
+				err := mag.upstreamBlob_Insert(ctx, req, m.Digest)
+				if err != nil {
+					l.Error(err.Error())
+					span.RecordError(err)
+					return err
+				}
+			default:
+				msg := fmt.Sprintf("Skipping Platform.Arch %s", m.Platform.Architecture)
+				span.AddEvent("log", trace.WithAttributes(
+					attribute.String("log.severity", "debug"),
+					attribute.String("log.message", msg),
+				))
+				l.Debug(msg)
 			}
+
 		}
 	}
 	return

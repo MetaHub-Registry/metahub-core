@@ -8,6 +8,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -36,11 +37,21 @@ func (n Neo) CollectionTagProfilePair_GetRegexFiltered(ctx context.Context, repo
 		err = errors.Wrap(e, "failed to get CollectionTagProfilePairs with annotations")
 		return
 	}
+	msg := fmt.Sprintf("Got %d ctpps from CollectionTagProfilePair_Annotation_GetRegexFiltered", len(ctpps))
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.message", msg),
+	))
 	ctpps2, e := n.CollectionTagProfilePair_Platform_GetRegexFiltered(ctx, repoRegex, tagRegex, prfRegex)
 	if e != nil {
 		err = errors.Wrap(e, "failed to get CollectionTagProfilePairs with platforms")
 		return
 	}
+	msg = fmt.Sprintf("Got %d ctpps from CollectionTagProfilePair_Platform_GetRegexFiltered", len(ctpps2))
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "debug"),
+		attribute.String("log.message", msg),
+	))
 	ctpps = append(ctpps, ctpps2...)
 	return
 }
@@ -108,7 +119,8 @@ func (n Neo) CollectionTagProfilePair_Annotation_GetRegexFiltered(ctx context.Co
 		logrus.Error(err)
 		return
 	}
-	return n.collectionTagProfilePair_FromResult(ctx, res)
+	ctpps, err = n.collectionTagProfilePair_FromResult(ctx, res)
+	return
 }
 
 func (n Neo) CollectionTagProfilePair_Annotation_GetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error) {
@@ -132,39 +144,94 @@ func (n Neo) CollectionTagProfilePair_Annotation_GetAll(ctx context.Context) (ct
 }
 
 func (n Neo) collectionTagProfilePair_FromResult(ctx context.Context, res []types.Result) (ctpps []types.CollectionTagProfilePair, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "neo/pairs.go",
+		"func":    "collectionTagProfilePair_FromResult",
+	})
+
+	ctx, span := tracer.Start(ctx, "collectionTagProfilePair_FromResult")
+	defer span.End()
 	ctpps = []types.CollectionTagProfilePair{}
 	for _, r := range res {
 		p, err := n.ProfileFromResult(r)
 		if err != nil {
-			logrus.Error(err)
+			span.SetStatus(codes.Error, err.Error())
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "error"),
+				attribute.String("log.message", err.Error()),
+			))
+			span.RecordError(err)
+			l.Error(err.Error())
 			continue
 		}
 		c, err := CollectionFromResult(r)
 		if err != nil {
-			logrus.Error(err)
+			span.SetStatus(codes.Error, err.Error())
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "error"),
+				attribute.String("log.message", err.Error()),
+			))
+			span.RecordError(err)
+			l.Error(err.Error())
 			continue
 		}
 		t, err := CollectionTagFromResult(r)
 		if err != nil {
-			logrus.Error(err)
+			span.SetStatus(codes.Error, err.Error())
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "error"),
+				attribute.String("log.message", err.Error()),
+			))
+			span.RecordError(err)
+			l.Error(err.Error())
 			continue
 		}
+		c.ColTag = t
+		msg := fmt.Sprintf("Collection %s:%s", c.Repo, t.Tag)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
+		l.Debug(msg)
 		ctpp, err := types.NewCollectionTagProfilePair(c, t, p)
 		if err != nil {
-			logrus.Error(err)
+			span.SetStatus(codes.Error, err.Error())
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "error"),
+				attribute.String("log.message", err.Error()),
+			))
+			span.RecordError(err)
+			l.Error(err.Error())
 			return ctpps, err
 		}
-
 		/// Get Manifests for this Collection/Tag
 		mds, err := n.ManifestData_GetByCollectionTag(ctx, c.ID, t.ID)
 		if err != nil {
-			logrus.Error(err)
+			span.SetStatus(codes.Error, err.Error())
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "error"),
+				attribute.String("log.message", err.Error()),
+			))
+			span.RecordError(err)
+			l.Error(err.Error())
 			return ctpps, err
 		}
 		for _, md := range mds {
+			msg := fmt.Sprintf("Adding ManifestData to pair '%s'", md.Label)
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "debug"),
+				attribute.String("log.message", msg),
+			))
+			l.Debug(msg)
 			err = ctpp.AddManifest(md)
 			if err != nil {
-				logrus.Error(err)
+				span.SetStatus(codes.Error, err.Error())
+				span.AddEvent("log", trace.WithAttributes(
+					attribute.String("log.severity", "error"),
+					attribute.String("log.message", err.Error()),
+				))
+				span.RecordError(err)
+				l.Error(err.Error())
 				return ctpps, err
 			}
 		}

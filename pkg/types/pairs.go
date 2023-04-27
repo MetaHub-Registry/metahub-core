@@ -58,5 +58,5 @@ func (pmdps *CollectionTagProfilePair) AddManifest(md ManifestData) error {
 }
 
 func (ctpp CollectionTagProfilePair) String() string {
-	return fmt.Sprintf("Collection: [%d]%s:%s[%d] [%s:%s]", ctpp.Collection.ID, ctpp.Collection.Repo, ctpp.Tag.Tag, ctpp.Tag.ID, ctpp.Profile.Name, ctpp.Profile.Tag)
+	return fmt.Sprintf("[%d]%s:%s[%d] [%s:%s]", ctpp.Collection.ID, ctpp.Collection.Repo, ctpp.Tag.Tag, ctpp.Tag.ID, ctpp.Profile.Name, ctpp.Profile.Tag)
 }

@@ -540,6 +540,8 @@ func (n Neo) ManifestData_GetID_ByDigest(ctx context.Context, dig string) (maniI
 }
 
 func (n Neo) ManifestData_GetByRule(ctx context.Context, rule types.Rule) (mds []types.ManifestData, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestData_GetByRule")
+	defer span.End()
 	mds, e := n.ManifestData_GetByAnnotationRule(ctx, rule)
 	if e != nil {
 		err = errors.Wrap(e, "failed to get manifest data by annotation rule")
@@ -555,6 +557,8 @@ func (n Neo) ManifestData_GetByRule(ctx context.Context, rule types.Rule) (mds [
 }
 
 func (n Neo) ManifestData_GetByPlatformRule(ctx context.Context, rule types.Rule) (mds []types.ManifestData, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestData_GetByPlatformRule")
+	defer span.End()
 	rel := types.RelationSuccess
 	q := fmt.Sprintf(`MATCH (r:Rule)-[%s]->(p:Platform)<-[:IS]-(m:Manifest)-[:CREATED]-(md:ManifestData) WHERE id(r) = %d`, rel, rule.ID)
 	q += ` MATCH (u:Upstream)-[]-(m)`
@@ -615,6 +619,8 @@ func (n Neo) ManifestData_CheckProfile(ctx context.Context, md types.ManifestDat
 }
 
 func (n Neo) ManifestData_GetByAnnotationRule(ctx context.Context, rule types.Rule) (mds []types.ManifestData, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestData_GetByAnnotationRule")
+	defer span.End()
 	rel := types.RelationSuccess
 	q := fmt.Sprintf(`MATCH (u:Upstream)-[]-(m:Manifest)-[:CREATED]-(md:ManifestData)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule) WHERE id(r) = %d`, rel, rule.ID)
 	q += ` MATCH (m)-[:IS]->(p:Platform)`
