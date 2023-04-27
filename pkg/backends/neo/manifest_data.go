@@ -593,6 +593,12 @@ func (n Neo) ManifestData_GetByPlatformRule(ctx context.Context, rule types.Rule
 }
 
 func (n Neo) ManifestData_CheckProfile(ctx context.Context, md types.ManifestData, prf types.Profile) (ok bool, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package":      "neo/manifest_data.go",
+		"func":         "ManifestData_CheckProfile",
+		"md.label":     md.Label,
+		"profile.name": prf.Name,
+	})
 	ctx, span := tracer.Start(ctx, "ManifestData_CheckProfile")
 	_ = ctx
 	defer span.End()
@@ -602,18 +608,18 @@ func (n Neo) ManifestData_CheckProfile(ctx context.Context, md types.ManifestDat
 	)
 	q := fmt.Sprintf(`MATCH (md:ManifestData)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule)<-[:USES]-(p:Profile)`, types.RelationFailure)
 	q += fmt.Sprintf(` WHERE id(md) = %d AND id(p) = %d RETURN count(a) AS countAnnotations`, md.ID, prf.ID)
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
-	))
+	utils.Debug(l, span, q)
 	res, _, err := n.QueryOne(q)
 	if err != nil {
+		utils.ErrorHandler(l, span, err, "failed to QueryOne")
 		return
 	}
 	cnt, err := res.GetInt("countAnnotations")
 	if err != nil {
+		utils.ErrorHandler(l, span, err, "failed to get count annotations")
 		return
 	}
+	utils.Debug(l, span, "countAnnotations: %d", cnt)
 	ok = cnt == 0
 	return
 }

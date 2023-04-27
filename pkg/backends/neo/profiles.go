@@ -385,16 +385,19 @@ func (n Neo) Profile_FromManifestDataID(ctx context.Context, mdID int64) (prfs [
 	defer span.End()
 	prfs, e := n.Profile_FromManifestDataID_ViaAnnotations(ctx, mdID)
 	if e != nil {
-		err = errors.Wrap(e, "failed to get profiles via annotations for ManifestData")
+		utils.ErrorHandler(l, span, e, "failed to get profiles via annotations for ManifestData")
 		return
 	}
 	if len(prfs) == 0 {
 		prfs2, e := n.Profile_FromManifestDataID_ViaPlatform(ctx, mdID)
 		if e != nil {
-			err = errors.Wrap(e, "failed to get profiles via platform for ManifestData")
+			utils.ErrorHandler(l, span, e, "failed to get profiles via platform for ManifestData")
 			return
 		}
+		utils.Debug(l, span, "found %d profiles via platform for ManifestData", len(prfs2))
 		prfs = append(prfs, prfs2...)
+	} else {
+		utils.Debug(l, span, "found %d profiles via annotations for ManifestData", len(prfs))
 	}
 	return
 }

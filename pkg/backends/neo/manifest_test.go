@@ -32,7 +32,7 @@ func Test_Manifest_CR(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, found, err := db.Manifest_Get(upID)
+	_, found, err := db.Manifest_Get(ctx, upID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func Test_Manifest_CR(t *testing.T) {
 		t.Fatal(err)
 	}
 	/// get Manifest
-	gotManiID, found, err := db.Manifest_Get(upID)
+	gotManiID, found, err := db.Manifest_Get(ctx, upID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func Test_Manifest_GetInsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, found, err := db.Manifest_Get(upID)
+	_, found, err := db.Manifest_Get(ctx, upID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func Test_Manifest_GetInsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	/// get Manifest
-	gotManiID, found, err := db.Manifest_Get(upID)
+	gotManiID, found, err := db.Manifest_Get(ctx, upID)
 	if err != nil {
 		t.Fatal(err)
 	}
