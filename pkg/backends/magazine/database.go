@@ -3,6 +3,7 @@ package magazine
 import (
 	"context"
 
+	"github.com/docker/distribution/manifest/manifestlist"
 	"github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/metahub-registry/metahub-core/pkg/types"
@@ -58,9 +59,10 @@ type Database interface {
 	/********* Manifest **********/
 	Manifest_GetInsert(ctx context.Context, mani types.Manifest) (maniID int64, err error)
 	Manifest_GetAll(ctx context.Context) (manis []types.Manifest, err error)
-	Manifest_GetByLabel(ctx context.Context, colName string) (mani types.Manifest, err error)
+	Manifest_GetByLabel(ctx context.Context, colName string) (mani types.Manifest, found bool, err error)
 	Manifest_GetByUpstreamDigest(ctx context.Context, dig string) (mani types.Manifest, found bool, err error)
 	Manifest_GetInsertWithRequest(ctx context.Context, m types.Manifest, req types.Request) (maniID int64, err error)
+	Manifest_GetInsert_WithDesc(ctx context.Context, req types.Request, up types.Upstream, maniIn manifestlist.ManifestDescriptor) (maniID int64, err error)
 	Manifest_GetInsertWithProfile(ctx context.Context, upID int64, prfName string) (maniID int64, err error)
 	Manifest_Get_CreateWithProfile(ctx context.Context, upID int64, prfName string) (man types.Manifest, err error)
 	Manifest_GetByID(ctx context.Context, maniID int64) (mani types.Manifest, found bool, err error)

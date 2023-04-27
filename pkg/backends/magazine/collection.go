@@ -96,15 +96,19 @@ func (mag Magazine) HeadManifestNotFound(ctx context.Context, req types.Request)
 		attribute.String("log.message", msg),
 	))
 	// DONE: Create Collection
-	col := yamlCfg.NewManifestCollection(req.Repo, req.Tag)
-	colID, colTagID, e := mag.CreateCollection(ctx, col)
+	col, _, e := mag.Database.Collection_GetCreate_ByRepoTag(ctx, req.Repo, req.Tag)
 	if e != nil {
-		err = errors.Wrap(e, "failed to create collection")
-		l.Error(err.Error())
+		err = errors.Wrap(e, "while Collection_GetCreate_ByRepoTag")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
 		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
-	msg = fmt.Sprintf("collection [%d] and tag [%d] created", colID, colTagID)
+	msg = fmt.Sprintf("collection [%d] and tag [%d] created", col.ID, col.ColTag.ID)
 	l.Warn(msg)
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),

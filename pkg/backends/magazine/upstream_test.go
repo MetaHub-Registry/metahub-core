@@ -60,7 +60,7 @@ func Test_Upstream_ManifestInsert(t *testing.T) {
 	}
 	assert.True(t, found2)
 	maniLabel2 := fmt.Sprintf("%s/alpine:3.17.3@cpu#zen2", regHttpURI)
-	mani2, err := mag.Database.Manifest_GetByLabel(ctx, maniLabel2)
+	mani2, _, err := mag.Database.Manifest_GetByLabel(ctx, maniLabel2)
 	if err != nil {
 		t.Logf("maniLabel: %s", maniLabel2)
 		t.Fatal(err)
@@ -125,7 +125,7 @@ func Test_Upstream_ManifestInsert_Zen2_Zen3(t *testing.T) {
 	}
 	assert.True(t, found2)
 	maniLabel2 := fmt.Sprintf("%s/alpine:3.17.3@cpu#zen2", regHttpURI)
-	mani2, err := mag.Database.Manifest_GetByLabel(ctx, maniLabel2)
+	mani2, _, err := mag.Database.Manifest_GetByLabel(ctx, maniLabel2)
 	if err != nil {
 		t.Logf("maniLabel: %s", maniLabel2)
 		t.Fatal(err)
@@ -166,7 +166,7 @@ func Test_Upstream_ManifestInsert_Zen2_Zen3(t *testing.T) {
 	}
 	assert.True(t, found3)
 	maniLabel3 := fmt.Sprintf("%s/alpine:3.17.3@cpu#zen3", regHttpURI)
-	mani3, err := mag.Database.Manifest_GetByLabel(ctx, maniLabel3)
+	mani3, _, err := mag.Database.Manifest_GetByLabel(ctx, maniLabel3)
 	if err != nil {
 		t.Logf("maniLabel: %s", maniLabel3)
 	}
