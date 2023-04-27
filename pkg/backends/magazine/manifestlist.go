@@ -10,20 +10,30 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (mag Magazine) ComputeManifestlist_ForCTTP(ctx context.Context, er *types.ExprRes, ctpp types.CollectionTagProfilePair) (err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "magazine/manifestlist.go",
 		"func":    "ComputeManifestlist_ForCTTP",
+		"cttp":    ctpp.String(),
 	})
-	ctx, span := tracer.Start(ctx, "ComputeManifestlists")
+	ctx, span := tracer.Start(ctx, "ComputeManifestlist_ForCTTP")
 	defer span.End()
+	span.SetAttributes(attribute.String("cttp", ctpp.String()))
 	l.Infof("Compute Manifest Lists for CTTP: %s", ctpp.String())
 	c := ctpp.Collection
 	ct := ctpp.Collection.ColTag
 	p := ctpp.Profile
-	l.Infof("Collection: [%d]%s:%s[%d] [%s:%s]", c.ID, c.Repo, ct.Tag, ct.ID, ctpp.Profile.Name, ctpp.Profile.Tag)
+	msg := fmt.Sprintf("Collection: '%s'", ctpp.String())
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String("log.severity", "info"),
+		attribute.String("log.message", msg),
+	))
+	l.Info(msg)
 	ml := types.ManifestList{
 		SchemaVersion: 2,
 		MediaType:     v1.MediaTypeImageIndex,
@@ -33,30 +43,62 @@ func (mag Magazine) ComputeManifestlist_ForCTTP(ctx context.Context, er *types.E
 	ms := []types.ManifestData{}
 	for _, m := range tmpMDS {
 		// TODO: Kick out Manifests with a single FALSE relationship
-		ok, err := mag.Database.ManifestData_CheckProfile(ctx, m, p)
-		if err != nil {
-			l.Errorf("Failed to check profile: %v", err)
+		ok, e := mag.Database.ManifestData_CheckProfile(ctx, m, p)
+		if e != nil {
+			err = errors.Wrap(e, "Failed to check profile")
+			span.SetStatus(codes.Error, err.Error())
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "error"),
+				attribute.String("log.message", err.Error()),
+			))
+			span.RecordError(err)
+			l.Error(err.Error())
 			return err
 		}
 		if ok {
+			msg := fmt.Sprintf("Adding Manifest to ManifestList: %s", m.Upstream.String())
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "debug"),
+				attribute.String("log.message", msg),
+			))
+			l.Debug(msg)
 			ms = append(ms, m)
 			ml.Manifests = append(ml.Manifests, m)
 		}
 	}
 	if len(ms) == 0 {
-		l.Warnf("  No Manifests for profile: %s", p.Name)
+		msg := fmt.Sprintf("No Manifests for profile: %s", p.Name)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "warn"),
+			attribute.String("log.message", msg),
+		))
+		l.Warn(msg)
 		return
 	}
 	mlBlob := ml.ToOCIBytes()
 	mlDigest := digest.FromBytes(mlBlob)
-	err = mag.Minio.ManifestsPutObj(ctx, mlDigest.String(), mlBlob)
-	if err != nil {
-		l.Error(err)
+	e := mag.Minio.ManifestsPutObj(ctx, mlDigest.String(), mlBlob)
+	if e != nil {
+		err = errors.Wrap(e, "failed ManifestsPutObj")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
-	mlID, err := mag.Database.InsertManifestList(mlDigest, ml.MediaType, len(mlBlob))
-	if err != nil {
-		l.Error(err)
+	mlID, e := mag.Database.InsertManifestList(mlDigest, ml.MediaType, len(mlBlob))
+	if e != nil {
+		err = errors.Wrap(e, "failed InsertManifestList")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	// Link ManifestList to ManifestData
@@ -64,26 +106,54 @@ func (mag Magazine) ComputeManifestlist_ForCTTP(ctx context.Context, er *types.E
 		e := mag.Database.LinkManifestListToManifestData(mlID, m.ID)
 		if e != nil {
 			err = errors.Wrap(e, "while linking ManifestList to ManifestData")
+			span.SetStatus(codes.Error, err.Error())
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "error"),
+				attribute.String("log.message", err.Error()),
+			))
+			span.RecordError(err)
+			l.Error(err.Error())
 			return err
 		}
 	}
 
 	// Link ManifestList to Collection
-	err = mag.Database.LinkManifestListToCollection(mlID, c.ID)
-	if err != nil {
-		l.Error(err)
+	e = mag.Database.LinkManifestListToCollection(mlID, c.ID)
+	if e != nil {
+		err = errors.Wrap(e, "failed LinkManifestListToCollection")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	// Link ManifestList to CollectionTag
-	err = mag.Database.LinkManifestListToCollectionTag(mlID, ct.ID)
-	if err != nil {
-		l.Error(err)
+	e = mag.Database.LinkManifestListToCollectionTag(mlID, ct.ID)
+	if e != nil {
+		err = errors.Wrap(e, "failed LinkManifestListToCollectionTag")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	// Link ManifestList to Profile
-	err = mag.Database.LinkManifestListToProfile(mlID, p.ID)
-	if err != nil {
-		l.Error(err)
+	e = mag.Database.LinkManifestListToProfile(mlID, p.ID)
+	if e != nil {
+		err = errors.Wrap(e, "failed LinkManifestListToCollectionTag")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	return
@@ -96,25 +166,51 @@ func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
 	})
 	ctx, span := tracer.Start(ctx, "ComputeManifestlists")
 	defer span.End()
-	l.Info("Compute Manifest Lists")
 	err = mag.Database.Rule_EvalAll(ctx)
 	if err != nil {
+		err = errors.Wrap(err, "while evaluating all rules")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	/// TODO: We need
 	/// 1. Generate ExprRes? (a rule<>mdID mapping)
 	rls, err := mag.Database.Rules_GetAll(ctx)
 	if err != nil {
-		logrus.Errorf("failed to get rules: %v", err)
+		err = errors.Wrap(err, "failed to get rules")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	er := types.NewExprRes()
 	for _, rl := range rls {
 		label := fmt.Sprintf("%s:%s", rl.Name, rl.Tag)
-		l.Warnf("Rule: %s", label)
+		msg := fmt.Sprintf("Rule: '%s'", label)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
+		l.Debug(msg)
 		mds, e := mag.Database.ManifestData_GetByRule(ctx, rl)
 		if e != nil {
 			err = errors.Wrapf(e, "failed to get manifestdata by rule: %v", err)
+			span.SetStatus(codes.Error, err.Error())
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "error"),
+				attribute.String("log.message", err.Error()),
+			))
+			span.RecordError(err)
+			l.Error(err.Error())
 			return
 		}
 		for _, md := range mds {
@@ -136,13 +232,27 @@ func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
 	}
 	ctpps, err := mag.Database.CollectionTagProfilePair_GetRegexFiltered(ctx, repoRegex, tagRegex, prfRegex)
 	if err != nil {
-		l.Errorf("failed to get profile manifestdata pairs: %v", err)
+		err = errors.Wrap(err, "failed to get profile manifestdata pairs")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	for _, ctpp := range ctpps {
 		err = mag.ComputeManifestlist_ForCTTP(ctx, er, ctpp)
 		if err != nil {
 			err = errors.Wrapf(err, "failed to compute manifestlist for cttp: %v", ctpp)
+			span.SetStatus(codes.Error, err.Error())
+			span.AddEvent("log", trace.WithAttributes(
+				attribute.String("log.severity", "error"),
+				attribute.String("log.message", err.Error()),
+			))
+			span.RecordError(err)
+			l.Error(err.Error())
 			continue
 		}
 	}
@@ -160,6 +270,14 @@ func (mag Magazine) ComputeManifestlists_ForManiProfile(ctx context.Context, man
 	l.Info("Compute Manifest Lists")
 	err = mag.Database.Rule_EvalAll(ctx)
 	if err != nil {
+		err = errors.Wrap(err, "while evaluating all rules")
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+		l.Error(err.Error())
 		return
 	}
 	/// TODO: We need

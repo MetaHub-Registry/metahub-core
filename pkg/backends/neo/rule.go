@@ -7,6 +7,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (n Neo) Rule_Create(ctx context.Context, r types.Rule) (ruleID int64, err error) {
@@ -117,6 +119,9 @@ func (n Neo) Rule_GetByLabel(ctx context.Context, label string) (rule types.Rule
 }
 
 func (n Neo) Rules_GetAll(ctx context.Context) (rules []types.Rule, err error) {
+	ctx, span := tracer.Start(ctx, "Rules_GetAll")
+	_ = ctx
+	defer span.End()
 	q := `MATCH (r:Rule) RETURN`
 	q += ` id(r) as ruleID, r.op as ruleOp, r.name as ruleName, r.type AS ruleType, r.tag as ruleTag, r.key as ruleKey, r.value as ruleValue`
 	res, err := n.Query(q)
@@ -136,6 +141,10 @@ func (n Neo) Rules_GetAll(ctx context.Context) (rules []types.Rule, err error) {
 }
 
 func (n Neo) Rule_EvalAll(ctx context.Context) (err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "neo/rule.go",
+		"func":    "Rule_EvalAll",
+	})
 	ctx, span := tracer.Start(ctx, "Rule_EvalAll")
 	defer span.End()
 	rls, err := n.Rules_GetAll(ctx)
@@ -143,7 +152,12 @@ func (n Neo) Rule_EvalAll(ctx context.Context) (err error) {
 		return
 	}
 	for _, r := range rls {
-		//logrus.Warnf("Eval rule: %s:%s [%s]", r.Name, r.Tag, r.Type)
+		msg := fmt.Sprintf("Eval rule: %s:%s [%s]", r.Name, r.Tag, r.Type)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
+		l.Debug(msg)
 		switch r.Type {
 		case types.RuleTypeAnnotation:
 			err = n.Rule_EvalAnnotationRule(ctx, r)
@@ -164,7 +178,6 @@ func (n Neo) Rule_EvalAll(ctx context.Context) (err error) {
 
 	}
 	return
-
 }
 
 func (n Neo) Rule_EvalPlatformRule(ctx context.Context, r types.Rule) (err error) {
