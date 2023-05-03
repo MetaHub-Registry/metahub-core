@@ -10,7 +10,7 @@ import (
 
 var ctx = context.Background()
 
-func Test_Config_GetBlobByUpstreamTriple(t *testing.T) {
+func TestConfigGetBlobByUpstreamTriple(t *testing.T) {
 	up := UpstreamTriple{
 		Reg:    regHttpURI,
 		Repo:   "alpine",
@@ -25,7 +25,7 @@ func Test_Config_GetBlobByUpstreamTriple(t *testing.T) {
 	assert.NotNil(t, blobMeta)
 }
 
-func Test_GetBlobByUpstreamTripleByDigest(t *testing.T) {
+func TestGetBlobByUpstreamTripleByDigest(t *testing.T) {
 	up := UpstreamTriple{
 		Reg:    regHttpURI,
 		Repo:   "alpine",
@@ -42,7 +42,7 @@ func Test_GetBlobByUpstreamTripleByDigest(t *testing.T) {
 	assert.Equal(t, "sha256:ff6bdca1701f3a8a67e328815ff2346b0e4067d32ec36b7992c1fdc001dc8517", digest.FromBytes(b).String())
 }
 
-func Test_GetManifestByUpstreamTripleByTag(t *testing.T) {
+func TestGetManifestByUpstreamTripleByTag(t *testing.T) {
 	up := UpstreamTriple{
 		Reg:  regHttpURI,
 		Repo: "alpine",
@@ -58,7 +58,7 @@ func Test_GetManifestByUpstreamTripleByTag(t *testing.T) {
 	assert.Equal(t, "sha256:b5a5b7ce4eabc8414bf367761a28f4e8b16952ce5de537c15ed917b71b245f11", blobMeta.Digest.String())
 }
 
-func Test_GetManifestByUpstreamTripleByDigest(t *testing.T) {
+func TestGetManifestByUpstreamTripleByDigest(t *testing.T) {
 	up := UpstreamTriple{
 		Reg:    regHttpURI,
 		Repo:   "alpine",
@@ -75,7 +75,7 @@ func Test_GetManifestByUpstreamTripleByDigest(t *testing.T) {
 	assert.Equal(t, "sha256:b5a5b7ce4eabc8414bf367761a28f4e8b16952ce5de537c15ed917b71b245f11", blobMeta.Digest.String())
 }
 
-func Test_HeadManifestByUpstreamTripleByTag(t *testing.T) {
+func TestHeadManifestByUpstreamTripleByTag(t *testing.T) {
 	ctx := context.Background()
 
 	blobMeta, found, err := HeadManifestByUpstreamTripleByTag(ctx, regHttpURI, "alpine", "3.17.3")

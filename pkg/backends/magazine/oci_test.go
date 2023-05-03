@@ -1,7 +1,143 @@
 package magazine
 
-import "testing"
+import (
+	"context"
+	"testing"
 
-func Test_GenerateOCIv1ConfigDescriptor(t *testing.T) {
+	"github.com/stretchr/testify/assert"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
+)
+
+func TestCreateOCIv1PulledByPrf(t *testing.T) {
+	ctx := context.Background()
+	_ = ctx
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:amd64")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("profile:profiles/generic.yaml")
+	bs.AddBootstrap("rules:rules/cpu/zen3.yaml")
+	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target.microarch:zen3")
+	bs.AddBootstrap("profile:profiles/cpu/zen3.yaml")
+	bs.AddBootstrap("config:ft_amd64")
+	bs.AddBootstrap("upstream:ft_amd64")
+	bs.AddBootstrap("manifest:ft_amd64")
+	bs.AddBootstrap("layer:0:ft_amd64")
+	bs.AddBootstrap("layer:1:ft_amd64")
+	bs.AddBootstrap("manifestdata:ft_amd64")
+	bs.AddBootstrap("collection:ft_amd64")
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := mag.SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	if err != nil {
+		t.Logf("Error while SetupTest: %v", err)
+		TeardownTest(bs)
+		t.Fatal(err)
+
+	}
+	defer TeardownTest(bs)
+	// Actual test
+	mani, err := mag.getMani(ctx, br, "manifest:ft_amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	maniData, err := mag.getManiData(ctx, br, "manifestdata:ft_amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Generic
+	cfgGen, e := mag.GenerateOCIv1Config(ctx, mani, maniData)
+	if e != nil {
+		t.Fatal(e)
+	}
+	assert.Equal(t, []string{"ORG_SUPERCONTAINERS_HARDWARE_CPU_TARGET=platform", "PLATFORM_FEATURES=amd64"}, cfgGen.Config.Env)
+	// Zen3
+	prfLabel := "cpu#zen3"
+	prf, err := mag.getProfile(ctx, br, prfLabel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ociManiDataID, _, e := mag.CreateOCIv1_PulledByPrf(ctx, mani, maniData, prf)
+	if e != nil {
+		t.Fatal(e)
+	}
+	ociManiData, zen3Found, e := mag.ManifestData_Get_ByID(ctx, ociManiDataID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !zen3Found {
+		t.Fatal("Did not find manifestdata")
+	}
+	t.Log(ociManiData.Config)
+	// TODO: Should yield a violation as it contradicts what is already there
+	expEnv := []string{
+		"ORG_SUPERCONTAINERS_HARDWARE_CPU_TARGET=platform",
+		"PLATFORM_FEATURES=amd64",
+		"ORG_SUPERCONTAINERS_HARDWARE_CPU_TARGET_MICROARCH=zen3",
+	}
+	assert.Equal(t, expEnv, ociManiData.Config.Cfg.Config.Env)
+	//t.Fatal()
+
+}
+func TestGenerateOCIv1Config(t *testing.T) {
+	ctx := context.Background()
+	_ = ctx
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:amd64")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("profile:profiles/generic.yaml")
+	bs.AddBootstrap("rules:rules/cpu/zen3.yaml")
+	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target.microarch:zen3")
+	bs.AddBootstrap("profile:profiles/cpu/zen3.yaml")
+	bs.AddBootstrap("config:ft_amd64")
+	bs.AddBootstrap("upstream:ft_amd64")
+	bs.AddBootstrap("manifest:ft_amd64")
+	bs.AddBootstrap("layer:0:ft_amd64")
+	bs.AddBootstrap("layer:1:ft_amd64")
+	bs.AddBootstrap("manifestdata:ft_amd64")
+	bs.AddBootstrap("collection:ft_amd64")
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := mag.SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	if err != nil {
+		t.Logf("Error while SetupTest: %v", err)
+		TeardownTest(bs)
+		t.Fatal(err)
+
+	}
+	defer TeardownTest(bs)
+	// Actual test
+	mani, err := mag.getMani(ctx, br, "manifest:ft_amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	maniData, err := mag.getManiData(ctx, br, "manifestdata:ft_amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfgGen, e := mag.GenerateOCIv1Config(ctx, mani, maniData)
+	if e != nil {
+		t.Fatal(e)
+	}
+	assert.Equal(t, []string{"ORG_SUPERCONTAINERS_HARDWARE_CPU_TARGET=platform", "PLATFORM_FEATURES=amd64"}, cfgGen.Config.Env)
 
 }

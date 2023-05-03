@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_FindManifestCollections(t *testing.T) {
+func TestFindManifestCollections(t *testing.T) {
 	var err error
 	var cols map[string]ManifestCollection
 	cols, err = FindManifestCollections(ctx, "../../../misc/yaml/collections/qnib/featuretest/generic.yaml")

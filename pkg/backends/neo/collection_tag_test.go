@@ -8,7 +8,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func Test_CollectionTag_CRUD(t *testing.T) {
+func TestCollectionTagCRUD(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
@@ -38,7 +38,7 @@ func Test_CollectionTag_CRUD(t *testing.T) {
 	assert.Equal(t, ct_got.ID, ct_got2.ID)
 }
 
-func Test_CollectionTag_LinkCollection(t *testing.T) {
+func TestCollectionTagLinkCollection(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()

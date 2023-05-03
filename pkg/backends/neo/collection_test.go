@@ -9,7 +9,7 @@ import (
 	yamlCfg "github.com/metahub-registry/metahub-core/pkg/yaml/config"
 )
 
-func Test_Collection_CRUD(t *testing.T) {
+func TestCollectionCRUD(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
@@ -92,7 +92,7 @@ func Test_Collection_CRUD(t *testing.T) {
 }
 
 /*
-func Test_Collection_ComputeManifest(t *testing.T) {
+func TestCollectionComputeManifest(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
@@ -126,7 +126,7 @@ func Test_Collection_ComputeManifest(t *testing.T) {
 }
 
 /*
-func Test_Collection_ComputeML(t *testing.T) {
+func TestCollectionComputeML(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
@@ -173,7 +173,7 @@ func Test_Collection_ComputeML(t *testing.T) {
 
 }
 
-func Test_Collection_ByRequest(t *testing.T) {
+func TestCollectionByRequest(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
@@ -208,7 +208,7 @@ func Test_Collection_ByRequest(t *testing.T) {
 	// More tests
 }
 
-func Test_Collection_ByRequest_MetahubUpstream(t *testing.T) {
+func TestCollectionByRequestMetahubUpstream(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
@@ -288,7 +288,7 @@ func Test_Collection_ByRequest_MetahubUpstream(t *testing.T) {
 }
 */
 /*
-func Test_Collection_GetCollectionFilterPairs_ForCollection(t *testing.T) {
+func TestCollectionGetCollectionFilterPairsForCollection(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()

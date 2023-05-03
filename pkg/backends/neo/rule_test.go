@@ -10,7 +10,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func Test_Rule_GetCreate(t *testing.T) {
+func TestRuleGetCreate(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
@@ -67,7 +67,7 @@ func Test_Rule_GetCreate(t *testing.T) {
 	assert.Equal(t, 2, len(rls))
 }
 
-func Test_Rule_EvalAnnotationRule(t *testing.T) {
+func TestRuleEvalAnnotationRule(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
@@ -115,7 +115,7 @@ func Test_Rule_EvalAnnotationRule(t *testing.T) {
 	assert.Equal(t, r, gotR)
 }
 
-func Test_Rule_EvalAnnotationRule_Noop(t *testing.T) {
+func TestRuleEvalAnnotationRuleNoop(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
@@ -163,7 +163,7 @@ func Test_Rule_EvalAnnotationRule_Noop(t *testing.T) {
 	assert.Equal(t, r, gotR)
 }
 
-func Test_Rule_EvalAll(t *testing.T) {
+func TestRuleEvalAll(t *testing.T) {
 	ctx := context.Background()
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()

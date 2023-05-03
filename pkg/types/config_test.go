@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_NewConfigFromBytes(t *testing.T) {
-	cfg, err := NewConfigFromBytes(FT_arm_ConfigByte())
+func TestNewConfigFromBytes(t *testing.T) {
+	cfg, err := NewConfigFromBytes(ConfigByteFtArm64())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,8 +27,8 @@ func Test_NewConfigFromBytes(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func Test_Config_ToDescriptor(t *testing.T) {
-	cfg, err := NewConfigFromBytes(FT_arm_ConfigByte())
+func TestConfigToDescriptor(t *testing.T) {
+	cfg, err := NewConfigFromBytes(ConfigByteFtArm64())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,8 +38,8 @@ func Test_Config_ToDescriptor(t *testing.T) {
 	assert.Equal(t, int64(2191), desc.Size)
 }
 
-func Test_Config_WriteWWWHeader(t *testing.T) {
-	cfg, err := NewConfigFromBytes(FT_arm_ConfigByte())
+func TestConfigWriteWWWHeader(t *testing.T) {
+	cfg, err := NewConfigFromBytes(ConfigByteFtArm64())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,8 +51,8 @@ func Test_Config_WriteWWWHeader(t *testing.T) {
 	assert.Equal(t, 2191, rr.Body.Len())
 }
 
-func Test_ToOCISpecV1Image(t *testing.T) {
-	cfg0, err := NewConfigFromBytes(FT_arm_ConfigByte())
+func TestToOCISpecV1Image(t *testing.T) {
+	cfg0, err := NewConfigFromBytes(ConfigByteFtArm64())
 	if err != nil {
 		t.Fatal(err)
 	}

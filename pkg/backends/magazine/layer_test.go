@@ -8,7 +8,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func Test_CacheLayers(t *testing.T) {
+func TestCacheLayers(t *testing.T) {
 	bs := utils.NewBootstrap()
 	_, err := mag.SetupTest(ctx, bs)
 	if err != nil {

@@ -7,13 +7,10 @@ import (
 	"strings"
 
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 func (mag Magazine) StoreBlobUpload(ctx context.Context, bu *types.OCIBlobUpload, buf []byte) (err error) {
@@ -70,51 +67,27 @@ func (mag Magazine) BlobDelete(ctx context.Context, req types.Request) (err erro
 }
 
 func (mag Magazine) BlobExists(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "magazine/blob.go",
 		"func":    "BlobExists",
 		"repo":    up.Repo,
 		"tag":     up.Tag,
 		"digest":  utils.ShortenDigest(up.Digest.String()),
 	})
-	ctx, span := tracer.Start(ctx, "magazine.BlobExists")
 	defer span.End()
-	span.SetAttributes(
-		attribute.Key("repo").String(up.Repo),
-		attribute.Key("tag").String(up.Tag),
-		attribute.Key("digest").String(utils.ShortenDigest(up.Digest.String())),
-	)
 	md, found, e := mag.Database.ConfigExists(ctx, up)
 	if e != nil {
-		msg := "failed to execute ConfigExists"
-		err = errors.Wrap(err, msg)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", msg),
-		))
-		span.RecordError(err)
-		l.Error(msg)
+		err = utils.ErrorHandler(l, span, e, "failed to execute ConfigExists")
 		return "", false, err
 	}
 	if found {
-		msg := fmt.Sprintf("config found with mediatype: %s", md)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
-		))
-		l.Debug(msg)
+		utils.Debug(l, span, "config found with mediatype: %s", md)
 		return md, found, nil
 	}
 	md, found, e = mag.Database.LayerExists(ctx, up)
 	if e != nil {
-		msg := "failed to execute LayerExists"
-		err = errors.Wrap(err, msg)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", msg),
-		))
-		span.RecordError(err)
-		l.Error(msg)
+		err = utils.ErrorHandler(l, span, e, "failed to execute LayerExists")
+
 		return "", false, err
 	}
 	if found {
@@ -122,38 +95,23 @@ func (mag Magazine) BlobExists(ctx context.Context, up upstream.UpstreamTriple) 
 		_, err = mag.Minio.LayersStatObj(ctx, up.Digest.String())
 		if err != nil {
 			// Layer does not exist in Minio, so we need to pull it through
-			msg := "layer does not exist in Minio"
-			span.AddEvent("log", trace.WithAttributes(
-				attribute.String("log.severity", "debug"),
-				attribute.String("log.message", msg),
-			))
-			l.Debug(msg)
+			utils.Debug(l, span, "layer does not exist in Minio")
 			// Get upstream registry from Graph
 			up.MediaType = md
-			reg, err := mag.Database.Layer_GetUpstreamRegistry(ctx, up)
-			up.Reg = reg
-			e := mag.PullLayer(ctx, up)
+			reg, e := mag.Database.Layer_GetUpstreamRegistry(ctx, up)
 			if e != nil {
-				msg = "failed to pull layer"
-				err = errors.Wrap(err, msg)
-				span.AddEvent("log", trace.WithAttributes(
-					attribute.String("log.severity", "error"),
-					attribute.String("log.message", msg),
-				))
-				span.RecordError(err)
-				l.Error(msg)
+				err = utils.ErrorHandler(l, span, e, "failed to Layer_GetUpstreamRegistry")
 				return "", false, err
 			}
-			_, err = mag.Minio.LayersStatObj(ctx, up.Digest.String())
-			if err != nil {
-				msg := "after pulling layer the layer is still not in Minio"
-				err = errors.Wrap(err, msg)
-				span.AddEvent("log", trace.WithAttributes(
-					attribute.String("log.severity", "error"),
-					attribute.String("log.message", msg),
-				))
-				span.RecordError(err)
-				l.Error(msg)
+			up.Reg = reg
+			e = mag.PullLayer(ctx, up)
+			if e != nil {
+				err = utils.ErrorHandler(l, span, e, "failed to pull layer")
+				return "", false, err
+			}
+			_, e = mag.Minio.LayersStatObj(ctx, up.Digest.String())
+			if e != nil {
+				err = utils.ErrorHandler(l, span, e, "after pulling layer the layer is still not in Minio")
 				return "", false, err
 			}
 		}

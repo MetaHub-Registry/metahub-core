@@ -22,6 +22,42 @@ var (
 	tracer = otel.Tracer("minio")
 )
 
+const (
+	pkgNameMani = "backend/minio/manifest.go"
+)
+
+/*
+func (m Minio) manifestGetter(bi imgTypes.BlobInfo) (b []byte, err error) {
+	return m.ManifestGetBytes(context.Background(), bi.Digest.String())
+}
+
+func (m Minio) ManifestGetBytes(ctx context.Context, path string) (b []byte, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMani,
+		"func":    "ManifestGetBytes",
+	})
+	defer span.End()
+	cli := m.BucketConfig[manifestsBucketKey].Client
+	_, err = cli.StatObject(ctx, m.GetManifestsBucketName(), path, minio.StatObjectOptions{})
+	if err != nil {
+		return
+	}
+	obj, e := cli.GetObject(ctx, m.GetManifestsBucketName(), path, minio.GetObjectOptions{})
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "error getting manifest")
+		return b, err
+	}
+	defer obj.Close()
+	b, e = io.ReadAll(obj)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to read manifest obj")
+		return b, err
+	}
+	utils.Debug(l, span, "got manifest obj with len %d", len(b))
+	return
+}
+*/
+
 func (m Minio) GetCachedManifest(ctx context.Context, dig digest.Digest) (res types.ManifestData, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "backends/minio",
@@ -66,6 +102,26 @@ func (m Minio) GetManifest(ctx context.Context, up upstream.UpstreamTriple) (res
 	return m.GetCachedManifest(ctx, up.Digest)
 }
 
+func (m Minio) PutManifest_ByUpstream(ctx context.Context, b []byte, up types.Upstream) (err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "backends/minio",
+		"func":    "PutManifest_ByUpstream",
+	})
+	ctx, span := tracer.Start(ctx, "PutManifest_ByUpstream")
+	span.SetAttributes(
+		attribute.Key("reg").String(up.Reg),
+		attribute.Key("repo").String(up.Repo),
+		attribute.Key("tag").String(up.Tag),
+	)
+	defer span.End()
+	err = m.ManifestsPutObj(ctx, up.Digest.String(), b)
+	if err != nil {
+		l.Error(err)
+		return err
+	}
+	return
+}
+
 func (m Minio) PutManifest(ctx context.Context, b []byte, up upstream.UpstreamTriple) (err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "backends/minio",
@@ -100,18 +156,21 @@ func RawManifestFromBlob(b []byte) (mani manifest.Manifest, err error) {
 	return
 }
 
-func (m Minio) NewManifestFromBytes(b []byte) (mani types.ManifestData, err error) {
-	l := logrus.WithFields(logrus.Fields{
-		"packrusage": "backend/minio/manifest.go",
-		"func":       "NewManifestFromBytes",
+func (m Minio) NewManifestDataFromBytes(ctx context.Context, b []byte) (mani types.ManifestData, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMani,
+		"func":    "NewManifestFromBytes",
 	})
+	defer span.End()
+	_ = ctx
 	mt := manifest.GuessMIMEType(b)
-	cntMani, err := manifest.FromBlob(b, mt)
-	if err != nil {
-		err = errors.WithMessagef(err, "manifest.FromBlob %s", string(b))
-		l.Error(err)
+	cntMani, e := manifest.FromBlob(b, mt)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "manifest.FromBlob %s", string(b))
+		return
 	}
 	bInfo := cntMani.ConfigInfo()
+	utils.Debug(l, span, "BlobInfo digest: %s", bInfo.Digest.String())
 	// TODO: Is deriving digest from byte safe?
 	maniDig := digest.FromBytes(b)
 
@@ -121,10 +180,9 @@ func (m Minio) NewManifestFromBytes(b []byte) (mani types.ManifestData, err erro
 		Size:      bInfo.Size,
 		Data:      b,
 	}
-	imgInfo, err := cntMani.Inspect(m.configGetter)
-	if err != nil {
-		err = errors.Wrapf(err, "failed to inspect manifest")
-		l.Error(err)
+	imgInfo, e := cntMani.Inspect(m.configGetter)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to inspect config")
 		return
 	}
 	mani.Config = types.Config{
@@ -148,28 +206,28 @@ func (m Minio) NewManifestFromBytes(b []byte) (mani types.ManifestData, err erro
 }
 
 func (m Minio) ManifestGetObj(ctx context.Context, path string) (mani types.ManifestData, err error) {
-	l := logrus.WithFields(logrus.Fields{
-		"packrusage": "backend/minio/manifest.go",
-		"func":       "ManifestGetObj",
-		"path":       path,
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMani,
+		"func":    "ManifestGetObj",
+		"path":    path,
 	})
-	_ = l
+	defer span.End()
 	cli := m.BucketConfig[manifestsBucketKey].Client
-	obj, err := cli.GetObject(ctx, m.GetManifestsBucketName(), path, minio.GetObjectOptions{})
-	if err != nil {
-		logrus.Errorf("Error getting manifest: %s", err)
+	obj, e := cli.GetObject(ctx, m.GetManifestsBucketName(), path, minio.GetObjectOptions{})
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "Error GetManifestsBucketName")
 		return
 	}
 	defer obj.Close()
 	b, e := io.ReadAll(obj)
 	if e != nil {
-		logrus.Error(e)
+		err = utils.ErrorHandler(l, span, e, "Error ReadAll")
 		return
 	}
-	mani, err = m.NewManifestFromBytes(b)
-	if err != nil {
-		err = errors.Wrapf(err, "m.NewManifestFromBytes")
-		l.Error(err)
+	mani, e = m.NewManifestDataFromBytes(ctx, b)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "m.NewManifestFromBytes")
+		return
 	}
 	mani.Annotations = types.NewAnnotations()
 	return
@@ -177,9 +235,9 @@ func (m Minio) ManifestGetObj(ctx context.Context, path string) (mani types.Mani
 
 func (m Minio) GetManifestViaPath(ctx context.Context, path string) (mani types.ManifestData, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"packrusage": "backend/minio/manifest.go",
-		"func":       "GetManifestViaPath",
-		"path":       path,
+		"package": pkgNameMani,
+		"func":    "GetManifestViaPath",
+		"path":    path,
 	})
 	_ = l
 	cli := m.BucketConfig[manifestsBucketKey].Client
@@ -210,9 +268,9 @@ func (m Minio) GetManifestViaPath(ctx context.Context, path string) (mani types.
 
 func (m Minio) ManifestsStatObj(ctx context.Context, object string) (obj minio.ObjectInfo, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"packrusage": "backend/minio/manifest.go",
-		"func":       "ManifestsStatObj",
-		"object":     object,
+		"package": pkgNameMani,
+		"func":    "ManifestsStatObj",
+		"object":  object,
 	})
 	_ = l
 	bucket := m.GetManifestsBucketName()

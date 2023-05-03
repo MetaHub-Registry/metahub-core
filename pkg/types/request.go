@@ -1,7 +1,7 @@
 package types
 
 import (
-	plainCtx "context"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net"
@@ -11,14 +11,16 @@ import (
 	"strconv"
 	"strings"
 
+	gCtx "github.com/gorilla/context"
+
 	"github.com/go-chi/chi/v5"
-	"github.com/gorilla/context"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
 var (
 	userReg = regexp.MustCompile(`(?P<user>[\w\-\.\_]+)(\/(?P<profile>[\/\w\-\.\_#]+))?`)
+	//pkgNameReq = "types/request"
 )
 
 type Request struct {
@@ -43,15 +45,22 @@ type Request struct {
 	ContentType    string `json:"content-type"`
 }
 
-func NewRequest(ctx plainCtx.Context, r *http.Request) Request {
-	//ctx, span := tracer.Start(ctx, "NewRequest")
-	//defer span.End()
+func NewRequest(ctx context.Context, r *http.Request) Request {
+	/*
+		l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+			"package": pkgNameReq,
+			"func":    "NewRequest",
+		})
+		defer span.End()
+		utils.Debug(l, span, "Repo from URLParam: %s", chi.URLParam(r, "repo"))
+	*/
 	//dumpedReq, _ := httputil.DumpRequest(r, false)
 	//logrus.Errorf("Request:#### \n%s\n####", dumpedReq)
 	req := Request{
 		Number: 0,
 	}
 	parRepo, parImg, parRef := extractRepoName(r)
+	//utils.Debug(l, span, "repo:%s", parRepo)
 	var tag string
 	dig := r.FormValue("digest")
 	if strings.HasPrefix(parRef, "sha256:") {
@@ -106,15 +115,15 @@ func NewRequest(ctx plainCtx.Context, r *http.Request) Request {
 			user = parts[0]
 		}
 	}
-	vUR := context.Get(r, "userRole")
+	vUR := gCtx.Get(r, "userRole")
 	if vUR != nil {
 		userRole = vUR.(string)
 	}
-	vU := context.Get(r, "userName")
+	vU := gCtx.Get(r, "userName")
 	if vU != nil {
 		user = vU.(string)
 	}
-	vP := context.Get(r, "profileName")
+	vP := gCtx.Get(r, "profileName")
 	if vP != nil {
 		profile = vP.(string)
 		/*

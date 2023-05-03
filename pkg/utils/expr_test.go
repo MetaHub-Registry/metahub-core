@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_EncodeExpression(t *testing.T) {
+func TestEncodeExpression(t *testing.T) {
 	q := "foo=bar"
 	got, err := EncodeExpression(q)
 	if err != nil {
@@ -30,7 +30,7 @@ func Test_EncodeExpression(t *testing.T) {
 
 }
 
-func Test_Decode(t *testing.T) {
+func TestDecode(t *testing.T) {
 	k0 := "f666f6f"
 	g0, err := DecodeKey(k0)
 	if err != nil {
@@ -39,7 +39,7 @@ func Test_Decode(t *testing.T) {
 	assert.Equal(t, "foo", g0)
 }
 
-func Test_ExprGetLabels(t *testing.T) {
+func TestExprGetLabels(t *testing.T) {
 	q := "foo=true"
 
 	got, err := ExprGetLabels(q)

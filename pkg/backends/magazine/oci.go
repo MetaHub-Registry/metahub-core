@@ -156,57 +156,39 @@ func (mag Magazine) CreateOCIv1_UploadedBy(ctx context.Context, mani types.Manif
 }
 
 func (mag Magazine) CreateOCIv1_PulledByPrf(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prf types.Profile) (maniID int64, found bool, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "magazine/oci.go",
 		"func":    "CreateOCIv1_PulledByPrf",
 		"mani.ID": mani.ID,
 	})
-	ctx, span := tracer.Start(ctx, "CreateOCIv1_PulledByPrf")
 	defer span.End()
 	// Get Pulled Manifests
-	_, foundManiData, err := mag.Database.ManifestData_Get_ByProfileMediaType(ctx, mani.ID, prf.ID, v1.MediaTypeImageManifest)
+	maniID, foundManiData, err := mag.Database.ManifestData_Get_ByProfileMediaType(ctx, mani.ID, prf.ID, v1.MediaTypeImageManifest)
 	if err != nil {
+		utils.ErrorHandler(l, span, err, "failed to get ManifestData for Manifest.ID: %d", mani.ID)
 		return
 	}
 	if foundManiData {
-		msg := fmt.Sprintf("OCIv1 manifest already present for Manifest.ID: %d", mani.ID)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
-		))
-		l.Info(msg)
+		utils.Info(l, span, "OCIv1 manifest already present for Manifest.ID: %d", mani.ID)
 		return
 	} else {
-		msg := fmt.Sprintf("OCIv1 manifest NOT present for Manifest.ID: %d", mani.ID)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
-		))
-		l.Info(msg)
+		utils.Debug(l, span, "OCIv1 manifest NOT present for Manifest.ID: %d", mani.ID)
 	}
 	maniID, e := mag.OCI_CreateBaseManifest(ctx, mani, origMani, prf.ID)
 	if e != nil {
-		err = errors.Wrap(e, "failed to create base manifest")
+		err = utils.ErrorHandler(l, span, e, "failed to create base manifest")
 		return
 	}
-
-	msg := fmt.Sprintf("Profile '%s' did the pull", prf.Label)
-	l.Warn(msg)
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", msg),
-	))
+	utils.Warn(l, span, "Profile '%s' did the pull", prf.Label)
 	e = mag.Database.LinkManifestDataToProfile(ctx, maniID, prf.ID, "UPLOADED_BY")
 	if e != nil {
-		err = errors.Wrap(e, "failed to link profile and manifestdata")
-		l.Error(err)
+		err = utils.ErrorHandler(l, span, e, "failed to link profile and manifestdata")
 		return
 	}
 	// TODO: We need to unwind the rules so that annotations are added to the ManifestData
 	e = mag.Database.Profile_UnwindRules(ctx, prf.ID, maniID)
 	if e != nil {
-		err = errors.Wrap(e, "failed to unwind Profile")
-		l.Error(err)
+		err = utils.ErrorHandler(l, span, e, "failed to unwind Profile")
 		return
 	}
 
@@ -386,12 +368,11 @@ func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMa
 }
 
 func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prfID int64) (maniID int64, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "magazine/oci.go",
 		"func":    "OCI_CreateBaseManifest",
 		"mani.ID": mani.ID,
 	})
-	ctx, span := tracer.Start(ctx, "OCI_CreateBaseManifest")
 	defer span.End()
 	// Empty Manifest
 	m := v1.Manifest{
@@ -402,62 +383,47 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 	}
 	rs, e := mag.Database.Profile_GetAnnoEqRules(ctx, prfID)
 	if e != nil {
-		err = errors.Wrapf(e, "failed to get anno rules for profile %d", prfID)
+		err = utils.ErrorHandler(l, span, e, "failed to get anno rules for profile %d", prfID)
 		return
 	}
 	// ///// A. Generate `oci.image.config.v1`
-	v1Cfg, err := mag.GenerateOCIv1Config(ctx, mani, origMani)
-	if err != nil {
+	v1Cfg, e := mag.GenerateOCIv1Config(ctx, mani, origMani)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to GenerateOCIv1Config")
 		return
 	}
-	msg := fmt.Sprintf("Found %d AnnoEqRules", len(rs))
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", msg),
-	))
-	l.Debug(msg)
+	utils.Debug(l, span, "Found %d AnnoEqRules", len(rs))
 	for idx, r := range rs {
-		msg := fmt.Sprintf("%d > %s", idx, r.ToString())
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
-		))
 		if r.Type == types.RuleTypeAnnotation && r.Op == "eq" {
+			utils.Debug(l, span, "  AnnoEqRule %d > %s", idx, r.ToString())
 			v1Cfg.Config.Labels[r.Key] = r.Value
 			k := utils.UpLabelKey(r.Key)
 			v1Cfg.Config.Env = append(v1Cfg.Config.Env, fmt.Sprintf("%s=%s", k, r.Value))
 		}
+		utils.Debug(l, span, "  [SKIP] NOT AnnoEqRule %d > %s", idx, r.ToString())
 	}
-	cfgDesc, err := mag.GenerateOCIv1ConfigDescriptor(ctx, v1Cfg)
-	if err != nil {
+	cfgDesc, e := mag.GenerateOCIv1ConfigDescriptor(ctx, v1Cfg)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to GenerateOCIv1ConfigDescriptor")
 		return
 	}
-
 	m.Config = cfgDesc
 	// Upload Config Blob to Minio
-	err = mag.Minio.PutConfig(ctx, cfgDesc.Data, cfgDesc.Digest.String())
-	if err != nil {
+	e = mag.Minio.PutConfig(ctx, cfgDesc.Data, cfgDesc.Digest.String())
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to PutConfig")
 		return
 	}
 	// Put Config into Graph
-	cfg, _, err := mag.Database.OCIv1Config_GetInsertDescriptor(ctx, cfgDesc)
-	if err != nil {
+	cfg, _, e := mag.Database.OCIv1Config_GetInsertDescriptor(ctx, cfgDesc)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to OCIv1Config_GetInsertDescriptor")
 		return
 	}
 	// Add Labels to Config
-	msg = fmt.Sprintf("Found %d origMani.Config.Cfg.Config.Labels", len(origMani.Config.Cfg.Config.Labels))
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", msg),
-	))
-	l.Debug(msg)
+	utils.Debug(l, span, "Found %d origMani.Config.Cfg.Config.Labels", len(origMani.Config.Cfg.Config.Labels))
 	for k, v := range origMani.Config.Cfg.Config.Labels {
-		msg = fmt.Sprintf("origMani.Config.Cfg.Config.Labels: %s=%s", k, v)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
-		))
-		l.Warnf(msg)
+		utils.Warn(l, span, "origMani.Config.Cfg.Config.Labels: %s=%s", k, v)
 		a := types.NewAnnotation(k, v)
 		err = mag.Database.Config_AddLabel(ctx, cfg.ID, a)
 		if err != nil {
@@ -517,66 +483,48 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 }
 
 func (mag Magazine) GenerateOCIv1Config(ctx context.Context, maniSI types.Manifest, origMani types.ManifestData) (v1Cfg v1.Image, err error) {
-	ctx, span := tracer.Start(ctx, "GenerateOCIv1Config")
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":    "magazine/oci.go",
+		"func":       "mag.GenerateOCIv1Config",
+		"maniID":     maniSI.ID,
+		"origManiID": origMani.ID,
+	})
 	defer span.End()
 	// TODO: Fetch config from Minio
 	v1Cfg, found, err := mag.Minio.GetConfig(ctx, origMani.Config.Digest)
 	if err != nil {
+		utils.ErrorHandler(l, span, err, "failed to GetConfig")
 		return
 	}
 	if !found {
-		err = fmt.Errorf("config with digest '%s' not found in object store", origMani.Config.Digest)
+		err = utils.NewError(l, span, "config with digest '%s' not found in object store", origMani.Config.Digest)
 		return
 	}
-	msg := fmt.Sprintf("cfg.Labels: %d", len(v1Cfg.Config.Labels))
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", msg),
-	))
+	utils.Debug(l, span, "cfg.Labels: %d", len(v1Cfg.Config.Labels))
 	for k, v := range v1Cfg.Config.Labels {
-		msg := fmt.Sprintf("cfg.Labels-%s=%s", k, v)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
-		))
+		utils.Debug(l, span, "cfg.Labels-%s=%s", k, v)
 	}
-	msg = fmt.Sprintf("origMani.Config.Labels: %d", len(origMani.Config.Labels.ToMap()))
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", msg),
-	))
+	utils.Debug(l, span, "origMani.Config.Labels: %d", len(origMani.Config.Labels.ToMap()))
 	for k, v := range origMani.Config.Labels.ToMap() {
-		msg := fmt.Sprintf("origMani.Config.Labels-%s=%s", k, v)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
-		))
+		utils.Debug(l, span, "origMani.Config.Labels-%s=%s", k, v)
 	}
-	msg = fmt.Sprintf("origMani.Annotations: %d", len(origMani.Annotations.ToMap()))
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", msg),
-	))
+	utils.Debug(l, span, "origMani.Annotations: %d", len(origMani.Annotations.ToMap()))
 	for k, v := range origMani.Annotations.ToMap() {
-		msg := fmt.Sprintf("origMani.Annotations-%s=%s", k, v)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
-		))
+		utils.Debug(l, span, "origMani.Annotations-%s=%s", k, v)
 	}
-	msg = fmt.Sprintf("maniSI.Annotations: %d", len(maniSI.Annotations.ToMap()))
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", msg),
-	))
+	utils.Debug(l, span, "maniSI.Annotations: %d", len(maniSI.Annotations.ToMap()))
 	for k, v := range maniSI.Annotations.ToMap() {
-		msg := fmt.Sprintf("maniSI.Annotations-%s=%s", k, v)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
-		))
+		utils.Debug(l, span, "maniSI.Annotations-%s=%s", k, v)
 	}
 	es := utils.NewEnvStore()
+	// Put env in env
+	for _, e := range v1Cfg.Config.Env {
+		err = es.AddEnv(e)
+		if err != nil {
+			err = utils.ErrorHandler(l, span, err, "failed to AddEnv")
+			return
+		}
+	}
 	// Put Labels into Env
 	for k, v := range v1Cfg.Config.Labels {
 		es.Add(k, v)
@@ -587,25 +535,14 @@ func (mag Magazine) GenerateOCIv1Config(ctx context.Context, maniSI types.Manife
 		cur, ok := v1Cfg.Config.Labels[k]
 		if ok {
 			if cur != v {
-				msg := fmt.Sprintf("Label '%s' already present in config: '%s'", k, cur)
-				span.AddEvent("log", trace.WithAttributes(
-					attribute.String("log.severity", "warn"),
-					attribute.String("log.message", msg),
-				))
-				logrus.Warn(msg)
+				utils.Warn(l, span, "Label '%s' already present in config: '%s'", k, cur)
 			}
 		} else {
-			msg := fmt.Sprintf("origMani.Config.Labels: Add label '%s' with value '%s'", k, v)
-			span.AddEvent("log", trace.WithAttributes(
-				attribute.String("log.severity", "debug"),
-				attribute.String("log.message", msg),
-			))
-			logrus.Debug(msg)
+			utils.Debug(l, span, "origMani.Config.Labels: Add label '%s' with value '%s'", k, v)
 			v1Cfg.Config.Labels[k] = v
 			es.Add(k, v)
 		}
 	}
-
 	// and Annotations from Manifest
 	for k, v := range maniSI.Annotations.ToMap() {
 		// Only add labels with reverse DNS notations
@@ -613,20 +550,10 @@ func (mag Magazine) GenerateOCIv1Config(ctx context.Context, maniSI types.Manife
 			cur, ok := v1Cfg.Config.Labels[k]
 			if ok {
 				if cur != v {
-					msg := fmt.Sprintf("Label '%s' already present in config: '%s'", k, cur)
-					span.AddEvent("log", trace.WithAttributes(
-						attribute.String("log.severity", "warn"),
-						attribute.String("log.message", msg),
-					))
-					logrus.Warn(msg)
+					utils.Warn(l, span, "Label '%s' already present in config: '%s'", k, cur)
 				}
 			} else {
-				msg := fmt.Sprintf("maniSI.Annotations: Add label '%s' with value '%s'", k, v)
-				span.AddEvent("log", trace.WithAttributes(
-					attribute.String("log.severity", "debug"),
-					attribute.String("log.message", msg),
-				))
-				logrus.Debug(msg)
+				utils.Debug(l, span, "maniSI.Annotations: Add label '%s' with value '%s'", k, v)
 				v1Cfg.Config.Labels[k] = v
 				es.Add(k, v)
 
@@ -634,6 +561,7 @@ func (mag Magazine) GenerateOCIv1Config(ctx context.Context, maniSI types.Manife
 		}
 	}
 	v1Cfg.Config.Env = es.ToSlice()
+	// TODO: Check if Environment violates
 	/*now := time.Now()
 	mhHist := v1.History{
 		Created:    &now,

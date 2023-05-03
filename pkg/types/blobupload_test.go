@@ -1,6 +1,6 @@
 package types
 
-/*func Test_BU_WWW(t *testing.T) {
+/*func TestBUWWW(t *testing.T) {
 	uid0, _ := uuid.FromBytes([]byte("1234567890"))
 	bu0 := BlobUpload{
 		UUID: uid0,

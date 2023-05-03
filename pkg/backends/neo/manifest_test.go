@@ -9,7 +9,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func Test_Manifest_CR(t *testing.T) {
+func TestManifestCR(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
@@ -51,7 +51,7 @@ func Test_Manifest_CR(t *testing.T) {
 	assert.Equal(t, maniID, gotManiID)
 }
 
-func Test_Manifest_GetInsert(t *testing.T) {
+func TestManifestGetInsert(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
@@ -86,7 +86,8 @@ func Test_Manifest_GetInsert(t *testing.T) {
 	mani := types.Manifest{
 		Upstream: up,
 	}
-	maniID, err := db.Manifest_GetInsert(ctx, mani)
+	// FIXME: No annotations here?
+	maniID, err := db.Manifest_GetInsert(ctx, mani.Upstream)
 	if err != nil {
 		t.Fatal(err)
 	}

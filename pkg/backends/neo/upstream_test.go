@@ -9,7 +9,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func Test_Upstream_Create(t *testing.T) {
+func TestUpstreamCreate(t *testing.T) {
 	ctx := context.Background()
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
@@ -60,7 +60,7 @@ func Test_Upstream_Create(t *testing.T) {
 	assert.Equal(t, up.Reg, gotUp.Reg)
 }
 
-func Test_Upstream_CRUD(t *testing.T) {
+func TestUpstreamCRUD(t *testing.T) {
 	ctx := context.Background()
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()

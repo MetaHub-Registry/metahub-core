@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_Rule_New(t *testing.T) {
+func TestRuleNew(t *testing.T) {
 	r0, err := NewRule("anno", "eq", "foo", "bar")
 	if err != nil {
 		t.Fatal(err)
@@ -20,7 +20,7 @@ func Test_Rule_New(t *testing.T) {
 	assert.Error(t, err, `type "fake" is not supported (anno)`)
 }
 
-func Test_Rule_ToString(t *testing.T) {
+func TestRuleToString(t *testing.T) {
 	r0, err := NewRule("anno", "eq", "foo", "bar")
 	if err != nil {
 		t.Fatal(err)

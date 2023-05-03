@@ -1,7 +1,7 @@
 package neo
 
 /*
-func Test_CollectionListing_Get_ByID(t *testing.T) {
+func TestCollectionListingGetByID(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()

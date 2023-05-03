@@ -18,6 +18,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/tracing"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -88,53 +89,20 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 		regList = append(regList, strings.Split(regs, ",")...)
 
 	}
-	// Flags
-	profileRegex, _ := cmd.Flags().GetString("profile")
-	repoRegex, _ := cmd.Flags().GetString("repo")
-	tagRegex, _ := cmd.Flags().GetString("tag")
-	manifest, _ := cmd.Flags().GetString("manifest")
-	flagReg, _ := cmd.Flags().GetString("registries")
-	if flagReg != "" {
-		logrus.Infof("prepend pull-through registries from flags: %s", flagReg)
-		regList = append(strings.Split(flagReg, ","), regList...)
+	cfg := parseFlags(cmd, regList)
+	cfg.AuthURL = au
+	cfg.RedirectDoc = fr
+	ctx, e := initTracing(cmd, &cfg)
+	if e != nil {
+		err = errors.Wrapf(e, "failed to init tracing")
+		logrus.Fatal(err)
 	}
-	cfg := MagConfig{
-		RedirectDoc: fr,
-		AuthURL:     au,
-		Tracing:     TraceCfg{Enabled: false},
-		Args: map[string]string{
-			"profileRegex": profileRegex,
-			"repoRegex":    repoRegex,
-			"tagRegex":     tagRegex,
-			"manifest":     manifest,
-			"registries":   strings.Join(regList, ","),
-		},
-	}
-
-	ctx = cmd.Context()
-	// Tracing
-	trEnd := viper.GetString("tracing.endpoint")
-	svcName := viper.GetString("tracing.name")
-	if svcName == "" || trEnd == "" {
-		logrus.Warn("Tracing is disabled (tracing.name/tracing.endpoint is empty)")
-	}
-	if trEnd != "" {
-		logrus.Infof("Tracing endpoint '%s': %s", svcName, trEnd)
-		tr, err := tracing.InitTracer(svcName, trEnd)
-		if err != nil {
-			logrus.Fatalf("Could not initialize jaeger tracer: %s", err.Error())
-		}
-		trCfg := TraceCfg{
-			Enabled:  true,
-			Endpoint: trEnd,
-			Tracer:   tr,
-		}
-		cfg.Tracing = trCfg
-		c, span := tracer.Start(cmd.Context(), "NewMagazine")
-		ctx = c
+	if cfg.Tracing.Enabled {
+		var span trace.Span
+		ctx, span = tracer.Start(ctx, "NewMagazine")
 		defer span.End()
-
 	}
+
 	m = Magazine{
 		Minio:  min,
 		Config: cfg,
@@ -162,43 +130,99 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 	return
 }
 
+func (mag Magazine) setupBootStrap(ctx context.Context, bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
+	switch b {
+	// Users/Profile/Platforms
+	case "users":
+		err = sqlite.Setup_Users(&mag.UserManagement, br)
+		if err != nil {
+			err = errors.Wrap(err, "Setup_Users")
+			return
+		}
+	case "computeManifests":
+		err := mag.ComputeManifests(ctx)
+		if err != nil {
+			err = errors.Wrap(err, "while SetupTest: ComputeManifests")
+			return err
+		}
+	case "computeManifestlists":
+		err := mag.ComputeManifests(ctx)
+		if err != nil {
+			err = errors.Wrap(err, "while SetupTest: computeManifestlists")
+			return err
+		}
+	default:
+		err = mag.Database.BootstrapTestWithBR(b, bs, br)
+		if err != nil {
+			err = errors.Wrap(err, "Setup_Users in Database")
+			return
+		}
+		err = mag.Minio.BootstrapTestWithBR(b, br)
+		if err != nil {
+			err = errors.Wrap(err, "Setup_Users in Minio")
+			return
+		}
+	}
+	return
+}
+
 func (mag Magazine) SetupTest(ctx context.Context, bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 	logrus.Info("> SetupTest")
 	//return
 	br = utils.NewBootstrapResult()
 	for _, b := range bs.Bootstraps {
-		switch b {
-		// Users/Profile/Platforms
-		case "users":
-			err = sqlite.Setup_Users(&mag.UserManagement, &br)
-			if err != nil {
-				err = errors.Wrap(err, "Setup_Users")
-				return
-			}
-		case "computeManifests":
-			err := mag.ComputeManifests(ctx)
-			if err != nil {
-				err = errors.Wrap(err, "while SetupTest: ComputeManifests")
-				return br, err
-			}
-		case "computeManifestlists":
-			err := mag.ComputeManifests(ctx)
-			if err != nil {
-				err = errors.Wrap(err, "while SetupTest: computeManifestlists")
-				return br, err
-			}
-		default:
-			err = mag.Database.BootstrapTestWithBR(b, bs, &br)
-			if err != nil {
-				err = errors.Wrap(err, "Setup_Users in Database")
-				return
-			}
-			err = mag.Minio.BootstrapTestWithBR(b, &br)
-			if err != nil {
-				err = errors.Wrap(err, "Setup_Users in Minio")
-				return
-			}
+		e := mag.setupBootStrap(ctx, bs, &br, b)
+		if e != nil {
+			err = errors.Wrapf(e, "failed to setup bootstrap %s", b)
+			return
 		}
+	}
+	return
+}
+
+func parseFlags(cmd *cobra.Command, regList []string) (cfg MagConfig) {
+	// Flags
+	profileRegex, _ := cmd.Flags().GetString("profile")
+	repoRegex, _ := cmd.Flags().GetString("repo")
+	tagRegex, _ := cmd.Flags().GetString("tag")
+	manifest, _ := cmd.Flags().GetString("manifest")
+	flagReg, _ := cmd.Flags().GetString("registries")
+	if flagReg != "" {
+		logrus.Infof("prepend pull-through registries from flags: %s", flagReg)
+		regList = append(strings.Split(flagReg, ","), regList...)
+	}
+	return MagConfig{
+		Tracing: TraceCfg{Enabled: false},
+		Args: map[string]string{
+			"profileRegex": profileRegex,
+			"repoRegex":    repoRegex,
+			"tagRegex":     tagRegex,
+			"manifest":     manifest,
+			"registries":   strings.Join(regList, ","),
+		},
+	}
+}
+
+func initTracing(cmd *cobra.Command, cfg *MagConfig) (ctx context.Context, err error) {
+	ctx = cmd.Context()
+	trEnd := viper.GetString("tracing.endpoint")
+	svcName := viper.GetString("tracing.name")
+	if svcName == "" || trEnd == "" {
+		logrus.Warn("Tracing is disabled (tracing.name/tracing.endpoint is empty)")
+	}
+	if trEnd != "" {
+		logrus.Infof("Tracing endpoint '%s': %s", svcName, trEnd)
+		tr, err := tracing.InitTracer(svcName, trEnd)
+		if err != nil {
+			logrus.Fatalf("Could not initialize jaeger tracer: %s", err.Error())
+		}
+		trCfg := TraceCfg{
+			Enabled:  true,
+			Endpoint: trEnd,
+			Tracer:   tr,
+		}
+		cfg.Tracing = trCfg
+
 	}
 	return
 }

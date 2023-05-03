@@ -10,7 +10,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func Test_ManifestData_CRUD(t *testing.T) {
+func TestManifestDataCRUD(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
@@ -55,7 +55,7 @@ func Test_ManifestData_CRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Manifest_Get_ByDigest
-	arm_mani_got3, found, err := db.ManifestData_Get_ByDigest(ctx, arm_mani.Digest)
+	arm_mani_got3, found, err := db.ManifestDataGetByDigest(ctx, arm_mani.Digest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,14 +74,14 @@ func Test_ManifestData_CRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.True(t, found)
-	_, found, err = db.ManifestData_Get_ByDigest(ctx, arm_mani_got3.Digest)
+	_, found, err = db.ManifestDataGetByDigest(ctx, arm_mani_got3.Digest)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.False(t, found)
 }
 
-func Test_ManifestData_Links(t *testing.T) {
+func TestManifestDataLinks(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
@@ -179,7 +179,7 @@ func Test_ManifestData_Links(t *testing.T) {
 	}
 }
 
-func Test_ManifestData_Rules(t *testing.T) {
+func TestManifestDataRules(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	debug := 0
@@ -313,7 +313,7 @@ func Test_ManifestData_Rules(t *testing.T) {
 	assert.Equal(t, "platform", v)
 }
 
-func Test_ManifestData_GetAllByManifestID(t *testing.T) {
+func TestManifestDataGetAllByManifestID(t *testing.T) {
 	ctx := context.Background()
 	debug := 0
 	bs := utils.NewBootstrap()
@@ -372,7 +372,7 @@ func Test_ManifestData_GetAllByManifestID(t *testing.T) {
 	assert.Equal(t, 1, len(manis))
 }
 
-func Test_ManifestData_LinkToOCIv1Layer(t *testing.T) {
+func TestManifestDataLinkToOCIv1Layer(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	debug := 0
@@ -438,7 +438,7 @@ func Test_ManifestData_LinkToOCIv1Layer(t *testing.T) {
 	}
 
 }
-func Test_ManifestData_LinkToOCIv1Config(t *testing.T) {
+func TestManifestDataLinkToOCIv1Config(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	debug := 0
@@ -461,7 +461,7 @@ func Test_ManifestData_LinkToOCIv1Config(t *testing.T) {
 	bs.AddBootstrap("manifestdata:ft_amd64")
 	bs.SetEmptyAll()
 	if debug > 0 {
-		bs.PostTestSleep = 120
+		bs.PostTestSleep = debug
 	}
 	br, err := SetupTest(bs)
 	for _, l := range br.ToLines() {

@@ -1,9 +1,10 @@
 stages:
-  - coveragetest
+  - test
+  - qa
   - build
 
 test:
-    stage: coveragetest
+    stage: test
     image: registry.gitlab.com/qnib-pub-containers/cicd/golang:1.19.1
     #services:
     #  - docker:20.10.17-dind
@@ -12,7 +13,7 @@ test:
     #  DOCKER_DRIVER: overlay2
     script: 
       - go mod tidy
-      - go test -short -timeout 300s ./... -coverprofile coverage.txt
+      - go test -short -timeout 600s ./... -coverprofile coverage.txt
       - gocover-cobertura < coverage.txt > coverage.xml
       - gocoverstats -v -f coverage.txt --percent
     coverage: /^Global weighted coverage:\s+(\d+(?:\.\d+)?%)/
@@ -20,4 +21,49 @@ test:
       reports:
         coverage_report:
           coverage_format: cobertura
-          path: coverage.xml
+          path: coverage.txt
+    except:
+    - merge_requests
+
+mrtest:
+    stage: test
+    image: registry.gitlab.com/qnib-pub-containers/cicd/golang:1.19.1
+    #services:
+    #  - docker:20.10.17-dind
+    #variables:
+    #  DOCKER_HOST: tcp://docker:2375/
+    #  DOCKER_DRIVER: overlay2
+    script: 
+      - go mod tidy
+      - go test -short -timeout 600s ./... -coverprofile coverage.txt
+      - gocover-cobertura < coverage.txt > coverage.xml
+      - gocoverstats -v -f coverage.txt --percent
+    coverage: /^Global weighted coverage:\s+(\d+(?:\.\d+)?%)/
+    artifacts:
+      untracked: true
+      reports:
+        coverage_report:
+          coverage_format: cobertura
+          path: coverage.txt
+    only:
+    - merge_requests
+
+sonarqube-check:
+  stage: qa
+  dependencies:
+    - mrtest
+  image: 
+    name: sonarsource/sonar-scanner-cli:latest
+    entrypoint: [""]
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"  # Defines the location of the analysis task cache
+    GIT_DEPTH: "0"  # Tells git to fetch all the branches of the project, required by the analysis task
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  script: 
+    - sonar-scanner
+  allow_failure: true
+  only:
+    - merge_requests

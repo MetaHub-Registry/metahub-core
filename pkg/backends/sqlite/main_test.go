@@ -13,7 +13,7 @@ var (
 	//ctx = context.Background()
 )
 
-func Test_SetupTeardown(t *testing.T) {
+func TestSetupTeardown(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.AddBootstrap("users")
 	br, err := SetupTest(bs)

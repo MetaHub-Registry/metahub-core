@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_OCIbu_WWW(t *testing.T) {
+func TestOCIbuWWW(t *testing.T) {
 	uid0, _ := uuid.FromBytes([]byte("1234567890"))
 	w0 := httptest.NewRecorder()
 	b0 := OCIBlobUpload{

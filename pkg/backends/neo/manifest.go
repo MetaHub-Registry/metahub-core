@@ -30,12 +30,12 @@ func (n Neo) Manifest_LinkToAnnotation(ctx context.Context, maniID, annotationID
 func (n Neo) Manifest_GetInsert_WithDesc(ctx context.Context, req types.Request, up types.Upstream, maniIn manifestlist.ManifestDescriptor) (maniID int64, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "neo/manifest.go",
-		"func":    "Manifest_GetInsertWithProfile",
+		"func":    "Manifest_GetInsert_WithDesc",
 		"profile": req.Profile,
 		"repo":    req.Repo,
 		"tag":     req.Tag,
 	})
-	ctx, span := tracer.Start(ctx, "Manifest_GetInsertWithProfile")
+	ctx, span := tracer.Start(ctx, "Manifest_GetInsert_WithDesc")
 	defer span.End()
 	// If Manifest between collection and upstream does not exists
 	label := fmt.Sprintf("%s/%s:%s-%s", up.Reg, up.Repo, up.Tag, maniIn.Platform.Architecture)
@@ -44,7 +44,7 @@ func (n Neo) Manifest_GetInsert_WithDesc(ctx context.Context, req types.Request,
 	}
 	mani, found, err := n.Manifest_GetByLabel(ctx, label)
 	if err != nil {
-		utils.ErrorHandler(l, span, err, "while executing Manifest_GetByLabel")
+		err = utils.ErrorHandler(l, span, err, "while executing Manifest_GetByLabel")
 		return
 	}
 	if found {
@@ -53,36 +53,7 @@ func (n Neo) Manifest_GetInsert_WithDesc(ctx context.Context, req types.Request,
 		// Create ManifestStandin
 		maniID, err = n.manifest_Create_WithLabel(ctx, label, up.ID)
 		if err != nil {
-			utils.ErrorHandler(l, span, err, "while executing manifest_Create_WithLabel")
-			return
-		}
-		l.Debugf("Manifest created: %d", maniID)
-	}
-	return
-}
-
-func (n Neo) Manifest_GetInsertWithProfile(ctx context.Context, upID int64, prfName string) (maniID int64, err error) {
-	l := logrus.WithFields(logrus.Fields{
-		"package": "neo/manifest.go",
-		"func":    "Manifest_GetInsertWithProfile",
-		"profile": prfName,
-		"upID":    upID,
-	})
-	ctx, span := tracer.Start(ctx, "Manifest_GetInsertWithProfile")
-	defer span.End()
-	// If Manifest between collection and upstream does not exists
-	maniID, found, err := n.Manifest_Get(ctx, upID, prfName)
-	if err != nil {
-		logrus.Error(err)
-		return
-	}
-	if found {
-		l.Debugf("Manifest found: %d", maniID)
-	} else {
-		// Create ManifestStandin
-		maniID, err = n.Manifest_CreateWithProfile(ctx, upID, prfName)
-		if err != nil {
-			logrus.Error(err)
+			err = utils.ErrorHandler(l, span, err, "while executing manifest_Create_WithLabel")
 			return
 		}
 		l.Debugf("Manifest created: %d", maniID)
@@ -110,7 +81,7 @@ func (n Neo) Manifest_GetInsertWithRequest(ctx context.Context, m types.Manifest
 		l.Error(err)
 		return
 	}
-	maniID, err = n.Manifest_GetInsertWithProfile(ctx, up.ID, req.Profile)
+	maniID, err = n.Manifest_GetInsert(ctx, up)
 	if err != nil {
 		logrus.Error(err)
 		return
@@ -135,14 +106,13 @@ func (n Neo) Manifest_GetInsertWithRequest(ctx context.Context, m types.Manifest
 	return
 }
 
-func (n Neo) Manifest_GetInsert(ctx context.Context, m types.Manifest) (maniID int64, err error) {
-	l := logrus.WithFields(logrus.Fields{
+func (n Neo) Manifest_GetInsert(ctx context.Context, up types.Upstream, as ...types.Annotation) (maniID int64, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "neo/manifest.go",
 		"func":    "Manifest_GetInsert",
-		"repo":    m.Upstream.Repo,
-		"tag":     m.Upstream.Tag,
+		"repo":    up.Repo,
+		"tag":     up.Tag,
 	})
-	ctx, span := tracer.Start(ctx, "Manifest_GetInsert")
 	defer span.End()
 	/*** TODO:
 	1. Check if Manifest exists as a connection between
@@ -150,7 +120,6 @@ func (n Neo) Manifest_GetInsert(ctx context.Context, m types.Manifest) (maniID i
 	   b. Collection
 	   (c. Annotation?)
 	*/
-	up := m.Upstream
 	_, err = n.Upstream_GetInsert(ctx, &up)
 	if err != nil {
 		l.Error(err)
@@ -173,7 +142,7 @@ func (n Neo) Manifest_GetInsert(ctx context.Context, m types.Manifest) (maniID i
 		}
 		l.Debugf("Manifest created: %d", maniID)
 	}
-	for _, a := range m.Annotations.Data {
+	for _, a := range as {
 		aID, e := n.Annotation_GetInsert(ctx, a)
 		if e != nil {
 			err = errors.Wrap(e, fmt.Sprintf("failed to get/insert annotation: %s", a.Key))
@@ -201,6 +170,7 @@ func (n Neo) manifest_Create_WithLabel(ctx context.Context, label string, upID i
 		"label":   label,
 	})
 	ctx, span := tracer.Start(ctx, "manifest_Create_WithLabel")
+	_ = ctx
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (u:Upstream) WHERE id(u) = %d`, upID)
 	q += fmt.Sprintf(` MERGE (m:Manifest {label: "%s"})-[:UPSTREAM]->(u)`, label)
@@ -214,13 +184,13 @@ func (n Neo) manifest_Create_WithLabel(ctx context.Context, label string, upID i
 	msID, err = res.GetInt64("ID")
 	return
 }
+
 func (n Neo) Manifest_Create(ctx context.Context, upID int64) (msID int64, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "neo/manifest.go",
 		"func":    "Manifest_Create",
 		"upID":    upID,
 	})
-	ctx, span := tracer.Start(ctx, "Manifest_Create")
 	defer span.End()
 	up, err := n.Upstream_Get_ByID(ctx, upID)
 	if err != nil {
@@ -229,63 +199,7 @@ func (n Neo) Manifest_Create(ctx context.Context, upID int64) (msID int64, err e
 		return
 	}
 	label := fmt.Sprintf("%s/%s:%s", up.Reg, up.Repo, up.Tag)
-	l = logrus.WithFields(logrus.Fields{
-		"package":  "neo/manifest.go",
-		"func":     "Manifest_Create",
-		"upID":     upID,
-		"digest":   utils.ShortenDigest(up.Digest.String()),
-		"upstream": label,
-	})
 	return n.manifest_Create_WithLabel(ctx, label, upID)
-}
-
-func (n Neo) Manifest_CreateWithProfile(ctx context.Context, upID int64, prfName string) (msID int64, err error) {
-	l := logrus.WithFields(logrus.Fields{
-		"package": "neo/manifest.go",
-		"func":    "Manifest_CreateWithProfile",
-		"upID":    upID,
-	})
-	ctx, span := tracer.Start(ctx, "Manifest_CreateWithProfile")
-	defer span.End()
-	/*
-		prf, prfFound, e := n.Profile_Get_ByLabel(ctx, prfName)
-		if e != nil {
-			err = errors.Wrap(e, "failed to get profile")
-			l.Error(err)
-			return
-		}
-		if !prfFound {
-			err = errors.Wrap(e, "profile not found")
-			l.Error(err)
-			return
-		}
-	*/
-	up, err := n.Upstream_Get_ByID(ctx, upID)
-	if err != nil {
-		err = errors.Wrap(err, "failed to get upstream")
-		l.Error(err)
-		return
-	}
-	label := fmt.Sprintf("%s/%s:%s@%s", up.Reg, up.Repo, up.Tag, prfName)
-	l = logrus.WithFields(logrus.Fields{
-		"package":  "neo/manifest.go",
-		"func":     "Manifest_Create",
-		"upID":     upID,
-		"upstream": label,
-	})
-
-	q := fmt.Sprintf(`MATCH (u:Upstream) WHERE id(u) = %d`, upID)
-	q += fmt.Sprintf(` MERGE (m:Manifest {label: "%s"})-[:UPSTREAM]->(u)`, label)
-	q += ` RETURN id(m) AS ID`
-	l.Debug(q)
-	res, err := n.Execute(q)
-	if err != nil {
-		err = errors.Wrapf(err, "failed to execute query:\n%s", q)
-		l.Error(err)
-		return
-	}
-	msID, err = res.GetInt64("ID")
-	return
 }
 
 func (n Neo) Manifest_Get_CreateWithProfile(ctx context.Context, upID int64, prfName string) (mani types.Manifest, err error) {
@@ -382,12 +296,12 @@ func (n Neo) Manifest_AddAnnotations(ctx context.Context, maniID int64, as *type
 }
 
 func (n Neo) Manifest_Get(ctx context.Context, upID int64, suffix ...string) (msID int64, found bool, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "neo/manifest.go",
 		"func":    "Manifest_Get",
-		"suffix":  suffix,
+		"suffix":  strings.Join(suffix, ","),
 	})
-	ctx, span := tracer.Start(ctx, "Manifest_Get")
+	_ = ctx
 	defer span.End()
 	q := `MATCH (m:Manifest)-[]->(u:Upstream)`
 	q += fmt.Sprintf(` WHERE id(u) = %d`, upID)
@@ -395,11 +309,7 @@ func (n Neo) Manifest_Get(ctx context.Context, upID int64, suffix ...string) (ms
 		q += fmt.Sprintf(` AND m.label ENDS WITH "%s"`, suffix[0])
 	}
 	q += ` RETURN id(m) AS ID`
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
-	))
-	l.Debug(q)
+	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
 		logrus.Error(err)
@@ -449,6 +359,35 @@ func (n Neo) Manifest_GetByUpstreamDigest(ctx context.Context, upDigest string) 
 		attribute.String("log.query", q),
 	))
 	l.Debug(q)
+	input := map[string]interface{}{}
+	result, err := session.Run(q, input)
+	if err != nil {
+		return
+	}
+	for result.Next() {
+		mani, err = n.ManiFromRec(ctx, result)
+		return mani, true, err
+	}
+	return mani, false, fmt.Errorf("no manifest found")
+}
+
+func (n Neo) Manifest_Get_ByRepoTag(ctx context.Context, repo, tag string) (mani types.Manifest, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "neo/manifest_data.go",
+		"func":    "Manifest_Get_ByRepoTag",
+		"repo":    repo,
+		"tag":     tag,
+	})
+	defer span.End()
+	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close()
+	q := `MATCH (col:Collection)-[:UPSTREAM]->(m:Manifest)<-[:UPSTREAM]-(t:Tag)`
+	q += `MATCH (p:Platform)-[]-(m)-[]-(u:Upstream)`
+	q += fmt.Sprintf(` WHERE col.repo = "%s" AND t.name = "%s"`, repo, tag)
+	q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
+	q += ` id(m) AS manifestID,`
+	q += ` ` + UpstreamReturn
+	utils.Debug(l, span, q)
 	input := map[string]interface{}{}
 	result, err := session.Run(q, input)
 	if err != nil {
@@ -696,8 +635,42 @@ func ManifestFromRecord(res neo4j.Result) (m types.Manifest, err error) {
 	return
 }
 
+func (n Neo) ManifestExists_ForTagProfile(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "neo/manifest.go",
+		"func":    "ManifestExists_ForTagProfile",
+		"repo":    up.Repo,
+		"tag":     up.Tag,
+		"profile": up.Profile,
+	})
+	defer span.End()
+	mediaType, found, e := n.ManifestListExists_ForTagProfile(ctx, up)
+	if e != nil {
+		utils.ErrorHandler(l, span, e, "failed to execute ManifestListExists")
+		return "", false, err
+	}
+	if found {
+		utils.Debug(l, span, "found manifest list for tag profile '%s' w/ media type: %s", up.Profile, mediaType)
+		return mediaType, found, nil
+	}
+	utils.Debug(l, span, "could not find ManifestList for tag profile '%s' w/ media type: %s", up.Profile, mediaType)
+	return mediaType, false, nil
+	/* TODO: we do not need to check for a ManifestData object as it would have been addressed with digest
+	mediaType, found, e = n.ManifestDataExists_ForTagProfile(ctx, up)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to execute ManifestDataExists")
+		return "", false, err
+	}
+	if found {
+		utils.Debug(l, span, "found ManifestData for tag profile '%s' w/ media type: %s", up.Profile, mediaType)
+		return mediaType, found, nil
+	}
+	utils.Debug(l, span, "did not find manifestData w/ media type: %s", mediaType)
+	*/
+}
+
 func (n Neo) ManifestExists(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "neo/manifest.go",
 		"func":    "ManifestExists",
 		"repo":    up.Repo,
@@ -705,42 +678,25 @@ func (n Neo) ManifestExists(ctx context.Context, up upstream.UpstreamTriple) (me
 		"digest":  utils.ShortenDigest(up.Digest.String()),
 		"profile": up.Profile,
 	})
-	ctx, span := tracer.Start(ctx, "ManifestExists")
 	defer span.End()
-	span.SetAttributes(
-		attribute.Key("repo").String(up.Repo),
-		attribute.Key("tag").String(up.Tag),
-		attribute.Key("digest").String(utils.ShortenDigest(up.Digest.String())),
-	)
-	mediaType, found, err = n.ManifestListExists(ctx, up)
-	if err != nil {
-		msg := "failed to execute ManifestListExists"
-		err = errors.Wrap(err, msg)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", msg),
-		))
-		span.RecordError(err)
-		l.Error(msg)
+	mediaType, found, e := n.ManifestListExists(ctx, up)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to execute ManifestListExists")
 		return "", false, err
 	}
 	if found {
+		utils.DebugOK(l, span, "found manifestList w/ media type: %s", mediaType)
 		return mediaType, found, nil
 	}
-	mediaType, found, err = n.ManifestDataExists(ctx, up)
-	if err != nil {
-		msg := "failed to execute ManifestDataExists"
-		err = errors.Wrap(err, msg)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", msg),
-		))
-		span.RecordError(err)
-		l.Error(msg)
+	mediaType, found, e = n.ManifestDataExists(ctx, up)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to execute ManifestDataExists")
 		return "", false, err
 	}
 	if found {
+		utils.DebugOK(l, span, "found manifestData w/ media type: %s", mediaType)
 		return mediaType, found, nil
 	}
+	utils.Debug(l, span, "did not find manifestData w/ media type: %s", mediaType)
 	return
 }

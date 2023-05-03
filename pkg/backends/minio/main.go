@@ -7,6 +7,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -246,6 +247,10 @@ func (m Minio) EmptyAll() (err error) {
 }
 
 func (m Minio) TearDown(bs utils.Bootstrap) (err error) {
+	m.PreTearDown(bs)
+	if bs.PostTestSleep > 0 {
+		time.Sleep(time.Duration(bs.PostTestSleep) * time.Second)
+	}
 	for _, b := range bs.Bootstraps {
 		err = m.TeardownTest(b)
 		if err != nil {
@@ -265,9 +270,7 @@ func (min Minio) TeardownTest(bootstrap string) (err error) {
 	switch bootstrap {
 	case "":
 	default:
-		err := fmt.Errorf("no teardown for '%s'", bootstrap)
-		logrus.Fatal(err)
-		return err
+		logrus.Warnf("no teardown for '%s'", bootstrap)
 	}
 	return
 }

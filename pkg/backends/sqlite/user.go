@@ -78,7 +78,7 @@ func (s Sqlite) LoginUserScope(username, password string, req types.Request) (st
 		pl = helper.NewErrPayload(
 			"UNAUTHORIZED",
 			"User not found",
-			helper.NewDetailFromReq(req),
+			helper.NewDetail("repository", req.Repo, req.Method),
 		)
 		return http.StatusNotFound, role, pl, nil
 	}
@@ -92,7 +92,7 @@ func (s Sqlite) LoginUserScope(username, password string, req types.Request) (st
 		pl = helper.NewErrPayload(
 			"UNAUTHORIZED",
 			"wrong credentials",
-			helper.NewDetailFromReq(req),
+			helper.NewDetail("repository", req.Repo, req.Method),
 		)
 		l.Error("wrong credentials")
 		return http.StatusUnauthorized, role, pl, nil
@@ -103,7 +103,7 @@ func (s Sqlite) LoginUserScope(username, password string, req types.Request) (st
 			pl = helper.NewErrPayload(
 				"UNAUTHORIZED",
 				"wrong privileges",
-				helper.NewDetailFromReq(req),
+				helper.NewDetail("repository", req.Repo, req.Method),
 			)
 			l.Error("wrong privileges for PUT/POST/PATCH/DELETE")
 			return http.StatusUnauthorized, role, pl, nil

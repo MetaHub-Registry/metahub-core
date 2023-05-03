@@ -7,7 +7,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 )
 
-func Test_Layer_StoreBlobUpload(t *testing.T) {
+func TestLayerStoreBlobUpload(t *testing.T) {
 	bu, b := types.FT_arm_BlobUpload_Layer0()
 	err := mag.StoreBlobUpload(ctx, &bu, b)
 	if err != nil {
@@ -21,7 +21,7 @@ func Test_Layer_StoreBlobUpload(t *testing.T) {
 }
 
 /*
-func Test_Config_StoreBlobUpload(t *testing.T) {
+func TestConfigStoreBlobUpload(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.AddBootstrap("users")
 	bs.SetYAMLPrefix("../../../misc/yaml")

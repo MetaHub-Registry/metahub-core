@@ -10,7 +10,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func Test_ManifestFromBlob(t *testing.T) {
+func TestManifestFromBlob(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	// TODO: Bootstrap config correctly
@@ -20,7 +20,7 @@ func Test_ManifestFromBlob(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer min.PreTearDown(bs)
-	mani, err := min.NewManifestFromBytes(featureTestGenericMani)
+	mani, err := min.NewManifestDataFromBytes(ctx, featureTestGenericMani)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func Test_ManifestFromBlob(t *testing.T) {
 	assert.Equal(t, "linux", mani.Platform.OS)
 }
 
-func Test_Manifest_PutStatRemove(t *testing.T) {
+func TestManifestPutStatRemove(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	_, err := min.SetupTest(bs)

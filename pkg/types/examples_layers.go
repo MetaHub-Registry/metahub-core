@@ -173,5 +173,5 @@ func FT_arm_BlobUpload_Config() (OCIBlobUpload, []byte) {
 		Repo:          "qnib/featuretest",
 		Digest:        cfg.Digest,
 	}
-	return bu, FT_arm_ConfigByte()
+	return bu, ConfigByteFtArm64()
 }

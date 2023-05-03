@@ -32,7 +32,7 @@ func (n Neo) Collection_Create_ByYaml(ctx context.Context, ycol yamlCfg.Manifest
 	return n.CreateCollection(ctx, ycol)
 }
 
-func (n Neo) GetCollectionTag(repo, tag string) (resCol types.Collection, found bool, err error) {
+func (n Neo) Collection_Get_ByRepoTag_woManifests(ctx context.Context, repo, tag string) (resCol types.Collection, found bool, err error) {
 	q := `MATCH (c:Collection)-[:HAS_TAG]->(t) WHERE c.repo = "%s" AND t.name = "%s" RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
 	query := fmt.Sprintf(q, repo, tag)
 	res, found, err := n.QueryOne(query)
@@ -249,18 +249,21 @@ func (n Neo) Collection_Create_ByRequest(req types.Request) (col types.Collectio
 }
 
 func (n Neo) Collection_GetCreate_ByRepoTag(ctx context.Context, repo, tag string) (c types.Collection, found bool, err error) {
-	ctx, span := tracer.Start(ctx, "Collection_GetCreate_ByRepoTag")
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "neo/collection.go",
+		"func":    "Collection_GetCreate_ByRepoTag",
+		"repo":    repo,
+		"tag":     tag,
+	})
 	defer span.End()
-	span.SetAttributes(
-		attribute.Key("repo").String(repo),
-		attribute.Key("tag").String(tag),
-	)
 	ct, err := n.CollectionTag_GetCreate(ctx, tag)
 	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to get collection tag")
 		return
 	}
 	c, found, err = n.Collection_GetCreate_ByRepo(ctx, repo)
 	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to get collection")
 		return
 	}
 	c.ColTag = ct
@@ -270,27 +273,33 @@ func (n Neo) Collection_GetCreate_ByRepoTag(ctx context.Context, repo, tag strin
 	query := fmt.Sprintf(q, c.ID, ct.ID)
 	_, err = n.Execute(query)
 	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to connect collection and tag")
 		return
 	}
+	span.SetStatus(codes.Ok, "Found collection and tag")
 	return
 }
 
 func (n Neo) Collection_Get_ByRepo(ctx context.Context, repo string) (c types.Collection, found bool, err error) {
-	_, span := tracer.Start(ctx, "Collection_Get_ByRepo")
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "neo/collection.go",
+		"func":    "Collection_Get_ByRepo",
+		"repo":    repo,
+	})
 	defer span.End()
-	span.SetAttributes(
-		attribute.Key("repo").String(repo),
-	)
+	_ = ctx
 	q := `MATCH (c:Collection {repo: "%s"}) RETURN id(c) AS collectionID`
 	query := fmt.Sprintf(q, repo)
+	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(query)
 	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to execute query")
 		return
 	}
 	if found {
 		colId, e := res.GetInt64("collectionID")
 		if e != nil {
-			err = errors.Wrap(e, "failed to get collectionID from result")
+			err = utils.ErrorHandler(l, span, err, "failed to get collectionID from result")
 			return c, found, err
 		}
 		c.ID = colId
@@ -301,6 +310,12 @@ func (n Neo) Collection_Get_ByRepo(ctx context.Context, repo string) (c types.Co
 }
 
 func (n Neo) Collection_GetCreate_ByRepo(ctx context.Context, repo string) (c types.Collection, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "neo/collection.go",
+		"func":    "Collection_GetCreate_ByRepo",
+		"repo":    repo,
+	})
+	defer span.End()
 	c, found, err = n.Collection_Get_ByRepo(ctx, repo)
 	if err != nil {
 		return
@@ -310,16 +325,18 @@ func (n Neo) Collection_GetCreate_ByRepo(ctx context.Context, repo string) (c ty
 		query := fmt.Sprintf(q, repo)
 		res, err := n.Execute(query)
 		if err != nil {
+			err = utils.ErrorHandler(l, span, err, "failed to create collection")
 			return c, found, err
 		}
 		colId, e := res.GetInt64("collectionID")
 		if e != nil {
-			err = errors.Wrap(e, "failed to get collectionID from result")
+			err = utils.ErrorHandler(l, span, err, "failed to get collectionID from result")
 			return c, found, err
 		}
 		c.ID = colId
 		c.Repo = repo
 	}
+	utils.Debug(l, span, "found or created collection w/ id: %d", c.ID)
 	return
 }
 
@@ -565,128 +582,6 @@ func (n Neo) Collection_GetInsert_ByRequest(ctx context.Context, req types.Reque
 	return
 }
 
-func (n Neo) CollectionManifest_ByRequest(req types.Request, mani types.ManifestData) (err error) {
-	/*
-		ctx := context.Background()
-		DOes not work anymore
-		// Add Manifest
-		err = n.Manifest_GetInsert(ctx, &mani)
-		if err != nil {
-			logrus.Error(err)
-			return
-		}
-		// Config
-		cfgID, err := n.Config_Insert(ctx, mani.Config)
-		if err != nil {
-			logrus.Error(err)
-			return
-		}
-		err = n.LinkManifestToConfig(ctx, mani.ID, cfgID)
-		if err != nil {
-			logrus.Error(err)
-			return
-		}
-
-		// Platform
-		err = n.Platform_GetInsert(&mani.Platform)
-		if err != nil {
-			logrus.Error(err)
-			return
-		}
-		err = n.LinkManifestToPlatform(ctx, mani.ID, mani.Platform.ID)
-		if err != nil {
-			logrus.Error(err)
-			return
-		}
-		//  Deal with upstream / collection
-		// 1. create upstream that is unique to the repo:tag-profile
-		maniUp := mani.Upstream
-		if maniUp != (types.Upstream{}) {
-			// Let's only do upstream if the manifest provides one
-			maniUp.Tag = fmt.Sprintf("%s-%s", req.Tag, mani.Platform.GetTag())
-			found, err := n.Upstream_GetInsert(&maniUp)
-			if err != nil {
-				err = errors.Wrap(err, "failed to Upstream_GetInsert")
-				logrus.Error(err)
-				return err
-			}
-			if found {
-				//Do we need to create a new upstream?
-				logrus.Warnf("Upstream already exists: %s/%s:%s", maniUp.Reg, maniUp.Repo, maniUp.Tag)
-			}
-		} else {
-			// Manifest does not come with upstream, we'll create a fake one with the current profile
-			// -> <repo>:<tag>-<PlatformTag>
-			maniUp = types.Upstream{
-				Reg:  req.Host,
-				Repo: req.Repo,
-				Tag:  fmt.Sprintf("%s-%s", req.Tag, mani.Platform.GetTag()),
-			}
-			found, err := n.Upstream_GetInsert(&maniUp)
-			if err != nil {
-				err = errors.Wrap(err, "failed to Upstream_GetInsert")
-				logrus.Error(err)
-				return err
-			}
-			if found {
-				// Do we need to create a new upstream?
-				logrus.Warnf("Upstream already exists: %s/%s:%s", maniUp.Reg, maniUp.Repo, maniUp.Tag)
-			}
-		}
-		// 1.1 Link Manifest To Upstream
-		err = n.LinkManifestToUpstream(ctx, mani.ID, maniUp.ID)
-		if err != nil {
-			logrus.Error(err)
-			return
-		}
-		// 2. create collection for the repo:tag
-		// Collection and Tag
-		colTag, foundColTag, err := n.CollectionTag_GetByTag(req.Tag)
-		if err != nil {
-			logrus.Error(err)
-			return
-		}
-		if !foundColTag {
-			colTag, err = n.CollectionTag_Create(req.Tag)
-			if err != nil {
-				logrus.Error(err)
-				return
-			}
-		}
-		col, foundCol, err := n.Collection_Get_ByRepo(req.Repo)
-		if err != nil {
-			logrus.Error(err)
-			return
-		}
-		if !foundCol {
-			col, err = n.Collection_Create_ByRequest(req)
-			if err != nil {
-				logrus.Error(err)
-				return
-			}
-		}
-		col.ColTag = colTag
-		// 2.1 Link Collection to Tag
-		err = n.LinkCollectionTagToManifest(ctx, colTag.ID, mani.ID)
-		if err != nil {
-			logrus.Error(err)
-			return
-		}
-		err = n.LinkCollectionToManifest(ctx, col.ID, mani.ID)
-		if err != nil {
-			logrus.Error(err)
-			return
-		}
-		// 3. create/update manifestlist for given collection with additional manifest in it
-		err = n.ComputeManifestlists_ForCollection(ctx, col)
-		if err != nil {
-			logrus.Error(err)
-			return
-		}
-	*/
-	return
-}
-
 func CollectionFromResult(res types.Result) (col types.Collection, err error) {
 	err = res.CheckKeys("tagID", "tagName", "collectionID", "collectionRepo")
 	if err != nil {
@@ -741,7 +636,7 @@ func (n Neo) Collection_Remove(ctx context.Context, col types.Collection) (found
 	}
 	if !found {
 		// Might not be a full collection
-		c, found, err = n.GetCollectionTag(col.Repo, col.Tag)
+		c, found, err = n.Collection_Get_ByRepoTag_woManifests(ctx, col.Repo, col.Tag)
 		if err != nil {
 			err = errors.Wrap(err, "failed to GetCollectionTag")
 			logrus.Error(err)

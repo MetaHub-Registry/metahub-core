@@ -19,20 +19,26 @@ func ManifestReferenceByte_FT_arm() []byte {
 	  }`)
 }
 
+func ManifestDataAmd64Byte() DataTuple {
+	return NewDataTuple("data/manifests/5bf8eee20fde14eb6e3e924c18fafa4d816e131f315810875136f0438ff7beed.json")
+}
+
+func ManifestDataByteZen3() DataTuple {
+	return NewDataTuple("data/manifests/5e0d3e9bb9adff191e78f13dc6e79626bf29000648f0fa94ec5a028462ae5e89.json")
+}
+
 func FT_amd_ManifestData() ManifestData {
-	dat, err := f.ReadFile("data/manifests/5bf8eee20fde14eb6e3e924c18fafa4d816e131f315810875136f0438ff7beed.json")
-	if err != nil {
-		panic(err)
-	}
+	dt := ManifestDataAmd64Byte()
+
 	cfg := FT_amd64_Config()
 	l0 := FT_amd_Layer0Reference()
 	l1 := FT_amd_Layer1Reference()
 	up := FT_amd_Upstream()
 	mani := ManifestData{
-		Digest:    string(digest.FromBytes(dat)),
+		Digest:    string(digest.FromBytes(dt.Data)),
 		Size:      735,
 		MediaType: "application/vnd.docker.distribution.manifest.v2+json",
-		Data:      dat,
+		Data:      dt.Data,
 		Config:    cfg,
 		Upstream:  up,
 		Platform: Platform{

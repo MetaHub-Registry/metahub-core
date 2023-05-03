@@ -12,6 +12,13 @@ type Annotations struct {
 	Data map[string]Annotation
 }
 
+func (a Annotations) ToSlice() []Annotation {
+	res := []Annotation{}
+	for _, v := range a.Data {
+		res = append(res, v)
+	}
+	return res
+}
 func NewAnnotations() Annotations {
 	return Annotations{
 		Keys: set.NewStringSet(),

@@ -41,19 +41,69 @@ func (n Neo) Config_GetID_ByDigest(ctx context.Context, dig string) (cfgID int64
 	return
 }
 
+func (n Neo) Config_Get_ByManiDataID(ctx context.Context, mdID int64) (cfg types.Config, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":    "neo/config.go",
+		"func":       "Config_Get_ByManiDataID",
+		"maniDataID": mdID,
+	})
+	defer span.End()
+	q := fmt.Sprintf(`MATCH (md:ManifestData)-[]->(n:Config) WHERE id(md) = %d`, mdID)
+	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize`
+	utils.Debug(l, span, q)
+	res, found, err := n.QueryOne(q)
+	if err != nil {
+		utils.ErrorHandler(l, span, err, "Failed to run query")
+		return
+	}
+	if !found {
+		utils.Debug(l, span, "Config not found for manifestDataID %d", mdID)
+		return
+	}
+	cfg, err = n.ConfigFromResult(ctx, res)
+	if err != nil {
+		utils.ErrorHandler(l, span, err, "failed to create config from DB result")
+		return
+	}
+	return
+}
+
+func (n Neo) Config_Get_ByID(ctx context.Context, cfgID int64) (cfg types.Config, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":  "neo/config.go",
+		"func":     "Config_Get_ByID",
+		"configID": cfgID,
+	})
+	defer span.End()
+	q := fmt.Sprintf(`MATCH (n:Config) WHERE id(n) = %d`, cfgID)
+	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize`
+	utils.Debug(l, span, q)
+	res, found, err := n.QueryOne(q)
+	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "Failed to run query")
+		return
+	}
+	if !found {
+		utils.Debug(l, span, "Config not found for ID %d", cfgID)
+		return
+	}
+	cfg, err = n.ConfigFromResult(ctx, res)
+	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to create config from DB result")
+		return
+	}
+	return
+}
+
 func (n Neo) Config_GetByDigest(ctx context.Context, dig string) (cfg types.Config, found bool, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "neo/config.go",
 		"func":    "Config_GetByDigest",
 	})
-	ctx, span := tracer.Start(ctx, "Config_GetByDigest")
 	_ = ctx
 	defer span.End()
 	if dig == "" {
-		err = errors.New("digest is empty")
-		l.Error(err)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		err = utils.NewError(l, span, "digest is empty")
 		return
 	}
 	shortDig := utils.ShortenDigest(dig)
@@ -62,30 +112,19 @@ func (n Neo) Config_GetByDigest(ctx context.Context, dig string) (cfg types.Conf
 	)
 	q := fmt.Sprintf(`MATCH (n:Config) WHERE n.digest = "%s"`, dig)
 	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize`
-	l.Debug(q)
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
-	))
+	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
+		err = utils.ErrorHandler(l, span, err, "Failed to run query")
 		return
 	}
 	if !found {
-		msg := fmt.Sprintf("Config '%s' not found", shortDig)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
-		))
-		l.Debug(msg)
+		utils.Debug(l, span, "Config '%s' not found", shortDig)
 		return
 	}
 	cfg, err = n.ConfigFromResult(ctx, res)
 	if err != nil {
-		err = errors.Wrap(err, "failed to create config from DB result")
-		l.Error(err)
-		span.RecordError(err)
+		err = utils.ErrorHandler(l, span, err, "failed to create config from DB result")
 		return
 	}
 	return
