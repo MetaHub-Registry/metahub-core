@@ -1,7 +1,7 @@
 package neo
 
 /*
-func Test_ManifestList_CRUD(t *testing.T) {
+func TestManifestListCRUD(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
@@ -79,7 +79,7 @@ func Test_ManifestList_CRUD(t *testing.T) {
 }
 }
 
-func Test_ManifestList_ByRequest_SeedNeo_Skylake(t *testing.T) {
+func TestManifestListByRequestSeedNeoSkylake(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()

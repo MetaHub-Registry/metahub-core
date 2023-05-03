@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_Filter_CRD(t *testing.T) {
+func TestFilterCRD(t *testing.T) {
 	f0, err := NewFilter("foo_filter", "anno", "eq", "foo", "bar")
 	if err != nil {
 		t.Fatal(err)

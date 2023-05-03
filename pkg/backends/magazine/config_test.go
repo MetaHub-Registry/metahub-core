@@ -10,7 +10,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func Test_Config_StoreConfigUpload(t *testing.T) {
+func TestConfigStoreConfigUpload(t *testing.T) {
 	bs := utils.NewBootstrap()
 	debug := 0
 	bs.SetEmptyAll()

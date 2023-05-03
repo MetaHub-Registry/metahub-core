@@ -108,6 +108,49 @@ func GetBlobByUpstreamTripleByDigest(ctx context.Context, up UpstreamTriple, dig
 	return
 }
 
+func GetManifest_ByUpstreamByDigest(ctx context.Context, up mhTypes.Upstream) (b []byte, blob mhTypes.BlobMeta, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tr, map[string]any{
+		"package": "magazine/upstream.go",
+		"func":    "upstreamBlob_Insert",
+		"reg":     up.Reg,
+		"repo":    up.Repo,
+		"tag":     up.Tag,
+		"profile": up.Profile,
+		"digest":  up.Digest.String(),
+	})
+	defer span.End()
+	blobUrl := fmt.Sprintf("%s/%s", up.Reg, up.Repo)
+	utils.Debug(l, span, "blobUrl: %s", blobUrl)
+	blob = mhTypes.BlobMeta{}
+	rc := regcli.NewRegClient(up.Reg)
+	ref, e := ref.New(blobUrl)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "Failed creating ref")
+		return
+	}
+	var mani manifest.Manifest
+	// If we have a digest we use it
+	if up.Digest.String() == "" {
+		err = utils.NewError(l, span, "No digest provided")
+		return
+	}
+	d := types.Descriptor{
+		MediaType: types.MediaTypeDocker2Manifest,
+		Digest:    up.Digest,
+		Platform:  &platform.Platform{},
+	}
+	mani, err = rc.ManifestGet(ctx, ref, regclient.WithManifestDesc(d))
+	b, err = mani.RawBody()
+	if err != nil {
+		err = utils.ErrorHandler(l, span, e, "Failed creating ref")
+		return
+	}
+	blob.Digest = mani.GetDescriptor().Digest
+	blob.Size = mani.GetDescriptor().Size
+	blob.MediaType = mani.GetDescriptor().MediaType
+	return
+}
+
 func GetManifestByUpstreamTripleByDigest(ctx context.Context, up UpstreamTriple) (b []byte, blob mhTypes.BlobMeta, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package":    "neomin",

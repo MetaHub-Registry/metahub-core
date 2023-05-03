@@ -11,6 +11,8 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+	v1RC "github.com/regclient/regclient/types/oci/v1"
+
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
@@ -23,22 +25,28 @@ import (
 )
 
 func (m Minio) GetConfig(ctx context.Context, dig string) (cfg v1.Image, found bool, err error) {
-	b, err := m.ConfigGetBytes(ctx, dig)
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "minio/config.go",
+		"func":    "minio.GetConfig",
+		"digest":  dig,
+	})
+	defer span.End()
+	b, e := m.ConfigGetBytes(ctx, dig)
 	switch {
-	case err != nil && err.Error() == "The specified key does not exist.":
-		// found is false
+	case e != nil && e.Error() == "The specified key does not exist.":
+		utils.Warn(l, span, "digest not found in storage")
 		err = nil
 		return
-	case err != nil:
-		logrus.Warn(err)
+	case e != nil:
+		err = utils.ErrorHandler(l, span, e, "failed to ConfigGetBytes")
 		return
 	}
 	// No error - off we go
 	found = true
 	cfg = v1.Image{}
-	err = json.Unmarshal(b, &cfg)
-	if err != nil {
-		logrus.Errorf("failed to unmarshal v1.Image: %v", err)
+	e = json.Unmarshal(b, &cfg)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to unmarshal v1.Image: %v", err)
 		return
 	}
 	if cfg.Config.Labels == nil {
@@ -84,41 +92,51 @@ func (m Minio) GetConfigByUpTriple(ctx context.Context, up upstream.UpstreamTrip
 }
 
 func (m Minio) ConfigGetBytes(ctx context.Context, path string) (b []byte, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "backends/minio",
 		"func":    "ConfigGetBytes",
 	})
+	defer span.End()
 	cli := m.BucketConfig[configsBucketKey].Client
 	_, err = cli.StatObject(ctx, m.GetConfigsBucketName(), path, minio.StatObjectOptions{})
 	if err != nil {
 		return
 	}
-	obj, err := cli.GetObject(ctx, m.GetConfigsBucketName(), path, minio.GetObjectOptions{})
-	if err != nil {
-		l.Errorf("Error getting config: %s", err)
+	obj, e := cli.GetObject(ctx, m.GetConfigsBucketName(), path, minio.GetObjectOptions{})
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "error getting config")
 		return b, err
 	}
 	defer obj.Close()
-	b, e := io.ReadAll(obj)
+	b, e = io.ReadAll(obj)
 	if e != nil {
-		err := errors.Wrap(e, "failed to read config obj")
-		l.Fatal(err)
+		err = utils.ErrorHandler(l, span, e, "failed to read config obj")
+		return b, err
 	}
+	utils.Debug(l, span, "got config obj with len %d", len(b))
 	return
 }
 
 func (m Minio) ConfigGetObj(ctx context.Context, path string) (cfg types.Config, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "backends/minio",
-		"func":    "ConfigGetObj",
+		"func":    "minio.ConfigGetObj",
 		"path":    path,
 	})
+	defer span.End()
 	b, err := m.ConfigGetBytes(ctx, path)
 	if err != nil {
-		l.Error(err)
+		err = utils.ErrorHandler(l, span, err, "failed to ConfigGetBytes")
 		return cfg, err
 	}
-	return ConfigFromCfgBlob(b)
+	utils.Debug(l, span, "got config obj with len %d", len(b))
+	cfg, err = ConfigFromCfgBlob(ctx, b)
+	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to ConfigFromCfgBlob")
+		return cfg, err
+	}
+
+	return
 }
 
 func (m Minio) PutConfig(ctx context.Context, b []byte, dig string) (err error) {
@@ -151,11 +169,13 @@ func (m Minio) ConfigPutObj(ctx context.Context, object string, data []byte) (er
 	return
 }
 
-func ConfigFromCfgBlob(blob []byte) (cfg types.Config, err error) {
-	l := logrus.WithFields(logrus.Fields{
+func ConfigFromCfgBlob(ctx context.Context, blob []byte) (cfg types.Config, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "backends/minio",
 		"func":    "ConfigGetObj",
 	})
+	defer span.End()
+	_ = ctx
 	var desc distribution.Descriptor
 	err = json.Unmarshal(blob, &desc)
 	if err != nil {
@@ -171,8 +191,7 @@ func ConfigFromCfgBlob(blob []byte) (cfg types.Config, err error) {
 		cfg.Digest = digest.FromBytes(blob).String()
 	} else {
 		if cfg.Digest != digest.FromBytes(blob).String() {
-			err = fmt.Errorf("digest mismatch: %s != %s", cfg.Digest, digest.FromBytes(blob).String())
-			l.Error(err)
+			err = utils.NewError(l, span, "digest mismatch: %s != %s", cfg.Digest, digest.FromBytes(blob).String())
 			return
 		}
 	}
@@ -180,15 +199,26 @@ func ConfigFromCfgBlob(blob []byte) (cfg types.Config, err error) {
 		cfg.Size = int64(len(blob))
 	} else {
 		if cfg.Size != int64(len(blob)) {
-			err = fmt.Errorf("size mismatch: %d != %d", cfg.Size, len(blob))
-			l.Error(err)
+			err = utils.NewError(l, span, "size mismatch: %d != %d", cfg.Size, len(blob))
 			return
 		}
+	}
+
+	if cfg.MediaType == "" {
+		v1Cfg := v1RC.Image{}
+		err = json.Unmarshal(blob, &v1Cfg)
+		if err != nil {
+			err = utils.ErrorHandler(l, span, err, "failed to unmarshal v1 config")
+			return
+		}
+		cfg.Cfg = v1Cfg
+		cfg.MediaType = v1.MediaTypeImageConfig
 	}
 	return
 }
 
 func (m Minio) configGetter(bi imgTypes.BlobInfo) (b []byte, err error) {
+	logrus.Warnf("configGetter :%s", bi.Digest.String())
 	return m.ConfigGetBytes(context.Background(), bi.Digest.String())
 }
 

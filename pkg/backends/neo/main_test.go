@@ -77,7 +77,7 @@ func SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 	return db.BootstrapTest(bs)
 }
 
-func Test_NeoTest(t *testing.T) {
+func TestNeoTest(t *testing.T) {
 	//ctx := context.Background()
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()

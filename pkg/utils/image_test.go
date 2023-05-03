@@ -14,7 +14,7 @@ var (
 	mirrorConfiguration = `unqualified-search-registries = ["docker.io"]`
 )
 
-func Test_SplitImage(t *testing.T) {
+func TestSplitImage(t *testing.T) {
 	tests := []struct {
 		image string
 		err   bool
@@ -64,7 +64,7 @@ func Test_SplitImage(t *testing.T) {
 func getMirrorConf(regs []string) []byte {
 	return []byte(fmt.Sprintf(`unqualified-search-registries = ["%s"]`, strings.Join(regs, `", "`)))
 }
-func Test_NormalizeRepoName_v0(t *testing.T) {
+func TestNormalizeRepoNameV0(t *testing.T) {
 	input := "alpine"
 	exp := "docker.io/library/alpine:latest"
 	got, err := NormalizeRepoName(input)
@@ -84,7 +84,7 @@ func Test_NormalizeRepoName_v0(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func Test_NormalizeRepoName_v1(t *testing.T) {
+func TestNormalizeRepoNamev1(t *testing.T) {
 	input := "alpine"
 	exp := "docker.io/library/alpine:latest"
 	got, err := NormalizeRepoName(input)

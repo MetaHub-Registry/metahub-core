@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func Test_ProfilePair(t *testing.T) {
+func TestProfilePair(t *testing.T) {
 	p0 := Profile{
 		ID:   1,
 		Name: "name",

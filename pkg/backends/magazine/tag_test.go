@@ -8,7 +8,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func Test_TagList(t *testing.T) {
+func TestTagList(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("platforms:generic")

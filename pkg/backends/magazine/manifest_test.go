@@ -4,6 +4,7 @@ import (
 	"context"
 	b64 "encoding/base64"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/opencontainers/go-digest"
@@ -32,7 +33,7 @@ var cfgWithLabels = []byte(`{
 	"layers": []
 	}`)
 */
-func Test_CachManifest(t *testing.T) {
+func TestCachManifest(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	_, err := mag.SetupTest(ctx, bs)
@@ -72,7 +73,7 @@ func Test_CachManifest(t *testing.T) {
 
 }
 
-func Test_storeManifestUpload_OCIManifest(t *testing.T) {
+func TestStoreManifestUploadOCIManifest(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	bs.SetYAMLPrefix("../../../misc/yaml")
@@ -117,7 +118,7 @@ func Test_storeManifestUpload_OCIManifest(t *testing.T) {
 	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", minMani.Digest)
 }
 
-func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer(t *testing.T) {
+func TestManifestStoreManifestUploadEmbeddedConfigNoLayer(t *testing.T) {
 	bs := utils.NewBootstrap()
 	//debug = 300
 	bs.SetEmptyAll()
@@ -193,7 +194,7 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer(t *testing.T) {
 	//assert.Equal(t, 1, len(cols))
 }
 
-func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer_with_Labels(t *testing.T) {
+func TestManifestStoreManifestUploadEmbeddedConfigNoLayerwithLabels(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	bs.AddBootstrap("users")
@@ -279,7 +280,7 @@ func Test_Manifest_StoreManifestUpload_EmbeddedCOnfig_NoLayer_with_Labels(t *tes
 	assert.Equal(t, "oci/conformance", gotMani.Upstream.Repo)
 }
 
-func Test_Manifest_ComputeManifestForProfile(t *testing.T) {
+func TestManifestComputeManifestForProfile(t *testing.T) {
 	ctx := context.Background()
 	debug := 0
 	bs := utils.NewBootstrap()
@@ -356,4 +357,73 @@ func Test_Manifest_ComputeManifestForProfile(t *testing.T) {
 		t.Fatal("ManifestData not found")
 	}
 	assert.NotEqual(t, mdID, maniID)
+}
+
+func TestGetManifest(t *testing.T) {
+	ctx := context.Background()
+	_ = ctx
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("users")
+	bs.AddBootstrap("platforms:amd64")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("profile:profiles/generic.yaml")
+	bs.AddBootstrap("config:ft_amd64")
+	bs.AddBootstrap("config:ft_amd64_83f")
+	bs.AddBootstrap("upstream:ft_amd64")
+	bs.AddBootstrap("manifest:ft_amd64")
+	bs.AddBootstrap("layer:0:ft_amd64")
+	bs.AddBootstrap("layer:1:ft_amd64")
+	bs.AddBootstrap("manifestdata:ft_amd64")
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := mag.SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	if err != nil {
+		t.Logf("Error while SetupTest: %v", err)
+		TeardownTest(bs)
+		t.Fatal(err)
+
+	}
+	defer TeardownTest(bs)
+	// Actual test
+	token, err := br.Get("user:test#bearer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	testOrg := "qnib-pub-containers"
+	testRepo := "qnib"
+	testImage := "plain-featuretest"
+	testTag := "20220715-amd64-generic"
+	testProfile := "generic"
+	/// via HTTPRequest
+	_, rMDGet := utils.CreateNewHTTPTest(http.MethodGet, map[string]string{
+		"repo":      testOrg,
+		"repo2":     testRepo,
+		"image":     testImage,
+		"reference": testTag,
+	}, map[string]string{
+		"accountName": token,
+		"userName":    testRepo,
+		"profileName": testProfile,
+	}, map[string]string{
+		"Authorization": fmt.Sprintf("Bearer %s", token),
+	}, "/{repo}/{repo2}/{image}/manifests/{reference}", nil)
+
+	md, found, err := mag.ManifestGetByHTTPRequest(ctx, rMDGet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("ManifestData not found")
+	}
+	assert.Equal(t, "application/vnd.docker.distribution.manifest.v2+json", md.MediaType)
 }

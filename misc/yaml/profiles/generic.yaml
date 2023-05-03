@@ -1,0 +1,1 @@
+rule: os:linux=true && cpu:noop=true

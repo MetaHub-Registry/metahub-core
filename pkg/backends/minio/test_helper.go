@@ -145,11 +145,21 @@ func NewBucketConfig(bucket, url, console string) BucketConfig {
 
 func Setup_Config_FT_arm64(min *Minio, br *utils.BootstrapResult) (err error) {
 	ctx := context.Background()
-	cfgByte := types.FT_arm_ConfigByte()
+	cfgByte := types.ConfigByteFtArm64()
 	cfgDig := digest.FromBytes(cfgByte)
 	err = min.ConfigPutObj(ctx, cfgDig.String(), cfgByte)
 	return
 }
+
+func SetupConfig83f(min *Minio, br *utils.BootstrapResult) (err error) {
+	ctx := context.Background()
+	dt := types.ConfigByteFtArm64x83f()
+	cfgByte := dt.Data
+	cfgDig := digest.FromBytes(cfgByte)
+	err = min.ConfigPutObj(ctx, cfgDig.String(), cfgByte)
+	return
+}
+
 func Setup_Config_FT_amd64_b109(min *Minio, br *utils.BootstrapResult) (err error) {
 	ctx := context.Background()
 	cfgByte := types.FT_amd64_b109_ConfigByte()
@@ -205,6 +215,12 @@ func (m Minio) BootstrapTestWithBR(b string, br *utils.BootstrapResult) (err err
 			err = errors.Wrapf(err, "while '%s'", b)
 			return
 		}
+	case "config:ft_amd64_83f":
+		err = SetupConfig83f(&m, br)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
 	case "layer:0:ft_arm64":
 		err = m.Setup_Layer(br, types.FT_arm64_Layer0(), b)
 		if err != nil {
@@ -233,6 +249,13 @@ func (m Minio) BootstrapTestWithBR(b string, br *utils.BootstrapResult) (err err
 		err := m.PutConfig(ctx, featureTestGenericCfg, featureTestGenericCfgDigest)
 		if err != nil {
 			logrus.Fatal(err)
+		}
+	case "manifestdata:ft_amd64":
+		dt := types.ManifestDataAmd64Byte()
+		err = m.ManifestsPutObj(ctx, dt.Digest.String(), dt.Data)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
 		}
 	default:
 		logrus.Warnf("unknown MinIO bootstrap '%s'", b)

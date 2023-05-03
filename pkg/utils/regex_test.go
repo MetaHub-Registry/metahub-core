@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_utils_Regex(t *testing.T) {
+func TestUtilsRegex(t *testing.T) {
 	r := regexp.MustCompile(`^(?P<repo>[^:]+):(?P<tag>.*)$`)
 	str := "alpine:3.16"
 	exp := "alpine"

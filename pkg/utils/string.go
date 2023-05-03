@@ -95,6 +95,9 @@ func ShortenMediaType(mediatype string) (res string) {
 		if strings.HasSuffix(res, "+gzip") {
 			res = strings.ReplaceAll(res, "+gzip", "GZIP")
 		}
+		if strings.HasSuffix(res, "+zstd") {
+			res = strings.ReplaceAll(res, "+zstd", "ZSTD")
+		}
 	} else {
 		res = mediatype
 	}
@@ -145,26 +148,23 @@ func CreateLabelFromTypeAndDigest(md, dig string) string {
 	label := ShortenMediaType(md)
 	d := ShortenDigest(dig)
 	switch label {
-	case "oci.image.index.v1+json":
+	case
+		"oci.image.index.v1+json",
+		"oci.image.config.v1+json", "oci_image_manifest_v1JSON":
 		label = fmt.Sprintf("oci:%s", d)
-	case "oci.image.config.v1+json":
-		label = fmt.Sprintf("oci:%s", d)
-	case "oci.image.manifest.v1+json":
-		label = fmt.Sprintf("oci:%s", d)
-	case "docker.distribution.manifest.v2+json":
+	case
+		"docker_distribution_manifest_v2JSON",
+		"docker.container.image.v1+json",
+		"docker.image.manifest.list.v2+json":
 		label = fmt.Sprintf("dkr:%s", d)
-	case "docker.image.manifest.list.v2+json":
-		label = fmt.Sprintf("dkr:%s", d)
-	case "oci.image.layer.v1.tar+gzip":
+	case "oci_image_layer_v1_tarGZIP":
 		label = fmt.Sprintf("ociGz:%s", d)
-	case "oci.image.layer.v1.tar":
-		label = fmt.Sprintf("ociTar:%s", d)
-	case "docker.container.image.v1+json":
-		label = fmt.Sprintf("dkr:%s", d)
-	case "docker.image.rootfs.diff.tar.gzip":
+	case "oci_image_layer_v1_tarZSTD":
+		label = fmt.Sprintf("ociZstd:%s", d)
+	case "docker_image_rootfs_diff_tar_gzip":
 		label = fmt.Sprintf("dkrGz:%s", d)
-	case "docker.image.rootfs.diff.tar":
-		label = fmt.Sprintf("dkrTar:%s", d)
+	case "docker_image_rootfs_diff_tar":
+		label = fmt.Sprintf("dkr:%s", d)
 	default:
 		label = fmt.Sprintf("??:%s", d)
 	}

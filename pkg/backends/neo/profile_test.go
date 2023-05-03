@@ -9,7 +9,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func Test_Profile_CRUD(t *testing.T) {
+func TestProfileCRUD(t *testing.T) {
 	ctx := context.Background()
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
@@ -83,7 +83,7 @@ func Test_Profile_CRUD(t *testing.T) {
 	assert.NotNil(t, pGen.ID)
 }
 
-func Test_Profile_FromManifestID(t *testing.T) {
+func TestProfileFromManifestID(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("platforms:generic")
@@ -157,7 +157,7 @@ func Test_Profile_FromManifestID(t *testing.T) {
 	assert.Equal(t, 1, len(prfs_zen3))
 }
 
-func Test_Profile_FromManifestID_Zen3(t *testing.T) {
+func TestProfileFromManifestIDZen3(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()

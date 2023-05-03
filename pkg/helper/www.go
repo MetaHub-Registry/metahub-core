@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/sirupsen/logrus"
-	"github.com/metahub-registry/metahub-core/pkg/types"
 )
 
 /*
@@ -48,23 +47,18 @@ func NewDetail(dType, dName, dAction string) Detail {
 	if dName == "" {
 		dName = "unknown"
 	}
+	switch dAction {
+	case "HEAD", "GET":
+		dAction = "pull"
+	case "PUT", "POST", "PATCH":
+		dAction = "pull"
+	case "DELETE":
+		dAction = "del"
+	}
 	return Detail{
 		Type:   dType,
 		Name:   dName,
 		Action: dAction,
-	}
-}
-
-func NewDetailFromReq(req types.Request) Detail {
-	// TODO: Better logic here
-	repo := req.Repo
-	if repo == "" {
-		repo = "unknown"
-	}
-	return Detail{
-		Type:   "repository",
-		Name:   repo,
-		Action: "pull",
 	}
 }
 

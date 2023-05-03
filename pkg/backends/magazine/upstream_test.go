@@ -12,131 +12,154 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func Test_Upstream_ManifestInsert(t *testing.T) {
+func TestUpstreamManifestInsert(t *testing.T) {
 	ctx := context.Background()
+	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
-	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("platforms:amd64")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("profile:profiles/generic.yaml")
 	bs.AddBootstrap("rules:rules/cpu/zen2.yaml")
 	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target.microarch:zen2")
 	bs.AddBootstrap("profile:profiles/cpu/zen2.yaml")
 	bs.SetEmptyAll()
-	//bs.PostTestSleep = 300
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
 	br, err := mag.SetupTest(ctx, bs)
-	_ = br
-	//br.PrintDict()
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
 	if err != nil {
-		mag.Database.TeardownTest(bs)
+		TeardownTest(bs)
 		t.Fatal(err)
 	}
 	defer mag.Database.TeardownTest(bs)
 	// Actual test
-	//// ZEN2
-	req2 := types.Request{
+	//// Generic
+	reqGen := types.Request{
 		Host:    regHttpURI,
 		Repo:    "alpine",
 		Tag:     "3.17.3",
-		Profile: "cpu#zen2",
+		Profile: "generic",
 	}
-	blob2 := types.BlobMeta{
+	_, _, e := mag.Database.Collection_GetCreate_ByRepoTag(ctx, reqGen.Repo, reqGen.Tag)
+	if e != nil {
+		t.Fatal(e)
+	}
+
+	blobGen := types.BlobMeta{
 		MediaType: "application/vnd.docker.distribution.manifest.v2+json",
 		Digest:    "sha256:b5a5b7ce4eabc8414bf367761a28f4e8b16952ce5de537c15ed917b71b245f11",
 	}
-	err = mag.UpstreamBlob_InsertManifest(ctx, req2, blob2)
+	err = mag.UpstreamBlob_InsertManifest(ctx, reqGen, blobGen)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Original image should not have Zen3 manipulations
+	mdOrig, mdOrigFound, err := mag.Database.ManifestData_GetPulled_ByRepoTag(ctx, reqGen.Repo, reqGen.Tag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !mdOrigFound {
+		t.Fatal("original manifest data not found")
+	}
+	assert.Greater(t, mdOrig.ID, int64(1))
+	cfgOrig, cfgOrigFound, err := mag.Config_GetByID(ctx, mdOrig.Config.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfgOrigFound {
+		t.Fatal("config not found")
+	}
+	expEnvOrig := []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
+	assert.Equal(t, expEnvOrig, cfgOrig.Cfg.Config.Env)
 	/// is blob present: manifest
-	upMani2 := upstream.UpstreamTriple{
-		Reg:       req2.Host,
-		Repo:      req2.Repo,
-		Tag:       req2.Tag,
-		Digest:    blob2.Digest,
-		MediaType: blob2.MediaType,
+	upManiGen := upstream.UpstreamTriple{
+		Reg:       reqGen.Host,
+		Repo:      reqGen.Repo,
+		Tag:       reqGen.Tag,
+		Digest:    blobGen.Digest,
+		MediaType: blobGen.MediaType,
 	}
-	_, found2, err := mag.Minio.GetManifest(ctx, upMani2)
+	_, foundGen, err := mag.Minio.GetManifest(ctx, upManiGen)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.True(t, found2)
-	maniLabel2 := fmt.Sprintf("%s/alpine:3.17.3@cpu#zen2", regHttpURI)
-	mani2, _, err := mag.Database.Manifest_GetByLabel(ctx, maniLabel2)
+	assert.True(t, foundGen)
+	maniLabelGen := fmt.Sprintf("%s/alpine:3.17.3", regHttpURI)
+	maniGen, _, err := mag.Database.Manifest_GetByLabel(ctx, maniLabelGen)
 	if err != nil {
-		t.Logf("maniLabel: %s", maniLabel2)
+		t.Logf("maniLabel: %s", maniLabelGen)
 		t.Fatal(err)
 	}
-	assert.Equal(t, "alpine", mani2.Upstream.Repo)
+	assert.Equal(t, "alpine", maniGen.Upstream.Repo)
 	// TODO: check if upstream is in DB
-	// TODO: check if upstream is linked to manifest
+	q := fmt.Sprintf(`MATCH (u:Upstream)<-[:UPSTREAM]-(m:Manifest) WHERE id(m)=%d RETURN u.repo AS upRepo, u.tag AS upTag`, maniGen.ID)
+	t.Log(q)
+	res, found, err := mag.Database.QueryOne(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("upstream not found")
+	}
+	var gotUpRepo, gotUpTag string
+	if gotUpRepo, err = res.GetStr("upRepo"); err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "alpine", gotUpRepo)
+	if gotUpTag, err = res.GetStr("upTag"); err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "3.17.3", gotUpTag)
 	// TODO: check if manifest is linked to profile
+	prfs, err := mag.Database.Profile_FromManifestID(ctx, maniGen.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prfs) != 1 {
+		t.Fatalf("expected 1 profile, got %d", len(prfs))
+	}
+	prf := prfs[0]
+	assert.Equal(t, "generic", prf.Label, prf)
 	// TODO: Minio
 	/// TODO: is blob present: cfg
 	//        _, found, err := mag.Minio.GetConfig(ctx, maniData)
 }
 
-func Test_Upstream_ManifestInsert_Zen2_Zen3(t *testing.T) {
+func TestUpstreamManifestInsertZen3(t *testing.T) {
 	ctx := context.Background()
+	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
-	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("rules:rules/cpu/zen2.yaml")
-	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target.microarch:zen2")
-	bs.AddBootstrap("profile:profiles/cpu/zen2.yaml")
+	bs.AddBootstrap("platforms:amd64")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("profile:profiles/generic.yaml")
 	bs.AddBootstrap("rules:rules/cpu/zen3.yaml")
 	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target.microarch:zen3")
 	bs.AddBootstrap("profile:profiles/cpu/zen3.yaml")
 	bs.SetEmptyAll()
-	//bs.PostTestSleep = 300
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
 	br, err := mag.SetupTest(ctx, bs)
-	_ = br
-	//br.PrintDict()
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
 	if err != nil {
 		TeardownTest(bs)
 		t.Fatal(err)
 	}
 	defer TeardownTest(bs)
 	// Actual test
-	//// ZEN2
-	req2 := types.Request{
-		Host:    regHttpURI,
-		Repo:    "alpine",
-		Tag:     "3.17.3",
-		Profile: "cpu#zen2",
-	}
-	blob2 := types.BlobMeta{
-		MediaType: "application/vnd.docker.distribution.manifest.v2+json",
-		Digest:    "sha256:b5a5b7ce4eabc8414bf367761a28f4e8b16952ce5de537c15ed917b71b245f11",
-	}
-	err = mag.UpstreamBlob_InsertManifest(ctx, req2, blob2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	/// is blob present: manifest
-	upMani2 := upstream.UpstreamTriple{
-		Reg:       req2.Host,
-		Repo:      req2.Repo,
-		Tag:       req2.Tag,
-		Digest:    blob2.Digest,
-		MediaType: blob2.MediaType,
-	}
-	_, found2, err := mag.Minio.GetManifest(ctx, upMani2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.True(t, found2)
-	maniLabel2 := fmt.Sprintf("%s/alpine:3.17.3@cpu#zen2", regHttpURI)
-	mani2, _, err := mag.Database.Manifest_GetByLabel(ctx, maniLabel2)
-	if err != nil {
-		t.Logf("maniLabel: %s", maniLabel2)
-		t.Fatal(err)
-	}
-	assert.Equal(t, "alpine", mani2.Upstream.Repo)
-	// TODO: check if upstream is in DB
-	// TODO: check if upstream is linked to manifest
-	// TODO: check if manifest is linked to profile
-	// TODO: Minio
-	/// TODO: is blob present: cfg
-	//        _, found, err := mag.Minio.GetConfig(ctx, maniData)
 	//// ZEN3
 	req3 := types.Request{
 		Host:    regHttpURI,
@@ -152,6 +175,42 @@ func Test_Upstream_ManifestInsert_Zen2_Zen3(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// CHECK: Original manifestData should not have annotations
+	q := `MATCH (md:ManifestData)-[]->(a:Annotation) WHERE md.mediaType = "application/vnd.docker.distribution.manifest.v2+json" RETURN count(a) AS annoCount`
+	t.Log(q)
+	if res, qFound, err := mag.Database.QueryOne(q); err != nil {
+		t.Fatal(err)
+	} else {
+		if !qFound {
+			t.Fatal("query not found")
+		}
+		if annoCount, err := res.GetInt64("annoCount"); err != nil {
+			t.Fatal(err)
+		} else {
+			if annoCount > 0 {
+				t.Fatalf("expected 0 annotations, got %d", annoCount)
+			}
+			t.Logf("annoCount: %d", annoCount)
+		}
+	}
+	// Original image should not have Zen3 manipulations
+	mdOrig, mdOrigFound, err := mag.Database.ManifestData_GetPulled_ByRepoTag(ctx, req3.Repo, req3.Tag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !mdOrigFound {
+		t.Fatal("original manifest data not found")
+	}
+	assert.Greater(t, mdOrig.ID, int64(0))
+	cfgOrig, cfgOrigFound, err := mag.Config_GetByID(ctx, mdOrig.Config.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfgOrigFound {
+		t.Fatal("config not found")
+	}
+	expEnvOrig := []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
+	assert.Equal(t, expEnvOrig, cfgOrig.Cfg.Config.Env)
 	/// is blob present: manifest
 	upMani3 := upstream.UpstreamTriple{
 		Reg:       req3.Host,
@@ -165,12 +224,63 @@ func Test_Upstream_ManifestInsert_Zen2_Zen3(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.True(t, found3)
-	maniLabel3 := fmt.Sprintf("%s/alpine:3.17.3@cpu#zen3", regHttpURI)
+	maniLabel3 := fmt.Sprintf("%s/alpine:3.17.3", regHttpURI)
 	mani3, _, err := mag.Database.Manifest_GetByLabel(ctx, maniLabel3)
 	if err != nil {
 		t.Logf("maniLabel: %s", maniLabel3)
 	}
-	assert.Equal(t, "alpine", mani3.Upstream.Repo)
+	assert.Len(t, mani3.Manifests, 3)
+	prf, err := mag.getProfile(ctx, br, "cpu#zen3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	maniDataID, found, err := mag.Database.ManifestData_Get_ByProfileMediaType(ctx, mani3.ID, prf.ID, "application/vnd.oci.image.manifest.v1+json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("manifest data not found")
+	}
+	md3, md3Found, err := mag.Database.ManifestData_Get_ByID(ctx, maniDataID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !md3Found {
+		t.Fatal("manifest data for profile not found")
+	}
+	assert.Equal(t, "application/vnd.oci.image.manifest.v1+json", md3.MediaType)
+	assert.NotEqual(t, 0, md3.Config.ID)
+
+	cfg, cfgFound, err := mag.Config_GetByID(ctx, md3.Config.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfgFound {
+		t.Fatal("config not found")
+	}
+	assert.Equal(t, "application/vnd.oci.image.config.v1+json", cfg.MediaType)
+	expEnv3 := []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "ORG_SUPERCONTAINERS_HARDWARE_CPU_TARGET_MICROARCH=zen3"}
+	assert.Equal(t, expEnv3, cfg.Cfg.Config.Env)
+	// Check Original
+	//// Config again
+	mdOrig2, mdOrigFound, err := mag.Database.ManifestData_GetPulled_ByRepoTag(ctx, req3.Repo, req3.Tag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !mdOrigFound {
+		t.Fatal("original manifest data not found")
+	}
+	assert.Greater(t, mdOrig2.ID, int64(1))
+
+	cfgOrig, cfgOrigFound, err = mag.Config_GetByID(ctx, mdOrig2.Config.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfgOrigFound {
+		t.Fatal("config not found")
+	}
+	expEnvOrig = []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
+	assert.Equal(t, expEnvOrig, cfgOrig.Cfg.Config.Env)
 	// TODO: check if upstream is in DB
 	// TODO: check if upstream is linked to manifest
 	// TODO: check if manifest is linked to profile
@@ -180,7 +290,7 @@ func Test_Upstream_ManifestInsert_Zen2_Zen3(t *testing.T) {
 
 }
 
-func Test_Upstream_BlobInsert_ManifestList(t *testing.T) {
+func TestUpstreamBlobInsertManifestList(t *testing.T) {
 	ctx := context.Background()
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
@@ -214,7 +324,7 @@ func Test_Upstream_BlobInsert_ManifestList(t *testing.T) {
 	}
 }
 
-func Test_Upstream_DiscoverUpstream(t *testing.T) {
+func TestUpstreamDiscoverUpstream(t *testing.T) {
 	if testing.Short() {
 		t.Log("skipping test")
 		return
@@ -244,7 +354,7 @@ func Test_Upstream_DiscoverUpstream(t *testing.T) {
 	assert.Equal(t, "sha256:b5a5b7ce4eabc8414bf367761a28f4e8b16952ce5de537c15ed917b71b245f11", blob.Digest.String())
 }
 
-func Test_Upstream_DiscoverUpstream_ManifestList(t *testing.T) {
+func TestUpstreamDiscoverUpstreamManifestList(t *testing.T) {
 	if testing.Short() {
 		t.Log("skipping test")
 		return

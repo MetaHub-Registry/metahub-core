@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_Annotation_EvalRule(t *testing.T) {
+func TestAnnotationEvalRule(t *testing.T) {
 	a0 := NewAnnotation("foo", "bar")
 	r0 := a0.evalRule("eq", "bar")
 	assert.True(t, r0)

@@ -10,7 +10,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func Test_Config_CRUD(t *testing.T) {
+func TestConfigCRUD(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	debug := 0
@@ -82,7 +82,7 @@ func Test_Config_CRUD(t *testing.T) {
 
 }
 
-func Test_Config_MediaType(t *testing.T) {
+func TestConfigMediaType(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	debug := 0

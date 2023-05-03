@@ -7,7 +7,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 )
 
-func Test_NewCollectionListing(t *testing.T) {
+func TestNewCollectionListing(t *testing.T) {
 	cl := types.NewCollectionListing("repo", "tag")
 	assert.Equal(t, "repo", cl.Repo)
 	assert.Equal(t, "tag", cl.Tag)

@@ -10,7 +10,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func Test_Blobupload_CRU(t *testing.T) {
+func TestBlobuploadCRU(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()
@@ -89,7 +89,7 @@ func Test_Blobupload_CRU(t *testing.T) {
 
 }
 
-func Test_BlobChunk_CRU(t *testing.T) {
+func TestBlobChunkCRU(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()

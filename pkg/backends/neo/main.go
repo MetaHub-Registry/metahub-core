@@ -108,8 +108,12 @@ func (n *Neo) Connect() (err error) {
 }
 
 func (n Neo) Setup(ctx context.Context) (err error) {
-	_, span := tracer.Start(ctx, "Neo.Setup")
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "neo/main.go",
+		"func":    "Neo.Setup",
+	})
 	defer span.End()
+	_ = ctx
 	n.neoDriver, err = neo4j.NewDriver(n.neoConfig.URL, neo4j.BasicAuth(n.neoConfig.User, n.neoConfig.Passwd, ""))
 	if err != nil {
 		logrus.Errorf("Error creating neo driver: %s\n", err)
@@ -131,9 +135,9 @@ func (n Neo) Setup(ctx context.Context) (err error) {
 		{
 			name: "Profile",
 			attr: []string{"label"},
-			//}, {
-			//	name: "Upstream",
-			//	attr: []string{"digest", "label"},
+		}, {
+			name: "Upstream",
+			attr: []string{"digest", "label"},
 		}, {
 			name: "Rule",
 			attr: []string{"label"},
@@ -145,7 +149,7 @@ func (n Neo) Setup(ctx context.Context) (err error) {
 			attr: []string{"label"},
 		}, {
 			name: "Manifest",
-			attr: []string{"digest", "mediaType"},
+			attr: []string{"label"},
 			//}, {
 			//	name: "ManifestList",
 			//	attr: "digest",
@@ -158,6 +162,12 @@ func (n Neo) Setup(ctx context.Context) (err error) {
 		},
 	}
 	for _, t := range nodes {
+		qDrop := fmt.Sprintf(`DROP CONSTRAINT constraint_node_%s IF EXISTS`, strings.ToLower(t.name))
+		_, err = session.Run(qDrop, input)
+		if err != nil {
+			utils.ErrorHandler(l, span, err, "")
+			l.Fatal()
+		}
 		q := fmt.Sprintf(`CREATE CONSTRAINT constraint_node_%s IF NOT EXISTS FOR (p:%s) REQUIRE (p.`, strings.ToLower(t.name), t.name)
 		q += strings.Join(t.attr, ", p.")
 		q += `) IS UNIQUE`
@@ -165,10 +175,10 @@ func (n Neo) Setup(ctx context.Context) (err error) {
 		_ = input
 		_, err = session.Run(q, input)
 		if err != nil {
-			logrus.Fatal(err.Error())
+			utils.ErrorHandler(l, span, err, "")
+			l.Fatal()
 		}
 	}
-
 	logrus.Info("Neo4j Setup Done")
 	return
 }
@@ -332,19 +342,25 @@ func (n Neo) Bootstrap_Annotation(bs utils.Bootstrap, br *utils.BootstrapResult,
 func (n Neo) Bootstrap_Config(bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
 	switch b {
 	case "ft_arm64":
-		err = n.Setup_Config(br, types.FT_arm_Config(), "ft_arm64")
+		err = n.Setup_Config(br, types.FT_arm_Config(), b)
 		if err != nil {
 			err = errors.Wrapf(err, "while '%s'", b)
 			return
 		}
 	case "ft_amd64":
-		err = n.Setup_Config(br, types.FT_amd64_Config(), "ft_amd64")
+		err = n.Setup_Config(br, types.FT_amd64_Config(), b)
+		if err != nil {
+			err = errors.Wrapf(err, "while '%s'", b)
+			return
+		}
+	case "ft_amd64_83f":
+		err = n.Setup_Config(br, types.ExmplConfigAmd64x83f(), b)
 		if err != nil {
 			err = errors.Wrapf(err, "while '%s'", b)
 			return
 		}
 	case "ft_zen3":
-		err = n.Setup_Config(br, types.FT_zen3_Config(), "ft_zen3")
+		err = n.Setup_Config(br, types.FT_zen3_Config(), b)
 		if err != nil {
 			err = errors.Wrapf(err, "while '%s'", b)
 			return

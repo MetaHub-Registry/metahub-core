@@ -8,77 +8,75 @@ import (
 
 	"github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/pkg/errors"
 	ociv1 "github.com/regclient/regclient/types/oci/v1"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
+const pkgNameConfig = "magazine/config.go"
+
 func (mag Magazine) CacheImageConfigViaUpstream(ctx context.Context, up upstream.UpstreamTriple) (err error) {
-	l := logrus.WithFields(logrus.Fields{
-		"packrusage": "backend/magazine/config.go",
-		"func":       "CacheImageConfigViaUpstream",
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameConfig,
+		"func":    "CacheImageConfigViaUpstream",
 	})
-	b, blob, err := upstream.GetBlobByUpstreamTriple(ctx, up)
-	if err != nil {
-		err = errors.Wrapf(err, "failed to get blob for %s", up.GetLabel())
-		l.Error(err)
+	defer span.End()
+	b, _, e := upstream.GetBlobByUpstreamTriple(ctx, up)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to get blob for %s", up.GetLabel())
 		return err
 	}
-	_ = blob
-	err = mag.Minio.PutConfig(ctx, b, up.Digest.String())
-	if err != nil {
-		l.Error(err)
+	e = mag.Minio.PutConfig(ctx, b, up.Digest.String())
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to PutConfig")
 		return err
 	}
 	return
 }
 
 func (mag Magazine) CachImageConfig(ctx context.Context, mani *types.ManifestData) (err error) {
-	l := logrus.WithFields(logrus.Fields{
-		"packrusage": "backend/magazine/config.go",
-		"func":       "CachImageConfig",
-		"reg":        mani.Upstream.Reg,
-		"repo":       mani.Upstream.Repo,
-		"tag":        mani.Upstream.Tag,
-		"digest":     utils.ShortenDigest(mani.Config.Digest),
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameConfig,
+		"func":    "CachImageConfig",
+		"reg":     mani.Upstream.Reg,
+		"repo":    mani.Upstream.Repo,
+		"tag":     mani.Upstream.Tag,
+		"digest":  utils.ShortenDigest(mani.Config.Digest),
 	})
+	defer span.End()
 	up := upstream.UpstreamTriple{
 		Reg:    mani.Upstream.Reg,
 		Repo:   mani.Upstream.Repo,
 		Tag:    mani.Upstream.Tag,
 		Digest: digest.Digest(mani.Config.Digest),
 	}
-	cfg, isCached, err := mag.Minio.GetConfig(ctx, up.Digest.String())
+	cfg, isCached, e := mag.Minio.GetConfig(ctx, up.Digest.String())
 	_ = cfg
-	if err != nil {
-		logrus.Error(err)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to get config from Minio")
 		return
 	}
 	if !isCached {
 		l.Warnf("Config not cached: %s\n%s", up.GetLabel(), up.Digest)
-		b, blob, err := upstream.GetBlobByUpstreamTriple(ctx, up)
-		if err != nil {
-			err = errors.Wrapf(err, "failed to get blob for %s", up.GetLabel())
-			logrus.Error(err)
+		b, blob, e := upstream.GetBlobByUpstreamTriple(ctx, up)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to get blob for %s", up.GetLabel())
 			return err
 		}
 
 		logrus.Warnf("Blob fetched: %v", blob)
-		err = mag.Minio.PutConfig(ctx, b, mani.Config.Digest)
-		if err != nil {
-			logrus.Error(err)
+		e = mag.Minio.PutConfig(ctx, b, mani.Config.Digest)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to PutConfig")
 			return err
 		}
 		// unmarshal config
 		var imgCfg v1.Image
 		err = json.Unmarshal(b, &imgCfg)
-		if err != nil {
-			logrus.Error(err)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to unmarshal config")
 			return err
 		}
 		mani.Platform.Arch = imgCfg.Architecture
@@ -100,50 +98,70 @@ func (mag Magazine) ConfigBlob_GetByHTTPRequest(ctx context.Context, r *http.Req
 
 // Take in a manifest with a config DIGEST and return the config from Blob Storage
 func (mag Magazine) Config_Get_ByManifest(ctx context.Context, req types.Request, oMani types.OCIManifest) (cfg types.Config, v1Img v1.Image, found bool, err error) {
-	ctx, span := tracer.Start(ctx, "Config_Get_ByManifest")
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameConfig,
+		"func":    "mag.Config_Get_ByManifest",
+		"host":    req.Host,
+		"repo":    req.Repo,
+		"tag":     req.Tag,
+	})
 	defer span.End()
-	span.SetAttributes(
-		attribute.Key("host").String(req.Host),
-		attribute.Key("repo").String(req.Repo),
-		attribute.Key("tag").String(req.Tag),
-	)
 	label := fmt.Sprintf("%s/%s:%s", req.Host, req.Repo, req.Tag)
-	cfg, cfgFound, err := mag.Config_GetInsert_ByOCIManifest(ctx, oMani, label)
-	if err != nil {
-		err = errors.Wrap(err, "failed to Config.GetCreateByRequest")
-		span.RecordError(err)
+	cfg, cfgFound, e := mag.Config_GetInsert_ByOCIManifest(ctx, oMani, label)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to Config.GetCreateByRequest")
 		return
 	}
 	if !cfgFound {
-		logrus.Debugf("Config '%s' not found '%s'. Insert with ID %d ", utils.ShortenDigest(cfg.Digest), label, cfg.ID)
+		utils.Debug(l, span, "Config '%s' not found '%s'. Insert with ID %d ", utils.ShortenDigest(cfg.Digest), label, cfg.ID)
 	} else {
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", fmt.Sprintf("Config '%s' found: %s", utils.ShortenDigest(cfg.Digest), label)),
-		))
+		utils.Debug(l, span, "Config '%s' found: %s", utils.ShortenDigest(cfg.Digest), label)
 	}
-	v1Img, v1Found, err := mag.Minio.GetConfig(ctx, oMani.Config.Digest.String())
-	if err != nil {
-		err = errors.Wrap(err, "failed to get Config from Minio")
+	v1Img, v1Found, e := mag.Minio.GetConfig(ctx, oMani.Config.Digest.String())
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to get Config from Minio")
 		return
 	}
 	found = v1Found
-	//fmt.Printf("v1Img: \n%v\n", v1Img)
 	return
 }
 
-func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUpload, buf []byte) (err error) {
-	// NOTE: Wait; we are getting the actual config, not only the descriptor
-	ctx, span := tracer.Start(ctx, "StoreConfigUpload")
+func (mag Magazine) Config_GetByID(ctx context.Context, cfgID int64) (cfg types.Config, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "magazine/config.go",
+		"func":    "mag.Config_GetByID",
+	})
 	defer span.End()
-	span.SetAttributes(
-		attribute.Key("buID").Int64(bu.ID),
-	)
-	// Store Blob
-	err = mag.Minio.PutConfig(ctx, buf, bu.Digest)
+	cfg, found, err = mag.Database.Config_GetByID(ctx, cfgID)
 	if err != nil {
-		logrus.Error(err)
-		span.RecordError(err)
+		err = utils.ErrorHandler(l, span, err, "failed to get Config by ID from graph")
+		return
+	}
+	if !found {
+		utils.Debug(l, span, "Config not found")
+		return
+	}
+	cfg, err = mag.Minio.ConfigGetObj(ctx, cfg.Digest)
+	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to get Config from Minio")
+		return
+	}
+	return cfg, true, nil
+}
+
+func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUpload, buf []byte) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameConfig,
+		"func":    "mag.StoreConfigUpload",
+		"buID":    bu.ID,
+		"digest":  bu.Digest,
+	})
+	defer span.End()
+	// NOTE: Wait; we are getting the actual config, not only the descriptor
+	// Store Blob
+	e := mag.Minio.PutConfig(ctx, buf, bu.Digest)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to store config in Minio")
 		return
 	}
 	c := ociv1.Image{
@@ -159,12 +177,7 @@ func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUplo
 		Data:      buf,
 		Cfg:       c,
 	}
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", "Store config upload without knowing which mediaType it actually is"),
-		attribute.String("cfg.digest", utils.ShortenDigest(bu.Digest)),
-		attribute.String("cfg.mediaType", bu.MediaType),
-	))
+	utils.Debug(l, span, "Store config upload without knowing which mediaType it actually is")
 	/*
 		switch bu.MediaType {
 		case "application/vnd.docker.container.image.v1+json":
@@ -218,35 +231,34 @@ func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUplo
 			return err
 		}
 	*/
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "warn"),
-		attribute.String("log.message", "What if config is already there?"),
-	))
-	_, err = mag.Database.Config_Insert(ctx, cfg)
-	if err != nil {
-		logrus.Error(err)
-		span.RecordError(err)
+	utils.Debug(l, span, "What if config is already there?")
+
+	_, e = mag.Database.Config_Insert(ctx, cfg)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to insert Config into graph")
 		return
 	}
-	err = mag.Minio.ConfigPutObj(ctx, bu.Digest, buf)
+	e = mag.Minio.ConfigPutObj(ctx, bu.Digest, buf)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to store Config in Minio")
+	}
 	return
 }
 
 func (mag Magazine) Config_GetInsert_ByOCIManifest(ctx context.Context, ociMani types.OCIManifest, label string) (cfg types.Config, found bool, err error) {
-	ctx, span := tracer.Start(ctx, "Config_GetInsert_ByOCIManifest")
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameConfig,
+		"func":    "mag.Config_GetInsert_ByOCIManifest",
+		"label":   label,
+		"digest":  ociMani.Config.Digest.String(),
+	})
 	defer span.End()
 	/// OCI Manifest might embed the config as Data
 	if len(ociMani.Config.Data) > 0 {
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("label", label),
-			attribute.String("log.message", "Config embedded in OCI Manifest"),
-			attribute.String("config.digest", utils.ShortenDigest(ociMani.Config.Digest.String())),
-		))
+		utils.Debug(l, span, "Config embedded in OCI Manifest")
 		dig := digest.FromBytes(ociMani.Config.Data)
 		if dig.String() != ociMani.Config.Digest.String() {
-			err = fmt.Errorf("digest mismatch: %s != %s", dig, ociMani.Config.Digest)
-			logrus.Error(err)
+			err = utils.NewError(l, span, "digest mismatch: %s != %s", dig, ociMani.Config.Digest)
 			return
 		}
 		bu := types.OCIBlobUpload{
@@ -259,7 +271,7 @@ func (mag Magazine) Config_GetInsert_ByOCIManifest(ctx context.Context, ociMani 
 			logrus.Error(err)
 			return
 		}
-		logrus.Warn("Finished upload of embedded config")
+		utils.Warn(l, span, "Finished upload of embedded config")
 	}
 	cfg, found, err = mag.Database.Config_GetInsert_ByOCIManifest(ctx, ociMani, label)
 	return
@@ -270,16 +282,19 @@ func (mag Magazine) Config_AddLabel(ctx context.Context, cfgID int64, a types.An
 }
 
 func (mag Magazine) Configs_DeleteUnused(ctx context.Context) (err error) {
-	_, span := tracer.Start(ctx, "Configs_DeleteUnused")
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameConfig,
+		"func":    "mag.Configs_DeleteUnused",
+	})
 	defer span.End()
-	err = mag.Database.Configs_DeleteUnused(ctx)
-	if err != nil {
-		err = errors.Wrapf(err, "failed to delete unused layers")
+	e := mag.Database.Configs_DeleteUnused(ctx)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to delete unused layers")
 		return
 	}
-	err = mag.Database.BlobUpload_DeleteUnused(ctx)
-	if err != nil {
-		err = errors.Wrapf(err, "failed to delete unused blobUploads")
+	e = mag.Database.BlobUpload_DeleteUnused(ctx)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to delete unused blobUploads")
 		return
 	}
 	return

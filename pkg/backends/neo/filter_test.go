@@ -1,7 +1,7 @@
 package neo
 
 /*
-func Test_Filter_CRUD(t *testing.T) {
+func TestFilterCRUD(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	bs := utils.NewBootstrap()

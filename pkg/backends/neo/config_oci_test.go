@@ -10,7 +10,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func Test_OCIv1Config_GetInsertDescriptor(t *testing.T) {
+func TestOCIv1ConfigGetInsertDescriptor(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	debug := 0

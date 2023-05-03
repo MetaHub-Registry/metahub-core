@@ -9,7 +9,7 @@ import (
 
 var ctx = context.Background()
 
-func Test_User_Insert(t *testing.T) {
+func TestUserInsert(t *testing.T) {
 	user := types.User{
 		Username:     "test",
 		PasswordHash: "test",

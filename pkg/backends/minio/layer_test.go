@@ -15,7 +15,7 @@ var layerBlob = []byte(`{
 	"digest": "sha256:59bf1c3509f33515622619af21ed55bbe26d24913cedbca106468a5fb37a50c3"
  }`)
 
-func Test_PutStatRemove(t *testing.T) {
+func TestPutStatRemove(t *testing.T) {
 	ctx := context.Background()
 	layerDig := "sha256:112233445566"
 	err := min.LayerPutObj(ctx, layerDig, layerBlob)

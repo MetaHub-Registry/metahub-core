@@ -9,24 +9,24 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_IncludesString(t *testing.T) {
+func TestIncludesString(t *testing.T) {
 	assert.True(t, IncludesString("a", []string{"a", "b", "c"}))
 	assert.False(t, IncludesString("d", []string{"a", "b", "c"}))
 }
 
-func Test_FindOverlap(t *testing.T) {
+func TestFindOverlap(t *testing.T) {
 	exp := []string{"a"}
 	got := FindOverlap([]string{"a", "d"}, []string{"a", "b", "c"})
 	assert.Equal(t, exp, got)
 }
 
-func Test_FindMissingInSecond(t *testing.T) {
+func TestFindMissingInSecond(t *testing.T) {
 	exp := []string{"a"}
 	got := FindMissingInSecond([]string{"a", "b", "c"}, []string{"b", "c"})
 	assert.Equal(t, exp, got)
 }
 
-func Test_StringUnion(t *testing.T) {
+func TestStringUnion(t *testing.T) {
 	a := []string{"a", "b", "c"}
 	b := []string{"A", "B", "C"}
 	exp := []string{"a", "b", "c", "A", "B", "C"}
@@ -34,7 +34,7 @@ func Test_StringUnion(t *testing.T) {
 	assert.Equal(t, exp, got)
 }
 
-func Test_shortenDigest(t *testing.T) {
+func TestShortenDigest(t *testing.T) {
 	tests := []struct {
 		input string
 		exp   string
@@ -56,7 +56,7 @@ func Test_shortenDigest(t *testing.T) {
 
 }
 
-func Test_shortenMediaType(t *testing.T) {
+func TestShortenMediaType(t *testing.T) {
 	tests := []struct {
 		input string
 		exp   string
@@ -67,6 +67,7 @@ func Test_shortenMediaType(t *testing.T) {
 		{"application/vnd.docker.image.rootfs.diff.tar.gzip", "docker_image_rootfs_diff_tar_gzip"},
 		{"application/vnd.docker.image.rootfs.diff.tar", "docker_image_rootfs_diff_tar"},
 		{"application/vnd.oci.image.manifest.v1+json", "oci_image_manifest_v1JSON"},
+		{"application/vnd.docker.distribution.manifest.v2+json", "docker_distribution_manifest_v2JSON"},
 	}
 	for _, test := range tests {
 		got := ShortenMediaType(test.input)
@@ -80,7 +81,7 @@ func Test_shortenMediaType(t *testing.T) {
 	}
 }
 
-func Test_UpLabelKey(t *testing.T) {
+func TestUpLabelKey(t *testing.T) {
 	tests := []struct {
 		input string
 		exp   string
@@ -94,6 +95,32 @@ func Test_UpLabelKey(t *testing.T) {
 		res := []string{}
 		if got != test.exp {
 			res = append(res, fmt.Sprintf("(input:'%-56s' EXP: '%s' // GOT: '%s' >> ", test.input, test.exp, got))
+		}
+		if len(res) > 0 {
+			t.Error(t, strings.Join(res, "\n"))
+		}
+	}
+
+}
+
+func TestCreateLabelFromTypeAndDigest(t *testing.T) {
+	tests := []struct {
+		mt  string
+		dig string
+		exp string
+	}{
+		{"application/vnd.docker.distribution.manifest.v2+json", "sha256:b5a5b7ce4eabc8414bf367761a28f4e8b16952ce5de537c15ed917b71b245f11", "dkr:b5a5b7ce4"},
+		{"application/vnd.oci.image.manifest.v1+json", "sha256:b5a5b7ce4eabc8414bf367761a28f4e8b16952ce5de537c15ed917b71b245f11", "oci:b5a5b7ce4"},
+		{"application/vnd.oci.image.layer.v1.tar+gzip", "sha256:b5a5b7ce4eabc8414bf367761a28f4e8b16952ce5de537c15ed917b71b245f11", "ociGz:b5a5b7ce4"},
+		{"application/vnd.oci.image.layer.v1.tar+zstd", "sha256:b5a5b7ce4eabc8414bf367761a28f4e8b16952ce5de537c15ed917b71b245f11", "ociZstd:b5a5b7ce4"},
+		{"application/vnd.docker.image.rootfs.diff.tar", "sha256:b5a5b7ce4eabc8414bf367761a28f4e8b16952ce5de537c15ed917b71b245f11", "dkr:b5a5b7ce4"},
+		{"application/vnd.docker.image.rootfs.diff.tar.gzip", "sha256:b5a5b7ce4eabc8414bf367761a28f4e8b16952ce5de537c15ed917b71b245f11", "dkrGz:b5a5b7ce4"},
+	}
+	for _, test := range tests {
+		got := CreateLabelFromTypeAndDigest(test.mt, test.dig)
+		res := []string{}
+		if got != test.exp {
+			res = append(res, fmt.Sprintf("(input:'%s / %s' EXP: '%s' // GOT: '%s' >> ", test.mt, test.dig, test.exp, got))
 		}
 		if len(res) > 0 {
 			t.Error(t, strings.Join(res, "\n"))

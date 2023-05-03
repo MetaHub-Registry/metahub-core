@@ -145,7 +145,11 @@ func (n Neo) Setup_Profiles(bs utils.Bootstrap, br *utils.BootstrapResult, d str
 		if err != nil {
 			return err
 		}
+
 		label := fmt.Sprintf("%s:%s", p.Name, p.Tag)
+		if p.Name == "" {
+			label = p.Tag
+		}
 		br.Add(fmt.Sprintf("profile:%s#id", label), fmt.Sprint(p.ID))
 		msg := fmt.Sprintf("Profile '%s' created with ID: %d", label, p.ID)
 		if p.Rule != "" {
@@ -289,7 +293,7 @@ func (n Neo) Setup_Manifest_FT_mpich_amd64(br *utils.BootstrapResult) (err error
 		Platform:    plat,
 		Annotations: as,
 	}
-	maniID, err := n.Manifest_GetInsert(ctx, m)
+	maniID, err := n.Manifest_GetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
 	br.Add("manifest:ft_mpich_amd64#id", fmt.Sprint(maniID))
 	if err != nil {
 		return err
@@ -360,7 +364,7 @@ func (n Neo) Setup_Manifest_FT_amd64(br *utils.BootstrapResult) (err error) {
 		Platform:    plat,
 		Annotations: as,
 	}
-	maniID, err := n.Manifest_GetInsert(ctx, m)
+	maniID, err := n.Manifest_GetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
 	br.Add("manifest:ft_amd64#id", fmt.Sprint(maniID))
 	if err != nil {
 		return err
@@ -430,7 +434,7 @@ func (n Neo) Setup_Manifest_FT_arm64(br *utils.BootstrapResult) (err error) {
 		Upstream: up,
 		Platform: plat,
 	}
-	maniID, err := n.Manifest_GetInsert(ctx, m)
+	maniID, err := n.Manifest_GetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
 	br.Add("manifest:ft_arm64#id", fmt.Sprint(maniID))
 	if err != nil {
 		return err
@@ -505,7 +509,7 @@ func (n Neo) Setup_Manifest_FT_zen3(br *utils.BootstrapResult) (err error) {
 		Platform:    plat,
 		Annotations: as,
 	}
-	maniID, err := n.Manifest_GetInsert(ctx, m)
+	maniID, err := n.Manifest_GetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
 	br.Add("manifest:ft_zen3#id", fmt.Sprint(maniID))
 	if err != nil {
 		return err

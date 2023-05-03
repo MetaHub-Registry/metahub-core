@@ -9,7 +9,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func Test_Expr_Simple(t *testing.T) {
+func TestExprSimple(t *testing.T) {
 	ctx := context.Background()
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")

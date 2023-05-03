@@ -21,7 +21,7 @@ value: "zen3"
 `)
 )
 
-func Test_Rule_readRuleConfig(t *testing.T) {
+func TestRuleReadRuleConfig(t *testing.T) {
 	r0, err := readRuleConfig(yamlRuleZen3)
 	if err != nil {
 		t.Fatal(err)
@@ -33,7 +33,7 @@ func Test_Rule_readRuleConfig(t *testing.T) {
 	assert.Equal(t, "org.supercontainers.hardware.cpu.target.microarch", r0.Key)
 }
 
-func Test_Rule_LoadRule(t *testing.T) {
+func TestRuleLoadRule(t *testing.T) {
 	f0, err := LoadRule(ctx, filepath.Join(rulesDir, "/cpu/zen3.yaml"))
 	if err != nil {
 		t.Fatal(err)

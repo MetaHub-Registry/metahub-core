@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_Annotations_CRU(t *testing.T) {
+func TestAnnotationsCRU(t *testing.T) {
 	a := NewAnnotations()
 	fb := Annotation{
 		Key:   "foo",

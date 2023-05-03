@@ -23,7 +23,7 @@ manipulations:
 `)
 )
 
-func Test_Filter_readFilterConfig(t *testing.T) {
+func TestFilterReadFilterConfig(t *testing.T) {
 	f0, err := readProfileConfig(yamlZen3)
 	if err != nil {
 		t.Fatal(err)
@@ -39,7 +39,7 @@ func Test_Filter_readFilterConfig(t *testing.T) {
 	assert.Len(t, f1.Manipulations, 1)
 }
 
-func Test_Profile_LoadProfile(t *testing.T) {
+func TestProfileLoadProfile(t *testing.T) {
 	f0, err := LoadProfile(ctx, filepath.Join(profileDir, "/cpu/generic.yaml"))
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +54,7 @@ func Test_Profile_LoadProfile(t *testing.T) {
 	assert.Equal(t, "skylake_avx512", f1.Tag)
 	assert.Equal(t, "cpu:skylake_avx512=true", f1.Rule)
 }
-func Test_Profile_LoadProfile_Generic(t *testing.T) {
+func TestProfileLoadProfileGeneric(t *testing.T) {
 	f2, err := LoadProfile(ctx, filepath.Join(profileDir, "/cpu/generic.yaml"))
 	if err != nil {
 		t.Fatal(err)

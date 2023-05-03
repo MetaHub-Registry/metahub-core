@@ -11,7 +11,7 @@ var (
 	md2 = ManifestData{ID: 2}
 )
 
-func Test_ExpRes_Simple(t *testing.T) {
+func TestExpResSimple(t *testing.T) {
 	er := NewExprRes()
 	er.Add("foo", md1)
 	mds := er.GetManifestdataForRules("foo")
@@ -33,7 +33,7 @@ func Test_ExpRes_Simple(t *testing.T) {
 	assert.Equal(t, 2, len(mds1))
 }
 
-func Test_ExpRes_Multi(t *testing.T) {
+func TestExpResMulti(t *testing.T) {
 	er := NewExprRes()
 	er.Add("foo", md1)
 	mds := er.GetManifestdataForRules("foo")
