@@ -152,7 +152,7 @@ func (mag Magazine) setupBootStrap(ctx context.Context, bs utils.Bootstrap, br *
 			return err
 		}
 	default:
-		err = mag.Database.BootstrapTestWithBR(b, bs, br)
+		err = mag.Database.BootstrapTestWithBR(ctx, b, bs, br)
 		if err != nil {
 			err = errors.Wrap(err, "Setup_Users in Database")
 			return

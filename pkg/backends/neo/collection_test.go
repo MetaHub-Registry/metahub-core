@@ -4,14 +4,17 @@ import (
 	"context"
 	"testing"
 
+	"github.com/docker/distribution/manifest/manifestlist"
 	"github.com/stretchr/testify/assert"
+	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	yamlCfg "github.com/metahub-registry/metahub-core/pkg/yaml/config"
 )
 
 func TestCollectionCRUD(t *testing.T) {
 	ctx := context.Background()
-	_ = ctx
+	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("platforms:generic")
@@ -30,12 +33,18 @@ func TestCollectionCRUD(t *testing.T) {
 	bs.AddBootstrap("manifestdata:ft_arm64")
 	bs.AddBootstrap("manifestdata:ft_amd64")
 	bs.SetEmptyAll()
-	//bs.PostTestSleep = 120
-	br, err := SetupTest(bs)
-	//br.PrintDict()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := SetupTest(ctx, bs)
 	if err != nil {
 		db.TeardownTest(bs)
 		t.Fatal(err)
+	}
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
 	}
 	defer db.TeardownTest(bs)
 	// Actual test
@@ -89,251 +98,148 @@ func TestCollectionCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-}
-
-/*
-func TestCollectionComputeManifest(t *testing.T) {
-	ctx := context.Background()
-	_ = ctx
-	bs := utils.NewBootstrap()
-	bs.SetYAMLPrefix("../../../misc/yaml")
-	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("filter:platform-generic")
-	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
-	bs.AddBootstrap("config:ft_arm64")
-	bs.AddBootstrap("config:ft_amd64")
-	bs.AddBootstrap("upstream:ft_arm64")
-	bs.AddBootstrap("upstream:ft_amd64")
-	bs.AddBootstrap("manifest:ft_arm64")
-	bs.AddBootstrap("manifest:ft_amd64")
-	bs.AddBootstrap("layer:0:ft_arm64")
-	bs.AddBootstrap("layer:1:ft_arm64")
-	bs.AddBootstrap("layer:0:ft_amd64")
-	bs.AddBootstrap("layer:1:ft_amd64")
-	bs.AddBootstrap("manifestdata:ft_arm64")
-	bs.AddBootstrap("manifestdata:ft_amd64")
-	bs.AddBootstrap("collection:ft_generic")
-	bs.SetEmptyAll()
-	//bs.PostTestSleep = 120
-	br, err := SetupTest(bs)
-	_ = br
-	//br.PrintDict()
-	if err != nil {
-		t.Fatal(err)
-}
-	defer db.TeardownTest(bs)
-	// Actual test
-}
-
-/*
-func TestCollectionComputeML(t *testing.T) {
-	ctx := context.Background()
-	_ = ctx
-	bs := utils.NewBootstrap()
-	bs.SetYAMLPrefix("../../../misc/yaml")
-	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
-	bs.AddBootstrap("config:ft_arm64")
-	bs.AddBootstrap("config:ft_amd64")
-	bs.AddBootstrap("upstream:ft_arm64")
-	bs.AddBootstrap("upstream:ft_amd64")
-	bs.AddBootstrap("layer:0:ft_arm64")
-	bs.AddBootstrap("layer:1:ft_arm64")
-	bs.AddBootstrap("layer:0:ft_amd64")
-	bs.AddBootstrap("layer:1:ft_amd64")
-	bs.AddBootstrap("manifest:ft_arm64")
-	bs.AddBootstrap("manifest:ft_amd64")
-	bs.AddBootstrap("manifest:ft_amd64")
-	bs.AddBootstrap("collection:ft_generic")
-	bs.AddBootstrap("collection:ft_arm64")
-	bs.SetEmptyAll()
-	//bs.PostTestSleep = 300
-	br, err := SetupTest(bs)
-	_ = br
-	if err != nil {
-		t.Fatal(err)
-}
-	defer db.TeardownTest(bs)
-	// Actual test
-	err = db.ComputeManifestlists()
-	if err != nil {
-		t.Fatal(err)
-}
-	cols, err := db.GetAllCollections()
-	if err != nil {
-		t.Fatal(err)
-}
-	assert.Equal(t, 1, len(cols))
-	col, found, err := db.Collection_Get_ByRepoTag("qnib/featuretest", "generic")
-	if err != nil {
-		t.Fatal(err)
-}
-	assert.True(t, found)
-	assert.Equal(t, "qnib/featuretest", col.Repo)
-
-}
-
-func TestCollectionByRequest(t *testing.T) {
-	ctx := context.Background()
-	_ = ctx
-	bs := utils.NewBootstrap()
-	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
-	bs.SetEmptyAll()
-	//bs.PostTestSleep = 60
-	br, err := SetupTest(bs)
-	_ = br
-	if err != nil {
-		t.Fatal(err)
-}
-	defer db.TeardownTest(bs)
-	// Actual test
-	req := types.Request{
+	// Remove
+	ups := types.Upstream{
 		Repo: "qnib/featuretest",
-		Tag:  "tag1",
+		Tag:  "latest",
 	}
-	////// By Upstream
-	mani := types.FT_amd_ManifestData()
-	err = db.CollectionManifest_ByRequest(req, mani)
-	if err != nil {
-		t.Fatal(err)
-}
-	/// By DIGEST
-	m, found, err := db.ManifestData_Get_ByDigest(mani.Digest)
-	if err != nil {
-		t.Fatal(err)
-}
+	col, found, e := db.CollectionGetByRepo(ctx, ups.Repo)
+	if e != nil {
+		t.Fatal(e)
+	}
 	assert.True(t, found)
-	assert.Equal(t, "qnib-pub-containers/qnib/plain-featuretest", m.Upstream.Repo)
-	// More tests
+	assert.Equal(t, ups.Repo, col.Repo)
+	col.Tag = ups.Tag
+	found, e = db.CollectionUpdate(ctx, &col)
+	if e != nil {
+		t.Fatal(e)
+	}
+	assert.True(t, found)
+	assert.Equal(t, ups.Tag, col.ColTag.Tag)
+	// CollectionExists
+	upt := upstream.UpstreamTriple{
+		Reg:  ups.Reg,
+		Repo: ups.Repo,
+		Tag:  ups.Tag,
+	}
+	found, e = db.CollectionExists(ctx, upt)
+	if e != nil {
+		t.Fatal(e)
+	}
+	assert.True(t, found)
+	found, err = db.CollectionRemove(ctx, col)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.True(t, found)
 }
 
-func TestCollectionByRequestMetahubUpstream(t *testing.T) {
+func TestCollectionGetCreateUpstreamTriple(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
+	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
-	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
+	bs.AddBootstrap("platforms:amd64")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("profile:profiles/generic.yaml")
 	bs.SetEmptyAll()
-	//bs.PostTestSleep = 300
-	br, err := SetupTest(bs)
-	_ = br
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
 	if err != nil {
+		db.TeardownTest(bs)
 		t.Fatal(err)
-}
+	}
+	if err != nil {
+		db.TeardownTest(bs)
+		t.Fatal(err)
+	}
 	defer db.TeardownTest(bs)
 	// Actual test
-	reqCol := types.Request{
-		Host:    "metahub-registry.org",
-		Repo:    "qnib/featuretest",
-		Tag:     "tag1",
+	ups := types.Upstream{
+		Reg:     "localhost:5000",
+		Repo:    "qnib/test",
+		Tag:     "latest",
+		Digest:  "sha256:1234567890",
 		Profile: "generic",
 	}
-	reqMani := types.Request{
-		Host:    "metahub-registry.org",
-		Repo:    "qnib/featuretest",
-		Tag:     "tag1-linux.amd64",
-		Profile: "generic",
+	// Collection Does not exist
+	upt := upstream.UpstreamTriple{
+		Reg:  ups.Reg,
+		Repo: ups.Repo,
+		Tag:  ups.Tag,
 	}
-	////// With Metahub Upstream
-	mani := types.FT_amd_ManifestData()
-	up := types.Upstream{
-		Reg:  "metahub-registry.org",
-		Repo: "qnib/featuretest",
-		Tag:  "tag1-linux.amd64",
+	found, e := db.CollectionExists(ctx, upt)
+	if e != nil {
+		t.Fatal(e)
 	}
-	mani.Upstream = up
-	err = db.CollectionManifest_ByRequest(reqCol, mani)
-	if err != nil {
-		t.Fatal(err)
-}
-	/// By DIGEST
-	m, found, err := db.ManifestData_Get_ByDigest(mani.Digest)
-	if err != nil {
-		t.Fatal(err)
-}
-	assert.True(t, found)
-	assert.Equal(t, "qnib/featuretest", m.Upstream.Repo)
-	/// Via Upstream
-	upMani1, found, err := db.ManifestData_Get_ByUpstream(up)
-	if err != nil {
-		t.Fatal(err)
-}
-	assert.True(t, found)
-	assert.Equal(t, mani.Digest, upMani1.Digest)
-	assert.Equal(t, "qnib/featuretest", upMani1.Upstream.Repo)
-	// More tests
-	reqMani1, found, err := db.ManifestData_GetTypes_ByRequest(reqMani)
-	if err != nil {
-		t.Fatal(err)
-}
-	assert.True(t, found)
-	assert.Equal(t, "qnib/featuretest", reqMani1.Upstream.Repo)
-	/// Second Manifest
-	maniArm := types.FT_arm_ManifestData()
-	maniArm.Upstream = up
-	err = db.CollectionManifest_ByRequest(reqCol, maniArm)
-	if err != nil {
-		t.Fatal(err)
-}
-	// ManifestList?
-	ml, found, err := db.ManifestList_Get_ByRequest(reqCol)
-	if err != nil {
-		t.Fatal(err)
-}
-	assert.True(t, found)
-	assert.Equal(t, 2, len(ml.Manifests))
-
-}
-*/
-/*
-func TestCollectionGetCollectionFilterPairsForCollection(t *testing.T) {
-	ctx := context.Background()
-	_ = ctx
-	bs := utils.NewBootstrap()
-	bs.AddBootstrap("cypher:collection:ft_tag1")
-	bs.AddBootstrap("cypher:collection_only:ft_generic")
-	bs.SetEmptyAll()
-	//bs.PostTestSleep = 300
-	br, err := SetupTest(bs)
-	_ = br
-	if err != nil {
-		t.Fatal(err)
-}
-	defer db.TeardownTest(bs)
-	// Actual Test
-	//// Generic
-	col := types.Collection{
-		Repo: "qnib/featuretest",
-		Tag:  "tag1",
-		ColTag: types.CollectionTag{
-			Tag: "tag1",
+	assert.False(t, found)
+	///
+	_, found, e = db.CollectionGetByRepo(ctx, ups.Repo)
+	if e != nil {
+		t.Fatal(e)
+	}
+	assert.False(t, found)
+	maniIn := manifestlist.ManifestDescriptor{
+		Platform: manifestlist.PlatformSpec{
+			Architecture: "amd64",
+			OS:           "linux",
+			Variant:      "",
 		},
 	}
-	cfps, err := db.GetCollectionFilterPairs_ForCollection(col)
-	if err != nil {
-		t.Fatal(err)
-}
-	assert.Equal(t, 1, len(cfps), cfps)
-	assert.Equal(t, 2, len(cfps[0].Manifests))
-	// Compute Manifestlist
-	err = db.computeManifestlists(cfps)
-	if err != nil {
-		t.Fatal(err)
-}
-	/// Check ManifestList
-	req := types.Request{
-		Repo:    "qnib/featuretest",
-		Tag:     "tag1",
-		Profile: "generic",
+	upID, _, prf, e := db.CollectionGetCreateUpstreamTriple(ctx, ups, maniIn)
+	if e != nil {
+		t.Error(e)
+		return
 	}
-	ml, found, err := db.ManifestList_Get_ByRequest(req)
+	// Test Upstream
+	gotUpID, upFound, err := db.Upstream_Get(ctx, ups)
 	if err != nil {
 		t.Fatal(err)
-}
+	}
+	assert.True(t, upFound)
+	assert.Equal(t, upID, gotUpID)
+
+	assert.Greater(t, prf.ID, int64(0))
+	// Test Collection
+	cCreate, found, e := db.Collection_GetCreate_ByRepoTag(ctx, ups.Repo, ups.Tag)
+	if e != nil {
+		t.Fatal(e)
+	}
+	assert.False(t, found)
+	assert.Equal(t, ups.Repo, cCreate.Repo)
+	col, found, e := db.CollectionGetByRepo(ctx, ups.Repo)
+	if e != nil {
+		t.Fatal(e)
+	}
 	assert.True(t, found)
-	assert.Equal(t, 2, len(ml.Manifests))
+	assert.Equal(t, ups.Repo, col.Repo)
+	col.Tag = ups.Tag
+	found, e = db.CollectionUpdate(ctx, &col)
+	if e != nil {
+		t.Fatal(e)
+	}
+	assert.True(t, found)
+	assert.Equal(t, ups.Tag, col.ColTag.Tag)
+	// CollectionExists
+	found, e = db.CollectionExists(ctx, upt)
+	if e != nil {
+		t.Fatal(e)
+	}
+	assert.True(t, found)
+	// Collection Remove
+	found, err = db.CollectionRemove(ctx, col)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.True(t, found)
 
 }
-*/

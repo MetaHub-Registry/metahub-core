@@ -6,6 +6,7 @@ import (
 
 type Manifest struct {
 	ID          int64          `json:"-"`
+	Label       string         `json:"label"`
 	Platform    Platform       `json:"platform"`
 	Upstream    Upstream       `json:"upstream"`
 	Annotations Annotations    `json:"annotations"`

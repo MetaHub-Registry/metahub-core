@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
@@ -17,22 +18,49 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+const (
+	pkgNameLayer = "magazine/layer.go"
+)
+
+func (mag Magazine) PullLayerFromAllRegs(ctx context.Context, up upstream.UpstreamTriple) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameLayer,
+		"func":    "mag.PullLayerFromAllRegs",
+		"repo":    up.Repo,
+		"tag":     up.Tag,
+		"digest":  utils.ShortenDigest(up.Digest.String()),
+	})
+	defer span.End()
+	regs, ok := mag.GetConfig("registries")
+	if !ok {
+		err = utils.NewError(l, span, "Fail to get registries from config")
+		return
+	}
+	for _, reg := range strings.Split(regs, ",") {
+		up.Reg = reg
+		utils.Debug(l, span, "Using registry: %s", reg)
+		e := mag.PullLayer(ctx, up)
+		if e != nil {
+			utils.Warn(l, span, "Error pulling layer: %v", e.Error())
+		} else {
+			utils.Debug(l, span, "PullLayer successful - break")
+			break
+		}
+	}
+	return
+
+}
+
 func (mag Magazine) PullLayer(ctx context.Context, up upstream.UpstreamTriple) (err error) {
-	l := logrus.WithFields(logrus.Fields{
-		"package": "magazine/layer.go",
-		"func":    "PullLayer",
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameLayer,
+		"func":    "mag.PullLayer",
 		"reg":     up.Reg,
 		"repo":    up.Repo,
 		"tag":     up.Tag,
 		"digest":  utils.ShortenDigest(up.Digest.String()),
 	})
-	ctx, span := tracer.Start(ctx, "mag.PullLayer")
 	defer span.End()
-	span.SetAttributes(
-		attribute.Key("repo").String(up.Repo),
-		attribute.Key("tag").String(up.Tag),
-		attribute.Key("digest").String(utils.ShortenDigest(up.Digest.String())),
-	)
 	b, blobs, err := upstream.GetBlobByUpstreamTripleByDigest(ctx, up, up.Digest.String())
 	if err != nil {
 		err = errors.Wrapf(err, "failed to get blob for %s", up.GetLabel())
@@ -238,4 +266,59 @@ func (mag Magazine) Layers_DeleteUnused(ctx context.Context) (err error) {
 		return
 	}
 	return
+}
+
+func (mag Magazine) BaseLayerEvalOS(ctx context.Context, lyr types.Layer) (os types.OS, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameLayer,
+		"func":    "mag.BaseLayerEval",
+		"layerID": lyr.ID,
+	})
+	defer span.End()
+	_, e := mag.Minio.LayersStatObj(ctx, lyr.Digest)
+	if e != nil {
+		utils.ErrorHandler(l, span, e, "failed to stat layer")
+		up, upFound, e := mag.Database.LayerGetUpstream(ctx, lyr.ID)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to get LayerGetUpstreamr")
+			return
+		}
+		if !upFound {
+			err = utils.NewError(l, span, "failed to find upstream layer")
+			return
+		}
+		upt := upstream.UpstreamTriple{
+			Reg:    up.Reg,
+			Repo:   up.Repo,
+			Tag:    up.Tag,
+			Digest: up.Digest,
+		}
+		e = mag.PullLayer(ctx, upt)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to pull layer")
+			return
+		}
+	}
+	// We should have a layer in Minio now
+	b, e := mag.Minio.LayerGetBytes(ctx, lyr.Digest)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to fetch layer from storage")
+		return
+
+	}
+	lyr.Data = b
+	mt := utils.ExpandMediaType(lyr.MediaType)
+	switch mt {
+	case "application/vnd.docker.image.rootfs.diff.tar.gzip":
+		utils.Warn(l, span, "layer fetched from storage w/ len %d and mediatype: %s", len(b), mt)
+		os, e = lyr.EvalOS(ctx)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to eval layer")
+			return
+		}
+		return os, nil
+	default:
+		err = utils.NewError(l, span, "unknown media type: %s", mt)
+		return
+	}
 }

@@ -41,12 +41,12 @@ func TestTagList(t *testing.T) {
 	}
 	//
 	assert.NotNil(t, mag.Database)
-	res, err := mag.Database.Collection_GetTagsListByRepo(req.Repo)
+	res, err := mag.Database.CollectionGetTagsListByRepo(ctx, req.Repo)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.Equal(t, 2, len(res.Tags))
-	res, err = mag.Tags_GetList(req)
+	res, err = mag.TagsGetList(ctx, req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestTagList(t *testing.T) {
 		Number: 1,
 		Last:   "arm64",
 	}
-	res, err = mag.Tags_GetList(reqPage)
+	res, err = mag.TagsGetList(ctx, reqPage)
 	if err != nil {
 		t.Fatal(err)
 	}

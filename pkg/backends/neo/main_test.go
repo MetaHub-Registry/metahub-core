@@ -72,16 +72,16 @@ func TestMain(m *testing.M) {
 	logrus.Info("End TestMain")
 }
 
-func SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
+func SetupTest(ctx context.Context, bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 	logrus.Debug("> SetupTest")
-	return db.BootstrapTest(bs)
+	return db.BootstrapTest(ctx, bs)
 }
 
 func TestNeoTest(t *testing.T) {
 	//ctx := context.Background()
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		t.Fatal(err)

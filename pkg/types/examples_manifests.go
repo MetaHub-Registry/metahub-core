@@ -19,12 +19,77 @@ func ManifestReferenceByte_FT_arm() []byte {
 	  }`)
 }
 
+// Zen Featuretest
+/* {
+"schemaVersion": 2,
+"mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+"config": {
+  "mediaType": "application/vnd.docker.container.image.v1+json",
+  "size": 2578,
+  "digest": "sha256:c259a14d938a06e8919c53ac6e9c508fb1873f17e579bdcb0810ffafa59fbdf1"
+},
+"layers": [{
+    "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+    "size": 7337984,
+    "digest": "sha256:f1417ff83b319fbdae6dd9cd6d8c9c88002dcd75ecf6ec201c8c6894681cf2b5"
+  },{
+    "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+    "size": 3072,
+    "digest": "sha256:4c85de3e6e41d6a5fc11e77e87cd57cddcfa84003e12c93fd62075d924da2636"
+*/
+
+func ManifestDataDTFeaturetestZen() DataTuple {
+	dt := NewDataTuple("data/manifests/5c99f60c23dfdb5a01cd2268406a8f5616187121655bf66dbad552fbc8530847.json")
+	dt.Upstream = Upstream{
+		Reg:    "registry.gitlab.com",
+		Repo:   "qnib-pub-containers/qnib/plain-featuretest",
+		Tag:    "3.17.3-amd64-cpu_zen",
+		Digest: dt.Digest,
+	}
+	return dt
+
+}
+
+func ManifestDataAmd64Zen() ManifestData {
+	md := newManifestData(
+		ManifestDataDTFeaturetestZen(),
+		ConfigDTFeaturetestZenc259(),
+		LayerDTFeaturetestLf144(),
+		LayerDTFeaturetestL4c85(),
+	)
+	return md
+}
+
+// Others
 func ManifestDataAmd64Byte() DataTuple {
 	return NewDataTuple("data/manifests/5bf8eee20fde14eb6e3e924c18fafa4d816e131f315810875136f0438ff7beed.json")
 }
 
 func ManifestDataByteZen3() DataTuple {
 	return NewDataTuple("data/manifests/5e0d3e9bb9adff191e78f13dc6e79626bf29000648f0fa94ec5a028462ae5e89.json")
+}
+
+func newManifestData(md, cDT DataTuple, lyrs ...DataTuple) ManifestData {
+	cfg := newCofigFromDT(cDT)
+	ls := []Layer{}
+	for _, l := range lyrs {
+		ls = append(ls, newLayerFromDT(l))
+	}
+	mani := ManifestData{
+		Digest:    string(digest.FromBytes(md.Data)),
+		Size:      int64(len(md.Data)),
+		MediaType: MediaTypeManifest,
+		Data:      md.Data,
+		Config:    cfg,
+		Upstream:  md.Upstream,
+		Platform: Platform{
+			Arch:    cfg.Cfg.Architecture,
+			OS:      cfg.Cfg.OS,
+			Variant: cfg.Cfg.Variant,
+		},
+		Layers: ls,
+	}
+	return mani
 }
 
 func FT_amd_ManifestData() ManifestData {

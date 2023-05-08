@@ -11,6 +11,7 @@ require (
 	github.com/go-chi/chi/v5 v5.0.7
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/context v1.1.1
+	github.com/h2non/filetype v1.1.3
 	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/mgudov/logic-expression-parser v0.1.2
 	github.com/minio/minio-go v6.0.14+incompatible

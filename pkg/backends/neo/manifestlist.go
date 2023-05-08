@@ -302,7 +302,7 @@ func (n Neo) ManifestListExists_ForTagProfile(ctx context.Context, up upstream.U
 	utils.Debug(l, span, q)
 	res, found, e := n.QueryOne(q)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "query execution failed")
+		err = utils.ErrorHandler(l, span, e, FailQueryExec)
 		return "", false, err
 	}
 	if !found {
@@ -343,7 +343,7 @@ func (n Neo) ManifestListExists(ctx context.Context, up upstream.UpstreamTriple)
 	utils.Debug(l, span, q)
 	res, found, e := n.QueryOne(q)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "query execution failed")
+		err = utils.ErrorHandler(l, span, e, FailQueryExec)
 		return "", false, err
 	}
 	if !found {

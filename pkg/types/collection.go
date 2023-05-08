@@ -9,9 +9,11 @@ type Collection struct {
 	ManifestLists []ManifestList `json:"manifest_list"`
 }
 
-func NewCollection() Collection {
+func NewCollection(repo, tag string) Collection {
 	return Collection{
 		ID:            -1,
+		Repo:          repo,
+		Tag:           tag,
 		ManifestLists: []ManifestList{},
 	}
 }

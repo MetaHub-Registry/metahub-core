@@ -15,7 +15,7 @@ func TestProfileCRUD(t *testing.T) {
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 60
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		t.Fatal(err)
@@ -116,7 +116,7 @@ func TestProfileFromManifestID(t *testing.T) {
 	bs.AddBootstrap("manifestdata:ft_zen3")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 180
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		t.Log(err)
@@ -175,7 +175,7 @@ func TestProfileFromManifestIDZen3(t *testing.T) {
 	bs.AddBootstrap("manifestdata:ft_zen3")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 180
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		t.Log(err)

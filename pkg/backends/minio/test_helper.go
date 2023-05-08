@@ -81,6 +81,7 @@ var (
 const (
 	minioAccessKey = "minio"
 	minioSecretKey = "miniominio"
+	whileFmrt      = "while '%s'"
 )
 
 type MinioContainer struct {
@@ -160,6 +161,14 @@ func SetupConfig83f(min *Minio, br *utils.BootstrapResult) (err error) {
 	return
 }
 
+func SetupConfig(min *Minio, br *utils.BootstrapResult, dt types.DataTuple) (err error) {
+	ctx := context.Background()
+	cfgByte := dt.Data
+	cfgDig := digest.FromBytes(cfgByte)
+	err = min.ConfigPutObj(ctx, cfgDig.String(), cfgByte)
+	return
+}
+
 func Setup_Config_FT_amd64_b109(min *Minio, br *utils.BootstrapResult) (err error) {
 	ctx := context.Background()
 	cfgByte := types.FT_amd64_b109_ConfigByte()
@@ -187,7 +196,7 @@ func (m Minio) SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err erro
 	for _, b := range bs.Bootstraps {
 		err = m.BootstrapTestWithBR(b, &br)
 		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
+			err = errors.Wrapf(err, whileFmrt, b)
 			return
 		}
 	}
@@ -200,49 +209,67 @@ func (m Minio) BootstrapTestWithBR(b string, br *utils.BootstrapResult) (err err
 	case "config:ft_arm64":
 		err = Setup_Config_FT_arm64(&m, br)
 		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
+			err = errors.Wrapf(err, whileFmrt, b)
 			return
 		}
 	case "config:ft_amd64":
 		err = Setup_Config_FT_amd64(&m, br)
 		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
+			err = errors.Wrapf(err, whileFmrt, b)
 			return
 		}
 	case "config:ft_amd64_b109":
 		err = Setup_Config_FT_amd64_b109(&m, br)
 		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
+			err = errors.Wrapf(err, whileFmrt, b)
 			return
 		}
 	case "config:ft_amd64_83f":
 		err = SetupConfig83f(&m, br)
 		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
+			err = errors.Wrapf(err, whileFmrt, b)
+			return
+		}
+	case "config:ft_zen":
+		err = SetupConfig(&m, br, types.ConfigDTFeaturetestZenc259())
+		if err != nil {
+			err = errors.Wrapf(err, whileFmrt, b)
 			return
 		}
 	case "layer:0:ft_arm64":
 		err = m.Setup_Layer(br, types.FT_arm64_Layer0(), b)
 		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
+			err = errors.Wrapf(err, whileFmrt, b)
 			return
 		}
 	case "layer:1:ft_arm64":
 		err = m.Setup_Layer(br, types.FT_arm64_Layer1(), b)
 		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
+			err = errors.Wrapf(err, whileFmrt, b)
 			return
 		}
 	case "layer:0:ft_amd64":
 		err = m.Setup_Layer(br, types.FT_amd64_Layer0(), b)
 		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
+			err = errors.Wrapf(err, whileFmrt, b)
 			return
 		}
 	case "layer:1:ft_amd64":
 		err = m.Setup_Layer(br, types.FT_amd64_Layer1(), b)
 		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
+			err = errors.Wrapf(err, whileFmrt, b)
+			return
+		}
+	case "layer:0:ft_zen_f144":
+		err = m.Setup_Layer(br, types.LayerFeaturetestLf144(), b)
+		if err != nil {
+			err = errors.Wrapf(err, whileFmrt, b)
+			return
+		}
+	case "layer:1:ft_zen_4c85":
+		err = m.Setup_Layer(br, types.LayerFeaturetestL4c85(), b)
+		if err != nil {
+			err = errors.Wrapf(err, whileFmrt, b)
 			return
 		}
 	case "cfg:generic":
@@ -254,7 +281,14 @@ func (m Minio) BootstrapTestWithBR(b string, br *utils.BootstrapResult) (err err
 		dt := types.ManifestDataAmd64Byte()
 		err = m.ManifestsPutObj(ctx, dt.Digest.String(), dt.Data)
 		if err != nil {
-			err = errors.Wrapf(err, "while '%s'", b)
+			err = errors.Wrapf(err, whileFmrt, b)
+			return
+		}
+	case "manifestdata:ft_zen_5c99":
+		dt := types.ManifestDataDTFeaturetestZen()
+		err = m.ManifestsPutObj(ctx, dt.Digest.String(), dt.Data)
+		if err != nil {
+			err = errors.Wrapf(err, whileFmrt, b)
 			return
 		}
 	default:

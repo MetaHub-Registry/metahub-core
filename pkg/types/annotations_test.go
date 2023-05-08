@@ -8,21 +8,23 @@ import (
 
 func TestAnnotationsCRU(t *testing.T) {
 	a := NewAnnotations()
+	assert.Equal(t, 0, a.Len())
 	fb := Annotation{
 		Key:   "foo",
 		Value: "bar",
-	}
-	ff := Annotation{
-		Key:   "foo",
-		Value: "foo",
 	}
 	err := a.AddAnnotation(fb)
 	if err != nil {
 		t.Fatal(err)
 	}
+	assert.Equal(t, 1, a.Len())
 	err = a.AddAnnotation(fb)
 	if err != nil {
 		t.Fatal(err)
+	}
+	ff := Annotation{
+		Key:   "foo",
+		Value: "foo",
 	}
 	err = a.AddAnnotation(ff)
 	assert.Error(t, err)
@@ -42,5 +44,8 @@ func TestAnnotationsCRU(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, "bar", got1.Value)
-
+	as := a.ToSlice()
+	assert.Equal(t, 1, len(as))
+	am := a.ToMap()
+	assert.Equal(t, 1, len(am))
 }

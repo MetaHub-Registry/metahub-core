@@ -1,6 +1,10 @@
 package types
 
-import "github.com/opencontainers/go-digest"
+import (
+	"fmt"
+
+	"github.com/opencontainers/go-digest"
+)
 
 type Upstream struct {
 	ID      int64         `json:"id"`
@@ -16,4 +20,8 @@ func (u Upstream) String() string {
 		return u.Reg + "/" + u.Repo + "@" + u.Digest.String()
 	}
 	return u.Reg + "/" + u.Repo + ":" + u.Tag
+}
+
+func (upt Upstream) GetLabel() string {
+	return fmt.Sprintf("%s/%s:%s", upt.Reg, upt.Repo, upt.Tag)
 }

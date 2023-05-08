@@ -9,6 +9,10 @@ func DataTupeFTConfigArm64() DataTuple {
 	return NewDataTuple("data/cfg/cf5c26263929e84d7373d23b2692222cceceb3175b3325b183ead2ab6b5a5ce3.json")
 }
 
+func ConfigDTFeaturetestZenc259() DataTuple {
+	return NewDataTuple("data/cfg/c259a14d938a06e8919c53ac6e9c508fb1873f17e579bdcb0810ffafa59fbdf1.json")
+}
+
 func ConfigByteFtArm64() []byte {
 	// read file and return bytes
 	dt := DataTupeFTConfigArm64()
@@ -47,7 +51,7 @@ func FT_zen3_ConfigByte() []byte {
 
 func FT_zen3_Config() Config {
 	cfg, _ := NewConfigFromBytes(FT_zen3_ConfigByte())
-	cfg.MediaType = "application/vnd.docker.container.image.v1+json"
+	cfg.MediaType = MediaTypeImageConfig
 	return cfg
 }
 
@@ -55,12 +59,26 @@ func ExmplConfigAmd64x83f() Config {
 	dt := ConfigByteFtArm64x83f()
 	cfg, _ := NewConfigFromBytes(dt.Data)
 	cfg.Data = dt.Data
-	cfg.MediaType = "application/vnd.docker.container.image.v1+json"
+	cfg.MediaType = MediaTypeImageConfig
 	return cfg
 }
+
+func ConfigAmd64ZenConfig() Config {
+	dt := ConfigDTFeaturetestZenc259()
+	cfg, _ := NewConfigFromBytes(dt.Data)
+	cfg.MediaType = MediaTypeImageConfig
+	return cfg
+}
+
+func newCofigFromDT(dt DataTuple) Config {
+	cfg, _ := NewConfigFromBytes(dt.Data)
+	cfg.MediaType = MediaTypeImageConfig
+	return cfg
+}
+
 func FT_amd64_Config() Config {
 	cfg, _ := NewConfigFromBytes(FT_amd64_ConfigByte())
-	cfg.MediaType = "application/vnd.docker.container.image.v1+json"
+	cfg.MediaType = MediaTypeImageConfig
 	return cfg
 }
 
@@ -87,7 +105,7 @@ func FT_amd64_OCIManifest() OCIManifest {
 
 func FT_arm_Config() Config {
 	cfg, _ := NewConfigFromBytes(ConfigByteFtArm64())
-	cfg.MediaType = "application/vnd.docker.container.image.v1+json"
+	cfg.MediaType = MediaTypeImageConfig
 	return cfg
 }
 

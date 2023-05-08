@@ -15,7 +15,7 @@ func TestAnnotationCRUD(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 90
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		t.Fatal(err)
@@ -28,6 +28,7 @@ func TestAnnotationCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.NotEqual(t, 0, a0_id)
+	a0.ID = a0_id
 	l0 := types.NewAnnotation("foo", "bar")
 	l0_id, err := db.Label_GetInsert(ctx, l0)
 	if err != nil {
@@ -40,4 +41,21 @@ func TestAnnotationCRUD(t *testing.T) {
 	}
 	assert.True(t, found)
 	assert.Equal(t, a0_id, a.ID)
+	a0.Value = "baz"
+	err = db.AnnotationUpdate(ctx, a0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a0.Key = "foz"
+	err = db.AnnotationUpdate(ctx, a0)
+	if err == nil {
+		t.Fatal("expect key error")
+	}
+	a1 := types.NewAnnotation("foz", "bar")
+	a1.ID = a0_id
+	err = db.AnnotationUpdate(ctx, a0)
+	if err == nil {
+		t.Fatal("expect ID error")
+	}
+
 }

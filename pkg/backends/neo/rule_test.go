@@ -16,7 +16,7 @@ func TestRuleGetCreate(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 120
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		db.TeardownTest(bs)
@@ -74,7 +74,7 @@ func TestRuleEvalAnnotationRule(t *testing.T) {
 	bs.SetEmptyAll()
 	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target:platform")
 	//bs.PostTestSleep = 120
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +122,7 @@ func TestRuleEvalAnnotationRuleNoop(t *testing.T) {
 	bs.SetEmptyAll()
 	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target:platform")
 	//bs.PostTestSleep = 120
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		t.Fatal(err)
@@ -173,7 +173,7 @@ func TestRuleEvalAll(t *testing.T) {
 	bs.AddBootstrap("rules:rules/foo/bar.yaml")
 	bs.AddBootstrap("rules:rules/platform/os/linux.yaml")
 	//bs.PostTestSleep = 120
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		t.Fatal(err)

@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	ycfg "github.com/metahub-registry/metahub-core/pkg/yaml/config"
 )
 
 const (
@@ -19,7 +20,7 @@ const (
 )
 
 func (mag Magazine) NeoLinkManifestToUpstream(ctx context.Context, maniID, upID int64) (err error) {
-	return mag.Database.Manifest_LinkToUpstream(ctx, maniID, upID)
+	return mag.Database.ManifestLinkToUpstream(ctx, maniID, upID)
 }
 
 func (mag Magazine) LinkManifestToManifestData(ctx context.Context, maniID, maniDataID int64, props ...string) (err error) {
@@ -36,6 +37,85 @@ func (mag Magazine) NeoLinkManifestToLayer(ctx context.Context, maniID int64, l 
 
 func (mag Magazine) NeoLinkManifestToPlatform(ctx context.Context, maniID, platID int64) (err error) {
 	return mag.Database.LinkManifestToPlatform(ctx, maniID, platID)
+}
+
+func (mag Magazine) GetManifest(ctx context.Context, m ycfg.Manifest) (mani types.ManifestData, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": "magazine/manifest.go",
+		"func":    "GetManifest",
+	})
+	_, span := tracer.Start(ctx, "GetManifest")
+	defer span.End()
+	up, err := m.ToUpstreamTriple()
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	l = l.WithFields(logrus.Fields{
+		"reg":    up.Reg,
+		"repo":   up.Repo,
+		"tag":    up.Tag,
+		"digest": up.Digest,
+	})
+	req := types.Request{
+		Host: up.Reg,
+		Repo: up.Repo,
+		Tag:  up.Tag,
+	}
+	// 2023-04-05 check for upstream in graph
+	u, found, e := mag.Database.Upstream_Get_ByRequest(ctx, req)
+	if e != nil {
+		err = errors.Wrap(e, "failed to get upstream")
+		l.Error(err)
+		return
+	}
+	up.Digest = u.Digest
+	if !found {
+		err = errors.New("upstream not found")
+		l.Error(err)
+		return
+	}
+	// The Manifest cached has a Data filed with the original data blob (matching the digest)
+	// in addition it has fields populated with the parsed data.
+	mani, isCached, err := mag.Minio.GetCachedManifest(ctx, up.Digest)
+	if err != nil {
+		l.Error(err)
+		return
+	}
+	if !isCached {
+		err = errors.New("manifest is not cached")
+		return
+	}
+	mani.Upstream = types.Upstream{
+		Reg:    up.Reg,
+		Repo:   up.Repo,
+		Tag:    up.Tag,
+		Digest: up.Digest,
+	}
+	//mani.Annotations = types.NewAnnotations()
+	/// Config
+	cfg, found, err := mag.Minio.GetTypesConfig(ctx, mani.Config.Digest)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	if !found {
+		err = errors.New("config is not cached")
+		return
+	}
+	mani.Config = cfg
+	/*anno, err := mag.Manifest_LabelsToAnnotations(mani)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	err = mani.UpdateAnnotations(anno)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	*/
+	return
 }
 
 func (mag Magazine) ManifestGetByHTTPRequest(ctx context.Context, r *http.Request) (m types.ManifestData, found bool, err error) {
@@ -77,7 +157,7 @@ func (mag Magazine) ManifestDeleteByHTTPRequest(ctx context.Context, r *http.Req
 	req := types.NewRequest(ctx, r)
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMani,
-		"func":    "Manifest_DeleteByHTTPRequest",
+		"func":    "ManifestDeleteByHTTPRequest",
 		"method":  r.Method,
 		"uri":     r.RequestURI,
 		"repo":    req.Repo,
@@ -92,7 +172,7 @@ func (mag Magazine) ManifestDeleteByHTTPRequest(ctx context.Context, r *http.Req
 		msg += fmt.Sprintf("%s)", req.Tag)
 	}
 	utils.Info(l, span, msg)
-	found, e := mag.RemoveManifestByRequest(req)
+	found, e := mag.RemoveManifestByRequest(ctx, req)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to delete manifest")
 		return
@@ -100,7 +180,7 @@ func (mag Magazine) ManifestDeleteByHTTPRequest(ctx context.Context, r *http.Req
 	if !found || req.Tag != "" {
 		//Not a plain Manifest, let's try to delete a Collection
 		logrus.Warn("Not a plain Manifest, let's try to delete a Collection")
-		found, e := mag.RemoveCollectionByRequest(req)
+		found, e := mag.RemoveCollectionByRequest(ctx, req)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to delete collection")
 			return
@@ -244,7 +324,7 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 		if dig.String() != md.Digest {
 			utils.Debug(l, span, "incoming manifest ('%s') is different from already present manifest ('%s')", utils.ShortenDigest(dig.String()), utils.ShortenDigest(md.Digest))
 			// TODO: Remove manifestdata already pushed
-			e = mag.Database.ManifestData_Delete(ctx, md)
+			e = mag.Database.ManifestDataDelete(ctx, md)
 			if e != nil {
 				err = utils.ErrorHandler(l, span, e, "failed to delete ManifestData from Database")
 				return
@@ -293,8 +373,16 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 	return
 }
 
-func (mag Magazine) RemoveManifestByRequest(req types.Request) (found bool, err error) {
-	ctx := context.Background()
+func (mag Magazine) RemoveManifestByRequest(ctx context.Context, req types.Request) (found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMani,
+		"func":    "RemoveManifestByRequest",
+		"reg":     req.Host,
+		"repo":    req.Repo,
+		"tag":     req.Tag,
+		"profile": req.Profile,
+	})
+	defer span.End()
 	m := types.ManifestData{
 		Upstream: types.Upstream{
 			Repo: req.Repo,
@@ -302,17 +390,16 @@ func (mag Magazine) RemoveManifestByRequest(req types.Request) (found bool, err 
 		},
 		Digest: req.Digest,
 	}
-	found, err = mag.Database.ManifestData_Remove(ctx, req)
+	found, err = mag.Database.ManifestDataRemove(ctx, req)
 	if err != nil {
-		err = errors.Wrap(err, "failed to Database.Manifest_Remove")
+		err = utils.ErrorHandler(l, span, err, "failed to Database.Manifest_Remove")
 		return
 	}
 	if found {
 		// FOUND: Remove Manifest Blob
 		e := mag.Minio.ManifestRemoveObj(ctx, m.Digest)
 		if e != nil {
-			e = errors.Wrapf(e, "while in RemoveManifestByRequest (we won't fail here tho)")
-			logrus.Error(e)
+			utils.ErrorHandler(l, span, e, "while in RemoveManifestByRequest (we won't fail here tho)")
 			return
 		}
 	}

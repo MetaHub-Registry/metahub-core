@@ -7,6 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -14,6 +15,7 @@ import (
 const (
 	AnnotationType = "Annotation"
 	LabelType      = "Label"
+	pkgNameAnno    = "neo/annotation.go"
 )
 
 func (n Neo) Label_GetInsert(ctx context.Context, a types.Annotation) (aID int64, err error) {
@@ -48,6 +50,34 @@ func (n Neo) Annotation_Create(ctx context.Context, typ string, a types.Annotati
 		} else {
 			logrus.Warnf("evaluated rule for annotation %s=%s", a.Key, a.Value)
 		}
+	}
+	return
+}
+
+func (n Neo) AnnotationUpdate(ctx context.Context, a types.Annotation) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameAnno,
+		"func":    "upstreamInsertGeneric",
+		"annoID":  a.ID,
+		"key":     a.Key,
+		"value":   a.Value,
+	})
+	defer span.End()
+	curA, found, e := n.Annotation_GetByID(ctx, a.ID)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, "error while getting current annotation")
+	}
+	if !found {
+		return utils.NewError(l, span, "annotation with ID %d not found", a.ID)
+	}
+	if curA.Key != a.Key {
+		return utils.NewError(l, span, "annotation with ID %d has different key (%s != %s)", a.ID, curA.Key, a.Key)
+	}
+	q := fmt.Sprintf(`MATCH (n:Annotation) WHERE id(n) = %d SET n.value = "%s"`, a.ID, a.Value)
+	utils.Debug(l, span, q)
+	_, e = n.Execute(q)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, "error while executing query")
 	}
 	return
 }

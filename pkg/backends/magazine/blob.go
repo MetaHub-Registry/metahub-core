@@ -54,7 +54,7 @@ func (mag Magazine) BlobDelete(ctx context.Context, req types.Request) (err erro
 		return err
 	}
 	if found {
-		err = mag.Database.ConfigDeleteByDigest(req.Digest)
+		err = mag.Database.ConfigDeleteByDigest(ctx, req.Digest)
 		if err != nil {
 			logrus.Error(err)
 			return

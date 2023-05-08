@@ -13,7 +13,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-var UpstreamReturn = `id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag, u.digest AS upstreamDigest`
+const (
+	pkgNameUp      = "neo/upstream.go"
+	UpstreamReturn = `id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag, u.digest AS upstreamDigest`
+)
 
 func (n Neo) Upstream_GetInsert(ctx context.Context, up *types.Upstream) (found bool, err error) {
 	ctx, span := tracer.Start(ctx, "Upstream_GetInsert")
@@ -50,7 +53,7 @@ func (n Neo) Upstream_GetInsert_ByRequest(ctx context.Context, req types.Request
 
 func (n Neo) Upstream_Get_ByRequest(ctx context.Context, req types.Request) (up types.Upstream, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "neo/upstream.go",
+		"package": pkgNameUp,
 		"func":    "Upstream_Get_ByRequest",
 		"host":    req.Host,
 		"repo":    req.Repo,
@@ -76,19 +79,87 @@ func (n Neo) Upstream_Get_ByRequest(ctx context.Context, req types.Request) (up 
 	if !found {
 		return
 	}
-	up, err = n.Upstream_Get_ByID(ctx, up.ID)
+	up, found, err = n.UpstreamGetByID(ctx, up.ID)
 	return
 }
 
-func (n Neo) Upstream_Get_ByID(ctx context.Context, upID int64) (up types.Upstream, err error) {
+func (n Neo) UpstreamGetIDByManifestID(ctx context.Context, maniID int64) (upID int64, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameUp,
+		"func":    "UpstreamGetIDByManifestID",
+		"maniID":  maniID,
+	})
+	_ = ctx
+	defer span.End()
+	q := fmt.Sprintf(`MATCH (m:Manifest)-[]->(up:Upstream) WHERE id(m) = %d`, maniID)
+	q += ` RETURN id(up) AS ID`
+	utils.Debug(l, span, q)
+	if res, found, e := n.QueryOne(q); e != nil {
+		return upID, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	} else {
+		if !found {
+			utils.Debug(l, span, "did not found upstream connected to maniID %d", maniID)
+			return upID, false, nil
+		}
+		if upID, e = res.GetInt64("ID"); e != nil {
+			return upID, false, utils.ErrorHandler(l, span, e, types.FailBrGet, "ID")
+		} else {
+			utils.Debug(l, span, "found upstream w/ ID %d", upID)
+
+			return upID, true, nil
+		}
+	}
+}
+
+func (n Neo) UpstreamCleanupByID(ctx context.Context, upID int64) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameUp,
+		"func":    "UpstreamCleanupByID",
+		"upID":    upID,
+	})
+	_ = ctx
+	defer span.End()
+	key := "countUpstream"
+	q := fmt.Sprintf(`MATCH (m:Manifest)-[]->(up:Upstream) WHERE id(up) = %d`, upID)
+	q += fmt.Sprintf(` RETURN count(up) AS %s`, key)
+	countUpstream := -1
+	if res, _, e := n.QueryOne(q); e != nil {
+		return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	} else {
+		if countUpstream, e = res.GetInt(key); e != nil {
+			return utils.ErrorHandler(l, span, e, types.FailBrGet, key)
+		}
+	}
+	utils.Debug(l, span, "Upstream has '%d' relationships to Manifests", countUpstream)
+	if countUpstream == 0 {
+		q := fmt.Sprintf(`MATCH (up:Upstream) WHERE id(up) = %d DETACH DELETE up`, upID)
+		if _, e := n.Execute(q); e != nil {
+			return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+		}
+	}
+	return
+}
+func (n Neo) UpstreamGetByID(ctx context.Context, upID int64) (up types.Upstream, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameUp,
+		"func":    "UpstreamGetByID",
+		"upID":    upID,
+	})
+	_ = ctx
+	defer span.End()
 	q := fmt.Sprintf(`MATCH (u:Upstream) WHERE id(u) = %d`, upID)
 	q += ` RETURN ` + UpstreamReturn
-
+	utils.Debug(l, span, q)
 	res, err := n.Execute(q)
 	if err != nil {
 		logrus.Errorf("Failed to run query: %s", err)
 		return
 	}
+	if len(res.Strings) == 0 {
+		found = false
+		return
+	}
+	found = true
 	up, err = UpstreamFromResult(res)
 	if err != nil {
 		logrus.Errorf("Failed to get upstream: %s", err)
@@ -99,7 +170,7 @@ func (n Neo) Upstream_Get_ByID(ctx context.Context, upID int64) (up types.Upstre
 
 func (n Neo) Upstream_Get(ctx context.Context, up types.Upstream) (upID int64, success bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "neo/upstream.go",
+		"package": pkgNameUp,
 		"func":    "Upstream_Get",
 	})
 	_, span := tracer.Start(ctx, "Upstream_Get")
@@ -145,7 +216,7 @@ func (n Neo) GetUpstream(ctx context.Context, up types.Upstream) (upID int64, su
 func (n Neo) CreateUpstream(ctx context.Context, up types.Upstream) (upID int64, err error) {
 	label := fmt.Sprintf("%s/%s:%s", up.Reg, up.Repo, up.Tag)
 	l := logrus.WithFields(logrus.Fields{
-		"package":  "neo/upstream.go",
+		"package":  pkgNameUp,
 		"func":     "CreateUpstream",
 		"upstream": label,
 	})

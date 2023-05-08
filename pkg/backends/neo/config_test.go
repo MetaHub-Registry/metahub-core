@@ -20,7 +20,7 @@ func TestConfigCRUD(t *testing.T) {
 	if debug > 0 {
 		bs.PostTestSleep = debug
 	}
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	if err != nil {
 		db.TeardownTest(bs)
 		t.Fatal(err)
@@ -70,7 +70,7 @@ func TestConfigCRUD(t *testing.T) {
 	assert.True(t, found, fmt.Sprintf("expected to find config with digest %s", amd64_cfg_got.Digest))
 	assert.Equal(t, amd64_cfg_got.ID, amd64_cfg_got3.ID)
 	// Delete
-	err = db.ConfigDeleteByDigest(amd64_cfg_got.Digest)
+	err = db.ConfigDeleteByDigest(ctx, amd64_cfg_got.Digest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestConfigMediaType(t *testing.T) {
 	if debug > 0 {
 		bs.PostTestSleep = debug
 	}
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		db.TeardownTest(bs)

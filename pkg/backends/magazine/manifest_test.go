@@ -120,7 +120,7 @@ func TestStoreManifestUploadOCIManifest(t *testing.T) {
 
 func TestManifestStoreManifestUploadEmbeddedConfigNoLayer(t *testing.T) {
 	bs := utils.NewBootstrap()
-	//debug = 300
+	debug := 0
 	bs.SetEmptyAll()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("users")

@@ -10,9 +10,13 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel"
 )
 
-var db *sql.DB
+var (
+	tracer = otel.Tracer("sqlite")
+	db     *sql.DB
+)
 
 type Sqlite struct {
 	// File is the path to the sqlite database file

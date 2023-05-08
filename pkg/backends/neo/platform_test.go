@@ -16,7 +16,7 @@ func TestPlatformCRUD(t *testing.T) {
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 45
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		t.Fatal(err)

@@ -8,8 +8,70 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
 )
+
+const (
+	pkgNameColTag = "neo/collection_tag.go"
+)
+
+func (n Neo) CollectionTagGetIDByManifestID(ctx context.Context, maniID int64) (tagID int64, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameColTag,
+		"func":    "CollectionTagGetIDByManifestID",
+		"maniID":  maniID,
+	})
+	_ = ctx
+	defer span.End()
+	q := fmt.Sprintf(`MATCH (m:Manifest)<-[]-(t:Tag) WHERE id(m) = %d`, maniID)
+	q += ` RETURN id(t) AS ID`
+	utils.Debug(l, span, q)
+	if res, found, e := n.QueryOne(q); e != nil {
+		return tagID, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	} else {
+		if !found {
+			utils.Debug(l, span, "did not found tag connected to maniID %d", maniID)
+			return tagID, false, nil
+		}
+		if tagID, e = res.GetInt64("ID"); e != nil {
+			return tagID, false, utils.ErrorHandler(l, span, e, types.FailBrGet, "ID")
+		} else {
+			utils.Debug(l, span, "found tag w/ ID %d", tagID)
+
+			return tagID, true, nil
+		}
+	}
+}
+
+func (n Neo) CollectionTagCleanupByID(ctx context.Context, tagID int64) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameColTag,
+		"func":    "CollectionTagCleanupByID",
+		"tagID":   tagID,
+	})
+	_ = ctx
+	defer span.End()
+	key := "countTag"
+	q := fmt.Sprintf(`MATCH (m:Manifest)<-[]-(t:Tag) WHERE id(t) = %d`, tagID)
+	q += fmt.Sprintf(` RETURN count(t) AS %s`, key)
+	countUpstream := -1
+	if res, _, e := n.QueryOne(q); e != nil {
+		return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	} else {
+		if countUpstream, e = res.GetInt(key); e != nil {
+			return utils.ErrorHandler(l, span, e, types.FailBrGet, key)
+		}
+	}
+	utils.Debug(l, span, "Tag has '%d' relationships to Manifests", countUpstream)
+	if countUpstream == 0 {
+		q := fmt.Sprintf(`MATCH (t:Tag) WHERE id(t) = %d DETACH DELETE t`, tagID)
+		if _, e := n.Execute(q); e != nil {
+			return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+		}
+	}
+	return nil
+}
 
 func (n Neo) CollectionTag_Create(tag string) (ct types.CollectionTag, err error) {
 	q := `CREATE (t:Tag {name: "%s"}) RETURN id(t) AS tagID, t.name AS tagName`
@@ -91,28 +153,46 @@ func (n Neo) CollectionTag_GetByTag(tag string) (ct types.CollectionTag, found b
 	return
 }
 
-func (n Neo) Collection_GetTagsListByRepo(repo string) (tags types.TagResponse, err error) {
-	q := `MATCH (c:Collection)-[:HAS_TAG]->(t:Tag) WHERE c.repo = "%s"`
-	q += ` RETURN id(t) AS tagID, t.name AS tagName`
-	query := fmt.Sprintf(q, repo)
-	//fmt.Printf("Query: \n%s\n", query)
-	res, err := n.Query(query)
-	if err != nil {
-		logrus.Error(err)
-		return
-	}
+func (n Neo) CollectionGetTagsListByRepo(ctx context.Context, repo string) (tags types.TagResponse, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameColTag,
+		"func":    "CollectionGetTagsListByRepo",
+	})
+	defer span.End()
+	_ = ctx
 	tags = types.TagResponse{
 		Name: repo,
 		Tags: []string{},
 	}
-	for _, r := range res {
-		var ct types.CollectionTag
-		ct, err = CollectionTagFromResult(r)
-		if err != nil {
-			logrus.Error(err)
-			return
+	var colID int64
+	key := "colID"
+	q := fmt.Sprintf(`MATCH (c:Collection) WHERE c.repo = "%s" RETURN id(c) AS %s`, repo, key)
+	utils.Debug(l, span, q)
+	if res, found, e := n.QueryOne(q); e != nil {
+		return tags, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	} else if !found {
+		return tags, utils.NewError(l, span, "collection '%s' not found", repo)
+	} else {
+		if colID, e = res.GetInt64(key); e != nil {
+			return tags, utils.ErrorHandler(l, span, e, types.FailBrGet, key)
 		}
-		tags.Tags = append(tags.Tags, ct.Tag)
+	}
+	q = fmt.Sprintf(`MATCH (c:Collection)-[:HAS_TAG]->(t:Tag) WHERE id(c) = %d`, colID)
+	q += ` RETURN id(t) AS tagID, t.name AS tagName`
+	utils.Debug(l, span, q)
+	if res, err := n.Query(q); err != nil {
+		return tags, utils.ErrorHandler(l, span, err, types.FailNeoExecute)
+	} else {
+		for _, r := range res {
+			utils.Debug(l, span, "found tag")
+			var ct types.CollectionTag
+			ct, e := CollectionTagFromResult(r)
+			if e != nil {
+				err = utils.ErrorHandler(l, span, e, types.FailCollectionTagFromResult)
+				return tags, err
+			}
+			tags.Tags = append(tags.Tags, ct.Tag)
+		}
 	}
 	return
 }

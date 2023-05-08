@@ -39,6 +39,18 @@ func (n Neo) Platform_GetByID(platID int64) (plat types.Platform, found bool, er
 	return
 }
 
+func (n Neo) PlatformGetByManifestID(ctx context.Context, maniID int64) (plat types.Platform, found bool, err error) {
+	q := fmt.Sprintf(`MATCH (n:Platform)<-[:IS]-(m:Manifest) WHERE id(m) = %d`, maniID)
+	q += ` RETURN id(n) AS platformID, n.arch AS platformArch, n.os AS platformOS, n.variant AS platformVariant`
+	//fmt.Printf("Query: \n%s\n", query)
+	res, found, err := n.QueryOne(q)
+	if err != nil || !found {
+		return
+	}
+	plat, err = PlatformFromResult(res)
+	return
+}
+
 func (n Neo) GetPlatform(ctx context.Context, plat types.Platform) (platID int64, success bool, err error) {
 	q := `MATCH (n:Platform) WHERE n.arch = "%s" AND n.os = "%s" AND n.variant = "%s" RETURN id(n) AS ID`
 	query := fmt.Sprintf(q, plat.Arch, plat.OS, plat.Variant)

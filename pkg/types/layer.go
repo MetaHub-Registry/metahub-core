@@ -1,14 +1,27 @@
 package types
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
+	"testing/fstest"
 
 	"github.com/docker/distribution"
+	"github.com/h2non/filetype"
+	"github.com/minio/minio-go/v7/pkg/set"
 	"github.com/opencontainers/go-digest"
 	"github.com/sirupsen/logrus"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
+)
+
+const (
+	pkgNameLayer = "types/layer.go"
 )
 
 type Layer struct {
@@ -67,7 +80,7 @@ func Layer_FromDesc(ctx context.Context, lyrDesc distribution.Descriptor) (lyr L
 	_, span := tracer.Start(ctx, "Layer_FromDesc")
 	defer span.End()
 	l := logrus.WithFields(logrus.Fields{
-		"package": "types/layer.go",
+		"package": pkgNameLayer,
 		"func":    "Layer_FromDesc",
 		"digest":  lyrDesc.Digest.String(),
 	})
@@ -77,4 +90,95 @@ func Layer_FromDesc(ctx context.Context, lyrDesc distribution.Descriptor) (lyr L
 	lyr.MediaType = lyrDesc.MediaType
 	lyr.Size = lyrDesc.Size
 	return
+}
+
+func (lyr Layer) FindFile(ctx context.Context, fname string) (cnt string, found bool, err error) {
+	fname = strings.TrimPrefix(fname, "/")
+	fs, err := lyr.Uncompress(ctx, fname)
+	if err != nil {
+		return
+	}
+	f, ok := fs[fname]
+	if !ok {
+		return
+	}
+	found = true
+	cnt = string(f.Data)
+	return
+}
+
+func (lyr Layer) EvalOS(ctx context.Context) (os OS, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameLayer,
+		"func":    "types.EvalOS",
+	})
+	defer span.End()
+	fs, found, e := lyr.FindFile(ctx, "etc/os-release")
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to uncompress layer")
+	}
+	if !found {
+		err = utils.NewError(l, span, "failed to find /etc/os-release")
+		return
+	}
+	os, e = ParseOS(fs)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to parse /etc/os-release")
+		return
+	}
+	return
+
+}
+
+func (lyr Layer) Uncompress(ctx context.Context, fnames ...string) (fs fstest.MapFS, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameLayer,
+		"func":    "types.Uncompress",
+	})
+	defer span.End()
+	_ = ctx
+	fn := set.CreateStringSet(fnames...)
+	kind, _ := filetype.Match(lyr.Data)
+	if kind == filetype.Unknown {
+		err = utils.NewError(l, span, "unknown file type %s", kind)
+		return
+	}
+	var tarRead *tar.Reader
+	r := bytes.NewReader(lyr.Data)
+	switch kind.MIME.Value {
+	case "application/x-tar":
+		tarRead = tar.NewReader(r)
+	case "application/gzip":
+		gzRead, e := gzip.NewReader(r)
+		if e != nil {
+			return nil, utils.NewError(l, span, "error reading gzip")
+		}
+		tarRead = tar.NewReader(gzRead)
+	default:
+		err = utils.NewError(l, span, "unknown file type: %s", kind.MIME.Value)
+		return
+	}
+	fs = make(fstest.MapFS)
+	for {
+		cur, e := tarRead.Next()
+		if e == io.EOF {
+			break
+		} else if e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to read tar")
+			return nil, err
+		}
+		if !fn.IsEmpty() && !fn.Contains(cur.Name) {
+			continue
+		}
+		if cur.Typeflag != tar.TypeReg {
+			continue
+		}
+		data, e := io.ReadAll(tarRead)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to ReadAll")
+			return nil, err
+		}
+		fs[cur.Name] = &fstest.MapFile{Data: data}
+	}
+	return fs, nil
 }
