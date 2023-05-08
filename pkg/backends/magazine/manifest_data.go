@@ -184,7 +184,7 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 		err = utils.NewError(l, span, "expect to have to store Manifest")
 		return
 	case 1:
-		label := fmt.Sprintf("%s/%s:%s@%s", req.Host, req.Repo, req.Tag, req.Profile)
+		label := fmt.Sprintf("%s/%s:%s", req.Host, req.Repo, req.Tag)
 		utils.Debug(l, span, "init ManifestData with label '%s' and digest '%s' from first manifest in storeManifestUpload_OCIManifest", label, utils.ShortenDigest(req.Digest))
 		md = m.Manifests[0]
 		md.Digest = req.Digest
@@ -246,7 +246,7 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 	}
 	m.Upstream = up
 	md.Upstream = up
-	err = mag.Database.Manifest_LinkToUpstream(ctx, m.ID, up.ID)
+	err = mag.Database.ManifestLinkToUpstream(ctx, m.ID, up.ID)
 	if err != nil {
 		err = errors.Wrap(err, "failed to LinkManifestToUpstream")
 		return

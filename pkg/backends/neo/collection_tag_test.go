@@ -14,7 +14,7 @@ func TestCollectionTagCRUD(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 60
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +40,7 @@ func TestCollectionTagCRUD(t *testing.T) {
 
 func TestCollectionTagLinkCollection(t *testing.T) {
 	ctx := context.Background()
-	_ = ctx
+	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("platforms:generic")
@@ -59,12 +59,18 @@ func TestCollectionTagLinkCollection(t *testing.T) {
 	bs.AddBootstrap("layer:1:ft_amd64")
 	bs.AddBootstrap("manifestdata:ft_arm64")
 	bs.AddBootstrap("manifestdata:ft_amd64")
-
 	bs.SetEmptyAll()
-	//bs.PostTestSleep = 90
-	br, err := SetupTest(bs)
-	_ = br
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
 	if err != nil {
+		db.TeardownTest(bs)
 		t.Fatal(err)
 	}
 	defer db.TeardownTest(bs)
@@ -88,5 +94,15 @@ func TestCollectionTagLinkCollection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
+	tags, e := db.CollectionGetTagsListByRepo(ctx, "qnib/featuretest")
+	if e != nil {
+		t.Fatal(e)
+	}
+	assert.Equal(t, 2, len(tags.Tags))
+	// Remove AMD64 ManifestData should remove everything below
+	//sha256:5bf8eee20fde14eb6e3e924c18fafa4d816e131f315810875136f0438ff7beed
+	//db.ManifestData_Delete(ctx, maniAMD64)
+	if err = db.CollectionTagCleanupByID(ctx, ct_got.ID); err != nil {
+		t.Fatal(err)
+	}
 }

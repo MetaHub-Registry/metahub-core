@@ -16,9 +16,13 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
+const (
+	pkgNameLayer = "minio/layer.go"
+)
+
 func (m Minio) GetLayer(ctx context.Context, up upstream.UpstreamTriple) (isCached bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "backends/minio",
+		"package": pkgNameLayer,
 		"func":    "GetLayer",
 		"digest":  utils.ShortenDigest(up.Digest.String()),
 	})
@@ -72,8 +76,17 @@ func (m Minio) PutLayer(ctx context.Context, b []byte, dig string) (err error) {
 }
 
 func (m Minio) LayerPutObj(ctx context.Context, object string, data []byte) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameLayer,
+		"func":    "min.LayerPutObj",
+	})
+	defer span.End()
 	cli := m.BucketConfig[layersBucketKey].Client
-	_, err = cli.PutObject(ctx, m.GetLayersBucketName(), object, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{})
+	info, e := cli.PutObject(ctx, m.GetLayersBucketName(), object, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{})
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to put object")
+	}
+	utils.Debug(l, span, "Put layer '%s': %d", utils.ShortenDigest(object), info.Size)
 	return
 }
 

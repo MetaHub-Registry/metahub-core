@@ -74,7 +74,7 @@ func (mag Magazine) CachImageConfig(ctx context.Context, mani *types.ManifestDat
 		}
 		// unmarshal config
 		var imgCfg v1.Image
-		err = json.Unmarshal(b, &imgCfg)
+		e = json.Unmarshal(b, &imgCfg)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to unmarshal config")
 			return err

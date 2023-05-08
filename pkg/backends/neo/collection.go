@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/docker/distribution/manifest/manifestlist"
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -14,6 +15,11 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+)
+
+const (
+	pkgNameCol  = "neo/collection.go"
+	failInsMani = "failed to insert manifest"
 )
 
 func (n Neo) Collection_GetID_ByYaml(ctx context.Context, ycol yamlCfg.ManifestCollection) (colID, colTagID int64, found bool, err error) {
@@ -61,80 +67,148 @@ func (n Neo) CollectionGetAll(ctx context.Context) (collections []types.Collecti
 }
 
 func (n Neo) CollectionExists(ctx context.Context, up upstream.UpstreamTriple) (found bool, err error) {
-	l := logrus.WithFields(logrus.Fields{
-		"package": "neo/collection.go",
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameCol,
 		"func":    "CollectionExists",
 		"repo":    up.Repo,
 		"tag":     up.Tag,
 		"digest":  utils.ShortenDigest(up.Digest.String()),
 	})
-	_, span := tracer.Start(ctx, "CollectionExists")
 	defer span.End()
-	span.SetAttributes(
-		attribute.Key("repo").String(up.Repo),
-		attribute.Key("tag").String(up.Tag),
-		attribute.Key("digest").String(utils.ShortenDigest(up.Digest.String())),
-	)
-
+	_ = ctx
 	q := fmt.Sprintf(`MATCH (c:Collection)-[:HAS_TAG]->(t:Tag) WHERE c.repo = "%s" AND t.name = "%s"`, up.Repo, up.Tag)
 	if up.Digest.String() != "" {
 		q = `MATCH (md:ManifestData)-[]-(m:Manifest)<-[:UPSTREAM]-(c:Collection)-[:HAS_TAG]->(t:Tag)-[:UPSTREAM]->(m)`
 		q += fmt.Sprintf(`WHERE c.repo = "%s" AND md.digest = "%s"`, up.Repo, up.Digest.String())
 	}
 	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
-	))
+	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
-		msg := "query execution failed"
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", msg),
-		))
-		l.Error(msg)
-		err = errors.Wrap(err, msg)
-		return found, err
+		return found, utils.NewError(l, span, types.FailNeoExecute)
+
 	}
 	if !found {
-		msg := "collection not found"
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
-		))
-		l.Debug(msg)
+		utils.Debug(l, span, types.FailCollectionNotFound)
 		return found, nil
 	}
 	colID, err := res.GetInt64("collectionID")
 	if err != nil {
-		msg := "colID could not be found"
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", msg),
-		))
-		err = errors.Wrap(err, msg)
-		l.Error(msg)
-		return found, err
+		return found, utils.NewError(l, span, types.FailCollectionNotFound)
 	}
-	msg := fmt.Sprintf("collection found: ID %d", colID)
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", msg),
-	))
-	l.Debug(msg)
+	utils.Debug(l, span, "collection found: ID %d", colID)
 	return found, nil
 }
 
+func (n Neo) CollectionGetByRepo(ctx context.Context, repo string) (col types.Collection, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameCol,
+		"func":    "CollectionGetByRepo",
+		"repo":    repo,
+	})
+	defer span.End()
+	colID, colFound, e := n.CollectionGetIDByRepo(ctx, repo)
+	if e != nil {
+		return col, false, utils.ErrorHandler(l, span, e, types.FailCollectionNotFound)
+	} else if !colFound {
+		return col, false, nil
+	}
+	col = types.NewCollection(repo, "")
+	col.ID = colID
+	if found, e = n.CollectionUpdate(ctx, &col); e != nil {
+		return col, false, utils.ErrorHandler(l, span, e, types.FailCollectionUpdate)
+	} else if !found {
+		return col, false, nil
+	}
+	return col, true, nil
+}
+
+func (n Neo) CollectionUpdate(ctx context.Context, col *types.Collection) (found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameCol,
+		"func":    "CollectionUpdate",
+		"colID":   col.ID,
+		"repo":    col.Repo,
+		"tag":     col.Tag,
+	})
+	defer span.End()
+	if col.ID == -1 {
+		if colID, colFound, e := n.CollectionGetIDByRepo(ctx, col.Repo); e != nil {
+			return false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+		} else if !colFound {
+			return false, nil
+		} else {
+			col.ID = colID
+		}
+	}
+	q := fmt.Sprintf(`MATCH (c:Collection)-[:HAS_TAG]->(t:Tag) WHERE id(c) = %d AND t.name = "%s"`, col.ID, col.Tag)
+	q += ` RETURN t.name AS tagName, id(t) AS tagID`
+	utils.Debug(l, span, q)
+	if res, found, e := n.QueryOne(q); e != nil {
+		return false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	} else if found {
+		if ct, e := CollectionTagFromResult(res); e != nil {
+			return false, utils.ErrorHandler(l, span, e, "failed to derive collectionTag from result")
+		} else {
+			col.ColTag = ct
+		}
+	}
+	// ManifestList adding
+	q = `MATCH (c:Collection)-[:HAS_TAG]->(t:Tag)-[:REF]->(ml:ManifestList)-[:IMPLEMENTS]->(f)`
+	q += fmt.Sprintf(` WHERE id(c) = %d AND t.name = "%s"`, col.ID, col.Tag)
+	q += ` RETURN id(ml) AS manifestListID, id(f) AS filterID,`
+	q += ` c.repo AS collectionRepo, t.name AS tagName, id(t) AS tagID,`
+	q += ` ml.digest AS manifestListDigest, ml.mediaType AS manifestListMediaType, ml.size AS manifestListSize`
+	utils.Debug(l, span, q)
+	if res, e := n.Query(q); e != nil {
+		return false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	} else {
+		for _, r := range res {
+			if ml, e := ManifestListFromResult(r); e != nil {
+				return false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+			} else {
+				ml.Manifests, e = n.ManifestData_GetByManifestList(ctx, ml.ID)
+				if e != nil {
+					return false, utils.ErrorHandler(l, span, e, types.FailManifestDataGetByManifestList)
+				}
+				col.ManifestLists = append(col.ManifestLists, ml)
+			}
+		}
+	}
+	return true, nil
+}
+
+func (n Neo) CollectionGetIDByRepo(ctx context.Context, repo string) (colID int64, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameCol,
+		"func":    "CollectionGetIDByRepo",
+		"repo":    repo,
+	})
+	defer span.End()
+	_ = ctx
+	key := "colID"
+	q := fmt.Sprintf(`MATCH (c:Collection) WHERE c.repo = "%s" RETURN id(c) AS %s`, repo, key)
+	utils.Debug(l, span, q)
+	if res, found, e := n.QueryOne(q); e != nil {
+		return colID, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	} else if !found {
+		return colID, false, nil
+	} else {
+		if colID, e = res.GetInt64(key); e != nil {
+			return colID, false, utils.ErrorHandler(l, span, e, types.FailBrGet, key)
+		}
+	}
+	return colID, true, nil
+}
+
 func (n Neo) Collection_Get_ByRepoTag(ctx context.Context, repo, tag string) (c types.Collection, found bool, err error) {
-	l := logrus.WithFields(logrus.Fields{
-		"package": "magazine/collection.go",
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameCol,
 		"func":    "Collection_Get_ByRepoTag",
 		"repo":    repo,
 		"tag":     tag,
 	})
 	_ = l
-	ctx, span := tracer.Start(ctx, "ManifestData_GetByManifestList")
 	defer span.End()
 	q := `MATCH (c:Collection)-[:HAS_TAG]->(t:Tag)-[:REF]->(ml:ManifestList)-[:IMPLEMENTS]->(f) WHERE c.repo = "%s" AND t.name = "%s"`
 	q += ` RETURN id(c) AS collectionID, id(ml) AS manifestListID, id(f) AS filterID,`
@@ -196,6 +270,12 @@ func (n Neo) Collection_Get_ByRepoTag(ctx context.Context, repo, tag string) (c 
 }
 
 func (n Neo) GetAllCollections(ctx context.Context) (collections []types.Collection, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameCol,
+		"func":    "GetAllCollections",
+	})
+	_ = l
+	defer span.End()
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	q := `MATCH (c:Collection)-[:HAS_TAG]->(t:Tag)-[:REF]->(ml:ManifestList)-[:IMPLEMENTS]->(f) WHERE ml.label IS NOT NULL`
@@ -203,11 +283,11 @@ func (n Neo) GetAllCollections(ctx context.Context) (collections []types.Collect
 	q += ` RETURN id(c) AS collectionID, id(ml) AS manifestListID, id(f) AS filterID,`
 	q += ` c.repo AS collectionRepo, t.name AS tagName, id(t) AS tagID,`
 	q += ` ml.digest AS manifestListDigest, ml.mediaType AS manifestListMediaType, ml.size AS manifestListSize`
-	//fmt.Printf("Query: GetAllCollections \n%s\n", q)
+	utils.Debug(l, span, q)
 	input := map[string]interface{}{}
-	result, err := session.Run(q, input)
-	if err != nil {
-		return
+	result, e := session.Run(q, input)
+	if e != nil {
+		return collections, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 	}
 	cols := map[int64]types.Collection{}
 	collections = make([]types.Collection, 0)
@@ -282,7 +362,7 @@ func (n Neo) Collection_GetCreate_ByRepoTag(ctx context.Context, repo, tag strin
 
 func (n Neo) Collection_Get_ByRepo(ctx context.Context, repo string) (c types.Collection, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "neo/collection.go",
+		"package": pkgNameCol,
 		"func":    "Collection_Get_ByRepo",
 		"repo":    repo,
 	})
@@ -311,7 +391,7 @@ func (n Neo) Collection_Get_ByRepo(ctx context.Context, repo string) (c types.Co
 
 func (n Neo) Collection_GetCreate_ByRepo(ctx context.Context, repo string) (c types.Collection, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "neo/collection.go",
+		"package": pkgNameCol,
 		"func":    "Collection_GetCreate_ByRepo",
 		"repo":    repo,
 	})
@@ -627,37 +707,28 @@ func CollectionListingFromResult(res types.Result) (col types.CollectionListing,
 	return
 }
 
-func (n Neo) Collection_Remove(ctx context.Context, col types.Collection) (found bool, err error) {
-	c, found, err := n.Collection_Get_ByRepoTag(ctx, col.Repo, col.Tag)
-	if err != nil {
-		err = errors.Wrap(err, "failed to Collection_GetCreate_ByRepoTag")
-		logrus.Error(err)
-		return
-	}
-	if !found {
-		// Might not be a full collection
-		c, found, err = n.Collection_Get_ByRepoTag_woManifests(ctx, col.Repo, col.Tag)
-		if err != nil {
-			err = errors.Wrap(err, "failed to GetCollectionTag")
-			logrus.Error(err)
-			return
-		}
-		if !found {
-			err = errors.New("collection not found")
-			logrus.Error(err)
-			return
-		}
-		fmt.Printf("Simple Collection found: \n%v\n", c)
+func (n Neo) CollectionRemove(ctx context.Context, col types.Collection) (found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameCol,
+		"func":    "CollectionRemove",
+		"repo":    col.Repo,
+		"tag":     col.Tag,
+	})
+	defer span.End()
+	if found, e := n.CollectionUpdate(ctx, &col); e != nil {
+		return false, utils.ErrorHandler(l, span, e, "failed to get collection id")
+	} else if !found {
+		return false, nil
 	}
 	// Remove CollectionTag link to Manifest
-	for _, ml := range c.ManifestLists {
-		err = n.UnLinkManifestListToCollection(ml.ID, c.ID)
+	for _, ml := range col.ManifestLists {
+		err = n.UnLinkManifestListToCollection(ml.ID, col.ID)
 		if err != nil {
 			err = errors.Wrap(err, "failed to UnLinkManifestListToCollection")
 			logrus.Error(err)
 			return
 		}
-		err = n.UnLinkManifestListToCollectionTag(ml.ID, c.ColTag.ID)
+		err = n.UnLinkManifestListToCollectionTag(ml.ID, col.ColTag.ID)
 		if err != nil {
 			err = errors.Wrap(err, "failed to UnLinkManifestListToCollectionTag")
 			logrus.Error(err)
@@ -665,12 +736,48 @@ func (n Neo) Collection_Remove(ctx context.Context, col types.Collection) (found
 		}
 	}
 	// Remove HAS_TAG between Collection and CollectionTag
-	err = n.CollectionTag_DetachFromCollection(c.ID, c.ColTag.ID)
+	err = n.CollectionTag_DetachFromCollection(col.ID, col.ColTag.ID)
 	if err != nil {
 		err = errors.Wrap(err, "failed to remove HAS_TAG between Collection and CollectionTag")
 		logrus.Error(err)
 		return
 	}
-
+	found = true
 	return
+}
+
+func (n Neo) CollectionGetCreateUpstreamTriple(ctx context.Context, ups types.Upstream, maniIn manifestlist.ManifestDescriptor) (upID, maniID int64, prf types.Profile, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameCol,
+		"func":    "CollectionGetCreate_UpstreamTriple",
+		"repo":    ups.Repo,
+		"tag":     ups.Tag,
+		"profile": ups.Profile,
+	})
+	defer span.End()
+	_, e := n.Upstream_GetInsert(ctx, &ups)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to Upstream_GetInsert")
+		return
+	}
+	upID = ups.ID
+
+	prf, prfFound, e := n.Profile_Get_ByLabel(ctx, ups.Profile)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to create collection")
+		return
+	}
+	if !prfFound {
+		err = errors.Errorf("profile '%s' not found", ups.Profile)
+		l.Error(err.Error())
+		span.RecordError(err)
+		return
+	}
+	maniID, e = n.Manifest_GetInsert_WithDesc(ctx, ups, maniIn)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, failInsMani)
+		return
+	}
+	return
+
 }

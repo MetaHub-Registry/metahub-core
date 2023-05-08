@@ -18,8 +18,12 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-var (
+var ()
+
+const (
+	FailQueryExec  = "query execution failed"
 	layerMediaType = `unknownLayer`
+	pkgNameLyr     = "neo/layer.go"
 )
 
 func (n Neo) Layer_PlainInsert(ctx context.Context, l types.Layer) (layerID int64, err error) {
@@ -120,6 +124,21 @@ func (n Neo) LayerGetByDigest(dig string) (l types.Layer, found bool, err error)
 	return
 }
 
+func (n Neo) LayerDeleteByID(ctx context.Context, lyrID int64) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMD,
+		"func":    "LayerDeleteByID",
+		"layerID": lyrID,
+	})
+	_ = ctx
+	defer span.End()
+	q := fmt.Sprintf(`MATCH (n:Layer) WHERE id(n) = %d DETACH DELETE n`, lyrID)
+	if _, e := n.Execute(q); e != nil {
+		return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	}
+	return nil
+
+}
 func (n Neo) LayerDeleteByDigest(dig string) (err error) {
 	q := `MATCH (n:Layer) WHERE n.digest = "%s" DETACH DELETE n`
 	query := fmt.Sprintf(q, dig)
@@ -159,7 +178,7 @@ func (n Neo) GetLayer(layer types.Layer) (layerID int64, success bool, err error
 func (n Neo) GetLayersForManifest(ctx context.Context, m types.ManifestData) (layers []types.Layer, err error) {
 	shortDig := utils.ShortenDigest(m.Digest)
 	l := logrus.WithFields(logrus.Fields{
-		"package": "neo/layer.go",
+		"package": pkgNameLyr,
 		"func":    "GetLayersForManifest",
 		"digest":  shortDig,
 	})
@@ -309,7 +328,7 @@ func (n Neo) LayerFromResult(ctx context.Context, res types.Result) (ly types.La
 
 func (n Neo) Layer_GetMediaType_ByID(ctx context.Context, lyID int64) (mt string, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "neo/config.go",
+		"package": pkgNameLyr,
 		"func":    "Layer_GetMediaType_ByID",
 		"layerID": lyID,
 	})
@@ -492,14 +511,13 @@ func (n Neo) Layers_DeleteUnused(ctx context.Context) (err error) {
 
 func (n Neo) Layer_GetUpstreamRegistry(ctx context.Context, up upstream.UpstreamTriple) (registry string, err error) {
 	shortMT := utils.ShortenMediaType(up.MediaType)
-	l := logrus.WithFields(logrus.Fields{
-		"package": "neo/layer.go",
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameLyr,
 		"func":    "Layer_GetUpstreamRegistry",
 		"repo":    up.Repo,
 		"tag":     up.Tag,
 		"digest":  utils.ShortenDigest(up.Digest.String()),
 	})
-	ctx, span := tracer.Start(ctx, "neo.Layer_GetUpstreamRegistry")
 	_ = ctx
 	defer span.End()
 	span.SetAttributes(
@@ -510,20 +528,11 @@ func (n Neo) Layer_GetUpstreamRegistry(ctx context.Context, up upstream.Upstream
 	q := `MATCH (l:Layer)<-[r]-(md:ManifestData)<-[]-(m:Manifest)-[:UPSTREAM]-(u:Upstream) `
 	q += fmt.Sprintf(` WHERE l.digest = "%s" AND TYPE(r) = "%s"`, up.Digest.String(), shortMT)
 	q += " RETURN u.reg AS registry"
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
-	))
+	utils.Debug(l, span, q)
+
 	res, found, e := n.QueryOne(q)
 	if e != nil {
-		msg := "query execution failed"
-		err = errors.Wrap(e, msg)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", msg),
-		))
-		span.RecordError(err)
-		l.Error(msg)
+		err = utils.ErrorHandler(l, span, e, FailQueryExec)
 		return "", err
 	}
 	if !found {
@@ -553,7 +562,7 @@ func (n Neo) Layer_GetUpstreamRegistry(ctx context.Context, up upstream.Upstream
 
 func (n Neo) LayerExists(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "neo/layer.go",
+		"package": pkgNameLyr,
 		"func":    "LayerExists",
 		"repo":    up.Repo,
 		"tag":     up.Tag,
@@ -575,14 +584,7 @@ func (n Neo) LayerExists(ctx context.Context, up upstream.UpstreamTriple) (media
 	))
 	res, found, e := n.QueryOne(q)
 	if e != nil {
-		msg := "query execution failed"
-		err = errors.Wrap(e, msg)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", msg),
-		))
-		span.RecordError(err)
-		l.Error(msg)
+		err = utils.ErrorHandler(l, span, e, FailQueryExec)
 		return "", false, err
 	}
 	if !found {
@@ -609,4 +611,32 @@ func (n Neo) LayerExists(ctx context.Context, up upstream.UpstreamTriple) (media
 
 	l.Debugf("found layer with type '%s'", ly.MediaType)
 	return ly.MediaType, true, nil
+}
+
+func (n Neo) LayerGetUpstream(ctx context.Context, lID int64) (up types.Upstream, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameLyr,
+		"func":    "neo.LayerGetUpstream",
+		"layerID": lID,
+	})
+	defer span.End()
+	_ = ctx
+	q := `MATCH (u:Upstream)<-[]-(m:Manifest)-[]->(md:ManifestData)-[]->(l:Layer)`
+	q += fmt.Sprintf(` WHERE id(l) = %d`, lID)
+	q += ` RETURN DISTINCT id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag, u.digest AS upstreamDigest`
+	res, found, e := n.QueryOne(q)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, FailQueryExec)
+		return
+	}
+	if !found {
+		err = utils.NewError(l, span, "upstream not found")
+		return
+	}
+	up, e = UpstreamFromResult(res)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to create Upstream from result")
+		return
+	}
+	return
 }

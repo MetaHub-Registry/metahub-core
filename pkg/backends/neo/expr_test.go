@@ -18,7 +18,7 @@ func TestExprSimple(t *testing.T) {
 	bs.AddBootstrap("annotation:foo:bar")
 	bs.AddBootstrap("rules:rules/foo/bar.yaml")
 	//bs.PostTestSleep = 120
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		t.Fatal(err)

@@ -16,13 +16,17 @@ import (
 func ErrorHandler(l *logrus.Entry, span trace.Span, e error, frmt string, a ...any) (err error) {
 	msg := fmt.Sprintf(frmt, a...)
 	err = errors.Wrap(e, msg)
-	span.SetStatus(codes.Error, err.Error())
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "error"),
-		attribute.String("log.message", err.Error()),
-	))
-	span.RecordError(err)
-	l.Error(err.Error())
+	if l != nil {
+		l.Error(err.Error())
+	}
+	if span != nil {
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+	}
 	return
 }
 
@@ -34,71 +38,98 @@ func ErrorHandler_WithWWW(w http.ResponseWriter, l *logrus.Entry, span trace.Spa
 		msg = fmt.Sprintf(frmt, a...)
 		err = errors.Wrap(e, fmt.Sprintf("%s - %s", eType, msg))
 	}
-	span.SetStatus(codes.Error, err.Error())
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "error"),
-		attribute.String("log.message", err.Error()),
-	))
-	span.RecordError(err)
-	l.Error(err.Error())
+	if span != nil {
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+	}
+	if l != nil {
+		l.Error(err.Error())
+	}
 	det := helper.NewDetail("repositry", repo, action)
 	ep := helper.NewErrPayload(eType, msg, det)
 	switch eType {
 	case "MANIFEST_UNKNOWN":
 		helper.WriteOCIErrror(w, http.StatusNotFound, ep)
+	case "MANIFEST_INVALID", "INTERNAL_ERROR":
+		helper.WriteOCIErrror(w, http.StatusBadRequest, ep)
 	default:
+		Warn(l, span, "Unknown error type: %s", eType)
 		helper.WriteOCIErrror(w, http.StatusInternalServerError, ep)
 	}
-
 	return
 }
 
 func NewError(l *logrus.Entry, span trace.Span, frmt string, a ...any) (err error) {
 	err = fmt.Errorf(frmt, a...)
-	span.SetStatus(codes.Error, err.Error())
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "error"),
-		attribute.String("log.message", err.Error()),
-	))
-	span.RecordError(err)
-	l.Error(err.Error())
+	if span != nil {
+
+		span.SetStatus(codes.Error, err.Error())
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "error"),
+			attribute.String("log.message", err.Error()),
+		))
+		span.RecordError(err)
+	}
+	if l != nil {
+		l.Error(err.Error())
+	}
 	return
 }
 
 func Info(l *logrus.Entry, span trace.Span, frmt string, a ...any) {
 	msg := fmt.Sprintf(frmt, a...)
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "info"),
-		attribute.String("log.message", msg),
-	))
-	l.Info(msg)
+	if span != nil {
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "info"),
+			attribute.String("log.message", msg),
+		))
+	}
+	if l != nil {
+		l.Info(msg)
+	}
 }
 
 func Debug(l *logrus.Entry, span trace.Span, frmt string, a ...any) {
 	msg := fmt.Sprintf(frmt, a...)
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", msg),
-	))
-	l.Debug(msg)
+	if span != nil {
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
+	}
+	if l != nil {
+		l.Debug(msg)
+	}
 }
 func DebugOK(l *logrus.Entry, span trace.Span, frmt string, a ...any) {
 	msg := fmt.Sprintf(frmt, a...)
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", msg),
-	))
-	span.SetStatus(codes.Ok, msg)
-	l.Debug(msg)
+	if span != nil {
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", msg),
+		))
+		span.SetStatus(codes.Ok, msg)
+	}
+	if l != nil {
+		l.Debug(msg)
+	}
 }
 
 func Warn(l *logrus.Entry, span trace.Span, frmt string, a ...any) {
 	msg := fmt.Sprintf(frmt, a...)
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "warn"),
-		attribute.String("log.message", msg),
-	))
-	l.Warn(msg)
+	if span != nil {
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "warn"),
+			attribute.String("log.message", msg),
+		))
+	}
+	if l != nil {
+		l.Warn(msg)
+	}
 }
 
 func InitLogging(ctx context.Context, tracer trace.Tracer, attr map[string]any) (l *logrus.Entry, c context.Context, span trace.Span) {

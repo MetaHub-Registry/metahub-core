@@ -18,7 +18,7 @@ func TestBlobuploadCRU(t *testing.T) {
 	bs.AddBootstrap("layer:0:ft_arm64")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 90
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func TestBlobChunkCRU(t *testing.T) {
 	bs.AddBootstrap("layer:0:ft_arm64")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 90
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		t.Fatal(err)

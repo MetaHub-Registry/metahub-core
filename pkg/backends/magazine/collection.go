@@ -51,13 +51,9 @@ func (mag Magazine) NeoLinkCollectionToManifest(ctx context.Context, colID, colT
 	return
 }
 
-func (mag Magazine) RemoveCollectionByRequest(req types.Request) (found bool, err error) {
-	ctx := context.Background()
-	c := types.Collection{
-		Repo: req.Repo,
-		Tag:  req.Tag,
-	}
-	return mag.Database.Collection_Remove(ctx, c)
+func (mag Magazine) RemoveCollectionByRequest(ctx context.Context, req types.Request) (found bool, err error) {
+	c := types.NewCollection(req.Repo, req.Tag)
+	return mag.Database.CollectionRemove(ctx, c)
 }
 
 func (mag Magazine) HeadManistNotFound_ForProfile(ctx context.Context, req types.Request) (md string, found bool, err error) {
@@ -117,6 +113,7 @@ func (mag Magazine) HeadManistNotFound_ForProfile(ctx context.Context, req types
 
 	return md, found, err
 }
+
 func (mag Magazine) HeadManifestNotFound(ctx context.Context, req types.Request) (md string, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgName,
@@ -152,7 +149,7 @@ func (mag Magazine) HeadManifestNotFound(ctx context.Context, req types.Request)
 	switch md {
 	case "application/vnd.docker.distribution.manifest.v2+json":
 		// Insert into DB
-		e := mag.UpstreamBlob_InsertManifest(ctx, req, blob)
+		e := mag.UpstreamBlobInsertManifest(ctx, req, blob)
 		if e != nil {
 			err = errors.Wrap(e, "failed to insert upstreamblob collection")
 			l.Error(err.Error())
@@ -161,7 +158,7 @@ func (mag Magazine) HeadManifestNotFound(ctx context.Context, req types.Request)
 		}
 
 	case "application/vnd.docker.distribution.manifest.list.v2+json":
-		e := mag.UpstreamBlob_InsertIndex(ctx, req, blob)
+		e := mag.UpstreamBlobInsertIndex(ctx, req, blob)
 		if e != nil {
 			err = errors.Wrap(e, "failed to insert upstreamblob collection")
 			l.Error(err.Error())

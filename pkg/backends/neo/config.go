@@ -17,11 +17,12 @@ import (
 
 var (
 	configMediaType = `unknownConfig`
+	pkgNameConfig   = "neo/config.go"
 )
 
 func (n Neo) Config_GetID_ByDigest(ctx context.Context, dig string) (cfgID int64, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "neo/config.go",
+		"package": pkgNameConfig,
 		"func":    "Config_GetID_ByDigest",
 	})
 	ctx, span := tracer.Start(ctx, "Config_GetID_ByDigest")
@@ -43,7 +44,7 @@ func (n Neo) Config_GetID_ByDigest(ctx context.Context, dig string) (cfgID int64
 
 func (n Neo) Config_Get_ByManiDataID(ctx context.Context, mdID int64) (cfg types.Config, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package":    "neo/config.go",
+		"package":    pkgNameConfig,
 		"func":       "Config_Get_ByManiDataID",
 		"maniDataID": mdID,
 	})
@@ -70,7 +71,7 @@ func (n Neo) Config_Get_ByManiDataID(ctx context.Context, mdID int64) (cfg types
 
 func (n Neo) Config_Get_ByID(ctx context.Context, cfgID int64) (cfg types.Config, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package":  "neo/config.go",
+		"package":  pkgNameConfig,
 		"func":     "Config_Get_ByID",
 		"configID": cfgID,
 	})
@@ -97,7 +98,7 @@ func (n Neo) Config_Get_ByID(ctx context.Context, cfgID int64) (cfg types.Config
 
 func (n Neo) Config_GetByDigest(ctx context.Context, dig string) (cfg types.Config, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "neo/config.go",
+		"package": pkgNameConfig,
 		"func":    "Config_GetByDigest",
 	})
 	_ = ctx
@@ -132,7 +133,7 @@ func (n Neo) Config_GetByDigest(ctx context.Context, dig string) (cfg types.Conf
 
 func (n Neo) Config_GetByID(ctx context.Context, cfgID int64) (cfg types.Config, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "neo/config.go",
+		"package": pkgNameConfig,
 		"func":    "Config_GetByID",
 	})
 	ctx, span := tracer.Start(ctx, "Config_GetByID")
@@ -172,22 +173,47 @@ func (n Neo) Config_GetByID(ctx context.Context, cfgID int64) (cfg types.Config,
 	return
 }
 
-func (n Neo) ConfigDeleteByDigest(dig string) (err error) {
-	q := `MATCH (n:Config) WHERE n.digest = "%s" DETACH DELETE n`
-	query := fmt.Sprintf(q, dig)
-	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
-	defer session.Close()
-	_, err = session.Run(query, map[string]interface{}{})
-	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
-		return
+func (n Neo) ConfigDeleteByDigest(ctx context.Context, dig string) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameConfig,
+		"func":    "ConfigDeleteByDigest",
+		"digest":  dig,
+	})
+	_ = ctx
+	// Check for labels
+	if as, e := n.LabelsGetByConfigDigest(ctx, dig); e != nil {
+		return utils.ErrorHandler(l, span, e, types.FailLabelsGetByConfigDigest)
+	} else {
+		for _, a := range as.ToSlice() {
+			q := fmt.Sprintf(`MATCH (c:Config)-[]->(l:Label) WHERE (NOT c.digest = "%s") AND id(l) = %d`, dig, a.ID)
+			q += ` RETURN count(c) AS countConfig`
+			utils.Debug(l, span, q)
+			if res, _, e := n.QueryOne(q); e != nil {
+				return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+			} else {
+				countConfig, _ := res.GetInt("countConfig")
+				if countConfig == 0 {
+					q := fmt.Sprintf(`MATCH (l:Label) WHERE id(l) = %d DETACH DELETE l`, a.ID)
+					if _, e := n.Execute(q); e != nil {
+						return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+					}
+					utils.Debug(l, span, "removed label with ID '%d'", a.ID)
+				}
+			}
+		}
 	}
-	return err
+	defer span.End()
+	q := fmt.Sprintf(`MATCH (n:Config) WHERE n.digest = "%s" DETACH DELETE n`, dig)
+	_, e := n.Execute(q)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	}
+	return nil
 }
 
 func (n Neo) Config_GetInsert_ByOCIManifest(ctx context.Context, ociMani types.OCIManifest, label string) (cfg types.Config, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package":   "neo/config.go",
+		"package":   pkgNameConfig,
 		"func":      "Config_GetInsert_ByOCIManifest",
 		"cfgDigest": utils.ShortenDigest(ociMani.Config.Digest.String()),
 	})
@@ -257,7 +283,7 @@ func (n Neo) createConfig(ctx context.Context, cfg types.Config) (cfgID int64, e
 
 func (n Neo) Config_Insert(ctx context.Context, cfg types.Config) (cfgID int64, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "neo/config.go",
+		"package": pkgNameConfig,
 		"func":    "Config_Insert",
 	})
 	ctx, span := tracer.Start(ctx, "Config_Insert")
@@ -327,7 +353,7 @@ func (n Neo) ConfigFromResult(ctx context.Context, res types.Result) (cfg types.
 
 func (n Neo) Config_GetMediaType_ByID(ctx context.Context, cfgID int64) (mt string, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "neo/config.go",
+		"package": pkgNameConfig,
 		"func":    "Config_GetMediaType_ByID",
 	})
 	ctx, span := tracer.Start(ctx, "Config_GetMediaType_ByID")
@@ -451,7 +477,7 @@ func (n Neo) ConfigFromRecord(ctx context.Context, res neo4j.Result) (c types.Co
 
 func (n Neo) Configs_DeleteUnused(ctx context.Context) (err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "neo/config.go",
+		"package": pkgNameConfig,
 		"func":    "Configs_DeleteUnused",
 	})
 	_, span := tracer.Start(ctx, "Configs_DeleteUnused")
@@ -488,7 +514,7 @@ func (n Neo) Configs_DeleteUnused(ctx context.Context) (err error) {
 
 func (n Neo) ConfigExists(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "neo/config.go",
+		"package": pkgNameConfig,
 		"func":    "ConfigExists",
 		"repo":    up.Repo,
 		"tag":     up.Tag,
@@ -511,7 +537,7 @@ func (n Neo) ConfigExists(ctx context.Context, up upstream.UpstreamTriple) (medi
 	))
 	res, found, e := n.QueryOne(q)
 	if e != nil {
-		msg := "query execution failed"
+		msg := FailQueryExec
 		err = errors.Wrap(e, msg)
 		span.AddEvent("log", trace.WithAttributes(
 			attribute.String("log.severity", "error"),

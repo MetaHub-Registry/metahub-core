@@ -22,7 +22,7 @@ func TestManifestDataCRUD(t *testing.T) {
 	bs.AddBootstrap("manifest:ft_arm64")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 120
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		t.Fatal(err)
@@ -69,7 +69,7 @@ func TestManifestDataCRUD(t *testing.T) {
 		Host:   arm_mani_got3.Upstream.Reg,
 		Digest: arm_mani_got3.Digest,
 	}
-	found, err = db.ManifestData_Remove(ctx, reqGot3)
+	found, err = db.ManifestDataRemove(ctx, reqGot3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestManifestDataLinks(t *testing.T) {
 	bs.AddBootstrap("annotation:platform:generic")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 120
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		t.Fatal(err)
@@ -197,7 +197,7 @@ func TestManifestDataRules(t *testing.T) {
 	if debug > 0 {
 		bs.PostTestSleep = debug
 	}
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	if err != nil {
 		db.TeardownTest(bs)
 		t.Fatal(err)
@@ -327,6 +327,7 @@ func TestManifestDataGetAllByManifestID(t *testing.T) {
 	bs.AddBootstrap("upstream:ft_amd64")
 	bs.AddBootstrap("manifest:ft_arm64")
 	bs.AddBootstrap("manifest:ft_amd64")
+	bs.AddBootstrap("collection:ft_generic")
 	bs.AddBootstrap("layer:0:ft_arm64")
 	bs.AddBootstrap("layer:1:ft_arm64")
 	bs.AddBootstrap("layer:0:ft_amd64")
@@ -335,22 +336,21 @@ func TestManifestDataGetAllByManifestID(t *testing.T) {
 	bs.AddBootstrap("manifestdata:ft_amd64")
 	bs.SetEmptyAll()
 	if debug > 0 {
-		bs.PostTestSleep = 120
+		bs.PostTestSleep = debug
 	}
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	for _, l := range br.ToLines() {
 		if debug > 0 {
 			t.Log(l)
 		}
 	}
 	if err != nil {
-
 		t.Fatal(err)
-
 	}
 	defer db.TeardownTest(bs)
 	// Actual test
-	maniID, err := br.GetInt64("manifest:ft_arm64#id")
+	//// ARM64
+	maniArm64ID, err := br.GetInt64("manifest:ft_arm64#id")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,18 +358,198 @@ func TestManifestDataGetAllByManifestID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	manis, err := db.ManifestData_GetAllByManifestID_WithProfile(ctx, maniID, prfID)
+	manis, err := db.ManifestData_GetAllByManifestID_WithProfile(ctx, maniArm64ID, prfID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.Equal(t, 1, len(manis))
 	// ManifestData_GetAllByManifestID
-	manis, err = db.ManifestData_GetAllByManifestID(ctx, maniID)
+	manis, err = db.ManifestData_GetAllByManifestID(ctx, maniArm64ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.Equal(t, 1, len(manis))
+	/// Delete
+	maniDataDig, err := br.Get("manifestdata:ft_arm64#digest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.ManifestDataDeleteByDigest(ctx, maniDataDig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	/// Check if Items are deleted
+	//// Label (platform.features=arm64)
+	q := `MATCH (l:Label) WHERE l.key = "platform.features" AND l.value = "arm64" RETURN count(l) AS labelCount`
+	if res, _, e := db.QueryOne(q); e != nil {
+		t.Fatal(e)
+	} else {
+		labelCount, _ := res.GetInt("labelCount")
+		assert.Equal(t, 0, labelCount)
+	}
+	//// Config
+	if cfgArm64ID, err := br.GetInt64("config:ft_arm64#id"); err != nil {
+		t.Fatal(err)
+	} else {
+		if _, found, err := db.Config_GetByID(ctx, cfgArm64ID); err != nil {
+			t.Fatal(err)
+		} else {
+			assert.False(t, found)
+		}
+	}
+	//// Layer0
+	if l0Arm64ID, err := br.GetInt64("layer:0:ft_arm64#id"); err != nil {
+		t.Fatal(err)
+	} else {
+		if _, found, err := db.Layer_Get_ByID(ctx, l0Arm64ID); err != nil {
+			t.Fatal(err)
+		} else {
+			assert.False(t, found)
+		}
+	}
+	//// Layer1
+	if l1Arm64ID, err := br.GetInt64("layer:1:ft_arm64#id"); err != nil {
+		t.Fatal(err)
+	} else {
+		if _, found, err := db.Layer_Get_ByID(ctx, l1Arm64ID); err != nil {
+			t.Fatal(err)
+		} else {
+			assert.False(t, found)
+		}
+	}
+	//// ManifestData
+	if maniDataArm64ID, err := br.GetInt64("manifestdata:ft_arm64#id"); err != nil {
+		t.Fatal(err)
+	} else {
+		if _, found, err := db.ManifestData_Get_ByID(ctx, maniDataArm64ID); err != nil {
+			t.Fatal(err)
+		} else {
+			assert.False(t, found)
+		}
+	}
+	//// Manifest
+	if _, foundArm64, e := db.Manifest_GetByID(ctx, maniArm64ID); e != nil {
+		t.Fatal(e)
+	} else {
+		assert.False(t, foundArm64)
+	}
+	//// Upstream
+	if upArm64ID, err := br.GetInt64("upstream:ft_arm64#id"); err != nil {
+		t.Fatal(err)
+	} else {
+		if _, found, err := db.UpstreamGetByID(ctx, upArm64ID); err != nil {
+			t.Fatal(err)
+		} else {
+			assert.False(t, found)
+		}
+	}
+	//// Tag (if no other manifest is present)
+	q = `MATCH (t:Tag) RETURN count(t) AS tagCount`
+	res, _, e := db.QueryOne(q)
+	if e != nil {
+		t.Fatal(e)
+	}
+	tagCnt1, _ := res.GetInt("tagCount")
+	assert.Equal(t, 1, tagCnt1)
+
+	//// AMD64
+	maniAmd64ID, err := br.GetInt64("manifest:ft_amd64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	manisAmd64, err := db.ManifestData_GetAllByManifestID_WithProfile(ctx, maniAmd64ID, prfID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, len(manisAmd64))
+	// ManifestData_GetAllByManifestID
+	manis, err = db.ManifestData_GetAllByManifestID(ctx, maniAmd64ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, len(manis))
+	/// Delete
+	maniDataDigAmd64, err := br.Get("manifestdata:ft_amd64#digest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.ManifestDataDeleteByDigest(ctx, maniDataDigAmd64); err != nil {
+		t.Fatal(err)
+	}
+	/// Check if Items are deleted
+	//// Label (platform.features=amd64)
+	q = `MATCH (l:Label) WHERE l.key = "platform.features" AND l.value = "amd64" RETURN count(l) AS labelCount`
+	if res, _, e := db.QueryOne(q); e != nil {
+		t.Fatal(e)
+	} else {
+		labelCount, _ := res.GetInt("labelCount")
+		assert.Equal(t, 0, labelCount)
+	}
+	//// Config
+	if cfgAmd64ID, err := br.GetInt64("config:ft_amd64#id"); err != nil {
+		t.Fatal(err)
+	} else {
+		if _, found, err := db.Config_GetByID(ctx, cfgAmd64ID); err != nil {
+			t.Fatal(err)
+		} else {
+			assert.False(t, found)
+		}
+	}
+	//// Layer0
+	if l0Amd64ID, err := br.GetInt64("layer:0:ft_amd64#id"); err != nil {
+		t.Fatal(err)
+	} else {
+		if _, found, err := db.Layer_Get_ByID(ctx, l0Amd64ID); err != nil {
+			t.Fatal(err)
+		} else {
+			assert.False(t, found)
+		}
+	}
+	//// Layer1
+	if l1Amd64ID, err := br.GetInt64("layer:1:ft_amd64#id"); err != nil {
+		t.Fatal(err)
+	} else {
+		if _, found, err := db.Layer_Get_ByID(ctx, l1Amd64ID); err != nil {
+			t.Fatal(err)
+		} else {
+			assert.False(t, found)
+		}
+	}
+	//// ManifestData
+	if maniDataAmd64ID, err := br.GetInt64("manifestdata:ft_amd64#id"); err != nil {
+		t.Fatal(err)
+	} else {
+		if _, found, err := db.ManifestData_Get_ByID(ctx, maniDataAmd64ID); err != nil {
+			t.Fatal(err)
+		} else {
+			assert.False(t, found)
+		}
+	}
+	//// Manifest
+	if _, foundAmd64, e := db.Manifest_GetByID(ctx, maniAmd64ID); e != nil {
+		t.Fatal(e)
+	} else {
+		assert.False(t, foundAmd64)
+	}
+	//// Upstream
+	if upAmd64ID, err := br.GetInt64("upstream:ft_amd64#id"); err != nil {
+		t.Fatal(err)
+	} else {
+		if _, found, err := db.UpstreamGetByID(ctx, upAmd64ID); err != nil {
+			t.Fatal(err)
+		} else {
+			assert.False(t, found)
+		}
+	}
+	//// Tag (if no other manifest is present)
+	q = `MATCH (t:Tag) RETURN count(t) AS tagCount`
+	res, _, e = db.QueryOne(q)
+	if e != nil {
+		t.Fatal(e)
+	}
+	tagCnt, _ := res.GetInt("tagCount")
+	assert.Equal(t, 0, tagCnt)
+
 }
 
 func TestManifestDataLinkToOCIv1Layer(t *testing.T) {
@@ -395,9 +575,9 @@ func TestManifestDataLinkToOCIv1Layer(t *testing.T) {
 	bs.AddBootstrap("manifestdata:ft_amd64")
 	bs.SetEmptyAll()
 	if debug > 0 {
-		bs.PostTestSleep = 120
+		bs.PostTestSleep = debug
 	}
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	for _, l := range br.ToLines() {
 		if debug > 0 {
 			t.Log(l)
@@ -463,7 +643,7 @@ func TestManifestDataLinkToOCIv1Config(t *testing.T) {
 	if debug > 0 {
 		bs.PostTestSleep = debug
 	}
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	for _, l := range br.ToLines() {
 		if debug > 0 {
 			t.Log(l)

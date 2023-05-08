@@ -24,6 +24,26 @@ func (n Neo) Config_AddLabels(ctx context.Context, cfgID int64, as *types.Annota
 	return
 }
 
+func (n Neo) LabelsGetByConfigDigest(ctx context.Context, cfgDig string) (as types.Annotations, err error) {
+	q := fmt.Sprintf(`MATCH (cfg:Config)-[:HAS_LABEL]->(l:Label) WHERE cfg.digest = "%s"`, cfgDig)
+	q += ` RETURN id(l) AS labelID, l.key AS labelKey, l.value AS labelValue`
+	res, err := n.Query(q)
+	if err != nil {
+		return
+	}
+	as = types.NewAnnotations()
+	for _, r := range res {
+		aTmp, e := AnnotationsFromLabelsResult(r)
+		if e != nil {
+			err = e
+			return
+		}
+		for _, v := range aTmp.Data {
+			as.AddAnnotation(v)
+		}
+	}
+	return
+}
 func (n Neo) Labels_GetByConfigID(ctx context.Context, cfgID int64) (as types.Annotations, err error) {
 	q := fmt.Sprintf(`MATCH (cfg:Config)-[:HAS_LABEL]->(l:Label) WHERE id(cfg) = %d`, cfgID)
 	q += ` RETURN id(l) AS labelID, l.key AS labelKey, l.value AS labelValue`

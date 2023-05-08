@@ -10,7 +10,12 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/helper"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"golang.org/x/crypto/bcrypt"
+)
+
+const (
+	pkgNameUser = "sqlite/user.go"
 )
 
 // User is the stucture which holds one user from the database. Note
@@ -49,10 +54,10 @@ func (s Sqlite) InsertUser(ctx context.Context, u types.User) (userID int64, err
 	return
 }
 
-func (s Sqlite) LoginUserWithHash(username, pwhash string) (err error) {
+func (s Sqlite) LoginUserWithHash(ctx context.Context, username, pwhash string) (err error) {
 	logrus.Debug(">> LoginUser")
 	// check login and return token
-	u, err := s.User.GetByUsername(username)
+	u, err := s.User.GetByUsername(ctx, username)
 	if err != nil {
 		return fmt.Errorf("User not found: %s", err.Error())
 	}
@@ -66,13 +71,13 @@ func (s Sqlite) LoginUserWithHash(username, pwhash string) (err error) {
 	return
 }
 
-func (s Sqlite) LoginUserScope(username, password string, req types.Request) (status int, role string, pl helper.ErrorPayload, err error) {
+func (s Sqlite) LoginUserScope(ctx context.Context, username, password string, req types.Request) (status int, role string, pl helper.ErrorPayload, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "sqlite/user.go",
 		"func":    "LoginUserScope",
 	})
 	// check login and return token
-	u, err := s.User.GetByUsername(username)
+	u, err := s.User.GetByUsername(ctx, username)
 	if err != nil {
 		l.Errorf("user '%s' not found", username)
 		pl = helper.NewErrPayload(
@@ -111,14 +116,14 @@ func (s Sqlite) LoginUserScope(username, password string, req types.Request) (st
 	}
 	return http.StatusOK, u.Role, pl, nil
 }
-func (s Sqlite) LoginUser(username, password string) (err error) {
+func (s Sqlite) LoginUser(ctx context.Context, username, password string) (err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "sqlite/user.go",
+		"package": pkgNameUser,
 		"func":    "LoginUser",
 	})
 	_ = l
 	// check login and return token
-	u, err := s.User.GetByUsername(username)
+	u, err := s.User.GetByUsername(ctx, username)
 	if err != nil {
 		return fmt.Errorf("User not found: %s", err.Error())
 	}
@@ -179,57 +184,18 @@ func (u *User) GetAccessToken(token string) (at *types.AccessToken, err error) {
 	return at, nil
 }
 
-// GetAll returns a slice of all users, sorted by last name
-/*func (u *User) GetAll() ([]*User, error) {
-	ctx := context.Background()
-
-	query := `select id, email, first_name, last_name, password_hash, user_active, created_at, updated_at,
-	CASE
-		WHEN (SELECT COUNT(id) FROM tokens t WHERE user_id = users.id AND t.expiry > NOW()) > 0 THEN 1
-		ELSE 0
-    END AS has_token
-	FROM users ORDER BY last_name`
-	logrus.Warn(query)
-	rows, err := db.QueryContext(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var users []*User
-
-	for rows.Next() {
-		var user User
-		err := rows.Scan(
-			&user.ID,
-			&user.Email,
-			&user.FirstName,
-			&user.LastName,
-			&user.PasswordHash,
-			&user.Active,
-			&user.CreatedAt,
-			&user.UpdatedAt,
-			&user.Token.ID,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		users = append(users, &user)
-	}
-
-	return users, nil
-}*/
-
 // GetByEmail returns one user by email
-func (u *User) GetByUsername(username string) (*User, error) {
-	ctx := context.Background()
+func (u *User) GetByUsername(ctx context.Context, username string) (*User, error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameUser,
+		"func":    "GetByUsername",
+	})
+	defer span.End()
 
 	query := `SELECT id, user_name, email, first_name, last_name, password_hash, user_active, created_at, role FROM users WHERE user_name = $1`
-
+	utils.Debug(l, span, query)
 	var user User
 	row := db.QueryRowContext(ctx, query, username)
-
 	err := row.Scan(
 		&user.ID,
 		&user.UserName,
@@ -241,11 +207,10 @@ func (u *User) GetByUsername(username string) (*User, error) {
 		&user.CreatedAt,
 		&user.Role,
 	)
-
 	if err != nil {
-		return nil, err
+		return nil, utils.ErrorHandler(l, span, err, "error when scanning row")
 	}
-
+	utils.Debug(l, span, "found user %s with role '%s'", user.UserName, user.Role)
 	return &user, nil
 }
 

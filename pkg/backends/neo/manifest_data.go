@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/minio/minio-go/v7/pkg/set"
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
@@ -17,7 +18,10 @@ import (
 )
 
 const (
-	pkgNameMD = "neo/manifest_data.go"
+	pkgNameMD        = "neo/manifest_data.go"
+	FailAnnoUp       = "AnnotationUpdate failed"
+	FailManiLinkAnno = "Manifest_LinkToAnnotation failed"
+	FailAnnoCreate   = "Annotation_Create failed"
 )
 
 func (n Neo) ManifestData_V1_GetInsert(ctx context.Context, maniSiID int64, mani v1.Descriptor) (maniID int64, found bool, err error) {
@@ -79,6 +83,7 @@ func (n Neo) ManifestData_Get_ByProfileMediaType(ctx context.Context, mID, prfID
 		"mediaType": mediaType,
 	})
 	defer span.End()
+	_ = ctx
 	q := `MATCH (prf:Profile)<-[:UPLOADED_BY]-(md:ManifestData)-[]-(m:Manifest)`
 	q += fmt.Sprintf(` WHERE id(m) = %d AND id(prf) = %d AND md.mediaType = "%s"`, mID, prfID, mediaType)
 	q += ` RETURN id(md) AS manifestID`
@@ -105,6 +110,7 @@ func (n Neo) ManifestData_GetParsedNodeRel_ByMediaType(ctx context.Context, msID
 		"mediaType": mediaType,
 	})
 	defer span.End()
+	_ = ctx
 	q := fmt.Sprintf(`MATCH (md:ManifestData)-[rel]-(m:Manifest) WHERE id(m) = %d AND md.mediaType = "%s"`, msID, mediaType)
 	q += ` RETURN id(md) AS manifestID, TYPE(rel) AS relType`
 	res, found, err := n.QueryOne(q)
@@ -137,6 +143,7 @@ func (n Neo) ManifestData_GetRelID_ByMediaType(ctx context.Context, msID int64, 
 		"relType":   relType,
 	})
 	defer span.End()
+	_ = ctx
 	q := fmt.Sprintf(`MATCH (md:ManifestData)-[:%s]-(m:Manifest) WHERE id(m) = %d AND md.mediaType = "%s"`, relType, msID, mediaType)
 	q += ` RETURN id(md) AS manifestID`
 	res, found, err := n.QueryOne(q)
@@ -163,10 +170,7 @@ func (n Neo) ManifestData_GetID_ByMediaType(ctx context.Context, msID int64, med
 		"mediaType": mediaType,
 	})
 	defer span.End()
-	span.SetAttributes(
-		attribute.Key("mani.id").Int64(msID),
-		attribute.Key("mani.media_type").String(mediaType),
-	)
+	_ = ctx
 	q := `MATCH (md:ManifestData)-[]-(m:Manifest) WHERE id(m) = %d AND md.mediaType = "%s"`
 	q += ` RETURN id(md) AS manifestID`
 	query := fmt.Sprintf(q, msID, mediaType)
@@ -259,7 +263,7 @@ func (n Neo) ManifestData_GetAllByManifestID(ctx context.Context, msID int64) (m
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (ms:Manifest)-[r]->(m:ManifestData) WHERE id(ms) = %d`, msID)
 	q += ` MATCH (m)-[cfgRel]-(cfg:Config)`
-	q += ` RETURN id(m) AS manifestID, m.digest AS manifestDigest, m.mediaType AS manifestMediaType, m.size AS manifestSize,`
+	q += ` RETURN DISTINCT id(m) AS manifestID, m.digest AS manifestDigest, m.mediaType AS manifestMediaType, m.size AS manifestSize,`
 	q += ` id(cfg) AS configID, cfg.digest AS configDigest, TYPE(cfgRel) AS configMediaType, cfg.size AS configSize,`
 	q += ` type(r) AS manifestdataRelType`
 	utils.Debug(l, span, q)
@@ -268,12 +272,17 @@ func (n Neo) ManifestData_GetAllByManifestID(ctx context.Context, msID int64) (m
 		logrus.Error(err)
 		return
 	}
+	mdDigs := set.NewStringSet()
 	manis = make([]types.ManifestData, 0)
 	for _, r := range res {
 		m, e := n.ManifestDataFromResult(ctx, r)
 		if e != nil {
 			err = e
 			return
+		}
+		// FIXME: manifestdataRelType might be connected twice: PARSED, PULLED_BY
+		if mdDigs.Contains(m.Digest) {
+			continue
 		}
 		c, e := n.ConfigFromResult(ctx, r)
 		if e != nil {
@@ -305,6 +314,7 @@ func (n Neo) ManifestData_GetAllByManifestID(ctx context.Context, msID int64) (m
 			return
 		}
 		manis = append(manis, m)
+		mdDigs.Add(m.Digest)
 	}
 	return
 }
@@ -377,10 +387,6 @@ func (n Neo) ManifestData_LinkToAnnotation(ctx context.Context, maniID, annotati
 	})
 	defer span.End()
 	_ = ctx
-	span.SetAttributes(
-		attribute.Key("maniID").Int64(maniID),
-		attribute.Key("annotationID").Int64(annotationID),
-	)
 	q := fmt.Sprintf(`MATCH (m:ManifestData), (a:Annotation) WHERE id(m) = %d AND id(a) = %d`, maniID, annotationID)
 	q += ` MERGE (m)-[:HAS_ANNOTATION]->(a)`
 	span.AddEvent("log", trace.WithAttributes(
@@ -702,27 +708,20 @@ func (n Neo) ManifestData_LinkToLayer(ctx context.Context, maniID int64, layer t
 	return
 }
 
-func (n Neo) ManifestData_Remove(ctx context.Context, req types.Request) (found bool, err error) {
-	ctx, span := tracer.Start(ctx, "ManifestData_Remove")
+func (n Neo) ManifestDataRemove(ctx context.Context, req types.Request) (found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMD,
+		"func":    "ManifestDataRemove",
+	})
 	defer span.End()
-	mani, found, err := n.ManifestDataGetTypesByRequest(ctx, req)
-	if err != nil {
-		err = errors.Wrap(err, "failed to get manifest by id")
-		return
+	if mani, found, err := n.ManifestDataGetTypesByRequest(ctx, req); err != nil {
+		return false, utils.ErrorHandler(l, span, err, "failed to get manifest by id")
+	} else if !found {
+		return found, err
+	} else if err = n.ManifestDataDeleteByDigest(ctx, mani.Digest); err != nil {
+		return false, utils.ErrorHandler(l, span, err, "failed to delete manifest")
 	}
-	if !found {
-		return
-	}
-	q := `MATCH (m:ManifestData) WHERE id(m) = %d DETACH DELETE m`
-	query := fmt.Sprintf(q, mani.ID)
-	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
-	defer session.Close()
-	_, err = session.Run(query, map[string]interface{}{})
-	if err != nil {
-		err = errors.Wrapf(err, "failed to delete (m:ManifestData) with id '%d'", mani.ID)
-		return
-	}
-	return
+	return true, nil
 }
 
 func (n Neo) createManifestData(ctx context.Context, mani types.ManifestData) (maniID int64, err error) {
@@ -870,7 +869,6 @@ func (n Neo) ManifestData_Get_ByID(ctx context.Context, mdID int64) (m types.Man
 		return
 	}
 	if !found {
-		err = utils.NewError(l, span, "manifestdata for id '%d' not found", mdID)
 		return
 	}
 	m, err = n.ManifestDataFromResult(ctx, res)
@@ -1122,7 +1120,12 @@ func (n Neo) ManifestDataFromResult(ctx context.Context, res types.Result) (m ty
 		return
 	}
 	if !cfgFound {
-		err = utils.ErrorHandler(l, span, err, "no config found for manifest data")
+		err = utils.NewError(l, span, "no config found for manifest data")
+		return
+	}
+	lyrs, e := n.GetLayersForManifestID(ctx, maniID)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to get layers for manifest data")
 		return
 	}
 	m = types.ManifestData{
@@ -1136,6 +1139,7 @@ func (n Neo) ManifestDataFromResult(ctx context.Context, res types.Result) (m ty
 		Profile:     uploadProfile.Label,
 		Config:      cfg,
 		Annotations: annos,
+		Layers:      lyrs,
 	}
 	return
 }
@@ -1417,16 +1421,128 @@ func (n Neo) ManifestData_GetPushed_ByProfile(ctx context.Context, up types.Upst
 	return
 }
 
-func (n Neo) ManifestData_Delete(ctx context.Context, md types.ManifestData) (err error) {
-	// TODO: Delete the ManifestData and all its relationships
-	ctx, span := tracer.Start(ctx, "ManifestData_Delete")
+func (n Neo) ManifestDataDeleteByDigest(ctx context.Context, dig string) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMD,
+		"func":    "ManifestDataDeleteByDigest",
+		"digest":  dig,
+	})
+	defer span.End()
+	md, found, e := n.ManifestDataGetByDigest(ctx, dig)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, types.FailManifestDataGetByDigest)
+	}
+	if !found {
+		return utils.NewError(l, span, types.FailManifestDataNotFound)
+	}
+	err = n.ManifestDataDelete(ctx, md)
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, types.FailManifestDataDelete)
+	}
+	return
+}
+
+func (n Neo) ManifestDataUnlinkLayer(ctx context.Context, mdID, lyrID int64) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMD,
+		"func":    "ManifestDataUnlinkLayer",
+		"layerID": lyrID,
+		"mdID":    mdID,
+	})
 	_ = ctx
 	defer span.End()
-	span.SetAttributes(
-		attribute.Key("md.upstream").String(md.Upstream.String()),
-		attribute.Key("md.label").String(md.Label),
-		attribute.Key("md.id").Int64(md.ID),
-	)
+	q := `MATCH (md:ManifestData)-[r]->(l:Layer)`
+	q += fmt.Sprintf(` WHERE id(md) = %d AND id(l) = %d`, mdID, lyrID)
+	q += ` DELETE r`
+	utils.Debug(l, span, q)
+	_, e := n.Execute(q)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, types.FailManifestDataUnlinkLayer)
+	}
+	q = fmt.Sprintf(`MATCH (l:Layer)<-[r]-(:ManifestData)  WHERE id(l) = %d`, lyrID)
+	q += ` RETURN count(r) AS relCount`
+	utils.Debug(l, span, q)
+	res, _, e := n.QueryOne(q)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	}
+	relCnt, _ := res.GetInt("relCount")
+	if relCnt == 0 {
+		e = n.LayerDeleteByID(ctx, lyrID)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, types.FailLayerDeleteByDigest)
+		}
+	} else {
+		utils.Debug(l, span, "layer w/ ID %d still has %d relationships", lyrID, relCnt)
+	}
+	return nil
+}
+
+func (n Neo) ManifestDataUnlinkConfig(ctx context.Context, mdID int64, cfgDig string) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":   pkgNameMD,
+		"func":      "ManifestDataUnlinkConfig",
+		"cfgDigest": utils.ShortenDigest(cfgDig),
+		"mdID":      mdID,
+	})
+	_ = ctx
+	defer span.End()
+	q := `MATCH (md:ManifestData)-[r]->(c:Config)`
+	q += fmt.Sprintf(` WHERE id(md) = %d AND c.digest = "%s"`, mdID, cfgDig)
+	q += ` DELETE r`
+	utils.Debug(l, span, "query to delete ManifestData<>Config relationship: %s", q)
+	_, e := n.Execute(q)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, types.FailManifestDataUnlinkConfig)
+	}
+	// Delete config if not connected anymore (in Minio?)
+	q = fmt.Sprintf(`MATCH (c:Config)<-[r]-(:ManifestData)  WHERE c.digest = "%s"`, cfgDig)
+	q += ` RETURN count(r) AS relCount`
+	utils.Debug(l, span, "query to count relationships: %s", q)
+	res, _, e := n.QueryOne(q)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	}
+	relCnt, _ := res.GetInt("relCount")
+	if relCnt == 0 {
+		e = n.ConfigDeleteByDigest(ctx, cfgDig)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, types.FailConfigDeleteByDigest)
+		}
+	} else {
+		utils.Debug(l, span, "config '%s' still has %d relationships", utils.ShortenDigest(cfgDig), relCnt)
+	}
+	return nil
+}
+
+func (n Neo) ManifestDataDelete(ctx context.Context, md types.ManifestData) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMD,
+		"func":    "ManifestDataDeleteByDigest",
+		"digest":  md.Digest,
+	})
+	_ = ctx
+	defer span.End()
+	// Unlinke Config
+	e := n.ManifestDataUnlinkConfig(ctx, md.ID, md.Config.Digest)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, types.FailManifestDataUnlinkConfig)
+	}
+	// Unlink Layers
+	for _, lyr := range md.Layers {
+		if e := n.ManifestDataUnlinkLayer(ctx, md.ID, lyr.ID); e != nil {
+			return utils.ErrorHandler(l, span, e, types.FailManifestDataUnlinkConfig)
+		}
+	}
+	// Get Manifest ID
+	maniID, maniFound, e := n.ManifestGetIDByManifestDataID(ctx, md.ID)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, types.FailManifestGetIDByManifestDataID)
+	}
+	if !maniFound {
+		return utils.NewError(l, span, types.FailManifestGetIDByManifestDataID)
+	}
+	// Remove ManifestData
 	q := fmt.Sprintf(`MATCH (md:ManifestData) WHERE id(md) = %d DETACH DELETE md`, md.ID)
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
@@ -1437,6 +1553,10 @@ func (n Neo) ManifestData_Delete(ctx context.Context, md types.ManifestData) (er
 		err = errors.Wrap(err, "failed to delete manifest data")
 		span.RecordError(err)
 		return
+	}
+	// Remove Manifest if no ManifestData is linked
+	if e := n.ManifestCleanUpByID(ctx, maniID); e != nil {
+		return utils.ErrorHandler(l, span, e, types.FailManifestCleanUpByID)
 	}
 	return
 }
@@ -1475,7 +1595,7 @@ func (n Neo) ManifestData_GetPulled_ByRepoTag(ctx context.Context, repo, tag str
 
 func (n Neo) ManifestDataExists_ForTagProfile(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "neo/manifest_data.go",
+		"package": pkgNameMD,
 		"func":    "ManifestDataExists_ForTagProfile",
 		"repo":    up.Repo,
 		"tag":     up.Tag,
@@ -1500,7 +1620,7 @@ func (n Neo) ManifestDataExists_ForTagProfile(ctx context.Context, up upstream.U
 	utils.Debug(l, span, "Query: %s", q)
 	res, found, e := n.QueryOne(q)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "query execution failed")
+		err = utils.ErrorHandler(l, span, e, FailQueryExec)
 		return "", false, err
 	}
 	if !found {
@@ -1523,7 +1643,7 @@ func (n Neo) ManifestDataExists_ForTagProfile(ctx context.Context, up upstream.U
 
 func (n Neo) ManifestDataExists(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "neo/manifest_data.go",
+		"package": pkgNameMD,
 		"func":    "ManifestDataExists",
 		"repo":    up.Repo,
 		"tag":     up.Tag,
@@ -1552,7 +1672,7 @@ func (n Neo) ManifestDataExists(ctx context.Context, up upstream.UpstreamTriple)
 	utils.Debug(l, span, "Query: %s", q)
 	res, found, e := n.QueryOne(q)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "query execution failed")
+		err = utils.ErrorHandler(l, span, e, FailQueryExec)
 		return "", false, err
 	}
 	if !found {

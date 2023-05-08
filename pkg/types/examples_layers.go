@@ -2,6 +2,7 @@ package types
 
 import (
 	"github.com/docker/distribution"
+	"github.com/opencontainers/go-digest"
 )
 
 func FT_arm64_Layer1() Layer {
@@ -64,9 +65,32 @@ func FT_zen3_Layer1() Layer {
 	}
 }
 
+func newLayerFromDT(dt DataTuple) Layer {
+	return Layer{
+		Digest:    string(digest.FromBytes(dt.Data)),
+		Size:      int64(len(dt.Data)),
+		MediaType: MediaTypeLayer,
+		Data:      dt.Data,
+	}
+}
+
+func LayerDTFeaturetestLf144() DataTuple {
+	return NewDataTuple("data/layer/f1417ff83b319fbdae6dd9cd6d8c9c88002dcd75ecf6ec201c8c6894681cf2b5.dat")
+}
+func LayerFeaturetestLf144() Layer {
+	return newLayerFromDT(LayerDTFeaturetestLf144())
+}
+
+func LayerDTFeaturetestL4c85() DataTuple {
+	return NewDataTuple("data/layer/4c85de3e6e41d6a5fc11e77e87cd57cddcfa84003e12c93fd62075d924da2636.dat")
+}
+func LayerFeaturetestL4c85() Layer {
+	return newLayerFromDT(LayerDTFeaturetestL4c85())
+}
+
 func FT_amd_Layer0Reference() distribution.Descriptor {
 	return distribution.Descriptor{
-		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
+		MediaType: MediaTypeLayer,
 		Size:      2796496,
 		Digest:    "sha256:88ecf269dec31566a8e6b05147732fe34d32bc608de0d636dffaba659230a515",
 	}

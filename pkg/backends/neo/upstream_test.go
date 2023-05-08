@@ -13,7 +13,7 @@ func TestUpstreamCreate(t *testing.T) {
 	ctx := context.Background()
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +65,7 @@ func TestUpstreamCRUD(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 60
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +94,7 @@ func TestUpstreamCRUD(t *testing.T) {
 	}
 	assert.True(t, found)
 	assert.Equal(t, upID, gotUpID)
-	gotUp, err := db.Upstream_Get_ByID(ctx, upID)
+	gotUp, _, err := db.UpstreamGetByID(ctx, upID)
 	if err != nil {
 		t.Fatal(err)
 	}

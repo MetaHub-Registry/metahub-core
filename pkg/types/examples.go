@@ -25,12 +25,11 @@ var (
 		{Arch: "amd64", Variant: "", OS: "linux", Features: "cpu:zen3"},
 		{Arch: "amd64", Variant: "", OS: "linux", Features: "cpu:zen4"},
 	}
-	Example_PlatformARM64 = []Platform{
-		{Arch: "arm64", Variant: "v8", OS: "linux", Features: "cpu:a64fx"},
-		{Arch: "arm64", Variant: "v8", OS: "linux", Features: "cpu:graviton3"},
-		{Arch: "arm64", Variant: "v8", OS: "linux", Features: "cpu:graviton3e"},
-	}
 	*/
+	Example_PlatformARM64 = []Platform{
+		{Arch: "arm64", Variant: "v8", OS: "linux"},
+	}
+
 	Example_PlatformGeneric = []Platform{
 		{Arch: "amd64", Variant: "", OS: "linux"},
 		{Arch: "arm", Variant: "v6", OS: "linux"},
@@ -44,9 +43,18 @@ var (
 	}
 )
 
+const (
+	MediaTypeManifest     = "application/vnd.docker.distribution.manifest.v2+json"
+	MediaTypeImageConfig  = "application/vnd.docker.container.image.v1+json"
+	MediaTypePluginConfig = "application/vnd.docker.plugin.v1+json"
+	MediaTypeLayer        = "application/vnd.docker.image.rootfs.diff.tar.gzip"
+	MediaTypeManifestList = "application/vnd.docker.distribution.manifest.list.v2+json"
+)
+
 type DataTuple struct {
-	Data   []byte
-	Digest digest.Digest
+	Upstream Upstream
+	Data     []byte
+	Digest   digest.Digest
 }
 
 func NewDataTuple(p string) DataTuple {
@@ -61,7 +69,11 @@ func NewDataTuple(p string) DataTuple {
 	if digStr != dig.String() {
 		logrus.Fatalf("digest does not match: '%s' != '%s'", digStr, dig.String())
 	}
-	return DataTuple{Data: dat, Digest: dig}
+	return DataTuple{
+		Upstream: Upstream{Repo: ""},
+		Data:     dat,
+		Digest:   dig,
+	}
 }
 
 func Example_Platform_amd64() Platform {

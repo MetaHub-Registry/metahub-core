@@ -13,23 +13,11 @@ var (
 	//ctx = context.Background()
 )
 
-func TestSetupTeardown(t *testing.T) {
-	bs := utils.NewBootstrap()
-	bs.AddBootstrap("users")
-	br, err := SetupTest(bs)
-	_ = br
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer TeardownTest(bs)
-}
-
 func TestMain(m *testing.M) {
 	f, err := os.CreateTemp("", "sqlite-test")
 	if err != nil {
 		logrus.Fatal(err)
 	}
-
 	logrus.Infof("Start TestMain: %s", f.Name())
 	defer os.Remove(f.Name())
 	sq, err = New(f.Name(), "")

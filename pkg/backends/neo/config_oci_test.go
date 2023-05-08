@@ -35,7 +35,7 @@ func TestOCIv1ConfigGetInsertDescriptor(t *testing.T) {
 	if debug > 0 {
 		bs.PostTestSleep = debug
 	}
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	if err != nil {
 		db.TeardownTest(bs)
 		t.Fatal(err)

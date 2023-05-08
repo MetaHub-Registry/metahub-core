@@ -52,6 +52,7 @@ sonarqube-check:
   stage: qa
   dependencies:
     - mrtest
+  retry: 2
   image: 
     name: sonarsource/sonar-scanner-cli:latest
     entrypoint: [""]

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	gCtx "github.com/gorilla/context"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/sirupsen/logrus"
@@ -19,8 +20,12 @@ import (
 )
 
 var (
-	userReg = regexp.MustCompile(`(?P<user>[\w\-\.\_]+)(\/(?P<profile>[\/\w\-\.\_#]+))?`)
-	//pkgNameReq = "types/request"
+	userReg    = regexp.MustCompile(`(?P<user>[\w\-\.\_]+)(\/(?P<profile>[\/\w\-\.\_#]+))?`)
+	pkgNameReq = "types/request"
+)
+
+const (
+	debugLevel = 4
 )
 
 type Request struct {
@@ -43,21 +48,31 @@ type Request struct {
 	Method         string `json:"method"`
 	Scope          string `json:"scope"`
 	ContentType    string `json:"content-type"`
+	DebugLevel     int    `json:"debug_level"`
 }
 
 func NewRequest(ctx context.Context, r *http.Request) Request {
-	/*
-		l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	debug := 0
+	vD := gCtx.Get(r, "debug")
+	if vD != nil {
+		debug = vD.(int)
+	}
+	var span trace.Span
+	var l *logrus.Entry
+	if debug > debugLevel {
+		l, ctx, span = utils.InitLogging(ctx, tracer, map[string]any{
 			"package": pkgNameReq,
 			"func":    "NewRequest",
 		})
 		defer span.End()
-		utils.Debug(l, span, "Repo from URLParam: %s", chi.URLParam(r, "repo"))
-	*/
+	}
+	utils.Debug(l, span, "Repo from URLParam: %s", chi.URLParam(r, "repo"))
+
 	//dumpedReq, _ := httputil.DumpRequest(r, false)
 	//logrus.Errorf("Request:#### \n%s\n####", dumpedReq)
 	req := Request{
-		Number: 0,
+		Number:     0,
+		DebugLevel: debug,
 	}
 	parRepo, parImg, parRef := extractRepoName(r)
 	//utils.Debug(l, span, "repo:%s", parRepo)
@@ -118,6 +133,8 @@ func NewRequest(ctx context.Context, r *http.Request) Request {
 	vUR := gCtx.Get(r, "userRole")
 	if vUR != nil {
 		userRole = vUR.(string)
+	} else {
+		utils.Debug(l, span, "No userRole found in context")
 	}
 	vU := gCtx.Get(r, "userName")
 	if vU != nil {
