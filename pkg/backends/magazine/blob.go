@@ -13,6 +13,14 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
+const (
+	pkgNameBlob = "magazine/blob.go"
+)
+
+var (
+	ERRJSONNOTCONFIG = fmt.Errorf("buf is JSON, but not v1.Image")
+)
+
 func (mag Magazine) StoreBlobUpload(ctx context.Context, bu *types.OCIBlobUpload, buf []byte) (err error) {
 	//// Are we dealing with a Config or a layer?
 	ctx, span := tracer.Start(ctx, "StoreBlobUpload")
@@ -27,48 +35,54 @@ func (mag Magazine) StoreBlobUpload(ctx context.Context, bu *types.OCIBlobUpload
 		logrus.Infof("Blob is a config")
 		return mag.StoreConfigUpload(ctx, bu, buf)
 	default:
-		err = fmt.Errorf("buf is JSON, but not v1.Image")
-		return err
+		return ERRJSONNOTCONFIG
 	}
 }
 
-func (mag Magazine) BlobDelete(ctx context.Context, req types.Request) (err error) {
-	_, found, err := mag.Database.LayerGetByDigest(req.Digest)
+func (mag Magazine) BlobDelete(ctx context.Context, req types.Request) (found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameBlob,
+		"func":    "BlobDelete",
+		"repo":    req.Repo,
+		"tag":     req.Tag,
+		"digest":  utils.ShortenDigest(req.Digest),
+	})
+	defer span.End()
+	_, found, err = mag.Database.LayerGetByDigest(ctx, req.Digest)
 	if err != nil {
-		return err
+		return false, utils.ErrorHandler(l, span, err, types.FailLayerGetByDigest)
 	}
 	if found {
-		err = mag.Database.LayerDeleteByDigest(req.Digest)
-
-		if err != nil {
-			logrus.Error(err)
-			return
+		if err = mag.Database.LayerDeleteByDigest(ctx, req.Digest); err != nil {
+			return false, utils.ErrorHandler(l, span, err, types.FailLayerDeleteByDigest)
 		}
 		// Remove Blob
-		err = mag.Minio.LayerRemoveObj(ctx, req.Digest)
-		return err
+		if err = mag.Minio.LayerRemoveObj(ctx, req.Digest); err != nil {
+			return false, utils.ErrorHandler(l, span, err, types.FailLayerRemoveObj)
+		}
+		return true, nil
 	}
 	// Not a layer, so it must be a config
 	_, found, err = mag.Database.Config_GetByDigest(ctx, req.Digest)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if found {
-		err = mag.Database.ConfigDeleteByDigest(ctx, req.Digest)
-		if err != nil {
-			logrus.Error(err)
-			return
+		if err = mag.Database.ConfigDeleteByDigest(ctx, req.Digest); err != nil {
+			return false, utils.ErrorHandler(l, span, err, types.FailConfigDeleteByDigest)
 		}
 		// Remove Blob
-		err = mag.Minio.ConfigRemoveObj(ctx, req.Digest)
-		return err
+		if err = mag.Minio.ConfigRemoveObj(ctx, req.Digest); err != nil {
+			return false, utils.ErrorHandler(l, span, err, types.FailConfigRemoveObj)
+		}
+		return true, nil
 	}
-	return
+	return false, nil
 }
 
 func (mag Magazine) BlobExists(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "magazine/blob.go",
+		"package": pkgNameBlob,
 		"func":    "BlobExists",
 		"repo":    up.Repo,
 		"tag":     up.Tag,

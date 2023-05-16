@@ -97,8 +97,7 @@ func (n Neo) Annotation_EvalRule(ctx context.Context, a types.Annotation) (err e
 	ctx, span := tracer.Start(ctx, "Annotation_EvalRule")
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (r:Rule) WHERE r.key = "%s" AND r.type = "%s"`, a.Key, types.RuleTypeAnnotation)
-	q += ` RETURN id(r) as ruleID, r.op as ruleOp, r.name as ruleName,`
-	q += ` r.type AS ruleType, r.tag as ruleTag, r.key as ruleKey, r.value as ruleValue`
+	q += fmt.Sprintf(` RETURN %s`, ruleReturn)
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
 		attribute.String("log.query", q),

@@ -1,0 +1,6 @@
+name: "system/os/id" 
+tag: "ubuntu"
+type: "anno"
+op: "eq"
+key: "org.qnib.system.os.id"
+value: "ubuntu"

@@ -3,6 +3,7 @@ package config
 import (
 	"github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/platform"
+	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
@@ -33,6 +34,29 @@ func (m Manifest) ToUpstreamTriple() (u upstream.UpstreamTriple, err error) {
 	}
 	if m.Digest != "" {
 		u.Digest = digest.Digest(m.Digest)
+	}
+	return
+}
+
+func (m Manifest) ToUpstream() (up types.Upstream, err error) {
+	reg, repo, tag, err := utils.SplitImageName(m.Image)
+	if err != nil {
+		return
+	}
+	up = types.Upstream{
+		Reg:    reg,
+		Repo:   repo,
+		Tag:    tag,
+		Digest: digest.Digest(m.Digest),
+		Platform: platform.Platform{
+			Architecture: m.Platform.Architecture,
+			OS:           m.Platform.OS,
+			Variant:      m.Platform.Variant,
+			Features:     m.Platform.Features,
+		},
+	}
+	if m.Digest != "" {
+		up.Digest = digest.Digest(m.Digest)
 	}
 	return
 }

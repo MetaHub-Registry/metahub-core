@@ -251,7 +251,7 @@ func (n Neo) ManifestList_Get_ByRequest(ctx context.Context, req types.Request) 
 	))
 	rs, err := n.Query(q)
 	for _, r := range rs {
-		m, err := n.ManifestDataFromResult(ctx, r)
+		m, _, err := n.ManifestDataFromResult(ctx, r)
 		if err != nil {
 			logrus.Error(err)
 			continue

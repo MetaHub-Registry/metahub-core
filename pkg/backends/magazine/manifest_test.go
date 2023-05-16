@@ -33,10 +33,24 @@ var cfgWithLabels = []byte(`{
 	"layers": []
 	}`)
 */
+
 func TestCachManifest(t *testing.T) {
+	ctx := context.Background()
+	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
-	_, err := mag.SetupTest(ctx, bs)
+	bs.AddBootstrap("platforms:arm64")
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := mag.SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	TeardownTest(bs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,8 +58,7 @@ func TestCachManifest(t *testing.T) {
 	// Test
 	//mani := types.FT_arm_Manifest()
 	yMani := config.Manifest{
-		Image:  "registry.gitlab.com/qnib-pub-containers/qnib/plain-featuretest:20220715-arm64-generic",
-		Digest: "",
+		Image: "registry.gitlab.com/qnib-pub-containers/qnib/plain-featuretest:20220715-arm64-generic",
 		Platform: platform.Platform{
 			Architecture: "arm64",
 			OS:           "linux",
@@ -70,7 +83,6 @@ func TestCachManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mani.Digest)
-
 }
 
 func TestStoreManifestUploadOCIManifest(t *testing.T) {

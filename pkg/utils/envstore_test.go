@@ -18,4 +18,11 @@ func TestEnvStore(t *testing.T) {
 	}
 	err = es.Add("FOO", "foo")
 	assert.Error(t, err)
+	err = es.Add("FOO", "bar")
+	assert.NoError(t, err)
+	err = es.AddEnv("KEY=bar=boo baz=bo")
+	assert.NoError(t, err)
+	err = es.AddEnv("KEY")
+	assert.Error(t, err)
+
 }

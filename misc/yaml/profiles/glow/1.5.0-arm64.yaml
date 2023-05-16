@@ -1,0 +1,3 @@
+rule: os:linux=true
+manipulations:
+  - label: "layer/glow#1.5.0-arm64"

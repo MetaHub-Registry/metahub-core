@@ -26,7 +26,7 @@ func TestLayerCRUD(t *testing.T) {
 	defer db.TeardownTest(bs)
 	// Actual test
 	arm_l0 := types.FT_arm_Layer0Reference()
-	_, found, err := db.LayerGetByDigest(arm_l0.Digest.String())
+	_, found, err := db.LayerGetByDigest(ctx, arm_l0.Digest.String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestLayerCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.NotNil(t, arm_l0_id)
-	arm_l0_got, found, err := db.LayerGetByDigest(arm_l0.Digest.String())
+	arm_l0_got, found, err := db.LayerGetByDigest(ctx, arm_l0.Digest.String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,11 +49,11 @@ func TestLayerCRUD(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, arm_l0_id, arm_l0_got_id)
 	// Delete
-	err = db.LayerDeleteByDigest(arm_l0.Digest.String())
+	err = db.LayerDeleteByDigest(ctx, arm_l0.Digest.String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, found, err = db.LayerGetByDigest(arm_l0.Digest.String())
+	_, found, err = db.LayerGetByDigest(ctx, arm_l0.Digest.String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestLayerCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, arm_l0_id, l0_id_got)
-	err = db.LayerDeleteByDigest(arm_l0.Digest.String())
+	err = db.LayerDeleteByDigest(ctx, arm_l0.Digest.String())
 	if err != nil {
 		t.Fatal(err)
 	}

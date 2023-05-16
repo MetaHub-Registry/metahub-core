@@ -4,10 +4,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 
 	"github.com/sirupsen/logrus"
+)
+
+const (
+	FailConvertKey = "Failed to convert key '%s' : '%s' to int: %v"
 )
 
 type Bootstrap struct {
@@ -105,7 +110,7 @@ func (bs *BootstrapResult) GetInt(k string) (int, error) {
 	}
 	i, err := strconv.Atoi(v)
 	if err != nil {
-		logrus.Warnf("Failed to convert key '%s' : '%s' to int: %v", k, v, err)
+		logrus.Warnf(FailConvertKey, k, v, err)
 		return i, err
 	}
 	return i, nil
@@ -117,4 +122,36 @@ func (bs *BootstrapResult) GetInt64(k string) (int64, error) {
 		return 0, err
 	}
 	return int64(i), nil
+}
+
+func (bs *BootstrapResult) GetInt64RegEx(k string) (map[string]int64, error) {
+	r := regexp.MustCompile(k)
+	res := map[string]int64{}
+	for k, v := range bs.Dict {
+		if r.MatchString(k) {
+			if i, err := strconv.Atoi(v); err != nil {
+				logrus.Warnf(FailConvertKey, k, v, err)
+				return res, err
+			} else {
+				res[k] = int64(i)
+			}
+		}
+	}
+	return res, nil
+}
+
+func (bs *BootstrapResult) GetIntRegEx(k string) (map[string]int, error) {
+	r := regexp.MustCompile(k)
+	res := map[string]int{}
+	for k, v := range bs.Dict {
+		if r.MatchString(k) {
+			if i, err := strconv.Atoi(v); err != nil {
+				logrus.Warnf(FailConvertKey, k, v, err)
+				return res, err
+			} else {
+				res[k] = i
+			}
+		}
+	}
+	return res, nil
 }

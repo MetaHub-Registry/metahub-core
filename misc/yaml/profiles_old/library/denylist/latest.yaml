@@ -1,8 +1,0 @@
-profile:
-  name: library/denylist:latest
-  actions:
-    - name: manifest-filter
-      event: pre-manifest-get
-      args:
-        deny:
-         - vanessa/salad

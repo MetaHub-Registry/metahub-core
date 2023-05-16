@@ -158,14 +158,16 @@ func (mag Magazine) HeadManifestNotFound(ctx context.Context, req types.Request)
 		}
 
 	case "application/vnd.docker.distribution.manifest.list.v2+json":
-		e := mag.UpstreamBlobInsertIndex(ctx, req, blob)
-		if e != nil {
-			err = errors.Wrap(e, "failed to insert upstreamblob collection")
-			l.Error(err.Error())
-			span.RecordError(err)
-			return
-		}
+		err = utils.NewError(l, span, "manifest lists are not yet supported")
+		/*
+			e := mag.UpstreamBlobInsertIndex(ctx, req, blob)
+			if e != nil {
 
+				l.Error(err.Error())
+				span.RecordError(err)
+				return
+			}
+		*/
 	default:
 		err = fmt.Errorf("unsuported media type: %s", md)
 		span.SetStatus(codes.Error, err.Error())

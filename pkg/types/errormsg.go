@@ -32,4 +32,9 @@ const (
 	FailCollectionNotFound             = "Collection not found"
 	FailCollectionUpdate               = "Failed to update collection"
 	FailManifestDataGetByManifestList  = "Failed to get manifest data by manifest list"
+	FailLayerGetByDigest               = "Failed to get layer by digest"
+	FailLayerRemoveObj                 = "Failed to remove layer object from minio"
+	FailConfigRemoveObj                = "Failed to remove config object from minio"
+	FailBlobNotFound                   = "could not find blob"
+	FailNewUpstreamByName              = "failed to create new upstream by name"
 )

@@ -208,6 +208,36 @@ func (n Neo) manifestCreateViaUpstream(ctx context.Context, label string, upID i
 	return
 }
 
+func (n Neo) ManifestGetIDByManifestData(ctx context.Context, maniDataID int64) (maniID int64, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":    pkgNameMani,
+		"func":       "ManifestGetIDByManifestData",
+		"maniDataID": maniDataID,
+	})
+	defer span.End()
+	_ = ctx
+	q := fmt.Sprintf(`MATCH (md:ManifestData)<-[]-(m:Manifest) WHERE id(md) = %d RETURN id(m) AS maniID`, maniDataID)
+	if res, err := n.Query(q); err != nil {
+		err = utils.ErrorHandler(l, span, err, FailNeoExecute)
+		return maniID, false, err
+	} else {
+		switch len(res) {
+		case 0:
+			return maniID, false, nil
+		case 1:
+			if maniID, err = res[0].GetInt64("maniID"); err != nil {
+				err = utils.ErrorHandler(l, span, err, "while getting maniID")
+				return maniID, false, err
+			} else {
+				return maniID, true, nil
+			}
+		default:
+			utils.NewError(l, span, "more than one manifest found")
+		}
+	}
+	return maniID, false, err
+}
+
 // ManifestCreate creates just a manifest with a label
 // since we do not have information about the platform, that'll be defered
 func (n Neo) ManifestCreate(ctx context.Context, upID int64) (msID int64, err error) {
@@ -352,14 +382,12 @@ func (n Neo) Manifest_Get(ctx context.Context, upID int64, suffix ...string) (ms
 
 func (n Neo) LinkManifestToManifestData(ctx context.Context, maniID, maniDataID int64, props ...string) (err error) {
 	q := `MATCH (m:Manifest), (md:ManifestData) WHERE id(m) = %d AND id(md) = %d`
-	switch {
-	case len(props) > 0:
-		q += fmt.Sprintf(` MERGE (m)-[:%s]->(md)`, strings.ToUpper(props[0]))
-	case len(props) == 0:
-		q += ` MERGE (m)-[:PARSED]->(md)`
-	default:
-		return fmt.Errorf("expected one property for LinkManifestToManifestData, got %d", len(props))
+	rel := "PARSED"
+	if len(props) > 0 && props[0] != "" {
+		rel = strings.ToUpper(props[0])
 	}
+	q += fmt.Sprintf(` MERGE (m)-[:%s]->(md)`, rel)
+
 	query := fmt.Sprintf(q, maniID, maniDataID)
 	_, err = n.Execute(query)
 	return

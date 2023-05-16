@@ -1,7 +1,0 @@
-profile:
-  name: generic
-  actions:
-    - name: manifest-filter
-      event: post-manifest-list-get
-      args:
-        value: ""

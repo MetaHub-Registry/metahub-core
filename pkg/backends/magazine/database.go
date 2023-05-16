@@ -31,17 +31,18 @@ type Database interface {
 	/******* Upstream ********/
 	Upstream_GetInsert_ByRequest(ctx context.Context, req types.Request) (up types.Upstream, found bool, err error)
 	Upstream_Get_ByRequest(ctx context.Context, req types.Request) (up types.Upstream, found bool, err error)
-
+	UpstreamGet(ctx context.Context, up types.Upstream) (upID int64, success bool, err error)
+	UpstreamGetByID(ctx context.Context, upID int64) (up types.Upstream, found bool, err error)
 	/********* Annotation/Labels *********/
 	Config_AddLabels(ctx context.Context, cfgID int64, a *types.Annotations) (err error)
 	Manifest_AddAnnotations(ctx context.Context, maniID int64, as *types.Annotations) (err error)
 	Manifest_AddAnnotation(ctx context.Context, maniID int64, a *types.Annotation) (err error)
 
 	/********* Layer ***********/
-	LayerGetByDigest(dig string) (l types.Layer, found bool, err error)
-	LayerDeleteByDigest(dig string) error
+	LayerGetByDigest(ctx context.Context, dig string) (l types.Layer, found bool, err error)
+	LayerDeleteByDigest(ctx context.Context, dig string) error
 	Layer_PlainInsert(ctx context.Context, l types.Layer) (lID int64, err error)
-	Layer_DescriporGetInsert(ctx context.Context, desc v1.Descriptor) (layerID int64, err error)
+	LayerDescriptorGetInsert(ctx context.Context, desc v1.Descriptor) (layerID int64, err error)
 	Layers_DeleteUnused(ctx context.Context) (err error)
 	LayerExists(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error)
 	Layer_GetUpstreamRegistry(ctx context.Context, up upstream.UpstreamTriple) (registry string, err error)
@@ -74,6 +75,7 @@ type Database interface {
 	ManifestExists(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error)
 	ManifestExists_ForTagProfile(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error)
 	/// ManifestData
+	ManifestDataInsert(ctx context.Context, maniData *types.ManifestData) (err error)
 	ManifestData_GetPulled_ByRepoTag(ctx context.Context, repo, tag string) (maniData types.ManifestData, found bool, err error)
 	ManifestData_GetID_ByDigest(ctx context.Context, dig string) (maniID int64, found bool, err error)
 	ManifestData_Insert(ctx context.Context, mani types.ManifestData) (maniID int64, err error)
@@ -90,8 +92,9 @@ type Database interface {
 	ManifestData_GetByRule(ctx context.Context, rule types.Rule) (mds []types.ManifestData, err error)
 	ManifestData_CheckProfile(ctx context.Context, md types.ManifestData, prf types.Profile) (ok bool, err error)
 	ManifestData_GetPushed_ByProfile(ctx context.Context, up types.Upstream, prf types.Profile) (m types.ManifestData, found bool, err error)
-	//ManifestData_GetPulled_ByProfile(ctx context.Context, up types.Upstream, prf types.Profile) (m types.ManifestData, found bool, err error)
 	ManifestDataDelete(ctx context.Context, mani types.ManifestData) (err error)
+	ManifestDataGetByDigest(ctx context.Context, dig string) (m types.ManifestData, found bool, err error)
+	ManifestDataLinkToUpstream(ctx context.Context, maniID, upID int64) (err error)
 	////// OS
 	ManifestGetOS(ctx context.Context, maniDataID int64) (os types.OS, found bool, err error)
 	ManifestUpsertOS(ctx context.Context, maniDataID int64, os types.OS) (err error)
@@ -156,8 +159,8 @@ type Database interface {
 	ProfileAuthorizedPushHandler(ctx context.Context, req types.Request) (prf types.Profile, err error)
 	Profile_GetUploadedBy_ViaManifestDataID(ctx context.Context, maniID int64) (p types.Profile, found bool, err error)
 	Profile_GetPulledBy_ViaManifestDataID(ctx context.Context, maniID int64) (p types.Profile, found bool, err error)
-	Profile_UnwindRules(ctx context.Context, prfID, maniID int64) (err error)
-	Profile_GetAnnoEqRules(ctx context.Context, prfID int64) (rs []types.Rule, err error)
+	ProfileUnwindRules(ctx context.Context, prfID, maniID int64) (err error)
+	ProfileGetAnnoEqRules(ctx context.Context, prfID int64) (rs []types.Rule, err error)
 	Profile_ManifestType(ctx context.Context, maniID int64) (relType string, found bool, err error)
 	Profile_FromManifestID(ctx context.Context, maniID int64) (prfs []types.Profile, err error)
 	// Rules
@@ -166,7 +169,7 @@ type Database interface {
 	Rule_GetCreate(ctx context.Context, r types.Rule) (ruleID int64, err error)
 	Rules_GetAll(ctx context.Context) (rules []types.Rule, err error)
 	Rule_EvalAll(ctx context.Context) (err error)
-	Rule_GetByLabel(ctx context.Context, label string) (rule types.Rule, found bool, err error)
+	RuleGetByLabel(ctx context.Context, label string) (rule types.Rule, found bool, err error)
 	/****** CollectionTagProfilePair ********/
 	CollectionTagProfilePair_GetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error)
 	CollectionTagProfilePair_GetRegexFiltered(ctx context.Context, repoRegex, tagRegex, prfRegex string) (ctpps []types.CollectionTagProfilePair, err error)
@@ -175,4 +178,8 @@ type Database interface {
 	EvalUploadProfile(ctx context.Context, mani types.Manifest, origMani types.ManifestData) (err error)
 	/***** BaseLayer *****/
 	ManifestGetAllSystemAnnos(ctx context.Context, maniDataID int64) (as types.Annotations, err error)
+	/***** Manipulations *****/
+	ManipulationGetCreate(ctx context.Context, mp types.Manipulation) (manipuID int64, err error)
+	ManipulationUnwind(ctx context.Context, maniID, maniDataID, prfID int64) (err error)
+	ManipulationsGetByProfileID(ctx context.Context, prfID int64) (mps []types.Manipulation, err error)
 }

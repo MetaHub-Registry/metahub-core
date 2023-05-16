@@ -1,0 +1,6 @@
+name: "system/os/version" 
+tag: "22.4"
+type: "anno"
+op: "eq"
+key: "org.qnib.system.os.version"
+value: "22.4"

@@ -180,6 +180,19 @@ func (n Neo) ConfigDeleteByDigest(ctx context.Context, dig string) (err error) {
 		"digest":  dig,
 	})
 	_ = ctx
+	defer span.End()
+	q := fmt.Sprintf(`MATCH (c:Config)<-[]-(md:ManifestData) WHERE c.digest = "%s" RETURN count(md) AS count`, dig)
+	utils.Debug(l, span, q)
+	if res, _, err := n.QueryOne(q); err != nil {
+		return utils.ErrorHandler(l, span, err, types.FailNeoExecute)
+	} else {
+		count, _ := res.GetInt("count")
+		if count > 0 {
+			utils.Debug(l, span, "config '%s' still connected to %d manifestData -> Skipping", dig, count)
+			return nil
+		}
+		utils.Debug(l, span, "config '%s' not connected to manifestData", dig)
+	}
 	// Check for labels
 	if as, e := n.LabelsGetByConfigDigest(ctx, dig); e != nil {
 		return utils.ErrorHandler(l, span, e, types.FailLabelsGetByConfigDigest)
@@ -202,12 +215,12 @@ func (n Neo) ConfigDeleteByDigest(ctx context.Context, dig string) (err error) {
 			}
 		}
 	}
-	defer span.End()
-	q := fmt.Sprintf(`MATCH (n:Config) WHERE n.digest = "%s" DETACH DELETE n`, dig)
+	q = fmt.Sprintf(`MATCH (n:Config) WHERE n.digest = "%s" DETACH DELETE n`, dig)
 	_, e := n.Execute(q)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 	}
+
 	return nil
 }
 
@@ -578,3 +591,38 @@ func (n Neo) ConfigExists(ctx context.Context, up upstream.UpstreamTriple) (medi
 	l.Debug(msg)
 	return cfg.MediaType, true, nil
 }
+
+/*
+func (n Neo) ConfigScrubByID(ctx context.Context, cfgID int64) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameConfig,
+		"func":    "ConfigScrubByID",
+		"layerID": cfgID,
+	})
+	_ = ctx
+	defer span.End()
+	key := "configDigest"
+	// Delete config if not connected anymore (in Minio?)
+	q := fmt.Sprintf(`MATCH (c:Config)<-[r]-(:ManifestData)  WHERE id(c) = %d`, cfgID)
+	q += ` RETURN count(r) AS relCount, c.digest AS configDigest`
+	utils.Debug(l, span, "query to count relationships: %s", q)
+	res, _, e := n.QueryOne(q)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	}
+	var cfgDig string
+	if cfgDig, err = res.GetStr(key); err != nil {
+		return utils.ErrorHandler(l, span, e, types.FailBrGet, key)
+	}
+	relCnt, _ := res.GetInt("relCount")
+	if relCnt == 0 {
+		e = n.ConfigDeleteByDigest(ctx, cfgDig)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, types.FailConfigDeleteByDigest)
+		}
+	} else {
+		utils.Debug(l, span, "config '%s' still has %d relationships", utils.ShortenDigest(cfgDig), relCnt)
+	}
+	return nil
+}
+*/

@@ -8,6 +8,10 @@ import (
 	"github.com/minio/minio-go/v7/pkg/set"
 )
 
+var (
+	ERR_SPACES_IN_ENV = fmt.Errorf("spaces in env vars not allowed")
+)
+
 type EnvStore struct {
 	Keys set.StringSet
 	Map  map[string]string
@@ -23,12 +27,10 @@ func NewEnvStore() EnvStore {
 }
 
 func (es EnvStore) AddEnv(v string) (err error) {
-	kv := strings.Split(v, "=")
-	if len(kv) != 2 {
-		return fmt.Errorf("could not split '%s' into key/value", v)
+	key, val, found := strings.Cut(v, "=")
+	if !found {
+		return fmt.Errorf("no '=' found in '%s'", v)
 	}
-	key := kv[0]
-	val := kv[1]
 	upKey := UpLabelKey(key)
 	if es.Keys.Contains(key) {
 		if es.Map[key] != val {

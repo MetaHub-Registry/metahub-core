@@ -11,10 +11,12 @@ func TestUtilsRegex(t *testing.T) {
 	r := regexp.MustCompile(`^(?P<repo>[^:]+):(?P<tag>.*)$`)
 	str := "alpine:3.16"
 	exp := "alpine"
-	got := ReSubMatchMap(r, str)["repo"]
-	assert.Equal(t, exp, got)
+	got, err := ReSubMatchMap(r, str)
+	assert.NoError(t, err)
+	assert.Equal(t, exp, got["repo"])
 	exp = "3.16"
-	got = ReSubMatchMap(r, str)["tag"]
-	assert.Equal(t, exp, got)
+	got, err = ReSubMatchMap(r, str)
+	assert.NoError(t, err)
+	assert.Equal(t, exp, got["tag"])
 
 }

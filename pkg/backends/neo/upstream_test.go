@@ -78,7 +78,7 @@ func TestUpstreamCRUD(t *testing.T) {
 		Tag:    "2022.12.03",
 		Digest: "sha256:1234567890123456789012345678901234567890123456789012345678901234",
 	}
-	_, found, err := db.GetUpstream(ctx, up)
+	_, found, err := db.UpstreamGet(ctx, up)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestUpstreamCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.NotNil(t, upID)
-	gotUpID, found, err := db.Upstream_Get(ctx, up)
+	gotUpID, found, err := db.UpstreamGet(ctx, up)
 	if err != nil {
 		t.Fatal(err)
 	}

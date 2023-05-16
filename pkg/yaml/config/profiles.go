@@ -20,10 +20,10 @@ var (
 )
 
 type Profile struct {
-	Name          string   `yaml:"name"`
-	Tag           string   `yaml:"tag"`
-	Rule          string   `yaml:"rule"`
-	Manipulations []string `yaml:"manipulations"`
+	Name          string         `yaml:"name"`
+	Tag           string         `yaml:"tag"`
+	Rule          string         `yaml:"rule"`
+	Manipulations []Manipulation `yaml:"manipulations"`
 }
 
 func FindProfiles(cacheDir string) (profiles []Profile, err error) {
@@ -58,7 +58,11 @@ func LoadProfile(ctx context.Context, yamlfile string) (p Profile, err error) {
 	span.SetAttributes(attribute.Key("path").String(yamlfile))
 	defer span.End()
 	re := regexp.MustCompile(profileRegex)
-	m := utils.ReSubMatchMap(re, yamlfile)
+	m, e := utils.ReSubMatchMap(re, yamlfile)
+	if e != nil {
+		err = errors.Wrapf(e, "Error parsing file %s", yamlfile)
+		return
+	}
 	if _, ok := m["file"]; !ok {
 		err = errors.Errorf("no tag found in filename %s, that we need", yamlfile)
 		return
@@ -119,11 +123,15 @@ func readProfileConfig(yamlStr []byte) (p Profile, err error) {
 }
 
 func (p Profile) ToProfile() (tp types.Profile, err error) {
+	mps := []types.Manipulation{}
+	for _, ele := range p.Manipulations {
+		mps = append(mps, ele.ToTypesManipulation())
+	}
 	tp = types.Profile{
 		Name:          p.Name,
 		Tag:           p.Tag,
 		Rule:          p.Rule,
-		Manipulations: p.Manipulations,
+		Manipulations: mps,
 	}
 	return
 }

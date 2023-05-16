@@ -368,10 +368,9 @@ func (n Neo) Collection_Get_ByRepo(ctx context.Context, repo string) (c types.Co
 	})
 	defer span.End()
 	_ = ctx
-	q := `MATCH (c:Collection {repo: "%s"}) RETURN id(c) AS collectionID`
-	query := fmt.Sprintf(q, repo)
+	q := fmt.Sprintf(`MATCH (c:Collection {repo: "%s"}) RETURN id(c) AS collectionID`, repo)
 	utils.Debug(l, span, q)
-	res, found, err := n.QueryOne(query)
+	res, found, err := n.QueryOne(q)
 	if err != nil {
 		err = utils.ErrorHandler(l, span, err, "failed to execute query")
 		return

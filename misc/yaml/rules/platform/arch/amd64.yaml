@@ -1,0 +1,6 @@
+name: "arch" 
+tag: "amd64"
+type: "plat"
+op: "eq"
+key: "arch"
+value: "amd64"

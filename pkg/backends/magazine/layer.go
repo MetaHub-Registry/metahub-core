@@ -13,9 +13,6 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -61,7 +58,7 @@ func (mag Magazine) PullLayer(ctx context.Context, up upstream.UpstreamTriple) (
 		"digest":  utils.ShortenDigest(up.Digest.String()),
 	})
 	defer span.End()
-	b, blobs, err := upstream.GetBlobByUpstreamTripleByDigest(ctx, up, up.Digest.String())
+	b, blobs, err := mag.GetBlobByUpstreamTripleByDigest(ctx, up, up.Digest.String())
 	if err != nil {
 		err = errors.Wrapf(err, "failed to get blob for %s", up.GetLabel())
 		l.Error(err)
@@ -145,7 +142,7 @@ func (mag Magazine) Layer_GetByHTTPRequest(r *http.Request) (layer types.Layer, 
 	req := types.NewRequest(ctx, r)
 	//logrus.Debugf("Layer_GetByHTTPRequest: %s", req.String())
 	// Fetch Layer from SQLite
-	layer, found, err = mag.Database.LayerGetByDigest(req.Digest)
+	layer, found, err = mag.Database.LayerGetByDigest(ctx, req.Digest)
 	if err != nil {
 		logrus.Errorf("failed to fetch layer from SQLite: %v", err)
 		return
@@ -173,7 +170,7 @@ func (mag Magazine) Layer_GetByHTTPRequest(r *http.Request) (layer types.Layer, 
 func (mag Magazine) GetLayerByOCIManifest(oMani types.OCIManifest) (layers []types.Layer, err error) {
 	ctx := context.Background()
 	for _, l := range oMani.Layers {
-		layer, found, err := mag.Database.LayerGetByDigest(l.Digest.String())
+		layer, found, err := mag.Database.LayerGetByDigest(ctx, l.Digest.String())
 		if err != nil {
 			logrus.Errorf("failed to fetch layer from SQLite: %v", err)
 			return layers, err
@@ -199,16 +196,15 @@ func (mag Magazine) GetLayerByOCIManifest(oMani types.OCIManifest) (layers []typ
 }
 
 func (mag Magazine) Layers_CreateOCIv1LayerDescriptors(ctx context.Context, layerIn []types.Layer) (res []types.LayerDesc, err error) {
-	l := logrus.WithFields(logrus.Fields{
-		"package": "magazine/layer.go",
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameLayer,
 		"func":    "Layers_CreateOCIv1LayerDescriptors",
 	})
-
-	ctx, span := tracer.Start(ctx, "Layers_CreateOCIv1LayerDescriptors")
 	defer span.End()
 	res = []types.LayerDesc{}
 	var mt string
 	for _, ly := range layerIn {
+		utils.Debug(l, span, "Layer (%s) with mediatype: %s", utils.ShortenDigest(ly.Digest), ly.MediaType)
 		mtLong := utils.ExpandMediaType(ly.MediaType)
 		switch mtLong {
 		case "application/vnd.docker.image.rootfs.diff.tar.gzip":
@@ -221,16 +217,7 @@ func (mag Magazine) Layers_CreateOCIv1LayerDescriptors(ctx context.Context, laye
 			mt = v1.MediaTypeImageLayer
 
 		default:
-			err = fmt.Errorf("unknown media type: %s", mtLong)
-			span.SetStatus(codes.Error, err.Error())
-			span.AddEvent("log", trace.WithAttributes(
-				attribute.String("log.severity", "error"),
-				attribute.String("log.message", err.Error()),
-			))
-			span.RecordError(err)
-			l.Error(err.Error())
-
-			return
+			return res, utils.NewError(l, span, "unknown media type: %s", mtLong)
 		}
 		d := v1.Descriptor{
 			MediaType: mt,
@@ -238,7 +225,7 @@ func (mag Magazine) Layers_CreateOCIv1LayerDescriptors(ctx context.Context, laye
 			Size:      ly.Size,
 		}
 		// Put Layer in Graph
-		lID, err := mag.Database.Layer_DescriporGetInsert(ctx, d)
+		lID, err := mag.Database.LayerDescriptorGetInsert(ctx, d)
 		if err != nil {
 			logrus.Error(err)
 			return res, err

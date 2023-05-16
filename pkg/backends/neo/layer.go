@@ -21,13 +21,16 @@ import (
 var ()
 
 const (
-	FailQueryExec  = "query execution failed"
-	layerMediaType = `unknownLayer`
-	pkgNameLyr     = "neo/layer.go"
+	FailQueryExec                 = "query execution failed"
+	layerMediaType                = `unknownLayer`
+	pkgNameLyr                    = "neo/layer.go"
+	layerReturn                   = `id(l) AS layerID, l.digest AS layerDigest, TYPE(r) AS layerMediaType, l.size AS layerSize`
+	FailGetLayersForManipuLayerID = "failed to get layers for ManipuLayerID"
+	FailLayerGetByID              = "failed to get layer by ID"
 )
 
 func (n Neo) Layer_PlainInsert(ctx context.Context, l types.Layer) (layerID int64, err error) {
-	gotL, success, err := n.LayerGetByDigest(l.Digest)
+	gotL, success, err := n.LayerGetByDigest(ctx, l.Digest)
 	if err != nil {
 		return
 	}
@@ -83,7 +86,7 @@ func (n Neo) Layer_Get_ByID(ctx context.Context, layerID int64) (l types.Layer, 
 	}
 	return
 }
-func (n Neo) LayerGetByDigest(dig string) (l types.Layer, found bool, err error) {
+func (n Neo) LayerGetByDigest(ctx context.Context, dig string) (l types.Layer, found bool, err error) {
 	q := `MATCH (n:Layer) WHERE n.digest = "%s"`
 	q += ` RETURN id(n) AS ID, n.digest AS digest, n.mediaType AS mediaType, n.size AS size`
 	query := fmt.Sprintf(q, dig)
@@ -126,7 +129,7 @@ func (n Neo) LayerGetByDigest(dig string) (l types.Layer, found bool, err error)
 
 func (n Neo) LayerDeleteByID(ctx context.Context, lyrID int64) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": pkgNameMD,
+		"package": pkgNameLyr,
 		"func":    "LayerDeleteByID",
 		"layerID": lyrID,
 	})
@@ -139,7 +142,7 @@ func (n Neo) LayerDeleteByID(ctx context.Context, lyrID int64) (err error) {
 	return nil
 
 }
-func (n Neo) LayerDeleteByDigest(dig string) (err error) {
+func (n Neo) LayerDeleteByDigest(ctx context.Context, dig string) (err error) {
 	q := `MATCH (n:Layer) WHERE n.digest = "%s" DETACH DELETE n`
 	query := fmt.Sprintf(q, dig)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
@@ -149,9 +152,38 @@ func (n Neo) LayerDeleteByDigest(dig string) (err error) {
 		logrus.Errorf("Failed to run query: %s", err)
 		return
 	}
-
 	return err
 }
+
+/*
+	func (n Neo) LayerScrubByID(ctx context.Context, lyrID int64) (err error) {
+		l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+			"package": pkgNameLyr,
+			"func":    "LayerScrub",
+			"layerID": lyrID,
+		})
+		_ = ctx
+		defer span.End()
+
+		q := fmt.Sprintf(`MATCH (l:Layer)<-[r]-(:ManifestData)  WHERE id(l) = %d`, lyrID)
+		q += ` RETURN count(r) AS relCount`
+		utils.Debug(l, span, q)
+		res, _, e := n.QueryOne(q)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+		}
+		relCnt, _ := res.GetInt("relCount")
+		if relCnt == 0 {
+			e = n.LayerDeleteByID(ctx, lyrID)
+			if e != nil {
+				return utils.ErrorHandler(l, span, e, types.FailLayerDeleteByDigest)
+			}
+		} else {
+			utils.Debug(l, span, "layer w/ ID %d still has %d relationships", lyrID, relCnt)
+		}
+		return nil
+	}
+*/
 
 func (n Neo) GetLayer(layer types.Layer) (layerID int64, success bool, err error) {
 	q := `MATCH (n:Layer) WHERE n.digest = "%s" AND n.mediaType = "%s" AND n.size = %d RETURN id(n) AS ID`
@@ -457,8 +489,13 @@ func (n Neo) Layer_DescriporGet(ctx context.Context, desc v1.Descriptor) (layerI
 	return
 }
 
-func (n Neo) Layer_DescriporGetInsert(ctx context.Context, desc v1.Descriptor) (layerID int64, err error) {
-	// check if layer exists
+func (n Neo) LayerDescriptorGetInsert(ctx context.Context, desc v1.Descriptor) (layerID int64, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameLyr,
+		"func":    "LayerDescriptorGetInsert",
+	})
+	defer span.End()
+	_ = ctx
 	layerID, found, err := n.Layer_DescriporGet(ctx, desc)
 	if err != nil {
 		return 0, err
@@ -470,15 +507,14 @@ func (n Neo) Layer_DescriporGetInsert(ctx context.Context, desc v1.Descriptor) (
 	label := utils.CreateLabelFromTypeAndDigest(desc.MediaType, desc.Digest.String())
 	q := `CREATE (n:Layer {digest: "%s", mediaType: "%s", size: %d, label: "%s"}) RETURN id(n) AS ID`
 	query := fmt.Sprintf(q, desc.Digest.String(), desc.MediaType, desc.Size, label)
+	utils.Debug(l, span, q)
 	res, err := n.Execute(query)
 	if err != nil {
 		return 0, err
 	}
 	layerID, err = res.GetInt64("ID")
 	if err != nil {
-		fmt.Printf("Query: \n%s\n", query)
-		logrus.Fatal(err)
-		logrus.Errorf("failed to get layer id: %v", err)
+		return 0, utils.ErrorHandler(l, span, err, "failed to get id from result")
 	}
 	return
 }
@@ -637,6 +673,33 @@ func (n Neo) LayerGetUpstream(ctx context.Context, lID int64) (up types.Upstream
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to create Upstream from result")
 		return
+	}
+	return
+}
+
+func (n Neo) GetLayersForManipuLayerID(ctx context.Context, mplID int64) (layers []types.Layer, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameLyr,
+		"func":    "neo.GetLayersForManipuLayerID",
+		"layerID": mplID,
+	})
+	defer span.End()
+	layers = []types.Layer{}
+	q := fmt.Sprintf(`MATCH (l:Layer)<-[r]-(mpl:ManipuLayer) WHERE id(mpl) = %d`, mplID)
+	q += fmt.Sprintf(` RETURN %s`, layerReturn)
+	q += ` ORDER BY r.order`
+	utils.Debug(l, span, q)
+	res, e := n.Query(q)
+	if e != nil {
+		return layers, utils.ErrorHandler(l, span, e, FailQueryExec)
+	}
+	for _, r := range res {
+		l, e := n.LayerFromResult(ctx, r)
+		if e != nil {
+			err = errors.Wrap(e, "failed to get layers for manifest id")
+			return
+		}
+		layers = append(layers, l)
 	}
 	return
 }

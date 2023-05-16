@@ -13,10 +13,9 @@ const (
 )
 
 var (
-	imgNameRegex        = regexp.MustCompile(`^(?P<repo>[\w\/\-\.\_]+)(:|@)(?P<ref>.*)$`)
-	singleImg           = regexp.MustCompile(`^(?P<repo>[\w\-\.\_]+)(:|@)(?P<ref>.*)$`)
-	singleImgNoTagRegex = regexp.MustCompile(`^(?P<repo>[\w\.]+)$`)
-	regs                = []string{"docker.io", "quay.io", "registry.gitlab.com", "public.ecr.aws"}
+	//regs    = []string{"docker.io", "quay.io", "registry.gitlab.com", "public.ecr.aws"}
+	upRegex = `^(?P<reg>[\w\.]+(\:\d+|\.\w+))?\/?(?P<repo>[a-z]{1}[\w\/\-]+)(@|:)?(?P<tag>.*)?`
+	defReg  = "docker.io"
 )
 
 func NormalizeRepoName(name string) (new string, err error) {
@@ -44,43 +43,53 @@ func SplitImageName(name string) (reg, repo, ref string, err error) {
 		"func":     "SplitImageName",
 		"org_name": name,
 	})
-	if name == "" {
-		err = fmt.Errorf("%s is not a valid image name", name)
-		return
-	}
-	foundReg := false
-	for _, r := range regs {
-		if strings.HasPrefix(name, r) {
-			reg = r
-			name = strings.TrimPrefix(name, r+"/")
-			foundReg = true
-			break
-		}
-	}
-	if !foundReg {
-		l.Warnf("No registry found in '%s' - fallback to docker.io", name)
-		reg = "docker.io"
-	}
 	_ = l
-	if singleImgNoTagRegex.MatchString(name) {
-		l.Warnf("singleImgNoTagRegex -> name: '%s'", name)
-		m := ReSubMatchMap(singleImgNoTagRegex, name)
-		repo = fmt.Sprintf("library/%s", m["repo"])
-		ref = "latest"
+	r := regexp.MustCompile(upRegex)
+	switch {
+	case name == "":
+		err = fmt.Errorf("name is empty")
+		return
+	case !r.Match([]byte(name)):
+		err = fmt.Errorf("name does not comply with regex '%s'", upRegex)
 		return
 	}
-	if singleImg.MatchString(name) {
-		m := ReSubMatchMap(imgNameRegex, name)
-		repo = fmt.Sprintf("library/%s", m["repo"])
-		ref = m["ref"]
+
+	var ok bool
+
+	if strings.Count(name, "/") == 0 {
+		if strings.Count(name, ":") == 0 {
+			return defReg, "library/" + name, "latest", err
+
+		}
+		repo, ref, ok := strings.Cut(name, ":")
+		if !ok {
+			err = fmt.Errorf("failed to extract repo from '%s'", name)
+		}
+		if ref == "" {
+			ref = "latest"
+		}
+		return defReg, "library/" + repo, ref, err
+
+	}
+
+	m, err := ReSubMatchMap(r, name)
+	if err != nil {
+		err = fmt.Errorf("failed to extract upstream from '%s': %s", name, err)
 		return
 	}
-	if imgNameRegex.MatchString(name) {
-		m := ReSubMatchMap(imgNameRegex, name)
-		repo = m["repo"]
-		ref = m["ref"]
+	reg, ok = m["reg"]
+	if !ok || reg == "" {
+		reg = defReg
+	}
+	if repo, ok = m["repo"]; !ok {
+		err = fmt.Errorf("failed to extract repo from '%s'", name)
 		return
 	}
-	err = fmt.Errorf("%s is not a valid image name", name)
+
+	if ref, ok = m["tag"]; !ok {
+		err = fmt.Errorf("failed to extract tag from '%s'", name)
+		return
+	}
+	l.Warnf("reg:'%s' / repo:'%s' / ref:'%s'", reg, repo, ref)
 	return
 }

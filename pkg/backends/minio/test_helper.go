@@ -3,6 +3,7 @@ package minio
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -194,7 +195,7 @@ func (m Minio) Setup_Layer(br *utils.BootstrapResult, layer types.Layer, b strin
 func (m Minio) SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 	br = utils.NewBootstrapResult()
 	for _, b := range bs.Bootstraps {
-		err = m.BootstrapTestWithBR(b, &br)
+		err = m.BootstrapTestWithBR(bs, &br, b)
 		if err != nil {
 			err = errors.Wrapf(err, whileFmrt, b)
 			return
@@ -203,96 +204,122 @@ func (m Minio) SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err erro
 	return
 }
 
-func (m Minio) BootstrapTestWithBR(b string, br *utils.BootstrapResult) (err error) {
+func (m Minio) SetupLayer(br *utils.BootstrapResult, ly types.Layer, bootstrapstring string) (err error) {
 	ctx := context.Background()
+	err = m.LayerPutObj(ctx, ly.Digest, ly.Data)
+	return
+}
+
+func (m Minio) BootstrapLayer(bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
 	switch b {
-	case "config:ft_arm64":
-		err = Setup_Config_FT_arm64(&m, br)
-		if err != nil {
-			err = errors.Wrapf(err, whileFmrt, b)
-			return
+	case "0:glow150arm64_2660":
+		if err = m.SetupLayer(br, types.Layer0Glow150ARM64, b); err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
 		}
-	case "config:ft_amd64":
-		err = Setup_Config_FT_amd64(&m, br)
-		if err != nil {
-			err = errors.Wrapf(err, whileFmrt, b)
-			return
+	case "1:glow150arm64_3571":
+		if err = m.SetupLayer(br, types.Layer1Glow150ARM64, b); err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
 		}
-	case "config:ft_amd64_b109":
-		err = Setup_Config_FT_amd64_b109(&m, br)
-		if err != nil {
-			err = errors.Wrapf(err, whileFmrt, b)
-			return
+	case "2:glow150arm64_d54e":
+		if err = m.SetupLayer(br, types.Layer2Glow150ARM64, b); err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
 		}
-	case "config:ft_amd64_83f":
-		err = SetupConfig83f(&m, br)
-		if err != nil {
-			err = errors.Wrapf(err, whileFmrt, b)
-			return
+	case "0:ft_arm64":
+		if err = m.SetupLayer(br, types.FT_arm64_Layer0(), b); err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
 		}
-	case "config:ft_zen":
-		err = SetupConfig(&m, br, types.ConfigDTFeaturetestZenc259())
-		if err != nil {
-			err = errors.Wrapf(err, whileFmrt, b)
-			return
+	case "1:ft_zen_4c85":
+		if err = m.SetupLayer(br, types.LayerFeaturetestL4c85(), b); err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
 		}
-	case "layer:0:ft_arm64":
-		err = m.Setup_Layer(br, types.FT_arm64_Layer0(), b)
-		if err != nil {
-			err = errors.Wrapf(err, whileFmrt, b)
-			return
+	case "0:ft_zen_f144":
+		if err = m.SetupLayer(br, types.LayerFeaturetestLf144(), b); err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
 		}
-	case "layer:1:ft_arm64":
-		err = m.Setup_Layer(br, types.FT_arm64_Layer1(), b)
-		if err != nil {
-			err = errors.Wrapf(err, whileFmrt, b)
-			return
+	case "1:ft_amd64":
+		if err = m.SetupLayer(br, types.FT_amd64_Layer1(), b); err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
 		}
-	case "layer:0:ft_amd64":
-		err = m.Setup_Layer(br, types.FT_amd64_Layer0(), b)
-		if err != nil {
-			err = errors.Wrapf(err, whileFmrt, b)
-			return
+	case "0:ft_amd64":
+		if err = m.SetupLayer(br, types.FT_amd64_Layer0(), b); err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
 		}
-	case "layer:1:ft_amd64":
-		err = m.Setup_Layer(br, types.FT_amd64_Layer1(), b)
-		if err != nil {
-			err = errors.Wrapf(err, whileFmrt, b)
-			return
-		}
-	case "layer:0:ft_zen_f144":
-		err = m.Setup_Layer(br, types.LayerFeaturetestLf144(), b)
-		if err != nil {
-			err = errors.Wrapf(err, whileFmrt, b)
-			return
-		}
-	case "layer:1:ft_zen_4c85":
-		err = m.Setup_Layer(br, types.LayerFeaturetestL4c85(), b)
-		if err != nil {
-			err = errors.Wrapf(err, whileFmrt, b)
-			return
-		}
-	case "cfg:generic":
-		err := m.PutConfig(ctx, featureTestGenericCfg, featureTestGenericCfgDigest)
-		if err != nil {
-			logrus.Fatal(err)
-		}
-	case "manifestdata:ft_amd64":
-		dt := types.ManifestDataAmd64Byte()
-		err = m.ManifestsPutObj(ctx, dt.Digest.String(), dt.Data)
-		if err != nil {
-			err = errors.Wrapf(err, whileFmrt, b)
-			return
-		}
-	case "manifestdata:ft_zen_5c99":
-		dt := types.ManifestDataDTFeaturetestZen()
-		err = m.ManifestsPutObj(ctx, dt.Digest.String(), dt.Data)
-		if err != nil {
-			err = errors.Wrapf(err, whileFmrt, b)
-			return
+	case "1:ft_arm64":
+		if err = m.SetupLayer(br, types.FT_arm64_Layer1(), b); err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
 		}
 	default:
-		logrus.Warnf("unknown MinIO bootstrap '%s'", b)
+		return errors.Errorf("unknown bootstrap %s", b)
 	}
+	return nil
+}
+
+func (m Minio) BootstrapTestWithBR(bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
+	ctx := context.Background()
+	bsType, bsName, found := strings.Cut(b, ":")
+	if !found {
+		return errors.Errorf("invalid bootstrap %s", b)
+	}
+	switch bsType {
+	case "layer":
+		if err = m.BootstrapLayer(bs, br, bsName); err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
+	default:
+		switch b {
+		case "config:ft_arm64":
+			err = Setup_Config_FT_arm64(&m, br)
+			if err != nil {
+				err = errors.Wrapf(err, whileFmrt, b)
+				return
+			}
+		case "config:ft_amd64":
+			err = Setup_Config_FT_amd64(&m, br)
+			if err != nil {
+				err = errors.Wrapf(err, whileFmrt, b)
+				return
+			}
+		case "config:ft_amd64_b109":
+			err = Setup_Config_FT_amd64_b109(&m, br)
+			if err != nil {
+				err = errors.Wrapf(err, whileFmrt, b)
+				return
+			}
+		case "config:ft_amd64_83f":
+			err = SetupConfig83f(&m, br)
+			if err != nil {
+				err = errors.Wrapf(err, whileFmrt, b)
+				return
+			}
+		case "config:ft_zen":
+			err = SetupConfig(&m, br, types.ConfigDTFeaturetestZenc259())
+			if err != nil {
+				err = errors.Wrapf(err, whileFmrt, b)
+				return
+			}
+		case "cfg:generic":
+			err := m.PutConfig(ctx, featureTestGenericCfg, featureTestGenericCfgDigest)
+			if err != nil {
+				logrus.Fatal(err)
+			}
+		case "manifestdata:ft_amd64":
+			dt := types.ManifestDataAmd64Byte()
+			err = m.ManifestsPutObj(ctx, dt.Digest.String(), dt.Data)
+			if err != nil {
+				err = errors.Wrapf(err, whileFmrt, b)
+				return
+			}
+		case "manifestdata:ft_zen_5c99":
+			dt := types.ManifestDataDTFeaturetestZen()
+			err = m.ManifestsPutObj(ctx, dt.Digest.String(), dt.Data)
+			if err != nil {
+				err = errors.Wrapf(err, whileFmrt, b)
+				return
+			}
+		default:
+			logrus.Warnf("unknown MinIO bootstrap '%s'", b)
+		}
+	}
+
 	return
 }
