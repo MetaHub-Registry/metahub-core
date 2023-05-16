@@ -49,7 +49,7 @@ func (n Neo) CollectionListing_Get_ByID(ctx context.Context, colID, colTagID int
 		return
 	}
 	for _, m := range manis {
-		k := fmt.Sprintf("%s/%s:%s@%s-%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag, m.Profile, m.Platform.Arch)
+		k := m.Label
 		utils.Debug(l, span, fmt.Sprintf("Add manifest '%s'", k))
 		col.Manifests[k] = m
 		col.ManifestCount++
@@ -91,7 +91,7 @@ func (n Neo) CollectionListing_Get_ByName(ctx context.Context, repoName, colTagN
 		return
 	}
 	for _, m := range manis {
-		k := fmt.Sprintf("%s/%s:%s@%s-%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag, m.Profile, m.Platform.Arch)
+		k := m.Label //fmt.Sprintf("%s/%s:%s@%s-%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag, m.Profile, m.Platform.Arch)
 		utils.Debug(l, span, fmt.Sprintf("Add manifest '%s'", k))
 		col.Manifests[k] = m
 		col.ManifestCount++

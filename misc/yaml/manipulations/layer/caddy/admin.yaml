@@ -1,0 +1,2 @@
+layers:
+ - image:  quay.io/cqnib/metahub-layers/caddy/admin:2023-05-08

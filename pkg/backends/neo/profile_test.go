@@ -11,14 +11,23 @@ import (
 
 func TestProfileCRUD(t *testing.T) {
 	ctx := context.Background()
+	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.SetEmptyAll()
 	//bs.PostTestSleep = 60
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
 	br, err := SetupTest(ctx, bs)
-	_ = br
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
 	if err != nil {
 		t.Fatal(err)
+
 	}
 	defer db.TeardownTest(bs)
 	// Actual test
@@ -85,6 +94,7 @@ func TestProfileCRUD(t *testing.T) {
 
 func TestProfileFromManifestID(t *testing.T) {
 	bs := utils.NewBootstrap()
+	debug := 0
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("rules:rules/os/linux.yaml")
@@ -115,12 +125,16 @@ func TestProfileFromManifestID(t *testing.T) {
 	bs.AddBootstrap("manifestdata:ft_amd64")
 	bs.AddBootstrap("manifestdata:ft_zen3")
 	bs.SetEmptyAll()
-	//bs.PostTestSleep = 180
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
 	br, err := SetupTest(ctx, bs)
-	_ = br
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
 	if err != nil {
-		t.Log(err)
-		db.TeardownTest(bs)
 		t.Fatal(err)
 	}
 	defer db.TeardownTest(bs)
@@ -154,7 +168,22 @@ func TestProfileFromManifestID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, 1, len(prfs_zen3))
+	if len(prfs_zen3) != 2 {
+		for _, prf := range prfs_zen3 {
+			t.Log(prf)
+		}
+		t.Fatal("Expected 2 profile, got", len(prfs_zen3))
+	}
+	// Rules
+	if e := db.Rule_EvalAll(ctx); e != nil {
+		t.Fatal(e)
+	}
+	prfZen3 := prfs_zen3[0]
+	if rls, err := db.ProfileGetPlatformRules(ctx, prfZen3.ID); err != nil {
+		t.Fatal(err)
+	} else {
+		assert.Equal(t, 0, len(rls))
+	}
 }
 
 func TestProfileFromManifestIDZen3(t *testing.T) {
@@ -198,4 +227,18 @@ func TestProfileFromManifestIDZen3(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, 1, len(prfs_zen3))
+	prfZen3 := prfs_zen3[0]
+	if rls, err := db.ProfileGetPlatformRules(ctx, prfZen3.ID); err != nil {
+		t.Fatal(err)
+	} else {
+		assert.Equal(t, 0, len(rls))
+	}
+	if rls, err := db.ProfileGetAnnoEqRules(ctx, prfZen3.ID); err != nil {
+		t.Fatal(err)
+	} else {
+		assert.Equal(t, 1, len(rls))
+	}
+	if err = db.ProfileUnwindRules(ctx, prfZen3.ID, maniID_zen3); err != nil {
+		t.Fatal(err)
+	}
 }

@@ -5,6 +5,47 @@ import (
 	"github.com/opencontainers/go-digest"
 )
 
+var (
+	Layer0Glow150ARM64DT = NewDataTuple("data/layer/26608a4ddd90f25b3854b5d5f2543b158f79c6e6bdb4099b65b63eb0dcf9d45d.dat")
+	Layer0Glow150ARM64   = Layer{
+		Digest:    Layer0Glow150ARM64DT.Digest.String(),
+		Size:      5833119,
+		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
+		Data:      Layer0Glow150ARM64DT.Data,
+	}
+	Layer1Glow150ARM64DT = NewDataTuple("data/layer/3571972328e9561a0c1f7e6fa608edf090eacc168ac29d0a9f234ed797708d54.dat")
+	Layer1Glow150ARM64   = Layer{
+		Digest:    Layer1Glow150ARM64DT.Digest.String(),
+		Size:      3072,
+		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
+		Data:      Layer1Glow150ARM64DT.Data,
+	}
+	Layer2Glow150ARM64DT = NewDataTuple("data/layer/d54e369a89429ce6226ed2c646caecdaf7538180c2e26507472ff7188738313f.dat")
+	Layer2Glow150ARM64   = Layer{
+		Digest:    Layer2Glow150ARM64DT.Digest.String(),
+		Size:      3584,
+		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
+		Data:      Layer2Glow150ARM64DT.Data,
+	}
+	/// ARM64
+	Layer0FTARM64DT = NewDataTuple("data/layer/6ec0f660682c2f5b391af1d81d3b4839da06f050269546177b28e4b51d8d4c30.dat")
+	Layer0FTARM64   = Layer{
+		Digest:    Layer0FTARM64DT.Digest.String(),
+		Size:      2693535,
+		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
+		Data:      Layer0FTARM64DT.Data,
+	}
+	Layer1FTARM64DT = NewDataTuple("data/layer/297a529dab3ab8530adef75e34219e97ec0f3cb2fd39efdb13a1cc0a70ece15a.dat")
+	Layer1FTARM64   = Layer{
+		Digest:    Layer1FTARM64DT.Digest.String(),
+		Size:      304,
+		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
+		Data:      Layer1FTARM64DT.Data,
+	}
+)
+
+const ()
+
 func FT_arm64_Layer1() Layer {
 	ref := FT_arm_Layer1Reference()
 	return Layer{
@@ -77,6 +118,7 @@ func newLayerFromDT(dt DataTuple) Layer {
 func LayerDTFeaturetestLf144() DataTuple {
 	return NewDataTuple("data/layer/f1417ff83b319fbdae6dd9cd6d8c9c88002dcd75ecf6ec201c8c6894681cf2b5.dat")
 }
+
 func LayerFeaturetestLf144() Layer {
 	return newLayerFromDT(LayerDTFeaturetestLf144())
 }

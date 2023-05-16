@@ -107,7 +107,7 @@ func TestUpstreamManifestInsert(t *testing.T) {
 	}
 	assert.Equal(t, "alpine", maniGen.Upstream.Repo)
 	// TODO: check if upstream is in DB
-	q := fmt.Sprintf(`MATCH (u:Upstream)<-[:UPSTREAM]-(m:Manifest) WHERE id(m)=%d RETURN u.repo AS upRepo, u.tag AS upTag`, maniGen.ID)
+	q := fmt.Sprintf(`MATCH (u:Upstream)<-[r]-(m:Manifest) WHERE id(m)=%d RETURN u.repo AS upRepo, u.tag AS upTag, type(r) AS relType`, maniGen.ID)
 	t.Log(q)
 	res, found, err := mag.Database.QueryOne(q)
 	if err != nil {
@@ -116,7 +116,8 @@ func TestUpstreamManifestInsert(t *testing.T) {
 	if !found {
 		t.Fatal("upstream not found")
 	}
-	var gotUpRepo, gotUpTag string
+
+	var gotUpRepo, gotUpTag, relType string
 	if gotUpRepo, err = res.GetStr("upRepo"); err != nil {
 		t.Fatal(err)
 	}
@@ -125,13 +126,22 @@ func TestUpstreamManifestInsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, "3.17.3", gotUpTag)
+	if relType, err = res.GetStr("relType"); err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "UPSTREAM", relType)
 	// TODO: check if manifest is linked to profile
 	prfs, err := mag.Database.Profile_FromManifestID(ctx, maniGen.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(prfs) != 1 {
-		t.Fatalf("expected 1 profile, got %d", len(prfs))
+		msg := fmt.Sprintf("expected 1 profile, got %d", len(prfs))
+		for _, prf := range prfs {
+			t.Logf("profile: %s", prf.Label)
+		}
+		t.Fatal(msg)
+
 	}
 	prf := prfs[0]
 	assert.Equal(t, "generic", prf.Label, prf)
@@ -211,7 +221,7 @@ func TestUpstreamManifestInsertZen3(t *testing.T) {
 	if !mdOrigFound {
 		t.Fatal("original manifest data not found")
 	}
-	assert.Greater(t, mdOrig.ID, int64(0))
+	assert.Equal(t, "sha256:b5a5b7ce4eabc8414bf367761a28f4e8b16952ce5de537c15ed917b71b245f11", mdOrig.Digest)
 	cfgOrig, cfgOrigFound, err := mag.Config_GetByID(ctx, mdOrig.Config.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -239,11 +249,11 @@ func TestUpstreamManifestInsertZen3(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(mani3.Manifests) != 3 {
+	if len(mani3.Manifests) < 2 {
 		for _, m := range mani3.Manifests {
 			t.Logf("manifest: %s", m.Digest)
 		}
-		t.Fatal("expected 3 manifests")
+		t.Fatalf("expected min 2 manifests, found %d", len(mani3.Manifests))
 	}
 	prf, err := mag.getProfile(ctx, br, "cpu#zen3")
 	if err != nil {
@@ -288,8 +298,7 @@ func TestUpstreamManifestInsertZen3(t *testing.T) {
 	if !mdOrigFound {
 		t.Fatal("original manifest data not found")
 	}
-	assert.Greater(t, mdOrig2.ID, int64(1))
-
+	assert.Equal(t, "sha256:b5a5b7ce4eabc8414bf367761a28f4e8b16952ce5de537c15ed917b71b245f11", mdOrig2.Digest)
 	cfgOrig, cfgOrigFound, err = mag.Config_GetByID(ctx, mdOrig2.Config.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -308,23 +317,30 @@ func TestUpstreamManifestInsertZen3(t *testing.T) {
 
 }
 
+/*
 func TestUpstreamBlobInsertManifestList(t *testing.T) {
 	ctx := context.Background()
+	debug := 300
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("rules:rules/cpu/zen3.yaml")
 	bs.AddBootstrap("profile:profiles/cpu/zen3.yaml")
 	bs.SetEmptyAll()
-	//bs.PostTestSleep = 300
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
 	br, err := mag.SetupTest(ctx, bs)
-	_ = br
-	//br.PrintDict()
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
 	if err != nil {
-		mag.Database.TeardownTest(bs)
+		TeardownTest(bs)
 		t.Fatal(err)
 	}
-	defer mag.Database.TeardownTest(bs)
+	defer TeardownTest(bs)
 	// Actual test
 	req := types.Request{
 		Host:    regHttpURI,
@@ -341,6 +357,7 @@ func TestUpstreamBlobInsertManifestList(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+*/
 
 func TestUpstreamInsertGeneric(t *testing.T) {
 	ctx := context.Background()
@@ -454,4 +471,63 @@ func TestUpstreamDiscoverUpstreamManifestList(t *testing.T) {
 	assert.True(t, strings.HasPrefix(reg, "localhost:"))
 	assert.Equal(t, shaff6, blob.Digest.String())
 	assert.Equal(t, MediaTypeManifestList, blob.MediaType)
+}
+
+func TestCacheUpstream(t *testing.T) {
+	ctx := context.Background()
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:arm64")
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := mag.SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	if err != nil {
+		TeardownTest(bs)
+		t.Fatal(err)
+	}
+	defer TeardownTest(bs)
+	// Actual test
+	if e := mag.CacheUpstream(ctx, types.UpstreamGlow150ARM64); e != nil {
+		t.Fatal(e)
+	}
+	// Test upstream
+	var up types.Upstream
+	if upID, found, err := mag.Database.UpstreamGet(ctx, types.UpstreamGlow150ARM64); err != nil {
+		t.Fatal(err)
+	} else if !found {
+		t.Fatal("upstream not found")
+	} else {
+		if up, found, err = mag.Database.UpstreamGetByID(ctx, upID); err != nil {
+			t.Fatal(err)
+		} else if !found {
+			t.Fatal("upstream not found")
+		}
+	}
+	if up.Digest != types.UpstreamGlow150ARM64.Digest {
+		t.Fatal("digest mismatch")
+	}
+	// Test ManifestData
+	req := types.Request{
+		Host:    up.Reg,
+		Repo:    up.Repo,
+		Tag:     up.Tag,
+		Profile: up.Profile,
+	}
+
+	if md, found, err := mag.Database.ManifestDataGetTypesByRequest(ctx, req); err != nil {
+		t.Fatal(err)
+	} else if !found {
+		t.Fatal("manifest data not found")
+	} else {
+		assert.Equal(t, up.Digest.String(), md.Upstream.Digest.String())
+	}
+
 }

@@ -22,11 +22,13 @@ func TestSplitImage(t *testing.T) {
 		repo  string
 		ref   string
 	}{
+		{"qnib/featuretest:test", false, "docker.io", "qnib/featuretest", "test"},
+		{"registry:5050/qnib/featuretest:test", false, "registry:5050", "qnib/featuretest", "test"},
 		{"", true, "", "", ""},
-		{"alpine:3.16", false, "docker.io", "library/alpine", "3.16"},
+		{"registry.gitlab.com/qnib/test:20220715-arm64-generic", false, "registry.gitlab.com", "qnib/test", "20220715-arm64-generic"},
+		{"alpine:3.16", false, "docker.io", "library/alpine", "3.16"}, // we need a FQDN
 		{"docker.io/library/alpine:3.16", false, "docker.io", "library/alpine", "3.16"},
 		{"quay.io/library/alpine:3.16", false, "quay.io", "library/alpine", "3.16"},
-		{"qnib/featuretest:test", false, "docker.io", "qnib/featuretest", "test"},
 		{"quay.io/library/alpine@sha256:91591e8f9968721c129f1d2113259a047f6f85af6491758296fda8f21ef81dd3", false, "quay.io", "library/alpine", "sha256:91591e8f9968721c129f1d2113259a047f6f85af6491758296fda8f21ef81dd3"},
 	}
 	registriesConf, err := os.CreateTemp("", "repo-splitname-v0")
@@ -64,6 +66,7 @@ func TestSplitImage(t *testing.T) {
 func getMirrorConf(regs []string) []byte {
 	return []byte(fmt.Sprintf(`unqualified-search-registries = ["%s"]`, strings.Join(regs, `", "`)))
 }
+
 func TestNormalizeRepoNameV0(t *testing.T) {
 	input := "alpine"
 	exp := "docker.io/library/alpine:latest"
@@ -82,14 +85,4 @@ func TestNormalizeRepoNameV0(t *testing.T) {
 	input = "-s"
 	_, err = NormalizeRepoName(input)
 	assert.Error(t, err)
-}
-
-func TestNormalizeRepoNamev1(t *testing.T) {
-	input := "alpine"
-	exp := "docker.io/library/alpine:latest"
-	got, err := NormalizeRepoName(input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, exp, got)
 }

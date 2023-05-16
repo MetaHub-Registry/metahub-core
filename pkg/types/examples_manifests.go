@@ -47,7 +47,24 @@ func ManifestDataDTFeaturetestZen() DataTuple {
 		Digest: dt.Digest,
 	}
 	return dt
+}
 
+var ManifestDataFeaturetestArm64 = newManifestData(
+	ManifestDataDTFeaturetestArm64(),
+	DataTupeFTConfigArm64(),
+	Layer0FTARM64DT,
+	Layer1FTARM64DT,
+)
+
+func ManifestDataDTFeaturetestArm64() DataTuple {
+	dt := NewDataTuple("data/manifests/ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5.json")
+	dt.Upstream = Upstream{
+		Reg:    "registry.gitlab.com",
+		Repo:   "qnib-pub-containers/qnib/plain-featuretest",
+		Tag:    "3.17.3-arm64",
+		Digest: dt.Digest,
+	}
+	return dt
 }
 
 func ManifestDataAmd64Zen() ManifestData {
@@ -167,6 +184,7 @@ func FT_arm_ManifestData() ManifestData {
 		MediaType: "application/vnd.docker.distribution.manifest.v2+json",
 		Data:      dat,
 		Config:    cfg,
+		Type:      "PARSED",
 		Upstream:  up,
 		Platform: Platform{
 			Arch:    cfg.Cfg.Architecture,

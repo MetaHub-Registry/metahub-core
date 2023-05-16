@@ -66,7 +66,11 @@ func LoadRule(ctx context.Context, yamlfile string) (r Rule, err error) {
 	span.SetAttributes(attribute.Key("path").String(yamlfile))
 	defer span.End()
 	re := regexp.MustCompile(profileRegex)
-	m := utils.ReSubMatchMap(re, yamlfile)
+	m, e := utils.ReSubMatchMap(re, yamlfile)
+	if e != nil {
+		err = errors.Wrapf(e, "Error parsing file %s", yamlfile)
+		return
+	}
 	name := m["dir"]
 	tag := m["file"]
 	yamlContent, err := ioutil.ReadFile(yamlfile)

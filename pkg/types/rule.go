@@ -23,6 +23,7 @@ var (
 
 type Rule struct {
 	ID    int64  `yaml:"-"`
+	Label string `yaml:"label"`
 	Name  string `yaml:"name"`
 	Tag   string `yaml:"tag"`
 	Type  string `yaml:"type"`

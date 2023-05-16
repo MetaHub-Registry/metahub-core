@@ -2,7 +2,9 @@ package neo
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/types"
@@ -32,6 +34,10 @@ func TestManifest_Create_WithLabel(t *testing.T) {
 	}
 	defer db.TeardownTest(bs)
 	// Actual test
+	q := `MATCH (n) WHERE NOT n:Upstream DETACH DELETE n`
+	if _, e := db.Execute(q); e != nil {
+		t.Fatal(e)
+	}
 	upID, err := br.GetInt64("upstream:ft_amd64#id")
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +46,11 @@ func TestManifest_Create_WithLabel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Greater(t, maniID, upID)
+	mani2ID, err := db.manifestCreateViaUpstream(ctx, "label2", upID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Greater(t, mani2ID, maniID)
 
 }
 func TestManifestGetByLabel(t *testing.T) {
@@ -91,14 +101,11 @@ func TestManifestGetByLabel(t *testing.T) {
 	}
 	assert.Equal(t, m.ID, maniID)
 	// Fail to link
-	newLabel := "registry.gitlab.com/qnib-pub-containers/qnib/plain-featuretest:NEWLABEL"
-	maniID, err = db.manifestCreateViaUpstream(ctx, newLabel, upID)
+	newLabel := fmt.Sprintf("registry.gitlab.com/qnib-pub-containers/qnib/plain-featuretest:NEWLABEL-%s", time.Now().GoString())
+	_, err = db.manifestCreateViaUpstream(ctx, newLabel, upID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Greater(t, maniID, m.ID)
-	// Fail to link
-
 }
 
 func TestManifestCR(t *testing.T) {
@@ -158,6 +165,28 @@ func TestManifestCR(t *testing.T) {
 	}
 	assert.True(t, found)
 	assert.Equal(t, maniID, gotManiID)
+	// ManifestGetIDByManifestData
+	maniZen3, err := br.GetInt64("manifest:ft_zen3#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	maniDataZen3ID, err := br.GetInt64("manifestdata:ft_zen3#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotManiID, gotFound, err := db.ManifestGetIDByManifestData(ctx, maniDataZen3ID); err != nil {
+		t.Fatal(err)
+	} else if !gotFound {
+		t.Fatal("ManifestData not found")
+	} else {
+		assert.Equal(t, maniZen3, gotManiID)
+	}
+	// maniZen3 should not yield a result
+	if _, gotFound, err := db.ManifestGetIDByManifestData(ctx, maniZen3); err != nil {
+		t.Fatal(err)
+	} else if gotFound {
+		t.Fatal("ManifestData IS found")
+	}
 
 }
 

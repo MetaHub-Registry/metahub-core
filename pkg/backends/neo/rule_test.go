@@ -36,6 +36,10 @@ func TestRuleGetCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.False(t, found)
+	// Empty
+	if _, e := db.Rule_Create(ctx, types.Rule{Type: ""}); e == nil {
+		t.Fatal("Should have failed because type is empty")
+	}
 	/// create Rule
 	ruleID, err := db.Rule_Create(ctx, r)
 	if err != nil {
@@ -81,7 +85,7 @@ func TestRuleEvalAnnotationRule(t *testing.T) {
 	}
 	defer db.TeardownTest(bs)
 	// Actual Test
-	_, found, err := db.Rule_GetByLabel(ctx, "target:platform")
+	_, found, err := db.RuleGetByLabel(ctx, "target:platform")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,6 +94,7 @@ func TestRuleEvalAnnotationRule(t *testing.T) {
 		Name:  "target",
 		Tag:   "platform",
 		Type:  "anno",
+		Label: "target:platform",
 		Op:    "eq",
 		Key:   "org.supercontainers.hardware.cpu.target",
 		Value: "platform",
@@ -108,7 +113,7 @@ func TestRuleEvalAnnotationRule(t *testing.T) {
 	if err != nil || !found {
 		t.Fatal("Rule not found")
 	}
-	gotR, found, err := db.Rule_GetByLabel(ctx, "target:platform")
+	gotR, found, err := db.RuleGetByLabel(ctx, "target:platform")
 	if err != nil || !found {
 		t.Fatal("Rule not found")
 	}
@@ -129,7 +134,7 @@ func TestRuleEvalAnnotationRuleNoop(t *testing.T) {
 	}
 	defer db.TeardownTest(bs)
 	// Actual Test
-	_, found, err := db.Rule_GetByLabel(ctx, "target:platform")
+	_, found, err := db.RuleGetByLabel(ctx, "target:platform")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,6 +143,7 @@ func TestRuleEvalAnnotationRuleNoop(t *testing.T) {
 		Name:  "cpu",
 		Tag:   "noop",
 		Type:  "anno",
+		Label: "cpu:noop",
 		Op:    "null",
 		Key:   "org.supercontainers.hardware.cpu.*",
 		Value: "",
@@ -156,7 +162,7 @@ func TestRuleEvalAnnotationRuleNoop(t *testing.T) {
 	if err != nil || !found {
 		t.Fatal("Rule not found")
 	}
-	gotR, found, err := db.Rule_GetByLabel(ctx, "cpu:noop")
+	gotR, found, err := db.RuleGetByLabel(ctx, "cpu:noop")
 	if err != nil || !found {
 		t.Fatal("Rule not found")
 	}
@@ -185,7 +191,7 @@ func TestRuleEvalAll(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check rules
-	fbR, found, err := db.Rule_GetByLabel(ctx, "foo:bar")
+	fbR, found, err := db.RuleGetByLabel(ctx, "foo:bar")
 	if err != nil || !found {
 		t.Fatal("Rule not found")
 	}
@@ -196,7 +202,7 @@ func TestRuleEvalAll(t *testing.T) {
 	}
 	assert.Equal(t, 1, len(as.Data))
 
-	osR, found, err := db.Rule_GetByLabel(ctx, "platform/os:linux")
+	osR, found, err := db.RuleGetByLabel(ctx, "platform/os:linux")
 	if err != nil || !found {
 		t.Fatal("Rule not found")
 	}
@@ -206,4 +212,8 @@ func TestRuleEvalAll(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, 6, len(ps))
+}
+
+func TestRulesGetByManipuLayerID(t *testing.T) {
+	//
 }

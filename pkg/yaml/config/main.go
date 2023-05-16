@@ -5,6 +5,10 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
+var (
+	fileRegex = `(\/(?P<dir>.*))?\/(?P<file>[0-9a-z\-\_\.]+)\.(yaml|yml)`
+)
+
 func FindYamlFiles(cacheDir string) (files []string, err error) {
 	files = []string{}
 	for _, ext := range []string{"*.yml", "*.yaml"} {

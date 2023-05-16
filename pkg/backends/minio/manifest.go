@@ -59,20 +59,23 @@ func (m Minio) ManifestGetBytes(ctx context.Context, path string) (b []byte, err
 */
 
 func (m Minio) GetCachedManifest(ctx context.Context, dig digest.Digest) (res types.ManifestData, found bool, err error) {
-	l := logrus.WithFields(logrus.Fields{
-		"package": "backends/minio",
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMani,
 		"func":    "GetCachedManifest",
 		"digest":  utils.ShortenDigest(dig.String()),
 	})
-	ctx, span := tracer.Start(ctx, "GetCachedManifest")
 	defer span.End()
+	if dig.String() == "" {
+		err = utils.NewError(l, span, "digest is empty")
+		return
+	}
 	_, err = m.ManifestsStatObj(ctx, dig.String())
 	if err != nil {
 		if err.Error() == "The specified key does not exist." {
-			l.Warn("NOT CACHED -> return")
+			utils.Debug(l, span, "manifest %s not found", utils.ShortenDigest(dig.String()))
 			return res, false, nil
 		}
-		l.Error(err)
+		err = utils.ErrorHandler(l, span, err, "error stating manifest")
 		return
 	} else {
 		found = true

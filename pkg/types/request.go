@@ -150,7 +150,10 @@ func NewRequest(ctx context.Context, r *http.Request) Request {
 			))
 		*/
 	} else {
-		m := utils.ReSubMatchMap(userReg, user)
+		m, err := utils.ReSubMatchMap(userReg, user)
+		if err != nil {
+			logrus.Errorf("Failed to extract user from: %s", user)
+		}
 		if _, ok := m["user"]; !ok {
 			logrus.Errorf("Failed to extract user from: %s", user)
 		} else {

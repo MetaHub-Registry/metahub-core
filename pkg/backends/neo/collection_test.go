@@ -201,14 +201,14 @@ func TestCollectionGetCreateUpstreamTriple(t *testing.T) {
 		return
 	}
 	// Test Upstream
-	gotUpID, upFound, err := db.Upstream_Get(ctx, ups)
+	gotUpID, upFound, err := db.UpstreamGet(ctx, ups)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.True(t, upFound)
 	assert.Equal(t, upID, gotUpID)
-
-	assert.Greater(t, prf.ID, int64(0))
+	expPrfId, _ := br.GetInt64("profile:generic#id")
+	assert.Equal(t, expPrfId, prf.ID)
 	// Test Collection
 	cCreate, found, e := db.Collection_GetCreate_ByRepoTag(ctx, ups.Repo, ups.Tag)
 	if e != nil {

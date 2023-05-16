@@ -1,0 +1,4 @@
+label: wrong#latest
+layers:
+  - image: test
+  

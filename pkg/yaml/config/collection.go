@@ -43,6 +43,30 @@ type Platform struct {
 	Features []string `yaml:"features"`
 }
 
+func normalizeFname(manifest *ManifestCollection, mfile string) (repo, tag string, err error) {
+	re := regexp.MustCompile(manifestRegex)
+	m, e := utils.ReSubMatchMap(re, mfile)
+	if e != nil {
+		err = e
+		return
+	}
+	tag = m["tag"]
+	repo = m["repo"]
+
+	if manifest.Name == "" {
+		manifest.Name = repo
+	}
+	if manifest.Tag == "" {
+		manifest.Tag = tag
+	}
+	// Required to have name and tag
+	if manifest.Name != repo || manifest.Tag != tag {
+		err = fmt.Errorf("the collection file states name:%s and tag:%s which is a missmatch. You can skip the name and tag definition btw", manifest.Name, manifest.Tag)
+		return
+	}
+	return
+}
+
 // FindManifestConfigs looks for yml/yaml manifest config files in some root
 func FindManifestCollections(ctx context.Context, cacheDir string) (cfgs map[string]ManifestCollection, err error) {
 	l := logrus.WithFields(logrus.Fields{
@@ -62,34 +86,20 @@ func FindManifestCollections(ctx context.Context, cacheDir string) (cfgs map[str
 		l.Debugf("Reading manifest config file %s\n", mfile)
 		ctx, fileSpan := tr.Start(ctx, mfile)
 		defer fileSpan.End()
-		r := manifestRegex
-		re := regexp.MustCompile(r)
-		m := utils.ReSubMatchMap(re, mfile)
-		tag := m["tag"]
-		repo := m["repo"]
 		manifest, err := LoadManifestConfig(ctx, mfile)
 		if err != nil {
-			l.Warnf("Issue reading %s: %x, skipping.\n", mfile, err)
+			l.Errorf("Failed to load manifest config file %s: %s", mfile, err)
 			continue
 		}
-		if manifest.Name == "" {
-			manifest.Name = repo
-		}
-		if manifest.Tag == "" {
-			manifest.Tag = tag
-		}
-		// Required to have name and tag
-		if manifest.Name != repo || manifest.Tag != tag {
-			l.Warnf("Manifest %s defines the repo (%s) and tag (%s)via path", mfile, repo, tag)
-			err = fmt.Errorf("the collection file states name:%s and tag:%s which is a missmatch. You can skip the name and tag definition btw", manifest.Name, manifest.Tag)
+		repo, tag, err := normalizeFname(&manifest, mfile)
+		if err != nil {
+			l.Errorf("Failed to normalize filename %s: %s", mfile, err)
 			return cfgs, err
-
 		}
 		uri := repo + ":" + tag
 		_, manifestSpan := tr.Start(ctx, uri)
 		defer manifestSpan.End()
 		// If we don't have a registry, must be library
-		// TODO we don't read the registry currently (assumed all docker hub)
 		if strings.Count(uri, "/") == 0 {
 			uri = "library/" + uri
 		}
@@ -114,12 +124,12 @@ func readManifestConfig(yamlStr []byte) (col ManifestCollection, err error) {
 		"package": "config",
 		"func":    "readManifestConfig",
 	})
+	_ = l
 	// First unmarshall into generic structure
 	col = ManifestCollection{}
 	err = yaml.Unmarshal(yamlStr, &col)
 	if err != nil {
-		l.Fatalf("Unmarshal: %v\n", err)
-		return
+		return ManifestCollection{}, err
 	}
 	for i, m := range col.Manifests {
 		if m.Platform.OS == "" {

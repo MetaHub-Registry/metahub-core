@@ -9,103 +9,94 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/backends/minio"
 	"github.com/metahub-registry/metahub-core/pkg/types"
-	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	ycfg "github.com/metahub-registry/metahub-core/pkg/yaml/config"
 )
 
 const (
-	pkgNameMD = "magazine/manifest_data.go"
+	pkgNameMD           = "magazine/manifest_data.go"
+	FailedToGetUpstream = "failed to get upstream"
 )
 
-func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani types.ManifestData, err error) {
-	l := logrus.WithFields(logrus.Fields{
-		"package": "magazine/manifest.go",
-		"func":    "CachManifest",
+func (mag Magazine) cacheManifestByUpstream(ctx context.Context, up types.Upstream) (maniData types.ManifestData, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMD,
+		"func":    "cacheManifestByUpstream",
 	})
-	ctx, span := tracer.Start(ctx, "CachManifest")
 	defer span.End()
-	up, err := m.ToUpstreamTriple()
-	if err != nil {
-		l.Error(err)
-		return
-	}
-	req := types.Request{
-		Host: up.Reg,
-		Repo: up.Repo,
-		Tag:  up.Tag,
-	}
-	u, found, e := mag.Database.Upstream_Get_ByRequest(ctx, req)
+	utils.Info(l, span, "Caching manifest for: %s", up.GetLabel())
+	uID, found, e := mag.Database.UpstreamGet(ctx, up)
+	up.ID = uID
 	if e != nil {
-		err = errors.Wrap(e, "failed to get upstream")
-		l.Error(err)
+		err = utils.ErrorHandler(l, span, e, FailedToGetUpstream)
 		return
 	}
+	utils.Debug(l, span, "Found upstream: %t", found)
 	if found {
 		// TODO: 2021-04-05 we need an option to invalidate the cached upstream objects
-		mani, isCached, e := mag.Minio.GetCachedManifest(ctx, u.Digest)
+		maniData, isCached, e := mag.Minio.GetCachedManifest(ctx, up.Digest)
 		if e != nil {
-			err = errors.Wrap(e, "failed to get upstream")
-			l.Error(err)
-			return mani, err
+			err = utils.ErrorHandler(l, span, e, "failed to get cached manifest")
+			return maniData, err
 		}
 		if !isCached {
-			err = errors.New("manifest is not cached")
+			err = utils.NewError(l, span, "manifest is not cached")
 		}
-		return mani, err
-	}
-	if err != nil {
-		l.Error(err)
-		return
+		maniData.Upstream = up
+		return maniData, err
 	}
 	utils.Debug(l, span, "Caching manifest for %-101s -> %t", up.GetLabel(), found)
 	if !found {
-		l.Warnf("Manifest not cached, yet")
+		utils.Debug(l, span, "Manifest not cached, yet")
 		// ***** Manifest not already there
-		b, blob, e := upstream.GetManifestByUpstreamTripleByTag(ctx, up)
+		b, blob, e := mag.GetManifest_ByUpstreamByDigest(ctx, up)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to GetManifestByUpstreamTripleByTag")
-			return mani, err
+			return maniData, err
 		}
 		rawMani, e := minio.RawManifestFromBlob(b)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to RawManifestFromBlob")
-			return mani, err
+			return maniData, err
 		}
 		switch blob.MediaType {
 		case "application/vnd.docker.distribution.manifest.v1+prettyjws":
 			err = fmt.Errorf("manifest type is not supported: %s", blob.MediaType)
-			return mani, err
+			return maniData, err
 		case "application/vnd.docker.distribution.manifest.v2+json":
 			up.Digest = rawMani.ConfigInfo().Digest
 		default:
-			l.Fatalf("Unknown media type: %s", blob.MediaType)
+			return maniData, utils.NewError(l, span, "Unknown media type: %s", blob.MediaType)
 		}
 		// We need to make sure that the config-blob is cached
-		cfgByte, cfgBlob, e := upstream.GetBlobByUpstreamTriple(ctx, up)
+		cfgByte, cfgBlob, e := mag.GetBlobByUpstream(ctx, up)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to GetBlobByUpstreamTriple")
-			return mani, err
+			return maniData, err
 		}
 		e = mag.Minio.PutConfig(ctx, cfgByte, cfgBlob.Digest.String())
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to PutConfig")
-			return mani, err
+			return maniData, err
 		}
 		// The blob 'b' is the original data blob (matching the digest), it contains refrerences to the config and layers
-		mani, e = mag.Minio.NewManifestDataFromBytes(ctx, b)
+		maniData, e = mag.Minio.NewManifestDataFromBytes(ctx, b)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to NewManifestData_FromBytes")
-			return mani, err
+			return maniData, err
 		}
-		up.Digest = digest.Digest(mani.Digest)
+		if e := mag.ManifestDataUpsertBackends(ctx, &maniData); e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to ManifestDataUpsertBackends")
+			return maniData, err
+		}
+		up.Digest = digest.Digest(maniData.Digest)
 		up.Size = blob.Size
-		e = mag.Minio.PutManifest(ctx, b, up)
+		e = mag.Minio.PutManifest_ByUpstream(ctx, b, up)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to PutManifest")
-			return mani, err
+			return maniData, err
 		}
-		// TODO: Add Upstream with digest to graph
+		// Add Upstream with digest to graph
 		u := types.Upstream{
 			Reg:    up.Reg,
 			Repo:   up.Repo,
@@ -115,27 +106,213 @@ func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani typ
 		upID, e := mag.NeoInsertUpstream(ctx, u)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to NeoInsertUpstream")
+			return maniData, err
+		}
+		if e := mag.Database.ManifestDataLinkToUpstream(ctx, maniData.ID, upID); e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to ManifestDataLinkToUpstream")
+			return maniData, err
+		}
+		u.ID = upID
+		maniData.Data = b
+		maniData.Upstream = u
+	}
+	return maniData, nil
+}
+
+func (mag Magazine) ManifestDataUpsertBackends(ctx context.Context, md *types.ManifestData) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMD,
+		"func":    "ManifestDataUpsertBackends",
+	})
+	defer span.End()
+	// Make sure config is already in Minio
+	if _, e := mag.Minio.ConfigsStatObj(ctx, md.Config.Digest); e != nil {
+		if e.Error() == "The specified key does not exist." {
+			if err = mag.Minio.PutConfig(ctx, md.Config.Data, md.Config.Digest); err != nil {
+				return utils.ErrorHandler(l, span, err, "failed to PutConfig")
+			}
+		} else {
+			return utils.ErrorHandler(l, span, e, "failed to ConfigsStatObj")
+		}
+	}
+	// Make sure config is in Graph
+	if _, found, err := mag.Database.Config_GetByDigest(ctx, md.Config.Digest); err != nil {
+		return utils.ErrorHandler(l, span, err, "failed to Config_GetByDigest")
+	} else if !found {
+		cfgID, err := mag.Database.Config_Insert(ctx, md.Config)
+		if err != nil {
+			return utils.ErrorHandler(l, span, err, "failed to Config_Insert")
+		}
+		md.Config.ID = cfgID
+	}
+	// Make sure layers are in
+	for idx, lyr := range md.Layers {
+		if _, found, err := mag.Database.LayerGetByDigest(ctx, lyr.Digest); err != nil {
+			return utils.ErrorHandler(l, span, err, "failed to LayerGetByDigest")
+		} else if !found {
+			lyrID, err := mag.Database.Layer_PlainInsert(ctx, lyr)
+			if err != nil {
+				return utils.ErrorHandler(l, span, err, "failed to LayerInsert")
+			}
+			lyr.ID = lyrID
+		}
+		md.Layers[idx] = lyr
+	}
+	if e := mag.Database.ManifestData_GetInsert(ctx, md); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to ManifestData_GetInsert")
+	}
+	// Fetch Platform ID
+	if e := mag.Database.Platform_GetInsert(ctx, &md.Platform); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to Platform_GetInsert")
+	}
+	return nil
+}
+
+func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani types.ManifestData, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMD,
+		"func":    "CachManifest",
+	})
+	defer span.End()
+	up, err := m.ToUpstream()
+	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to create Upstream from ycfg.Manifest")
+		return
+	}
+	if up.Digest.String() == "" {
+		err = utils.NewError(l, span, "digest is empty")
+		blob, found, err := mag.HeadManifestByRegRepoTag(ctx, up.Reg, up.Repo, up.Tag)
+		if err != nil {
+			err = utils.ErrorHandler(l, span, err, "failed to HeadManifestByRegRepoTag")
+			return mani, err
+		} else if !found {
+			err = utils.NewError(l, span, "manifest not found")
 			return mani, err
 		}
-		_ = upID
-		mani.Data = b
+		up.Digest = blob.Digest
 	}
-	mani.Upstream = types.Upstream{
-		Reg:    up.Reg,
-		Repo:   up.Repo,
-		Tag:    up.Tag,
-		Digest: up.Digest,
-	}
-	return
+	return mag.cacheManifestByUpstream(ctx, up)
+	/*
+	   	req := types.Request{
+	   		Host: up.Reg,
+	   		Repo: up.Repo,
+	   		Tag:  up.Tag,
+	   	}
+
+	   u, found, e := mag.Database.Upstream_Get_ByRequest(ctx, req)
+
+	   	if e != nil {
+	   		err = errors.Wrap(e, "failed to get upstream")
+	   		l.Error(err)
+	   		return
+	   	}
+
+	   	if found {
+	   		// TODO: 2021-04-05 we need an option to invalidate the cached upstream objects
+	   		mani, isCached, e := mag.Minio.GetCachedManifest(ctx, u.Digest)
+	   		if e != nil {
+	   			err = errors.Wrap(e, "failed to get upstream")
+	   			l.Error(err)
+	   			return mani, err
+	   		}
+	   		if !isCached {
+	   			err = errors.New("manifest is not cached")
+	   		}
+	   		return mani, err
+	   	}
+
+	   	if err != nil {
+	   		l.Error(err)
+	   		return
+	   	}
+
+	   utils.Debug(l, span, "Caching manifest for %-101s -> %t", up.GetLabel(), found)
+
+	   	if !found {
+	   		l.Warnf("Manifest not cached, yet")
+	   		// ***** Manifest not already there
+	   		b, blob, e := upstream.GetManifestByUpstreamTripleByTag(ctx, up)
+	   		if e != nil {
+	   			err = utils.ErrorHandler(l, span, e, "failed to GetManifestByUpstreamTripleByTag")
+	   			return mani, err
+	   		}
+	   		rawMani, e := minio.RawManifestFromBlob(b)
+	   		if e != nil {
+	   			err = utils.ErrorHandler(l, span, e, "failed to RawManifestFromBlob")
+	   			return mani, err
+	   		}
+	   		switch blob.MediaType {
+	   		case "application/vnd.docker.distribution.manifest.v1+prettyjws":
+	   			err = fmt.Errorf("manifest type is not supported: %s", blob.MediaType)
+	   			return mani, err
+	   		case "application/vnd.docker.distribution.manifest.v2+json":
+	   			up.Digest = rawMani.ConfigInfo().Digest
+	   		default:
+	   			l.Fatalf("Unknown media type: %s", blob.MediaType)
+	   		}
+	   		// We need to make sure that the config-blob is cached
+	   		cfgByte, cfgBlob, e := upstream.GetBlobByUpstreamTriple(ctx, up)
+	   		if e != nil {
+	   			err = utils.ErrorHandler(l, span, e, "failed to GetBlobByUpstreamTriple")
+	   			return mani, err
+	   		}
+	   		e = mag.Minio.PutConfig(ctx, cfgByte, cfgBlob.Digest.String())
+	   		if e != nil {
+	   			err = utils.ErrorHandler(l, span, e, "failed to PutConfig")
+	   			return mani, err
+	   		}
+	   		// The blob 'b' is the original data blob (matching the digest), it contains refrerences to the config and layers
+	   		mani, e = mag.Minio.NewManifestDataFromBytes(ctx, b)
+	   		if e != nil {
+	   			err = utils.ErrorHandler(l, span, e, "failed to NewManifestData_FromBytes")
+	   			return mani, err
+	   		}
+	   		up.Digest = digest.Digest(mani.Digest)
+	   		up.Size = blob.Size
+	   		e = mag.Minio.PutManifest(ctx, b, up)
+	   		if e != nil {
+	   			err = utils.ErrorHandler(l, span, e, "failed to PutManifest")
+	   			return mani, err
+	   		}
+	   		// TODO: Add Upstream with digest to graph
+	   		u := types.Upstream{
+	   			Reg:    up.Reg,
+	   			Repo:   up.Repo,
+	   			Tag:    up.Tag,
+	   			Digest: up.Digest,
+	   		}
+	   		upID, e := mag.NeoInsertUpstream(ctx, u)
+	   		if e != nil {
+	   			err = utils.ErrorHandler(l, span, e, "failed to NeoInsertUpstream")
+	   			return mani, err
+	   		}
+	   		_ = upID
+	   		mani.Data = b
+	   	}
+
+	   	mani.Upstream = types.Upstream{
+	   		Reg:    up.Reg,
+	   		Repo:   up.Repo,
+	   		Tag:    up.Tag,
+	   		Digest: up.Digest,
+	   	}
+
+	   return
+	*/
 }
 
 func (mag Magazine) ManifestData_Insert(ctx context.Context, m types.ManifestData) (maniID int64, err error) {
-	ctx, span := tracer.Start(ctx, "ManifestData_Insert")
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMD,
+		"func":    "ManifestData_Insert",
+	})
 	defer span.End()
 	if m.Digest == m.Config.Digest {
 		logrus.Fatalf("NeoInsertManifest: Manifest.Digest and Manifest.Config.Digest are equal - something went wrong\n Digest:    %s\n ConfigDig: %s ", m.Digest, m.Config.Digest)
 	}
-
+	if e := mag.ManifestDataUpsertBackends(ctx, &m); e != nil {
+		return 0, utils.ErrorHandler(l, span, e, "failed to ManifestDataUpsertBackends")
+	}
 	return mag.Database.ManifestData_Insert(ctx, m)
 }
 

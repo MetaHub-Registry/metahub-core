@@ -52,7 +52,7 @@ func (n Neo) TraverseExpr(er *types.ExprRes, expr lep.Expression) (bool, error) 
 			if err != nil {
 				return false, err
 			}
-			r, found, err := n.Rule_GetByLabel(ctx, rLabel)
+			r, found, err := n.RuleGetByLabel(ctx, rLabel)
 			if err != nil {
 				return false, err
 			}

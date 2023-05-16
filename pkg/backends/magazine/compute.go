@@ -40,7 +40,7 @@ func (mag Magazine) ComputeManifestForProfile(ctx context.Context, mani types.Ma
 			l.Infof("  >> Annotations: %v", mani.Annotations.Keys)
 		}
 		///TODO: Need to add the annotations to the config
-		_, e := mag.CreateOCIv1_ForProfile(ctx, mani, maniData, prf)
+		_, e := mag.CreateOCIv1ForProfile(ctx, mani, maniData, prf)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "while in ComputeManifest")
 			l.Error(err)

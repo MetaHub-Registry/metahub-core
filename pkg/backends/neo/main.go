@@ -153,9 +153,9 @@ func (n Neo) Setup(ctx context.Context) (err error) {
 		}, {
 			name: "Manifest",
 			attr: []string{"label"},
-			//}, {
-			//	name: "ManifestList",
-			//	attr: "digest",
+		}, {
+			name: "ManifestData",
+			attr: []string{"digest"},
 		}, {
 			name: "Config",
 			attr: []string{"digest", "mediaType"},

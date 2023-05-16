@@ -14,8 +14,11 @@ import (
 )
 
 const (
-	pkgNameUp      = "neo/upstream.go"
-	UpstreamReturn = `id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag, u.digest AS upstreamDigest`
+	pkgNameUp              = "neo/upstream.go"
+	UpstreamReturn         = `id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag, u.digest AS upstreamDigest`
+	FailUpstreamFromResult = `failed to get upstream from result`
+	FailUpstreamGet        = `failed to get upstream by oject (reg/repo/tag)`
+	FailUpstreamNotFound   = `upstream not found`
 )
 
 func (n Neo) Upstream_GetInsert(ctx context.Context, up *types.Upstream) (found bool, err error) {
@@ -24,7 +27,7 @@ func (n Neo) Upstream_GetInsert(ctx context.Context, up *types.Upstream) (found 
 	span.SetAttributes(
 		attribute.Key("upstream").String(up.String()),
 	)
-	upID, found, err := n.GetUpstream(ctx, *up)
+	upID, found, err := n.UpstreamGet(ctx, *up)
 	if err != nil {
 		logrus.Error(err)
 		return
@@ -75,11 +78,40 @@ func (n Neo) Upstream_Get_ByRequest(ctx context.Context, req types.Request) (up 
 		Tag:    req.Tag,
 		Digest: digest.Digest(req.Digest),
 	}
-	up.ID, found, err = n.Upstream_Get(ctx, up)
+	up.ID, found, err = n.UpstreamGet(ctx, up)
 	if !found {
 		return
 	}
 	up, found, err = n.UpstreamGetByID(ctx, up.ID)
+	return
+}
+
+func (n Neo) UpstreamGetByManifestDataID(ctx context.Context, maniDataID int64) (up types.Upstream, relType string, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":    pkgNameUp,
+		"func":       "UpstreamGetByManifestDataID",
+		"maniDataID": maniDataID,
+	})
+	_ = ctx
+	defer span.End()
+	q := fmt.Sprintf(`MATCH (md:ManifestData)-[r]->(u:Upstream) WHERE id(md) = %d`, maniDataID)
+	q += ` RETURN type(r) AS relationType,` + UpstreamReturn
+	utils.Debug(l, span, q)
+	res, found, e := n.QueryOne(q)
+	if e != nil {
+		return up, relType, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	} else if !found {
+		utils.Debug(l, span, "did not found upstream connected to maniID %d", maniDataID)
+		return up, relType, false, nil
+	}
+	up, e = UpstreamFromResult(res)
+	if e != nil {
+		return up, relType, false, utils.ErrorHandler(l, span, e, FailUpstreamFromResult)
+	}
+	relType, err = res.GetStr("relationType")
+	if err != nil {
+		return up, relType, false, utils.ErrorHandler(l, span, err, types.FailBrGet, "relationType")
+	}
 	return
 }
 
@@ -111,6 +143,61 @@ func (n Neo) UpstreamGetIDByManifestID(ctx context.Context, maniID int64) (upID 
 	}
 }
 
+func (n Neo) UpstreamGetIDByDigest(ctx context.Context, dig string) (upID int64, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameUp,
+		"func":    "UpstreamGetIDByDigest",
+		"digest":  dig,
+	})
+	_ = ctx
+	defer span.End()
+	q := fmt.Sprintf(`MATCH (up:Upstream) WHERE up.digest = "%s"`, dig)
+	q += ` RETURN id(up) AS ID`
+	utils.Debug(l, span, q)
+	if res, found, e := n.QueryOne(q); e != nil {
+		return upID, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	} else {
+		if !found {
+			utils.Debug(l, span, "did not found upstream with digest")
+			return upID, false, nil
+		}
+		if upID, e = res.GetInt64("ID"); e != nil {
+			return upID, false, utils.ErrorHandler(l, span, e, types.FailBrGet, "ID")
+		} else {
+			utils.Debug(l, span, "found upstream w/ ID %d", upID)
+
+			return upID, true, nil
+		}
+	}
+}
+
+func (n Neo) UpstreamGetByManipuLayerID(ctx context.Context, mplID int64) (up types.Upstream, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":       pkgNameUp,
+		"func":          "UpstreamGetByManipuLayerID",
+		"manipuLayerID": mplID,
+	})
+	_ = ctx
+	defer span.End()
+	q := fmt.Sprintf(`MATCH (mpl:ManipuLayer)-[]->(u:Upstream) WHERE id(mpl) = %d`, mplID)
+	q += fmt.Sprintf(` RETURN %s`, UpstreamReturn)
+	utils.Debug(l, span, q)
+	if res, found, e := n.QueryOne(q); e != nil {
+		return up, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	} else {
+		if !found {
+			utils.Debug(l, span, "did not found upstream connected to ManipuLayerID %d", mplID)
+			return up, false, nil
+		}
+		up, err = UpstreamFromResult(res)
+		if err != nil {
+			logrus.Errorf("Failed to get upstream: %s", err)
+			return up, false, utils.ErrorHandler(l, span, err, FailUpstreamFromResult)
+		}
+		return up, true, nil
+	}
+}
+
 func (n Neo) UpstreamCleanupByID(ctx context.Context, upID int64) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameUp,
@@ -139,6 +226,7 @@ func (n Neo) UpstreamCleanupByID(ctx context.Context, upID int64) (err error) {
 	}
 	return
 }
+
 func (n Neo) UpstreamGetByID(ctx context.Context, upID int64) (up types.Upstream, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameUp,
@@ -168,16 +256,12 @@ func (n Neo) UpstreamGetByID(ctx context.Context, upID int64) (up types.Upstream
 	return
 }
 
-func (n Neo) Upstream_Get(ctx context.Context, up types.Upstream) (upID int64, success bool, err error) {
-	l := logrus.WithFields(logrus.Fields{
+func (n Neo) UpstreamGet(ctx context.Context, up types.Upstream) (upID int64, success bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameUp,
-		"func":    "Upstream_Get",
+		"func":    "UpstreamGet",
 	})
-	_, span := tracer.Start(ctx, "Upstream_Get")
 	defer span.End()
-	span.SetAttributes(
-		attribute.Key("upstream").String(up.String()),
-	)
 	q := `MATCH (u:Upstream)`
 	q += fmt.Sprintf(` WHERE u.reg = "%s" AND u.repo = "%s" AND u.tag = "%s"`, up.Reg, up.Repo, up.Tag)
 	if up.Digest.String() != "" {
@@ -186,11 +270,7 @@ func (n Neo) Upstream_Get(ctx context.Context, up types.Upstream) (upID int64, s
 	q += ` RETURN id(u) AS ID`
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
-	l.Debug(q)
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
-	))
+	utils.Debug(l, span, q)
 	result, err := session.Run(q, map[string]interface{}{})
 	if err != nil {
 		logrus.Errorf("Failed to run query: %s", err)
@@ -205,12 +285,8 @@ func (n Neo) Upstream_Get(ctx context.Context, up types.Upstream) (upID int64, s
 		upID = v.(int64)
 		success = true
 	}
-	l.Debugf("upstream: %s, found: %t", up.String(), success)
+	utils.Debug(l, span, "upstream: %s, found: %t", up.String(), success)
 	return
-}
-
-func (n Neo) GetUpstream(ctx context.Context, up types.Upstream) (upID int64, success bool, err error) {
-	return n.Upstream_Get(ctx, up)
 }
 
 func (n Neo) CreateUpstream(ctx context.Context, up types.Upstream) (upID int64, err error) {

@@ -2,7 +2,6 @@ package magazine
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -73,9 +72,9 @@ func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string) (blo
 	for _, reg := range regList {
 		regCtx, regSpan := tracer.Start(ctx, fmt.Sprintf("DiscoverUpstream_%s", reg))
 		defer regSpan.End()
-		b, regFound, e := upstream.HeadManifestByUpstreamTripleByTag(regCtx, reg, repo, tag)
+		b, regFound, e := mag.HeadManifestByRegRepoTag(regCtx, reg, repo, tag)
 		if e != nil {
-			err = utils.ErrorHandler(l, span, e, "failed to HeadManifestByUpstreamTripleByTag")
+			err = utils.ErrorHandler(l, span, e, "failed to HeadManifestByRegRepoTag")
 			continue
 		}
 		utils.Debug(l, span, " After Head [%t]", regFound)
@@ -120,7 +119,7 @@ func (mag Magazine) upstreamBlobInsertManifestDesc(ctx context.Context, req type
 		Digest:  dig,
 		Profile: req.Profile,
 	}
-	b, maniMeta, e := upstream.GetManifestByUpstreamTripleByDigest(ctx, upt)
+	b, maniMeta, e := mag.GetManifestByUpstreamTripleByDigest(ctx, upt)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, failGetMani)
 	}
@@ -143,7 +142,7 @@ func (mag Magazine) upstreamBlobInsertManifestDesc(ctx context.Context, req type
 	default:
 		l.Fatalf("Unknown media type: %s", maniMeta.MediaType)
 	}
-	cfgByte, cfgBlob, e := upstream.GetBlobByUpstreamTriple(ctx, upt)
+	cfgByte, cfgBlob, e := mag.GetBlobByUpstreamTriple(ctx, upt)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, "failed to GetBlobByUpstreamTriple")
 	}
@@ -206,7 +205,7 @@ func (mag Magazine) upstreamBlobInsertManifestDesc(ctx context.Context, req type
 		return utils.ErrorHandler(l, span, e, FailLinkProfileToManifestData)
 	}
 	// Unwind Profile
-	e = mag.Database.Profile_UnwindRules(ctx, prf.ID, maniDataID)
+	e = mag.Database.ProfileUnwindRules(ctx, prf.ID, maniDataID)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, FailUnwind)
 	}
@@ -216,11 +215,11 @@ func (mag Magazine) upstreamBlobInsertManifestDesc(ctx context.Context, req type
 		return utils.ErrorHandler(l, span, e, failGetMani)
 	}
 
-	ociDataID, e := mag.CreateOCIv1_ForProfile(ctx, mani, maniData, prf)
+	ociDataID, e := mag.CreateOCIv1ForProfile(ctx, mani, maniData, prf)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, FailCreateOCIv1Manifest)
 	}
-	e = mag.Database.Profile_UnwindRules(ctx, prf.ID, ociDataID)
+	e = mag.Database.ProfileUnwindRules(ctx, prf.ID, ociDataID)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, FailUnwind)
 	}
@@ -355,7 +354,7 @@ func (mag Magazine) upstreamBlobInsertProfile(ctx context.Context, req types.Req
 	}
 	// TODO: Unwind Profile
 	/*
-		e = mag.Database.Profile_UnwindRules(ctx, prf.ID, maniDataID)
+		e = mag.Database.ProfileUnwindRules(ctx, prf.ID, maniDataID)
 		if e != nil {
 			err = errors.Wrap(e, FailUnwind)
 			l.Error(err)
@@ -369,11 +368,11 @@ func (mag Magazine) upstreamBlobInsertProfile(ctx context.Context, req types.Req
 		return utils.ErrorHandler(l, span, e, failGetMani)
 	}
 
-	ociDataID, e := mag.CreateOCIv1_ForProfile(ctx, mani, maniData, prf)
+	ociDataID, e := mag.CreateOCIv1ForProfile(ctx, mani, maniData, prf)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, FailCreateOCIv1Manifest)
 	}
-	e = mag.Database.Profile_UnwindRules(ctx, prf.ID, ociDataID)
+	e = mag.Database.ProfileUnwindRules(ctx, prf.ID, ociDataID)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, FailUnwind)
 	}
@@ -432,7 +431,7 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 		return
 	}
 	// 2 . Get the Blob
-	maniBytes, maniMeta, e := upstream.GetManifest_ByUpstreamByDigest(ctx, ups)
+	maniBytes, maniMeta, e := mag.GetManifest_ByUpstreamByDigest(ctx, ups)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "while getting manifest")
 		return
@@ -466,7 +465,7 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 	default:
 		l.Fatalf("Unknown media type: %s", maniMeta.MediaType)
 	}
-	cfgByte, cfgBlob, e := upstream.GetBlobByUpstreamTriple(ctx, configUpt)
+	cfgByte, cfgBlob, e := mag.GetBlobByUpstreamTriple(ctx, configUpt)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to get config via GetBlobByUpstreamTriple")
 		return
@@ -646,51 +645,105 @@ func (mag Magazine) UpstreamBlobInsertManifest(ctx context.Context, req types.Re
 	return
 }
 
-func (mag Magazine) UpstreamBlobInsertIndex(ctx context.Context, req types.Request, blob types.BlobMeta) (err error) {
+/*
+	func (mag Magazine) UpstreamBlobInsertIndex(ctx context.Context, req types.Request, blob types.BlobMeta) (err error) {
+		l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+			"package": pkgNameUp,
+			"func":    "UpstreamBlobInsertIndex",
+		})
+		defer span.End()
+		if reg, ok := mag.Config.Args["TEST_REGISTRY"]; ok {
+			utils.Info(l, span, "Overriding registry to %s", reg)
+			req.Host = reg
+		} else {
+			utils.Info(l, span, "Using registry from request: %s", req.Host)
+		}
+		switch blob.MediaType {
+		case "application/vnd.docker.distribution.manifest.list.v2+json":
+			// TODO: Fetch ManifestList and insert all manifest as upstream
+			up := upstream.UpstreamTriple{
+				Reg:       req.Host,
+				Repo:      req.Repo,
+				Tag:       req.Tag,
+				Digest:    blob.Digest,
+				MediaType: blob.MediaType,
+			}
+			b, blob, err := mag.GetManifestByUpstreamTripleByTag(ctx, up)
+			if err != nil {
+				l.Error(err.Error())
+				span.RecordError(err)
+				return err
+			}
+			utils.Debug(l, span, "Found Blob %v", blob)
+			var ml manifestlist.ManifestList
+			err = json.Unmarshal(b, &ml)
+			if err != nil {
+				l.Error(err.Error())
+				span.RecordError(err)
+				return err
+			}
+			l.Warnf("Found %d manifests", len(ml.Manifests))
+			for _, m := range ml.Manifests {
+				utils.Debug(l, span, "Found Manifest with Platform.Arch %s", m.Platform.Architecture)
+				switch m.Platform.Architecture {
+				case "amd64", "arm64":
+					e := mag.upstreamBlobInsertManifestDesc(ctx, req, m)
+					if e != nil {
+						err = utils.ErrorHandler(l, span, e, "while upstreamBlobInsertManifestDesc")
+						return err
+					}
+				default:
+					utils.Debug(l, span, "Skipping Platform.Arch %s", m.Platform.Architecture)
+				}
+
+			}
+		}
+		return
+	}
+*/
+func (mag Magazine) HeadUpstream(ctx context.Context, up *types.Upstream) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameUp,
-		"func":    "UpstreamBlobInsertIndex",
+		"func":    "HeadUpstream",
 	})
 	defer span.End()
-	switch blob.MediaType {
-	case "application/vnd.docker.distribution.manifest.list.v2+json":
-		// TODO: Fetch ManifestList and insert all manifest as upstream
-		up := upstream.UpstreamTriple{
-			Reg:       req.Host,
-			Repo:      req.Repo,
-			Tag:       req.Tag,
-			Digest:    blob.Digest,
-			MediaType: blob.MediaType,
-		}
-		b, blob, err := upstream.GetManifestByUpstreamTripleByTag(ctx, up)
-		if err != nil {
-			l.Error(err.Error())
-			span.RecordError(err)
-			return err
-		}
-		utils.Debug(l, span, "Found Blob %v", blob)
-		var ml manifestlist.ManifestList
-		err = json.Unmarshal(b, &ml)
-		if err != nil {
-			l.Error(err.Error())
-			span.RecordError(err)
-			return err
-		}
-		l.Warnf("Found %d manifests", len(ml.Manifests))
-		for _, m := range ml.Manifests {
-			utils.Debug(l, span, "Found Manifest with Platform.Arch %s", m.Platform.Architecture)
-			switch m.Platform.Architecture {
-			case "amd64", "arm64":
-				e := mag.upstreamBlobInsertManifestDesc(ctx, req, m)
-				if e != nil {
-					err = utils.ErrorHandler(l, span, e, "while upstreamBlobInsertManifestDesc")
-					return err
-				}
-			default:
-				utils.Debug(l, span, "Skipping Platform.Arch %s", m.Platform.Architecture)
-			}
-
-		}
+	if blob, found, err := mag.HeadManifestByRegRepoTag(ctx, up.Reg, up.Repo, up.Tag); err != nil {
+		return utils.ErrorHandler(l, span, err, FailHeadManifestByUpstreamTripleByTag)
+	} else if !found {
+		return utils.NewError(l, span, FailManifestByUpstreamNotFound)
+	} else {
+		up.Digest = blob.Digest
+		up.MediaType = blob.MediaType
+		up.Size = blob.Size
 	}
-	return
+	return nil
+}
+
+func (mag Magazine) CacheUpstream(ctx context.Context, up types.Upstream) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameUp,
+		"func":    "CacheUpstream",
+	})
+	defer span.End()
+	_ = l
+	// TODO: Get Manifest
+	maniData, err := mag.cacheManifestByUpstream(ctx, up)
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, "while caching manifest")
+	}
+	utils.Debug(l, span, "Manifest: %v", maniData.Label)
+	// CONFIG
+	///
+	/// Cache Layers
+	if err := mag.CacheLayers(ctx, maniData); err != nil {
+		return utils.ErrorHandler(l, span, err, "while caching layers")
+	}
+	// Insert Manifest into Graph
+	if e := mag.Database.ManifestDataInsert(ctx, &maniData); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to ManifestDataInsert")
+	}
+	if e := mag.Database.ManifestData_LinkToConfig(ctx, maniData.ID, maniData.Config); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to ManifestData_LinkToConfig")
+	}
+	return nil
 }

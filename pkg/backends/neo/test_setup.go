@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -127,15 +128,90 @@ func (n Neo) Setup_Annotation(bs utils.Bootstrap, br *utils.BootstrapResult, k, 
 	return
 }
 
-func (n Neo) Setup_Profiles(bs utils.Bootstrap, br *utils.BootstrapResult, d string) (err error) {
-	logrus.Warn("Setup_Profiles")
+func (n Neo) Setup_Manipulation(bs utils.Bootstrap, br *utils.BootstrapResult, d string) (err error) {
+	logrus.Warn("Setup_Manipulation")
 	ctx := context.Background()
+	_ = ctx
 	pre := bs.YAMLPrefix
 	if pre == "" {
 		err = fmt.Errorf(`the YAMLPrefix is empty, please use "bs.SetYAMLPrefix(<relative path to yaml root>)"`)
 		return
 	}
 	path := filepath.Join(pre, d)
+	cfgMps, e := config.FindManipulations(path)
+	if e != nil {
+		err = errors.Wrap(e, fmt.Sprintf("failed to find manipulation in %s", path))
+		return err
+	}
+	for _, cfgMp := range cfgMps {
+		tmp, e := n.ManipulationFromConfigManipulation(ctx, cfgMp)
+		if e != nil {
+			err = e
+			return err
+		}
+		if tmpID, err := n.ManipulationGetCreate(ctx, tmp); err != nil {
+			return err
+		} else {
+			tmp.ID = tmpID
+		}
+		br.Add(fmt.Sprintf("manipulation:%s#id", tmp.Label), fmt.Sprint(tmp.ID))
+		msg := fmt.Sprintf("Manipulation '%s' created with ID: %d", tmp.Label, tmp.ID)
+		logrus.Info(msg)
+		for _, mpl := range tmp.ManipuLayers {
+			br.Add(fmt.Sprintf("manipulayer:%s#id", mpl.Label), fmt.Sprint(mpl.ID))
+		}
+
+	}
+	return
+}
+func (n Neo) Setup_ManipuLayer(bs utils.Bootstrap, br *utils.BootstrapResult, d string) (err error) {
+	logrus.Warnf("Setup_ManipuLayer: %s", d)
+	ctx := context.Background()
+	_ = ctx
+	img, lyr, found := strings.Cut(d, "#")
+	if !found {
+		return fmt.Errorf("did not find '#': %s", d)
+	}
+	mplID, err := br.GetInt64(fmt.Sprintf("manipulayer:%s#id", img))
+	if err != nil {
+		return fmt.Errorf("failed to get ManipuLayer ID: %v", err)
+	}
+	lyrIDs, err := br.GetInt64RegEx(fmt.Sprintf(`layer:\d+:%s#id`, lyr))
+	if err != nil {
+		return fmt.Errorf("failed to get Layer ID: %v", err)
+	}
+	orderIDs, err := br.GetIntRegEx(fmt.Sprintf(`layer:\d+:%s#order`, lyr))
+	if err != nil {
+		return fmt.Errorf("failed to get Layer ID: %v", err)
+	}
+	for k, lyrID := range lyrIDs {
+		ordrKey := strings.Replace(k, "#id", "#order", 1)
+		order := orderIDs[ordrKey]
+		err = n.ManipuLayerLinkToLayer(ctx, mplID, lyrID, order)
+		if err != nil {
+			return err
+		}
+	}
+
+	return
+}
+
+func (n Neo) Setup_Profiles(bs utils.Bootstrap, br *utils.BootstrapResult, d string) (err error) {
+	logrus.Warn("Setup_Profiles")
+	ctx := context.Background()
+	fname := d
+	passErr := false
+	if p, pass, found := strings.Cut(d, "#"); found {
+		fname = p
+		fmt.Println("pass:", pass)
+		passErr = pass == "pass"
+	}
+	pre := bs.YAMLPrefix
+	if pre == "" {
+		err = fmt.Errorf(`the YAMLPrefix is empty, please use "bs.SetYAMLPrefix(<relative path to yaml root>)"`)
+		return
+	}
+	path := filepath.Join(pre, fname)
 	prfs, e := config.FindProfiles(path)
 	if e != nil {
 		err = errors.Wrap(e, fmt.Sprintf("failed to find profiles in %s", path))
@@ -147,12 +223,22 @@ func (n Neo) Setup_Profiles(bs utils.Bootstrap, br *utils.BootstrapResult, d str
 		if err != nil {
 			return err
 		}
-
 		label := fmt.Sprintf("%s:%s", p.Name, p.Tag)
 		if p.Name == "" {
 			label = p.Tag
 		}
 		br.Add(fmt.Sprintf("profile:%s#id", label), fmt.Sprint(p.ID))
+		// Connect to ManipuLayer
+		for _, mp := range p.Manipulations {
+			if mpID, found, err := n.ManipulationGetIDByLabel(ctx, mp.Label); (err != nil || !found) && !passErr {
+				return fmt.Errorf("failed to get Manipulation for label '%s': %v", mp.Label, err)
+			} else {
+				err = n.ProfileLinkToManipulation(ctx, p.ID, mpID)
+				if err != nil && !passErr {
+					return err
+				}
+			}
+		}
 		msg := fmt.Sprintf("Profile '%s' created with ID: %d", label, p.ID)
 		if p.Rule != "" {
 			msg += fmt.Sprintf(" and Rule: %s", p.Rule)
@@ -251,6 +337,12 @@ func (n Neo) Setup_Layer(br *utils.BootstrapResult, ly types.Layer, bootstrapstr
 	br.Add(fmt.Sprintf("layer:%s#id", bootstrapstring), fmt.Sprint(lyId))
 	br.Add(fmt.Sprintf("layer:%s#digest", bootstrapstring), ly.Digest)
 	br.Add(fmt.Sprintf("layer:%s#mediaType", bootstrapstring), ly.MediaType)
+	spl := strings.Split(bootstrapstring, ":")
+	if _, err := strconv.Atoi(spl[0]); err != nil {
+		return fmt.Errorf("bootstrapstring '%s' is expected to have the order up front", bootstrapstring)
+	} else {
+		br.Add(fmt.Sprintf("layer:%s#order", bootstrapstring), spl[0])
+	}
 	return
 }
 
@@ -787,13 +879,12 @@ func (n Neo) Setup_ManifestList_FT_generic(br *utils.BootstrapResult) (err error
 
 func (n Neo) Setup_ManifestData(br *utils.BootstrapResult, mani types.ManifestData, label string) (err error) {
 	ctx := context.Background()
-	mani_id, err := n.ManifestData_Insert(ctx, mani)
+	err = n.ManifestData_GetInsert(ctx, &mani)
 	if err != nil {
 		return err
 	}
-	mani.ID = mani_id
 	br.Add(fmt.Sprintf("%s#digest", label), mani.Digest)
-	br.Add(fmt.Sprintf("%s#id", label), fmt.Sprint(mani_id))
+	br.Add(fmt.Sprintf("%s#id", label), fmt.Sprint(mani.ID))
 	// Check if manifest with the same label is already in DB
 	re := `^manifestdata:(?P<name>.*)$`
 	r := regexp.MustCompile(re)
@@ -806,8 +897,20 @@ func (n Neo) Setup_ManifestData(br *utils.BootstrapResult, mani types.ManifestDa
 			return nil
 		}
 		// Link ManifestData to Manifest
-		err = n.LinkManifestToManifestData(ctx, mID, mani_id)
+		err = n.LinkManifestToManifestData(ctx, mID, mani.ID, mani.Type)
 		if err != nil {
+			return err
+		}
+		// Link from ManifestData to Upstream
+		if upID, found, e := n.UpstreamGetIDByDigest(ctx, mani.Upstream.Digest.String()); e != nil {
+			return e
+		} else if found {
+			err = n.ManifestDataLinkToUpstream(ctx, mani.ID, upID)
+			if err != nil {
+				return err
+			}
+		} else {
+			err = fmt.Errorf("could not find upstream with digest '%s'", mani.Upstream.Digest.String())
 			return err
 		}
 	}
@@ -995,6 +1098,20 @@ func (n Neo) BootstrapTestWithBR(ctx context.Context, b string, bs utils.Bootstr
 			return
 		}
 		return
+	case "manipulation":
+		err = n.Bootstrap_Manipulation(bs, br, rest)
+		if err != nil {
+			err = errors.Wrapf(err, whileFmrt, b)
+			return
+		}
+		return
+	case "manipulayer":
+		err = n.Bootstrap_ManipuLayer(bs, br, rest)
+		if err != nil {
+			err = errors.Wrapf(err, whileFmrt, b)
+			return
+		}
+		return
 	case "rules":
 		err = n.Bootstrap_Rules(bs, br, rest)
 		if err != nil {
@@ -1002,7 +1119,6 @@ func (n Neo) BootstrapTestWithBR(ctx context.Context, b string, bs utils.Bootstr
 			return
 		}
 		return
-
 	case "profile":
 		err = n.Bootstrap_Profiles(bs, br, rest)
 		if err != nil {
@@ -1026,6 +1142,12 @@ func (n Neo) BootstrapTestWithBR(ctx context.Context, b string, bs utils.Bootstr
 		return
 	case "layer":
 		if err = n.Bootstrap_Layer(bs, br, rest); err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
+		return
+
+	case "collection":
+		if err = n.Bootstrap_Collection(bs, br, rest); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 		return
@@ -1102,26 +1224,6 @@ func (n Neo) BootstrapTestWithBR(ctx context.Context, b string, bs utils.Bootstr
 			br.PrintDict()
 			return errors.Wrapf(err, whileFmrt, b)
 		}
-	case "collection:ft_generic":
-		err = n.Setup_Collection_FT_generic(br)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
-	case "collection:ft_zen3":
-		err = n.Setup_Collection_FT_zen3(br)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
-	case "collection:ft_arm64":
-		err = n.Setup_Collection_FT_arm64(br)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
-	case "collection:ft_amd64":
-		err = n.Setup_Collection_FT_amd64(br)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
 	case "cypher:manifestlist:ft_generic":
 		err = n.Cypher_ManifestList_FT_generic(br)
 		if err != nil {
@@ -1186,6 +1288,26 @@ func (n Neo) Bootstrap_Annotation(bs utils.Bootstrap, br *utils.BootstrapResult,
 	return
 }
 
+func (n Neo) Bootstrap_Manipulation(bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
+	err = n.Setup_Manipulation(bs, br, b)
+	if err != nil {
+		err = errors.Wrapf(err, "Setup_Manipulation(%s)", b)
+		return
+	}
+
+	return
+}
+
+func (n Neo) Bootstrap_ManipuLayer(bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
+	err = n.Setup_ManipuLayer(bs, br, b)
+	if err != nil {
+		err = errors.Wrapf(err, "Setup_ManipuLayer(%s)", b)
+		return
+	}
+
+	return
+}
+
 func (n Neo) Bootstrap_Config(bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
 	switch b {
 	case "ft_arm64":
@@ -1223,6 +1345,33 @@ func (n Neo) Bootstrap_Config(bs utils.Bootstrap, br *utils.BootstrapResult, b s
 	return
 }
 
+func (n Neo) Bootstrap_Collection(bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
+	switch b {
+	case "ft_generic":
+		err = n.Setup_Collection_FT_generic(br)
+		if err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
+	case "ft_zen3":
+		err = n.Setup_Collection_FT_zen3(br)
+		if err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
+	case "ft_arm64":
+		err = n.Setup_Collection_FT_arm64(br)
+		if err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
+	case "ft_amd64":
+		err = n.Setup_Collection_FT_amd64(br)
+		if err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
+	default:
+		return fmt.Errorf("no Setup for '%s'", b)
+	}
+	return
+}
 func (n Neo) Bootstrap_Upstream(bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
 	switch b {
 	case "ft_arm64":
@@ -1249,6 +1398,21 @@ func (n Neo) Bootstrap_Upstream(bs utils.Bootstrap, br *utils.BootstrapResult, b
 			err = errors.Wrapf(err, whileFmrt, b)
 			return
 		}
+	case "glow150arm64":
+		err = n.Setup_Upstream(br, types.UpstreamGlow150ARM64, b)
+		if err != nil {
+			err = errors.Wrapf(err, whileFmrt, b)
+			return
+		}
+
+	case "glow150amd64":
+		err = n.Setup_Upstream(br, types.UpstreamGlow150AMD64, b)
+		if err != nil {
+			err = errors.Wrapf(err, whileFmrt, b)
+			return
+		}
+	default:
+		return fmt.Errorf("no Setup for '%s'", b)
 	}
 	return
 }
@@ -1292,6 +1456,21 @@ func (n Neo) Bootstrap_Layer(bs utils.Bootstrap, br *utils.BootstrapResult, b st
 		}
 	case "1:ft_zen3":
 		err = n.Setup_Layer(br, types.FT_zen3_Layer1(), b)
+		if err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
+	case "0:glow150arm64_2660":
+		err = n.Setup_Layer(br, types.Layer0Glow150ARM64, b)
+		if err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
+	case "1:glow150arm64_3571":
+		err = n.Setup_Layer(br, types.Layer1Glow150ARM64, b)
+		if err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
+	case "2:glow150arm64_d54e":
+		err = n.Setup_Layer(br, types.Layer2Glow150ARM64, b)
 		if err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}

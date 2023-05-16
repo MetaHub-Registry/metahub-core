@@ -7,8 +7,17 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+)
+
+const (
+	pkgNameRule                 = "neo/rule.go"
+	ruleReturn                  = `id(r) as ruleID, r.op as ruleOp, r.name as ruleName, r.type AS ruleType, r.tag as ruleTag, r.key as ruleKey, r.value as ruleValue, r.label as ruleLabel`
+	FailRulesGetByManipuLayerID = "failed to get rules by ManipuLayer ID"
+	FailRulesGetByManifestID    = "failed to get rules by Manifest ID"
+	FailRuleGetByLabel          = "failed to get Rule by label"
 )
 
 func (n Neo) Rule_Create(ctx context.Context, r types.Rule) (ruleID int64, err error) {
@@ -58,7 +67,7 @@ func (n Neo) Rule_GetCreate(ctx context.Context, r types.Rule) (ruleID int64, er
 }
 
 func RuleFromResult(res types.Result) (r types.Rule, err error) {
-	err = res.CheckKeys("ruleID", "ruleName", "ruleType", "ruleTag", "ruleKey", "ruleValue")
+	err = res.CheckKeys("ruleID", "ruleName", "ruleType", "ruleTag", "ruleKey", "ruleLabel", "ruleValue")
 	if err != nil {
 		return
 	}
@@ -69,8 +78,10 @@ func RuleFromResult(res types.Result) (r types.Rule, err error) {
 	op, _ := res.GetStr("ruleOp")
 	key, _ := res.GetStr("ruleKey")
 	val, _ := res.GetStr("ruleValue")
+	label, _ := res.GetStr("ruleLabel")
 	r = types.Rule{
 		ID:    id,
+		Label: label,
 		Name:  name,
 		Tag:   tag,
 		Type:  typ,
@@ -84,8 +95,7 @@ func RuleFromResult(res types.Result) (r types.Rule, err error) {
 
 func (n Neo) Rules_GetByProfileID(ctx context.Context, profileID int64) (rules []types.Rule, err error) {
 	q := fmt.Sprintf(`MATCH (p:Profile)-[]->(r:Rule) WHERE id(p) = %d`, profileID)
-	q += ` RETURN`
-	q += ` id(r) as ruleID, r.op as ruleOp, r.name as ruleName, r.tag as ruleTag, r.key as ruleKey, r.value as ruleValue`
+	q += fmt.Sprintf(` RETURN %s`, ruleReturn)
 	res, err := n.Query(q)
 	if err != nil {
 		return
@@ -103,9 +113,34 @@ func (n Neo) Rules_GetByProfileID(ctx context.Context, profileID int64) (rules [
 	return
 }
 
-func (n Neo) Rule_GetByLabel(ctx context.Context, label string) (rule types.Rule, found bool, err error) {
-	q := fmt.Sprintf(`MATCH (r:Rule) WHERE r.label = "%s" RETURN`, label)
-	q += ` id(r) as ruleID, r.op as ruleOp, r.name as ruleName, r.type AS ruleType, r.tag as ruleTag, r.key as ruleKey, r.value as ruleValue`
+func (n Neo) RulesGetByManipuLayerID(ctx context.Context, mplID int64) (rules types.Rules, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameRule,
+		"func":    "RulesGetByManipuLayerID",
+	})
+	defer span.End()
+	_ = ctx
+	q := fmt.Sprintf(`MATCH (mpl:ManipuLayer)-[]->(r:Rule) WHERE id(mpl) = %d`, mplID)
+	q += fmt.Sprintf(` RETURN %s`, ruleReturn)
+	utils.Debug(l, span, q)
+	res, err := n.Query(q)
+	if err != nil {
+		return
+	}
+	rules = types.NewRules()
+	for _, r := range res {
+		rule, e := RuleFromResult(r)
+		if e != nil {
+			err = e
+			return
+		}
+		rules.Add(rule)
+	}
+	return
+}
+
+func (n Neo) RuleGetByLabel(ctx context.Context, label string) (rule types.Rule, found bool, err error) {
+	q := fmt.Sprintf(`MATCH (r:Rule) WHERE r.label = "%s" RETURN %s`, label, ruleReturn)
 	res, found, err := n.QueryOne(q)
 	if err != nil || !found {
 		return
@@ -122,8 +157,7 @@ func (n Neo) Rules_GetAll(ctx context.Context) (rules []types.Rule, err error) {
 	ctx, span := tracer.Start(ctx, "Rules_GetAll")
 	_ = ctx
 	defer span.End()
-	q := `MATCH (r:Rule) RETURN`
-	q += ` id(r) as ruleID, r.op as ruleOp, r.name as ruleName, r.type AS ruleType, r.tag as ruleTag, r.key as ruleKey, r.value as ruleValue`
+	q := `MATCH (r:Rule) RETURN ` + ruleReturn
 	res, err := n.Query(q)
 	if err != nil {
 		return
@@ -138,6 +172,34 @@ func (n Neo) Rules_GetAll(ctx context.Context) (rules []types.Rule, err error) {
 		rules = append(rules, rule)
 	}
 	return
+}
+
+func (n Neo) RulesGetByManifestID(ctx context.Context, maniID int64) (rules types.Rules, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameRule,
+		"func":    "RulesGetByManifestID",
+	})
+	defer span.End()
+	_ = ctx
+	// Platform rules
+	q := `MATCH (m:Manifest)-[:IS]->(plat:Platform)<-[:TRUE]-(r:Rule)`
+	q += fmt.Sprintf(`WHERE id(m) = %d RETURN %s`, maniID, ruleReturn)
+	utils.Debug(l, span, q)
+	res, err := n.Query(q)
+	if err != nil {
+		return
+	}
+	rules = types.NewRules()
+	for _, r := range res {
+		rule, e := RuleFromResult(r)
+		if e != nil {
+			err = e
+			return
+		}
+		rules.Add(rule)
+	}
+	return
+
 }
 
 func (n Neo) Rule_EvalAll(ctx context.Context) (err error) {

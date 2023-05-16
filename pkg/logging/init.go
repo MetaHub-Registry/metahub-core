@@ -8,7 +8,6 @@ import (
 
 // InitLog is the interface that wraps the basic Log method.
 func InitLog() {
-	logrus.Info("Initializing logging")
 	lLevel := viper.GetString("logging.level")
 	switch lLevel {
 	case "debug":

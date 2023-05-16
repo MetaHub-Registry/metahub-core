@@ -17,9 +17,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+const (
+	pkgNameOci        = "magazine/oci.go"
+	FailUnwindProfile = "failed to unwind Profile"
+)
+
 func (mag Magazine) CreateOCIv1_UploadedByPrf(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prf types.Profile) (maniID int64, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "magazine/oci.go",
+		"package": pkgNameOci,
 		"func":    "CreateOCIv1_UploadedByPrf",
 		"mani.ID": mani.ID,
 	})
@@ -73,9 +78,9 @@ func (mag Magazine) CreateOCIv1_UploadedByPrf(ctx context.Context, mani types.Ma
 		return
 	}
 	// TODO: We need to unwind the rules so that annotations are added to the ManifestData
-	e = mag.Database.Profile_UnwindRules(ctx, prf.ID, maniID)
+	e = mag.Database.ProfileUnwindRules(ctx, prf.ID, maniID)
 	if e != nil {
-		err = errors.Wrap(e, "failed to unwind Profile")
+		err = errors.Wrap(e, FailUnwindProfile)
 		l.Error(err)
 		return
 
@@ -85,7 +90,7 @@ func (mag Magazine) CreateOCIv1_UploadedByPrf(ctx context.Context, mani types.Ma
 
 func (mag Magazine) CreateOCIv1_UploadedBy(ctx context.Context, mani types.Manifest, origMani types.ManifestData) (maniID int64, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "magazine/oci.go",
+		"package": pkgNameOci,
 		"func":    "CreateOCIv1_UploadedBy",
 		"mani.ID": mani.ID,
 	})
@@ -145,9 +150,9 @@ func (mag Magazine) CreateOCIv1_UploadedBy(ctx context.Context, mani types.Manif
 			return
 		}
 		// TODO: We need to unwind the rules so that annotations are added to the ManifestData
-		e = mag.Database.Profile_UnwindRules(ctx, prf.ID, maniID)
+		e = mag.Database.ProfileUnwindRules(ctx, prf.ID, maniID)
 		if e != nil {
-			err = errors.Wrap(e, "failed to unwind Profile")
+			err = errors.Wrap(e, FailUnwindProfile)
 			l.Error(err)
 			return
 		}
@@ -157,7 +162,7 @@ func (mag Magazine) CreateOCIv1_UploadedBy(ctx context.Context, mani types.Manif
 
 func (mag Magazine) CreateOCIv1_PulledByPrf(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prf types.Profile) (maniID int64, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "magazine/oci.go",
+		"package": pkgNameOci,
 		"func":    "CreateOCIv1_PulledByPrf",
 		"mani.ID": mani.ID,
 	})
@@ -186,32 +191,35 @@ func (mag Magazine) CreateOCIv1_PulledByPrf(ctx context.Context, mani types.Mani
 		return
 	}
 	// TODO: We need to unwind the rules so that annotations are added to the ManifestData
-	e = mag.Database.Profile_UnwindRules(ctx, prf.ID, maniID)
+	e = mag.Database.ProfileUnwindRules(ctx, prf.ID, maniID)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to unwind Profile")
+		err = utils.ErrorHandler(l, span, e, FailUnwindProfile)
 		return
 	}
 
 	return
 }
 
-func (mag Magazine) CreateOCIv1_ParsedManifest(ctx context.Context, mani types.Manifest, origMani types.ManifestData) (maniID int64, success bool, err error) {
-	l := logrus.WithFields(logrus.Fields{
-		"package": "magazine/oci.go",
-		"func":    "CreateOCIv1_ParsedManifest",
+func (mag Magazine) CreateOCIv1ParsedManifest(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prfIDs ...int64) (maniID int64, success bool, err error) {
+	prfID := int64(0)
+	if len(prfIDs) == 1 {
+		prfID = prfIDs[0]
+	}
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameOci,
+		"func":    "CreateOCIv1ParsedManifest",
 		"mani.ID": mani.ID,
+		"prfID":   prfID,
 	})
-	l.Infof("Creating OCIv1 manifest for Manifest.ID")
-	ctx, span := tracer.Start(ctx, "CreateOCIv1_ParsedManifest")
 	defer span.End()
 	// TODO: Is the manifest in question uploaded or parsed?
 	// -> If not parsed - skip!
-	if origMani.Type != "PARSED" {
-		l.Warnf("Manifest.ID: %d is not parsed (%s), skipping", mani.ID, origMani.Type)
+	if origMani.Type != "PARSED" && origMani.Type != "ORIGINAL" {
+		utils.Warn(l, span, "Manifest.ID: %d is not parsed (%s), skipping", mani.ID, origMani.Type)
 		return
 	}
 
-	// TODO: Get parsed manifests
+	// Get parsed manifests
 	maniID, foundOCI, err := mag.Database.ManifestData_GetRelID_ByMediaType(ctx, mani.ID, v1.MediaTypeImageManifest, "PARSED")
 	if err != nil {
 		return
@@ -221,38 +229,31 @@ func (mag Magazine) CreateOCIv1_ParsedManifest(ctx context.Context, mani types.M
 		success = true
 		return
 	}
-	maniID, e := mag.OCI_CreateBaseManifest(ctx, mani, origMani, 0)
+	maniID, e := mag.OCI_CreateBaseManifest(ctx, mani, origMani, prfID)
 	if e != nil {
 		err = errors.Wrap(e, "failed to create base manifest")
 		return
 	}
 	success = true
-	// TODO: Check which profile was used to upload the config
-	//    -> For now we only generate one OCI manifest(data) per manifest, this needs to be extended in case
-	//       someone pused different manifest for different profiles
-	/*
-		err = mag.Database.EvalUploadProfile(ctx, mani, origMani)
-		if err != nil {
-			return
-		}
-	*/
-
+	if err = mag.Database.ProfileUnwindRules(ctx, prfID, maniID); err != nil {
+		err = errors.Wrap(err, FailUnwindProfile)
+		return
+	}
 	return
 }
 
-func (mag Magazine) CreateOCIv1_ForProfile(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prf types.Profile) (maniDataID int64, err error) {
-	l := logrus.WithFields(logrus.Fields{
-		"package":       "magazine/oci.go",
+func (mag Magazine) CreateOCIv1ForProfile(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prf types.Profile) (maniDataID int64, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":       pkgNameOci,
 		"func":          "CreateOCIv1ForProfile",
 		"mani.ID":       mani.ID,
 		"maniData.ID":   origMani.ID,
 		"maniData.Type": origMani.Type,
+		"prf.ID":        prf.ID,
 	})
-	l.Debugf("Creating OCIv1 manifest for Manifest.ID: %d // ManifestData.type: '%s'", mani.ID, origMani.Type)
-	ctx, span := tracer.Start(ctx, "CreateOCIv1ForProfile")
 	defer span.End()
+	utils.Debug(l, span, "Creating OCIv1 manifest for Manifest.ID: %d // ManifestData.type: '%s'", mani.ID, origMani.Type)
 	switch origMani.Type {
-
 	case "UPLOADED_BY":
 		mdID, success, e := mag.CreateOCIv1_UploadedByPrf(ctx, mani, origMani, prf)
 		if e != nil {
@@ -275,8 +276,8 @@ func (mag Magazine) CreateOCIv1_ForProfile(ctx context.Context, mani types.Manif
 			maniDataID = mdID
 			return
 		}
-	case "PARSED":
-		mdID, success, e := mag.CreateOCIv1_ParsedManifest(ctx, mani, origMani)
+	case "PARSED", "ORIGINAL":
+		mdID, success, e := mag.CreateOCIv1ParsedManifest(ctx, mani, origMani)
 		if e != nil {
 			err = errors.Wrapf(e, "failed to create OCIv1 manifest for parsed Manifest.ID: %d", mani.ID)
 			return
@@ -302,7 +303,7 @@ func (mag Magazine) CreateOCIv1_ForProfile(ctx context.Context, mani types.Manif
 
 func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMani types.ManifestData) (maniDataID int64, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package":       "magazine/oci.go",
+		"package":       pkgNameOci,
 		"func":          "CreateOCIv1",
 		"mani.ID":       mani.ID,
 		"maniData.ID":   origMani.ID,
@@ -332,7 +333,7 @@ func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMa
 	l.Debug(msg)
 	switch origMani.Type {
 	case "PARSED":
-		mdID, success, e := mag.CreateOCIv1_ParsedManifest(ctx, mani, origMani)
+		mdID, success, e := mag.CreateOCIv1ParsedManifest(ctx, mani, origMani)
 		if e != nil {
 			err = errors.Wrapf(e, "failed to create OCIv1 manifest for parsed Manifest.ID: %d", mani.ID)
 			return
@@ -369,7 +370,7 @@ func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMa
 
 func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prfID int64) (maniID int64, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "magazine/oci.go",
+		"package": pkgNameOci,
 		"func":    "OCI_CreateBaseManifest",
 		"mani.ID": mani.ID,
 	})
@@ -381,7 +382,7 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 		},
 		MediaType: v1.MediaTypeImageManifest,
 	}
-	rs, e := mag.Database.Profile_GetAnnoEqRules(ctx, prfID)
+	rs, e := mag.Database.ProfileGetAnnoEqRules(ctx, prfID)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to get anno rules for profile %d", prfID)
 		return
@@ -484,13 +485,13 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 
 func (mag Magazine) GenerateOCIv1Config(ctx context.Context, maniSI types.Manifest, origMani types.ManifestData) (v1Cfg v1.Image, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package":    "magazine/oci.go",
+		"package":    pkgNameOci,
 		"func":       "mag.GenerateOCIv1Config",
 		"maniID":     maniSI.ID,
 		"origManiID": origMani.ID,
 	})
 	defer span.End()
-	// TODO: Fetch config from Minio
+	// Fetch config from Minio
 	v1Cfg, found, err := mag.Minio.GetConfig(ctx, origMani.Config.Digest)
 	if err != nil {
 		utils.ErrorHandler(l, span, err, "failed to GetConfig")

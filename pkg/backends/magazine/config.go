@@ -23,7 +23,7 @@ func (mag Magazine) CacheImageConfigViaUpstream(ctx context.Context, up upstream
 		"func":    "CacheImageConfigViaUpstream",
 	})
 	defer span.End()
-	b, _, e := upstream.GetBlobByUpstreamTriple(ctx, up)
+	b, _, e := mag.GetBlobByUpstreamTriple(ctx, up)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to get blob for %s", up.GetLabel())
 		return err
@@ -60,7 +60,7 @@ func (mag Magazine) CachImageConfig(ctx context.Context, mani *types.ManifestDat
 	}
 	if !isCached {
 		l.Warnf("Config not cached: %s\n%s", up.GetLabel(), up.Digest)
-		b, blob, e := upstream.GetBlobByUpstreamTriple(ctx, up)
+		b, blob, e := mag.GetBlobByUpstreamTriple(ctx, up)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to get blob for %s", up.GetLabel())
 			return err

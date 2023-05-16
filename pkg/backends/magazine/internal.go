@@ -8,7 +8,17 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
+const (
+	pkgNameInternal = "magazine/internal.go"
+)
+
 func (mag Magazine) getMani(ctx context.Context, br utils.BootstrapResult, label string) (mani types.Manifest, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameInternal,
+		"func":    "getMani",
+	})
+	defer span.End()
+	_ = l
 	maniID, e := br.GetInt64(fmt.Sprintf("%s#id", label))
 	if e != nil {
 		return mani, e
@@ -24,6 +34,12 @@ func (mag Magazine) getMani(ctx context.Context, br utils.BootstrapResult, label
 }
 
 func (mag Magazine) getProfile(ctx context.Context, br utils.BootstrapResult, label string) (prf types.Profile, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameInternal,
+		"func":    "getProfile",
+	})
+	defer span.End()
+	_ = l
 	prf, prfFound, err := mag.Database.Profile_Get_ByLabel(ctx, label)
 	if err != nil {
 		return prf, err
@@ -35,6 +51,12 @@ func (mag Magazine) getProfile(ctx context.Context, br utils.BootstrapResult, la
 }
 
 func (mag Magazine) getManiData(ctx context.Context, br utils.BootstrapResult, label string) (mani types.ManifestData, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameInternal,
+		"func":    "getManiData",
+	})
+	defer span.End()
+	_ = l
 	mdID, e := br.GetInt64(fmt.Sprintf("%s#id", label))
 	if e != nil {
 		return mani, e

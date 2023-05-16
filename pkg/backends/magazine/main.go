@@ -157,7 +157,7 @@ func (mag Magazine) setupBootStrap(ctx context.Context, bs utils.Bootstrap, br *
 			err = errors.Wrap(err, "Setup_Users in Database")
 			return
 		}
-		err = mag.Minio.BootstrapTestWithBR(b, br)
+		err = mag.Minio.BootstrapTestWithBR(bs, br, b)
 		if err != nil {
 			err = errors.Wrap(err, "Setup_Users in Minio")
 			return
