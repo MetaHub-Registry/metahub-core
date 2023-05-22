@@ -145,6 +145,10 @@ func NewBucketConfig(bucket, url, console string) BucketConfig {
 	return bc
 }
 
+func Setup_Config(min *Minio, br *utils.BootstrapResult, dt types.DataTuple) (err error) {
+	ctx := context.Background()
+	return min.ConfigPutObj(ctx, dt.Digest.String(), dt.Data)
+}
 func Setup_Config_FT_arm64(min *Minio, br *utils.BootstrapResult) (err error) {
 	ctx := context.Background()
 	cfgByte := types.ConfigByteFtArm64()
@@ -265,8 +269,16 @@ func (m Minio) BootstrapTestWithBR(bs utils.Bootstrap, br *utils.BootstrapResult
 		if err = m.BootstrapLayer(bs, br, bsName); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
+
 	default:
 		switch b {
+		case "config:glow150arm64":
+			err = Setup_Config(&m, br, types.ConfigDTGlow150ARM64)
+			if err != nil {
+				err = errors.Wrapf(err, whileFmrt, b)
+				return
+			}
+
 		case "config:ft_arm64":
 			err = Setup_Config_FT_arm64(&m, br)
 			if err != nil {

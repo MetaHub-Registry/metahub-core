@@ -320,7 +320,7 @@ func TestUpstreamManifestInsertZen3(t *testing.T) {
 /*
 func TestUpstreamBlobInsertManifestList(t *testing.T) {
 	ctx := context.Background()
-	debug := 300
+	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("platforms:generic")

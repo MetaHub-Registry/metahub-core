@@ -1,9 +1,8 @@
 package types
 
 type ManipuLayer struct {
-	ID     int64
-	Label  string
-	Image  Upstream
-	Layers []Layer
-	Rule   string
+	ID    int64
+	Label string
+	Image ManifestData
+	Rule  string
 }

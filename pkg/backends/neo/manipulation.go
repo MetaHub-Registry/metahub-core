@@ -3,7 +3,6 @@ package neo
 import (
 	"fmt"
 
-	"github.com/pkg/errors"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"github.com/metahub-registry/metahub-core/pkg/yaml/config"
@@ -14,6 +13,7 @@ const (
 	pkgNameManipulation               = "neo/manipulation.go"
 	FailManipulationLinkToManipuLayer = "failed to link manipulation to ManipuLayer"
 	FailManipulationsGetByProfileID   = "failed to get manipulations by profile ID"
+	FailManipulationGetCreate         = "failed to get or get/create manipulation"
 )
 
 var (
@@ -43,7 +43,7 @@ func (n Neo) ManipulationDeleteByID(ctx context.Context, mpID int64) (found bool
 	return true, nil
 }
 
-func (n Neo) ManipulationGetCreate(ctx context.Context, mp types.Manipulation) (mpID int64, err error) {
+func (n Neo) ManipulationGetCreate(ctx context.Context, mp *types.Manipulation) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameManipulation,
 		"func":    "ManipulationGetCreate",
@@ -53,18 +53,20 @@ func (n Neo) ManipulationGetCreate(ctx context.Context, mp types.Manipulation) (
 	_ = l
 	// Check if manipulation exists
 	if mpID, found, err := n.ManipulationGetIDByLabel(ctx, mp.Label); err != nil {
-		return mpID, utils.ErrorHandler(l, span, err, FailManipulationGetID)
+		return utils.ErrorHandler(l, span, err, FailManipulationGetID)
 	} else if found {
-		return mpID, nil
+		utils.Debug(l, span, "Found manipulation '%s' with ID %d", mp.Label, mpID)
+		mp.ID = mpID
+		return nil
 	}
 	// Insert Manipulation
-	if mpID, err = n.ManipulationCreate(ctx, mp); err != nil {
-		return mpID, utils.ErrorHandler(l, span, err, FailManipulationCreate)
+	if err := n.ManipulationCreate(ctx, mp); err != nil {
+		return utils.ErrorHandler(l, span, err, FailManipulationCreate)
 	}
-	return mpID, nil
+	return nil
 }
 
-func (n Neo) ManipulationCreate(ctx context.Context, mp types.Manipulation) (mpID int64, err error) {
+func (n Neo) ManipulationCreate(ctx context.Context, mp *types.Manipulation) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameManipulation,
 		"func":    "ManipulationCreate",
@@ -75,24 +77,26 @@ func (n Neo) ManipulationCreate(ctx context.Context, mp types.Manipulation) (mpI
 	q := fmt.Sprintf(`CREATE (mp:Manipulation {label: "%s"}) RETURN id(mp) AS %s`, mp.Label, key)
 	utils.Debug(l, span, q)
 	if res, err := n.Execute(q); err != nil {
-		return mpID, utils.ErrorHandler(l, span, err, FailNeoExecute)
+		return utils.ErrorHandler(l, span, err, FailNeoExecute)
 	} else {
-		if mpID, err = res.GetInt64(key); err != nil {
-			return mpID, utils.ErrorHandler(l, span, err, types.FailBrGet, key)
+		if mpID, err := res.GetInt64(key); err != nil {
+			return utils.ErrorHandler(l, span, err, types.FailBrGet, key)
+		} else {
+			mp.ID = mpID
 		}
 	}
 	utils.Debug(l, span, "Manipulation has %d layers", len(mp.ManipuLayers))
 	for _, mpl := range mp.ManipuLayers {
-		if mplID, err := n.ManipuLayerGetCreate(ctx, mpl); err != nil {
-			return mpID, utils.ErrorHandler(l, span, err, FailManipuLayerGetCreate)
+		if err := n.ManipuLayerGetCreate(ctx, &mpl); err != nil {
+			return utils.ErrorHandler(l, span, err, FailManipuLayerGetCreate)
 		} else {
-			if err := n.ManipulationLinkToManipuLayer(ctx, mpID, mplID); err != nil {
-				return mpID, utils.ErrorHandler(l, span, err, FailManipulationLinkToManipuLayer)
+			if err := n.ManipulationLinkToManipuLayer(ctx, mp.ID, mpl.ID); err != nil {
+				return utils.ErrorHandler(l, span, err, FailManipulationLinkToManipuLayer)
 			}
 		}
-
 	}
-	return mpID, nil
+
+	return nil
 }
 
 func (n Neo) ManipulationLinkToManipuLayer(ctx context.Context, mpID, mplID int64) (err error) {
@@ -130,6 +134,7 @@ func (n Neo) ManipulationGetIDByLabel(ctx context.Context, label string) (mpID i
 			return mpID, false, utils.ErrorHandler(l, span, err, types.FailBrGet, key)
 		}
 	}
+	utils.Debug(l, span, "Manipulation with label '%s' has ID %d", label, mpID)
 	return mpID, true, nil
 }
 
@@ -161,6 +166,7 @@ func (n Neo) ManipulationsGetByProfileID(ctx context.Context, prfID int64) (mps 
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameManipulation,
 		"func":    "ManipulationGetByProfileID",
+		"prfID":   prfID,
 	})
 	defer span.End()
 	mps = make([]types.Manipulation, 0)
@@ -183,6 +189,11 @@ func (n Neo) ManipulationsGetByProfileID(ctx context.Context, prfID int64) (mps 
 }
 
 func (n Neo) ManipulationFromResult(ctx context.Context, res types.Result) (mp types.Manipulation, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameManipulation,
+		"func":    "ManipulationFromResult",
+	})
+	defer span.End()
 	err = res.CheckKeys("manipulationID", "manipulationLabel")
 	if err != nil {
 		return
@@ -195,7 +206,7 @@ func (n Neo) ManipulationFromResult(ctx context.Context, res types.Result) (mp t
 		ManipuLayers: make([]types.ManipuLayer, 0),
 	}
 	if mpl, e := n.ManipuLayersGetByManipulationID(ctx, mp.ID); e != nil {
-		return mp, errors.Wrap(e, FailManipuLayersGetByManipulationID)
+		return mp, utils.ErrorHandler(l, span, e, FailManipuLayersGetByManipulationID)
 	} else {
 		mp.ManipuLayers = mpl
 	}
@@ -227,45 +238,116 @@ func (n Neo) ManipulationFromConfigManipulation(ctx context.Context, m config.Ma
 	return mp, nil
 }
 
-// ManipulationGetByProfileManiID returns a manipulation which is connected through rules to a profile and a manifest
-func (n Neo) ManipulationUnwind(ctx context.Context, maniID, maniDataID, prfID int64) (err error) {
+func (n Neo) ManinpulationCheckRules(ctx context.Context, prfID, maniID int64) (ok bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameManipulation,
-		"func":    "ManipulationUnwind",
+		"func":    "ManinpulationCheckRules",
+		"prfID":   prfID,
+		"maniID":  maniID,
+	})
+	defer span.End()
+	// TODO: Check if the manifest/profile pair is actually a fit (do all rules evaluate true?)
+	//// TODO #1: In case a profile rule exist, does it check out?
+	maniRls, e := n.RulesGetByManifestID(ctx, maniID)
+	if e != nil {
+		return ok, utils.ErrorHandler(l, span, e, FailRulesGetByManifestID)
+	}
+	prfRls, err := n.Rules_GetByProfileID(ctx, prfID)
+	if !prfRls.SatisfiedBy(ctx, maniRls) {
+		utils.Warn(l, span, "Profile rules '%s' are not satisfied by manifest", prfRls.ToString())
+		return false, nil
+	}
+	//// TODO #2: Check the ManipuLayer rule
+	mps, err := n.ManipulationsGetByProfileID(ctx, prfID)
+	if err != nil {
+		return ok, utils.ErrorHandler(l, span, err, FailManipulationsGetByProfileID)
+	}
+	utils.Warn(l, span, "Manipulations:  %d", len(mps))
+	for _, mp := range mps {
+		utils.Debug(l, span, "Manipulation [%-2d]: %s", mp.ID, mp.Label)
+		for _, mpl := range mp.ManipuLayers {
+			rls, err := n.RulesGetByManipuLayerID(ctx, mpl.ID)
+			if err != nil {
+				return ok, utils.ErrorHandler(l, span, err, FailRulesGetByManipuLayerID)
+			}
+			if rls.SatisfiedBy(ctx, maniRls) {
+				utils.Warn(l, span, "Manipulation %d (ManipuLayers: %d) is satisfied by Manifest %d", mp.ID, len(mp.ManipuLayers), maniID)
+				ok = true
+				// FIXME: multiple manipulayers are going to fail here.
+			}
+		}
+	}
+	return ok, nil
+}
+
+// ManipulationGetByProfileManiID returns a manipulation which is connected through rules to a profile and a manifest
+func (n Neo) ManipulationUnwind(ctx context.Context, maniID, maniDataID, prfID int64) (cfgDigest string, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":    pkgNameManipulation,
+		"func":       "ManipulationUnwind",
+		"prfID":      prfID,
+		"maniID":     maniID,
+		"maniDataID": maniDataID,
 	})
 	defer span.End()
 	////////   The rules are going to be matched against the ManiPulayer to figure out a match
 	maniRls, e := n.RulesGetByManifestID(ctx, maniID)
 	if e != nil {
-		return utils.ErrorHandler(l, span, e, FailRulesGetByManifestID)
+		return cfgDigest, utils.ErrorHandler(l, span, e, FailRulesGetByManifestID)
 	}
+
 	// Get Manipulations for Profile
 	mps, err := n.ManipulationsGetByProfileID(ctx, prfID)
 	if err != nil {
-		return utils.ErrorHandler(l, span, err, FailManipulationsGetByProfileID)
+		return cfgDigest, utils.ErrorHandler(l, span, err, FailManipulationsGetByProfileID)
 	}
 	utils.Warn(l, span, "Manipulations:  %d", len(mps))
 	for _, mp := range mps {
-		rls, err := n.RulesGetByManipuLayerID(ctx, mp.ID)
-		if err != nil {
-			return utils.ErrorHandler(l, span, err, FailRulesGetByManipuLayerID)
-		}
-		// Check if mpRules all be matched by maniRules
-		if rls.SatisfiedBy(maniRls) {
-			utils.Warn(l, span, "Manipulation %d (ManipuLayers: %d) is satisfied by Manifest %d", mp.ID, len(mp.ManipuLayers), maniID)
-			for _, mpl := range mp.ManipuLayers {
-				utils.Warn(l, span, "ManipuLayer: %s (%d Layers)", mpl.Image, len(mpl.Layers))
-				for idx, lyr := range mpl.Layers {
+		for _, mpl := range mp.ManipuLayers {
+			rls, err := n.RulesGetByManipuLayerID(ctx, mpl.ID)
+			if err != nil {
+				return cfgDigest, utils.ErrorHandler(l, span, err, FailRulesGetByManipuLayerID)
+			}
+			// Check if mpRules all be matched by maniRules
+			if rls.SatisfiedBy(ctx, maniRls) {
+				utils.Warn(l, span, "ManipuLayer: %s (%d Layers) is satisfies by manifest ", mpl.Image.Label, len(mpl.Image.Layers))
+				if cfg, found, err := n.Config_Get_ByManiDataID(ctx, mpl.Image.ID); err != nil {
+					return cfgDigest, utils.ErrorHandler(l, span, err, "Failed to get Config for ManifestData of ManipuLayer %d", mpl.Image.ID)
+				} else if !found {
+					return cfgDigest, utils.NewError(l, span, "Did not find config for ManifestData of ManipuLayer %d", mpl.Image.ID)
+				} else {
+					cfgDigest = cfg.Digest
+				}
+				for idx, lyr := range mpl.Image.Layers {
 					if e := n.ManifestData_LinkToLayer(ctx, maniDataID, lyr, idx); e != nil {
-						return utils.ErrorHandler(l, span, e, FailManifestDataLinkToLayer)
+						return cfgDigest, utils.ErrorHandler(l, span, e, FailManifestDataLinkToLayer)
 					}
 				}
+			} else {
+				utils.Warn(l, span, "ManipuLayer %d is NOT satisfied by Manifest %d", mpl.ID, maniID)
+				continue
 			}
-		} else {
-			utils.Warn(l, span, "Manipulation %d is NOT satisfied by Manifest %d", mp.ID, maniID)
-			continue
 		}
 	}
+	return cfgDigest, nil
+}
 
+func (n Neo) ManipulationFromYAML(ctx context.Context, cmp config.Manipulation) (mp types.Manipulation, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameManipulation,
+		"func":    "ManipulationFromYAML",
+		"Label":   cmp.Label,
+	})
+	defer span.End()
+	mp = types.Manipulation{
+		Label: cmp.Label,
+	}
+	for _, layer := range cmp.ManipuLayers {
+		if tl, e := n.ManipuLayerFromConfigYAML(ctx, layer); e != nil {
+			return mp, utils.ErrorHandler(l, span, e, FailManipuLayerFromConfigYAML)
+		} else {
+			mp.ManipuLayers = append(mp.ManipuLayers, tl)
+		}
+	}
 	return
 }

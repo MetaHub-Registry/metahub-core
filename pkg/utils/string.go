@@ -14,7 +14,7 @@ import (
 
 // GenPasswordHash creates a hash from a plain password
 func GenPasswordHash(passwd string) string {
-	bytes, _ := bcrypt.GenerateFromPassword([]byte(passwd), 14)
+	bytes, _ := bcrypt.GenerateFromPassword([]byte(passwd), 12)
 	return string(bytes)
 }
 

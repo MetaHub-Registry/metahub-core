@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -16,7 +17,6 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"github.com/metahub-registry/metahub-core/pkg/yaml/config"
-	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -215,26 +215,21 @@ func Setup_Users() {
 		logrus.Fatal(err)
 	}
 	for _, user := range usrs {
+		scrt := types.Secret{
+			Key:       user.Password,
+			Name:      "test0",
+			CreatedAt: time.Now(),
+			IsCopied:  false,
+		}
+
 		u := types.User{
 			Username:  user.Username,
 			FirstName: user.FirstName,
 			LastName:  user.LastName,
 			Email:     user.Email,
+			Secrets:   []types.Secret{scrt},
 		}
-		switch {
-		case (user.Hash != "") && (user.Password != ""):
-			logrus.Errorf("User '%s' has both 'hash' and 'password' set. Please remove one of them.", user.Username)
-			continue
-		case user.Hash != "":
-			u.PasswordHash = user.Hash
-		case user.Password != "":
-			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), 12)
-			if err != nil {
-				logrus.Errorf("Error while hashing password for user '%s': %s", user.Username, err)
-				continue
-			}
-			u.PasswordHash = string(hashedPassword)
-		}
+
 		err := mag.InsertUser(ctx, u)
 		if err != nil {
 			logrus.Error(err)

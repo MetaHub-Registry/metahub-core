@@ -8,31 +8,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-/*
-type Payload struct {
-	Message string `json:"message"`
-	Details string `json:"details"`
-}
-
-func (p Payload) ToBytes() []byte {
-	b, err := json.Marshal(p)
-	if err != nil {
-		logrus.Fatal(err.Error())
-		return nil
-	}
-	return b
-}
-
-func WriteOCIErrror(w http.ResponseWriter, statusCode int, usrMsg, usrDetail string) {
-	w.WriteHeader(statusCode)
-	payload := Payload{
-		Message: usrMsg,
-		Details: usrDetail,
-	}
-	w.Write(payload.ToBytes())
-}
-*/
-
 type Payload struct {
 	Errors []ErrorPayload `json:"errors"`
 }
@@ -99,3 +74,10 @@ func WriteOCIErrror(w http.ResponseWriter, statusCode int, errPl ...ErrorPayload
 }
 
 //[{"Type":"repository","Name":"samalba/my-app","Action":"pull"}
+
+func WriteResponse(w http.ResponseWriter, statusCode int, b []byte) {
+	w.WriteHeader(statusCode)
+	w.Header().Add("Content-Type", "application/json")
+	w.Header().Add("Content-Length", fmt.Sprint(len(b)))
+	w.Write(b)
+}

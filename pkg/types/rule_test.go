@@ -35,3 +35,21 @@ func TestRuleToString(t *testing.T) {
 	assert.Equal(t, exp1, r1.ToString())
 
 }
+
+func TestRuleEvalRule(t *testing.T) {
+	r0, err := NewRule("anno", "eq", "foo", "bar")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.True(t, r0.evalRule("eq", "bar"))
+	assert.False(t, r0.evalRule("eq", "baz"))
+	assert.False(t, r0.evalRule("ne", "bar"))
+	assert.True(t, r0.evalRule("ne", "baz"))
+}
+func TestRuleEvalRuleNull(t *testing.T) {
+	r0, err := NewRule("anno", "null", "foo", "bar")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.True(t, r0.evalRule("null", "bar"))
+}

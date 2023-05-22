@@ -7,20 +7,25 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
 
-func (n Neo) CollectionTagProfilePair_GetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error) {
+const (
+	pkgNamePairs = "neo/pairs.go"
+)
+
+func (n Neo) CollectionTagProfilePairGetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error) {
 	ctx, span := tracer.Start(ctx, "CollectionTagProfilePair_GetAll")
 	defer span.End()
-	ctpps, e := n.CollectionTagProfilePair_Annotation_GetAll(ctx)
+	ctpps, e := n.CollectionTagProfilePairAnnotationGetAll(ctx)
 	if e != nil {
 		err = errors.Wrap(e, "failed to get CollectionTagProfilePairs with annotations")
 		return
 	}
-	ctpps2, e := n.CollectionTagProfilePair_Platform_GetAll(ctx)
+	ctpps2, e := n.CollectionTagProfilePairPlatformGetAll(ctx)
 	if e != nil {
 		err = errors.Wrap(e, "failed to get CollectionTagProfilePairs with platforms")
 		return
@@ -29,34 +34,31 @@ func (n Neo) CollectionTagProfilePair_GetAll(ctx context.Context) (ctpps []types
 	return
 }
 
-func (n Neo) CollectionTagProfilePair_GetRegexFiltered(ctx context.Context, repoRegex, tagRegex, prfRegex string) (ctpps []types.CollectionTagProfilePair, err error) {
-	ctx, span := tracer.Start(ctx, "CollectionTagProfilePair_GetRegexFiltered")
-	defer span.End()
-	ctpps, e := n.CollectionTagProfilePair_Annotation_GetRegexFiltered(ctx, repoRegex, tagRegex, prfRegex)
+func (n Neo) CollectionTagProfilePairGetRegexFiltered(ctx context.Context, repoRegex, tagRegex, prfRegex string) (ctpps []types.CollectionTagProfilePair, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":   pkgNamePairs,
+		"func":      "CollectionTagProfilePairGetRegexFiltered",
+		"repoRegex": repoRegex,
+		"tagRegex":  tagRegex,
+		"prfRegex":  prfRegex,
+	})
+	ctpps, e := n.CollectionTagProfilePairAnnotationGetRegexFiltered(ctx, repoRegex, tagRegex, prfRegex)
 	if e != nil {
 		err = errors.Wrap(e, "failed to get CollectionTagProfilePairs with annotations")
 		return
 	}
-	msg := fmt.Sprintf("Got %d ctpps from CollectionTagProfilePair_Annotation_GetRegexFiltered", len(ctpps))
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", msg),
-	))
-	ctpps2, e := n.CollectionTagProfilePair_Platform_GetRegexFiltered(ctx, repoRegex, tagRegex, prfRegex)
+	utils.Debug(l, span, "Got %d ctpps from CollectionTagProfilePair_Annotation_GetRegexFiltered", len(ctpps))
+	ctpps2, e := n.CollectionTagProfilePairPlatform_GetRegexFiltered(ctx, repoRegex, tagRegex, prfRegex)
 	if e != nil {
 		err = errors.Wrap(e, "failed to get CollectionTagProfilePairs with platforms")
 		return
 	}
-	msg = fmt.Sprintf("Got %d ctpps from CollectionTagProfilePair_Platform_GetRegexFiltered", len(ctpps2))
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", msg),
-	))
+	utils.Debug(l, span, "Got %d ctpps from CollectionTagProfilePair_Platform_GetRegexFiltered", len(ctpps2))
 	ctpps = append(ctpps, ctpps2...)
 	return
 }
 
-func (n Neo) CollectionTagProfilePair_Platform_GetRegexFiltered(ctx context.Context, repoRegex, tagRegex, prfRegex string) (ctpps []types.CollectionTagProfilePair, err error) {
+func (n Neo) CollectionTagProfilePairPlatform_GetRegexFiltered(ctx context.Context, repoRegex, tagRegex, prfRegex string) (ctpps []types.CollectionTagProfilePair, err error) {
 	ctx, span := tracer.Start(ctx, "CollectionTagProfilePair_Platform_GetAll")
 	defer span.End()
 	rel := types.RelationSuccess
@@ -76,10 +78,10 @@ func (n Neo) CollectionTagProfilePair_Platform_GetRegexFiltered(ctx context.Cont
 		logrus.Error(err)
 		return
 	}
-	return n.collectionTagProfilePair_FromResult(ctx, res)
+	return n.collectionTagProfilePairFromResult(ctx, res)
 }
 
-func (n Neo) CollectionTagProfilePair_Platform_GetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error) {
+func (n Neo) CollectionTagProfilePairPlatformGetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error) {
 	ctx, span := tracer.Start(ctx, "CollectionTagProfilePair_Platform_GetAll")
 	defer span.End()
 	rel := types.RelationSuccess
@@ -97,10 +99,10 @@ func (n Neo) CollectionTagProfilePair_Platform_GetAll(ctx context.Context) (ctpp
 		logrus.Error(err)
 		return
 	}
-	return n.collectionTagProfilePair_FromResult(ctx, res)
+	return n.collectionTagProfilePairFromResult(ctx, res)
 }
 
-func (n Neo) CollectionTagProfilePair_Annotation_GetRegexFiltered(ctx context.Context, repoRegex, tagRegex, profileRegex string) (ctpps []types.CollectionTagProfilePair, err error) {
+func (n Neo) CollectionTagProfilePairAnnotationGetRegexFiltered(ctx context.Context, repoRegex, tagRegex, profileRegex string) (ctpps []types.CollectionTagProfilePair, err error) {
 	ctx, span := tracer.Start(ctx, "CollectionTagProfilePair_Annotation_GetRegexFiltered")
 	defer span.End()
 	q := `MATCH (prf:Profile)-[:USES]->(Rule)-[:TRUE]->(Annotation)<-[:HAS_ANNOTATION]-(:ManifestData)<-[:CREATED]-(m:Manifest)`
@@ -119,11 +121,11 @@ func (n Neo) CollectionTagProfilePair_Annotation_GetRegexFiltered(ctx context.Co
 		logrus.Error(err)
 		return
 	}
-	ctpps, err = n.collectionTagProfilePair_FromResult(ctx, res)
+	ctpps, err = n.collectionTagProfilePairFromResult(ctx, res)
 	return
 }
 
-func (n Neo) CollectionTagProfilePair_Annotation_GetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error) {
+func (n Neo) CollectionTagProfilePairAnnotationGetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error) {
 	ctx, span := tracer.Start(ctx, "CollectionTagProfilePair_Annotation_GetAll")
 	defer span.End()
 	q := `MATCH (prf:Profile)-[:USES]->(Rule)-[:TRUE]->(Annotation)<-[:HAS_ANNOTATION]-(:ManifestData)<-[:CREATED]-(m:Manifest)`
@@ -140,10 +142,10 @@ func (n Neo) CollectionTagProfilePair_Annotation_GetAll(ctx context.Context) (ct
 		logrus.Error(err)
 		return
 	}
-	return n.collectionTagProfilePair_FromResult(ctx, res)
+	return n.collectionTagProfilePairFromResult(ctx, res)
 }
 
-func (n Neo) collectionTagProfilePair_FromResult(ctx context.Context, res []types.Result) (ctpps []types.CollectionTagProfilePair, err error) {
+func (n Neo) collectionTagProfilePairFromResult(ctx context.Context, res []types.Result) (ctpps []types.CollectionTagProfilePair, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "neo/pairs.go",
 		"func":    "collectionTagProfilePair_FromResult",

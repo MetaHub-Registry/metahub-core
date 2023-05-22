@@ -8,7 +8,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -98,6 +97,7 @@ func readManipulationConfig(yamlStr []byte) (mp Manipulation, err error) {
 	return
 }
 
+/*
 func (cfgMp Manipulation) ToTypesManipulation() (tmp types.Manipulation) {
 	tmp = types.Manipulation{
 		Label: cfgMp.Label,
@@ -108,3 +108,4 @@ func (cfgMp Manipulation) ToTypesManipulation() (tmp types.Manipulation) {
 	}
 	return
 }
+*/

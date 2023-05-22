@@ -109,7 +109,7 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 	}
 	// user
 	userSqlFile, _ := cmd.Flags().GetString("user-db")
-	m.UserManagement, err = sqlite.New(userSqlFile, "users,tokens")
+	m.UserManagement, err = sqlite.New(userSqlFile, "users,secrets")
 	if err != nil {
 		err = errors.Wrapf(err, "failed to create sqlite backend for users")
 		logrus.Fatal(err)
@@ -140,13 +140,13 @@ func (mag Magazine) setupBootStrap(ctx context.Context, bs utils.Bootstrap, br *
 			return
 		}
 	case "computeManifests":
-		err := mag.ComputeManifests(ctx)
+		err := mag.ComputeAllManifests(ctx)
 		if err != nil {
 			err = errors.Wrap(err, "while SetupTest: ComputeManifests")
 			return err
 		}
 	case "computeManifestlists":
-		err := mag.ComputeManifests(ctx)
+		err := mag.ComputeManifestlists(ctx)
 		if err != nil {
 			err = errors.Wrap(err, "while SetupTest: computeManifestlists")
 			return err

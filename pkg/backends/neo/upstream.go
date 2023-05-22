@@ -262,31 +262,25 @@ func (n Neo) UpstreamGet(ctx context.Context, up types.Upstream) (upID int64, su
 		"func":    "UpstreamGet",
 	})
 	defer span.End()
+	_ = ctx
 	q := `MATCH (u:Upstream)`
 	q += fmt.Sprintf(` WHERE u.reg = "%s" AND u.repo = "%s" AND u.tag = "%s"`, up.Reg, up.Repo, up.Tag)
 	if up.Digest.String() != "" {
 		q += fmt.Sprintf(` AND u.digest = "%s"`, up.Digest.String())
 	}
 	q += ` RETURN id(u) AS ID`
-	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
-	defer session.Close()
 	utils.Debug(l, span, q)
-	result, err := session.Run(q, map[string]interface{}{})
-	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
-		return
-	}
-	if result.Next() {
-		v, ok := result.Record().Get("ID")
-		if !ok {
-			err = fmt.Errorf("Upstream_Get: failed to get ID")
-			return
+	if res, found, e := n.QueryOne(q); e != nil {
+		return upID, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	} else if !found {
+		utils.Debug(l, span, "did not found upstream: %s", up.String())
+		return upID, false, nil
+	} else {
+		if upID, e = res.GetInt64("ID"); e != nil {
+			return upID, false, utils.ErrorHandler(l, span, e, types.FailBrGet, "ID")
 		}
-		upID = v.(int64)
-		success = true
 	}
-	utils.Debug(l, span, "upstream: %s, found: %t", up.String(), success)
-	return
+	return upID, true, nil
 }
 
 func (n Neo) CreateUpstream(ctx context.Context, up types.Upstream) (upID int64, err error) {

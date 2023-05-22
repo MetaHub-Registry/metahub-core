@@ -381,15 +381,28 @@ func (n Neo) Manifest_Get(ctx context.Context, upID int64, suffix ...string) (ms
 }
 
 func (n Neo) LinkManifestToManifestData(ctx context.Context, maniID, maniDataID int64, props ...string) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":    pkgNameMani,
+		"func":       "LinkManifestToManifestData",
+		"maniID":     maniID,
+		"maniDataID": maniDataID,
+	})
+	_ = ctx
+	defer span.End()
 	q := `MATCH (m:Manifest), (md:ManifestData) WHERE id(m) = %d AND id(md) = %d`
 	rel := "PARSED"
+	if len(props) > 1 {
+		return utils.NewError(l, span, "relationship type has %d entries, should be at max 1", len(props))
+	}
 	if len(props) > 0 && props[0] != "" {
 		rel = strings.ToUpper(props[0])
 	}
 	q += fmt.Sprintf(` MERGE (m)-[:%s]->(md)`, rel)
-
+	utils.Debug(l, span, q)
 	query := fmt.Sprintf(q, maniID, maniDataID)
-	_, err = n.Execute(query)
+	if _, e := n.Execute(query); e != nil {
+		return utils.ErrorHandler(l, span, e, FailNeoExecute)
+	}
 	return
 }
 
