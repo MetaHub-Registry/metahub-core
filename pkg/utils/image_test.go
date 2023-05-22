@@ -30,6 +30,7 @@ func TestSplitImage(t *testing.T) {
 		{"docker.io/library/alpine:3.16", false, "docker.io", "library/alpine", "3.16"},
 		{"quay.io/library/alpine:3.16", false, "quay.io", "library/alpine", "3.16"},
 		{"quay.io/library/alpine@sha256:91591e8f9968721c129f1d2113259a047f6f85af6491758296fda8f21ef81dd3", false, "quay.io", "library/alpine", "sha256:91591e8f9968721c129f1d2113259a047f6f85af6491758296fda8f21ef81dd3"},
+		{"quay.io/cqnib/gromacs/gcc-7.3.1/2021.5/mpich:x86_64_v4", false, "quay.io", "cqnib/gromacs/gcc-7.3.1/2021.5/mpich", "x86_64_v4"},
 	}
 	registriesConf, err := os.CreateTemp("", "repo-splitname-v0")
 	require.NoError(t, err)

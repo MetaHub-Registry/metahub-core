@@ -74,6 +74,11 @@ func (mag Magazine) PullLayer(ctx context.Context, up upstream.UpstreamTriple) (
 }
 
 func (mag Magazine) CacheLayers(ctx context.Context, mani types.ManifestData) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameLayer,
+		"func":    "mag.CacheLayers",
+	})
+	defer span.End()
 	up := upstream.UpstreamTriple{
 		Reg:  mani.Upstream.Reg,
 		Repo: mani.Upstream.Repo,
@@ -87,7 +92,7 @@ func (mag Magazine) CacheLayers(ctx context.Context, mani types.ManifestData) (e
 			logrus.Error(err)
 			return
 		}
-		logrus.Infof("Caching layer[%-2d] %s for %-90s -> %t", idx, utils.ShortenDigest(layer.Digest), up.GetLabel(), isCached)
+		utils.Info(l, span, "Caching layer[%-2d] %s for %-90s -> %t", idx, utils.ShortenDigest(layer.Digest), up.GetLabel(), isCached)
 		if !isCached {
 			err = mag.PullLayer(ctx, up)
 			if err != nil {

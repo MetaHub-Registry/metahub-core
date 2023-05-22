@@ -189,6 +189,7 @@ func (mag Magazine) getManifestBytesByTag(ctx context.Context, reg, repo, tag st
 	utils.Info(l, span, "Found digest: %s", dig)
 	return mag.getManifestBytesByDigest(ctx, reg, repo, dig)
 }
+
 func (mag Magazine) getManifestBytesByDigest(ctx context.Context, reg, repo, dig string) (b []byte, blob mhTypes.BlobMeta, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNameUp,

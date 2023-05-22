@@ -1403,26 +1403,23 @@ func (n Neo) ManifestDataFromResult(ctx context.Context, res types.Result, prfs 
 }
 
 func (n Neo) ManifestData_GetByCollectionTag(ctx context.Context, colID, colTagID int64) (manis []types.ManifestData, err error) {
-	l := logrus.WithFields(logrus.Fields{
-		"package":  "magazine/manifest_data.go",
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":  pkgNameMD,
 		"func":     "ManifestData_GetByCollectionTag",
 		"colID":    colID,
 		"colTagID": colTagID,
 	})
-	ctx, span := tracer.Start(ctx, "ManifestData_GetByCollectionTag")
 	defer span.End()
-	_ = l
+	utils.Info(l, span, "getting manifest data by collection and tag")
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	q := `MATCH (p:Platform)-[r]-(m:Manifest)-[]-(u:Upstream)`
 	q += fmt.Sprintf(` MATCH (c:Collection)-[:UPSTREAM]->(m)-[:CREATED]-(md:ManifestData)-[cfgRel]->(cfg:Config) WHERE id(c) = %d`, colID)
 	q += fmt.Sprintf(` MATCH (t:Tag)-[:UPSTREAM]->(m) WHERE id(t) = %d`, colTagID)
-	//q += ` MATCH (md)-[]-(prf:Profile)`
 	q += ` RETURN type(r) AS manifestdataRelType,`
 	q += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
 	q += ` id(md) AS manifestDataID, md.digest AS manifestDataDigest, md.label AS manifestDataLabel, md.mediaType AS manifestDataMediaType, md.size AS manifestDataSize,`
 	q += UpstreamReturn + ` ,`
-	//q += returnStatementProfile + ` ,`
 	q += ` id(cfg) AS configID, cfg.digest AS configDigest, TYPE(cfgRel) AS configMediaType, cfg.size AS configSize`
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
@@ -1456,13 +1453,7 @@ func (n Neo) ManifestData_GetByCollectionTag(ctx context.Context, colID, colTagI
 			err = e
 			return
 		}
-		/*
-			prf, e := ProfileFromRecord(result)
-			if e != nil {
-				err = e
-				return
-			}
-		*/
+
 		anno, e := n.Labels_GetByConfigID(ctx, c.ID)
 		if e != nil {
 			err = e
@@ -1477,6 +1468,13 @@ func (n Neo) ManifestData_GetByCollectionTag(ctx context.Context, colID, colTagI
 		if e != nil {
 			err = errors.Wrap(e, "failed to get profiles for manifest data")
 			return
+		}
+		utils.Debug(l, span, "found %d profiles for manifest data", len(prfs))
+		switch len(prfs) {
+		case 0:
+			m.Profile = "unknown"
+		default:
+			m.Profile = prfs[0].Label
 		}
 		if len(prfs) == 0 {
 			err = fmt.Errorf("no profiles found for manifest data: %d", m.ID)

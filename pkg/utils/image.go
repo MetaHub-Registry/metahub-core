@@ -14,7 +14,7 @@ const (
 
 var (
 	//regs    = []string{"docker.io", "quay.io", "registry.gitlab.com", "public.ecr.aws"}
-	upRegex = `^(?P<reg>[\w\.]+(\:\d+|\.\w+))?\/?(?P<repo>[a-z]{1}[\w\/\-]+)(@|:)?(?P<tag>.*)?`
+	upRegex = `^(?P<reg>[\w\.]+(\:\d+|\.\w+))?\/?(?P<repo>[a-z]{1}[\w\/\.\_\-]+)(@|:)?(?P<tag>.*)?`
 	defReg  = "docker.io"
 )
 
