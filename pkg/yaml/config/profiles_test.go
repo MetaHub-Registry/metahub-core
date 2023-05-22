@@ -37,12 +37,6 @@ func TestFilterReadFilterConfig(t *testing.T) {
 	assert.Equal(t, "awscli", f1.Name)
 	assert.Equal(t, f1.Rule, "")
 	assert.Len(t, f1.Manipulations, 1)
-	p1, err := f1.ToProfile()
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, "awscli", p1.Name)
-	//assert.Equal(t, 1, len(p1.Manipulations))
 }
 
 func TestProfileLoadProfile(t *testing.T) {

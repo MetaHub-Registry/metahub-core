@@ -8,7 +8,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -119,19 +118,5 @@ func readProfileConfig(yamlStr []byte) (p Profile, err error) {
 		return
 	}
 
-	return
-}
-
-func (p Profile) ToProfile() (tp types.Profile, err error) {
-	mps := []types.Manipulation{}
-	for _, ele := range p.Manipulations {
-		mps = append(mps, ele.ToTypesManipulation())
-	}
-	tp = types.Profile{
-		Name:          p.Name,
-		Tag:           p.Tag,
-		Rule:          p.Rule,
-		Manipulations: mps,
-	}
 	return
 }

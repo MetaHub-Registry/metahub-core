@@ -9,6 +9,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"github.com/metahub-registry/metahub-core/pkg/yaml/config"
 	yamlCfg "github.com/metahub-registry/metahub-core/pkg/yaml/config"
 )
 
@@ -47,6 +48,7 @@ type Database interface {
 	LayerExists(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error)
 	Layer_GetUpstreamRegistry(ctx context.Context, up upstream.UpstreamTriple) (registry string, err error)
 	LayerGetUpstream(ctx context.Context, lID int64) (up types.Upstream, found bool, err error)
+	GetLayersForManifestDataID(ctx context.Context, maniDataID int64) (layers []types.Layer, err error)
 	/********* Config **********/
 	Config_GetByDigest(ctx context.Context, dig string) (cfg types.Config, found bool, err error)
 	Config_GetByID(ctx context.Context, cfgID int64) (cfg types.Config, found bool, err error)
@@ -90,7 +92,7 @@ type Database interface {
 	ManifestData_AddAnnotations(ctx context.Context, maniID int64, a *types.Annotations) (err error)
 	ManifestData_LinkToAnnotation(ctx context.Context, maniID, annotationID int64) (err error)
 	ManifestData_GetByRule(ctx context.Context, rule types.Rule) (mds []types.ManifestData, err error)
-	ManifestData_CheckProfile(ctx context.Context, md types.ManifestData, prf types.Profile) (ok bool, err error)
+	ManifestDataCheckProfile(ctx context.Context, md types.ManifestData, prf types.Profile) (ok bool, err error)
 	ManifestData_GetPushed_ByProfile(ctx context.Context, up types.Upstream, prf types.Profile) (m types.ManifestData, found bool, err error)
 	ManifestDataDelete(ctx context.Context, mani types.ManifestData) (err error)
 	ManifestDataGetByDigest(ctx context.Context, dig string) (m types.ManifestData, found bool, err error)
@@ -104,6 +106,7 @@ type Database interface {
 	ManifestData_Get_ByProfileMediaType(ctx context.Context, mID, prfID int64, mediaType string) (maniID int64, found bool, err error)
 	/******* ManifestV1 ********/
 	ManifestData_V1_GetInsert(ctx context.Context, maniSiID int64, mani v1.Descriptor) (maniID int64, found bool, err error)
+	ManifestDataUpdateDesc(ctx context.Context, maniDataID int64, maniDataV1 v1.Descriptor) (err error)
 	//Manifest_Update(ctx context.Context, maniID int64, mani types.ManifestData) (err error)
 	/********* ManifestList **********/
 	ManifestList_Insert(ctx context.Context, ml *types.ManifestList) (err error)
@@ -136,7 +139,8 @@ type Database interface {
 	LinkManifestListToCollectionTag(mlID, colTagID int64) (err error)
 	LinkManifestListToProfile(mlID, prfID int64) (err error)
 	LinkManifestListToManifestData(mlID, mdID int64) (err error)
-	ManifestData_LinkToLayer(ctx context.Context, maniID int64, layer types.Layer, idx int) error //
+	ManifestData_LinkToLayer(ctx context.Context, maniDataID int64, layer types.Layer, idx int) error //
+	ManifestDataLinkToProfile(ctx context.Context, maniDataID, profileID int64) error                 //
 	LinkManifestToManifestData(ctx context.Context, maniID, maniDataID int64, props ...string) error
 	LinkManifestDataToProfile(ctx context.Context, mdID, prfID int64, relation string) error
 	/****** BlobUpload ******/
@@ -163,6 +167,7 @@ type Database interface {
 	ProfileGetAnnoEqRules(ctx context.Context, prfID int64) (rs []types.Rule, err error)
 	Profile_ManifestType(ctx context.Context, maniID int64) (relType string, found bool, err error)
 	Profile_FromManifestID(ctx context.Context, maniID int64) (prfs []types.Profile, err error)
+	ProfileFromYAML(ctx context.Context, p config.Profile) (prf types.Profile, err error)
 	// Rules
 	Rule_EvalAnnotationRule(ctx context.Context, r types.Rule) (err error)
 	Rule_Get(ctx context.Context, r types.Rule) (ruleID int64, found bool, err error)
@@ -171,15 +176,18 @@ type Database interface {
 	Rule_EvalAll(ctx context.Context) (err error)
 	RuleGetByLabel(ctx context.Context, label string) (rule types.Rule, found bool, err error)
 	/****** CollectionTagProfilePair ********/
-	CollectionTagProfilePair_GetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error)
-	CollectionTagProfilePair_GetRegexFiltered(ctx context.Context, repoRegex, tagRegex, prfRegex string) (ctpps []types.CollectionTagProfilePair, err error)
+	CollectionTagProfilePairGetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error)
+	CollectionTagProfilePairGetRegexFiltered(ctx context.Context, repoRegex, tagRegex, prfRegex string) (ctpps []types.CollectionTagProfilePair, err error)
 
 	/**** TEMP ****/
 	EvalUploadProfile(ctx context.Context, mani types.Manifest, origMani types.ManifestData) (err error)
 	/***** BaseLayer *****/
 	ManifestGetAllSystemAnnos(ctx context.Context, maniDataID int64) (as types.Annotations, err error)
 	/***** Manipulations *****/
-	ManipulationGetCreate(ctx context.Context, mp types.Manipulation) (manipuID int64, err error)
-	ManipulationUnwind(ctx context.Context, maniID, maniDataID, prfID int64) (err error)
+	ManipulationGetCreate(ctx context.Context, mp *types.Manipulation) (err error)
+	ManipulationUnwind(ctx context.Context, maniID, maniDataID, prfID int64) (cfgDigest string, err error)
 	ManipulationsGetByProfileID(ctx context.Context, prfID int64) (mps []types.Manipulation, err error)
+	ManipuLayerFromConfigYAML(ctx context.Context, cmpl config.ManipuLayer) (mpl types.ManipuLayer, err error)
+	ManipulationFromYAML(ctx context.Context, cmp config.Manipulation) (mp types.Manipulation, err error)
+	ManinpulationCheckRules(ctx context.Context, prfID, maniID int64) (ok bool, err error)
 }

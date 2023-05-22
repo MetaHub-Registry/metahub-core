@@ -11,6 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"github.com/metahub-registry/metahub-core/pkg/yaml/config"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -59,6 +60,17 @@ func (n Neo) Profile_GetInsert(ctx context.Context, p *types.Profile) (err error
 		if e != nil {
 			err = errors.Wrap(e, "failed to link profile to rule")
 			return err
+		}
+	}
+	// Connect to ManipuLayer
+	for _, mp := range p.Manipulations {
+		if mpID, found, err := n.ManipulationGetIDByLabel(ctx, mp.Label); err != nil || !found {
+			return fmt.Errorf("failed to get Manipulation for label '%s': %v", mp.Label, err)
+		} else {
+			err = n.ProfileLinkToManipulation(ctx, p.ID, mpID)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return
@@ -791,18 +803,14 @@ func (n Neo) ProfileGetAnnoEqRules(ctx context.Context, prfID int64) (rs []types
 	return
 }
 
-func (n Neo) ProfileUnwindRules(ctx context.Context, prfID, maniID int64) (err error) {
+func (n Neo) ProfileUnwindRules(ctx context.Context, prfID, maniDataID int64) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": pkgNameProfile,
-		"func":    "ProfileUnwindRules",
-		"maniID":  maniID,
-		"prfID":   prfID,
+		"package":    pkgNameProfile,
+		"func":       "ProfileUnwindRules",
+		"maniDataID": maniDataID,
+		"prfID":      prfID,
 	})
 	defer span.End()
-	span.SetAttributes(
-		attribute.Key("maniID").Int64(maniID),
-		attribute.Key("prfID").Int64(prfID),
-	)
 	rs, e := n.ProfileGetAnnoEqRules(ctx, prfID)
 	if e != nil {
 		err = errors.Wrapf(e, "failed to get anno rules for profile %d", prfID)
@@ -826,9 +834,9 @@ func (n Neo) ProfileUnwindRules(ctx context.Context, prfID, maniID int64) (err e
 				err = errors.Wrapf(err, "failed to get annotation %s:%s", a.Key, a.Value)
 				return err
 			}
-			e := n.ManifestData_LinkToAnnotation(ctx, maniID, aID)
+			e := n.ManifestData_LinkToAnnotation(ctx, maniDataID, aID)
 			if e != nil {
-				err = errors.Wrapf(e, "failed to link manifestData '%d' with  annotation %d", maniID, aID)
+				err = errors.Wrapf(e, "failed to link manifestData '%d' with  annotation %d", maniDataID, aID)
 				return err
 			}
 		}
@@ -849,4 +857,31 @@ func (n Neo) ProfileLinkToManipulation(ctx context.Context, prfID, mpID int64) (
 		return utils.ErrorHandler(l, span, err, FailNeoExecute)
 	}
 	return nil
+}
+
+func (n Neo) ProfileFromYAML(ctx context.Context, p config.Profile) (prf types.Profile, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":     pkgNameProfile,
+		"func":        "ProfileFromYAML",
+		"profileName": p.Name,
+		"profileTag":  p.Tag,
+		"profileRule": p.Rule,
+	})
+	defer span.End()
+	mps := []types.Manipulation{}
+	for _, ele := range p.Manipulations {
+		mp, e := n.ManipulationFromYAML(ctx, ele)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to get manipulation from yaml")
+			return prf, err
+		}
+		mps = append(mps, mp)
+	}
+	prf = types.Profile{
+		Name:          p.Name,
+		Tag:           p.Tag,
+		Rule:          p.Rule,
+		Manipulations: mps,
+	}
+	return
 }

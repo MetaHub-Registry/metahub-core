@@ -123,5 +123,5 @@ func TestLayerGetUpstream(t *testing.T) {
 	if !upFound {
 		t.Fatal("Did not find upstream")
 	}
-	assert.Equal(t, "registry.gitlab.com", up.Reg)
+	assert.Equal(t, "registry:5050", up.Reg)
 }

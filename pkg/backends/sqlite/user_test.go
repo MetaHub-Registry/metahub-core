@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"testing"
+	"time"
 
 	"context"
 
@@ -10,6 +11,28 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"golang.org/x/crypto/bcrypt"
 )
+
+func TestUserSimple(t *testing.T) {
+	ctx := context.Background()
+	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
+	//bs.SetSqlite("Desktop/metahub.db")
+	br, err := SetupTest(bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = br
+	defer TeardownTest(bs)
+	// Test
+	_, e := sq.User.getByUsername(ctx, "test")
+	assert.Error(t, e)
+	if ok, e := sq.UserNameExists(ctx, "test"); e != nil {
+		t.Fatal(e)
+	} else {
+		assert.False(t, ok)
+	}
+
+}
 
 func TestUserInsert(t *testing.T) {
 	ctx := context.Background()
@@ -23,28 +46,37 @@ func TestUserInsert(t *testing.T) {
 	defer TeardownTest(bs)
 	// Test
 	_ = br
-	err = sq.LoginUser(ctx, "test", "test")
+	passwd := "test"
+	uname := "user"
+	err = sq.LoginUser(ctx, uname, passwd)
 	assert.Error(t, err)
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("test"), 12)
-	if err != nil {
-		t.Fatal(err)
+	scrt1 := types.Secret{
+		CreatedAt: time.Now(),
+		IsCopied:  false,
+		Key:       passwd,
 	}
-
 	u1 := types.User{
-		Username:     "test",
-		Email:        "test@test.de",
-		PasswordHash: string(hashedPassword),
+		Username: uname,
+		Email:    "test@test.de",
+		Secrets: []types.Secret{
+			scrt1,
+		},
 	}
 	uID, err := sq.InsertUser(ctx, u1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.NotEqual(t, int64(-1), uID)
-	err = sq.LoginUser(ctx, "test", "test")
+	if ok, e := sq.UserNameExists(ctx, uname); e != nil {
+		t.Fatal(e)
+	} else {
+		assert.True(t, ok)
+	}
+	err = sq.LoginUser(ctx, uname, passwd)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = sq.LoginUser(ctx, "test", "FAKE")
+	err = sq.LoginUser(ctx, uname, "FAKE")
 	assert.Error(t, err)
 	err = sq.LoginUser(ctx, "FAKE", "FAKE")
 	assert.Error(t, err)
@@ -53,21 +85,21 @@ func TestUserInsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, "test", at.Token)
-	gotU1, err := sq.User.GetByUsername(ctx, "test")
+	gotU1, err := sq.GetByUsername(ctx, uname)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, u1.PasswordHash, gotU1.PasswordHash)
-	gotU2, err := sq.User.GetByEmail("test@test.de")
+	assert.NoError(t, bcrypt.CompareHashAndPassword([]byte(gotU1.Secrets[0].SecretHash), []byte(passwd)))
+	gotU2, err := sq.GetByEmail(ctx, "test@test.de")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, u1.PasswordHash, gotU2.PasswordHash)
-	gotU3, err := sq.User.GetOne(int(uID))
+	assert.NoError(t, bcrypt.CompareHashAndPassword([]byte(gotU2.Secrets[0].SecretHash), []byte(passwd)))
+	gotU3, err := sq.GetOne(ctx, int(uID))
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, u1.PasswordHash, gotU3.PasswordHash)
+	assert.NoError(t, bcrypt.CompareHashAndPassword([]byte(gotU3.Secrets[0].SecretHash), []byte(passwd)))
 	gotU3.FirstName = "Max"
 	gotU3.LastName = "Mustermann"
 	gotU3.Active = 1
@@ -75,7 +107,7 @@ func TestUserInsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gotU31, err := sq.User.GetOne(int(uID))
+	gotU31, err := sq.GetOne(ctx, int(uID))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,17 +116,17 @@ func TestUserInsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = sq.User.GetOne(int(uID))
+	_, err = sq.GetOne(ctx, int(uID))
 	assert.Error(t, err)
 	uID, err = sq.InsertUser(ctx, u1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = sq.User.GetOne(int(uID))
+	_, err = sq.GetOne(ctx, int(uID))
 	if err != nil {
 		t.Fatal(err)
 	}
-	gotU4, err := sq.User.GetOne(int(uID))
+	gotU4, err := sq.GetOne(ctx, int(uID))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,9 +134,9 @@ func TestUserInsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = sq.LoginUser(ctx, "test", "test")
+	err = sq.LoginUser(ctx, uname, "test")
 	assert.Error(t, err)
-	err = sq.LoginUser(ctx, "test", "test2")
+	err = sq.LoginUser(ctx, uname, "test2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,4 +144,8 @@ func TestUserInsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// ToResponse
+	wwwU4 := gotU4.ToResponse()
+	assert.Equal(t, wwwU4.GithubUsername, gotU4.UserName)
+	assert.Equal(t, 1, len(wwwU4.Secrets))
 }

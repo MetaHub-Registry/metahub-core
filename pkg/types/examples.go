@@ -27,7 +27,7 @@ var (
 	}
 	*/
 	Example_PlatformARM64 = []Platform{
-		{Arch: "arm64", Variant: "v8", OS: "linux"},
+		{Arch: "arm64", Variant: "", OS: "linux"},
 	}
 
 	Example_PlatformGeneric = []Platform{
@@ -81,42 +81,6 @@ func Example_Platform_amd64() Platform {
 		Arch:    "amd64",
 		OS:      "linux",
 		Variant: "",
-	}
-}
-
-func FT_amd_Upstream() Upstream {
-	return Upstream{
-		Reg:    "registry.gitlab.com",
-		Repo:   "qnib/plain-featuretest",
-		Tag:    "20220715-amd64-generic",
-		Digest: digest.Digest("sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5"),
-	}
-}
-
-func FT_zen3_Upstream() Upstream {
-	return Upstream{
-		Reg:    "registry.gitlab.com",
-		Repo:   "qnib-pub-containers/qnib/plain-featuretest",
-		Tag:    "3-17-3-amd64-cpu_zen3",
-		Digest: digest.Digest("sha256:927c3c3f99b1ac9432187ce831541fcf6fca81c051dfdb87fbab303e1a25e780"),
-	}
-}
-
-func FT_amd64_Upstream() Upstream {
-	return Upstream{
-		Reg:    "registry.gitlab.com",
-		Repo:   "qnib-pub-containers/qnib/plain-featuretest",
-		Tag:    "20220715-amd64-generic",
-		Digest: digest.Digest("sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5"),
-	}
-}
-
-func FT_arm_Upstream() Upstream {
-	return Upstream{
-		Reg:    "registry.gitlab.com",
-		Repo:   "qnib-pub-containers/qnib/plain-featuretest",
-		Tag:    "20220715-arm64-generic",
-		Digest: digest.Digest("sha256:5bf8eee20fde14eb6e3e924c18fafa4d816e131f315810875136f0438ff7beed"),
 	}
 }
 

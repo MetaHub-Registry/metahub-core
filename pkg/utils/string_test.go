@@ -7,6 +7,7 @@ import (
 
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestIncludesString(t *testing.T) {
@@ -126,5 +127,15 @@ func TestCreateLabelFromTypeAndDigest(t *testing.T) {
 			t.Error(t, strings.Join(res, "\n"))
 		}
 	}
+
+}
+
+func TestGenPasswordHash(t *testing.T) {
+	passwd := "test"
+	hash := GenPasswordHash(passwd)
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(passwd))
+	assert.NoError(t, err)
+	err = bcrypt.CompareHashAndPassword([]byte(hash), []byte("FAKE"))
+	assert.Error(t, err)
 
 }

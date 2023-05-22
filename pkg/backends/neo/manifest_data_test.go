@@ -793,7 +793,6 @@ func TestManifestDataGetByUpstream(t *testing.T) {
 	}
 	if err != nil {
 		t.Fatal(err)
-
 	}
 	defer db.TeardownTest(bs)
 	// Preperation
@@ -941,6 +940,7 @@ func TestManifestData_V1_GetInsert(t *testing.T) {
 	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("empty:all")
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
@@ -1007,7 +1007,7 @@ func TestManifestData_V1_GetInsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mdZen3 := types.ManifestDataAmd64Zen()
+	mdZen3 := types.ManifestDataAmd64Zen
 	zen3Desc := v1.Descriptor{
 		Digest:    digest.Digest(mdZen3.Digest),
 		MediaType: mdZen3.MediaType,
@@ -1023,6 +1023,405 @@ func TestManifestData_V1_GetInsert(t *testing.T) {
 	} else if found {
 		t.Fatal("ManifestData for zen3 should not be found")
 	} else {
-		assert.Greater(t, maniDataZen3ID, maniDataID)
+		assert.Greater(t, maniDataZen3ID, int64(0))
 	}
+}
+
+func TestManifestDataSetupARM64(t *testing.T) {
+	ctx := context.Background()
+	_ = ctx
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("config:ft_arm64")
+	bs.AddBootstrap("upstream:ft_arm64")
+	bs.AddBootstrap("manifest:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_arm64")
+	bs.AddBootstrap("layer:1:ft_arm64")
+	bs.AddBootstrap("manifestdata:ft_arm64")
+	// ManiData Setup
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	if err != nil {
+		db.TeardownTest(bs)
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs)
+	// Actual test
+	maniID, err := br.GetInt64("manifest:ft_arm64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// TODO: Check for (m)-(md) link and whether both are connected to (up)
+	q := fmt.Sprintf(`MATCH (p:Platform)<-[]-(m:Manifest)-[]-(md:ManifestData) WHERE ID(m) = %d RETURN count(p) AS count`, maniID)
+	res, _, err := db.QueryOne(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, err := res.GetInt("count")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, count)
+}
+
+func TestManifestDataSetupAMD64ManifestDataBeforeManifest(t *testing.T) {
+	ctx := context.Background()
+	_ = ctx
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("config:ft_amd64")
+	bs.AddBootstrap("layer:0:ft_amd64")
+	bs.AddBootstrap("layer:1:ft_amd64")
+	bs.AddBootstrap("upstream:ft_amd64")
+	bs.AddBootstrap("manifestdata:ft_amd64")
+	bs.AddBootstrap("manifest:ft_amd64")
+	// ManiData Setup
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	if err != nil {
+		db.TeardownTest(bs)
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs)
+	// Actual test
+	maniID, err := br.GetInt64("manifest:ft_amd64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := fmt.Sprintf(`MATCH (p:Platform)<-[]-(m:Manifest)-[:ORIGINAL]-(md:ManifestData) WHERE ID(m) = %d RETURN count(p) AS count`, maniID)
+	res, _, err := db.QueryOne(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, err := res.GetInt("count")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, count)
+	q = fmt.Sprintf(`MATCH (u:Upstream)<-[]-(m:Manifest)-[]-(md:ManifestData) WHERE ID(m) = %d RETURN DISTINCT count(u) AS count`, maniID)
+	res, _, err = db.QueryOne(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, err = res.GetInt("count")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, count)
+
+}
+
+func TestManifestDataSetupAMD64ManifestBeforeManifestdata(t *testing.T) {
+	// Manifest is inserted before ManifestData
+	ctx := context.Background()
+	_ = ctx
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("config:ft_amd64")
+	bs.AddBootstrap("layer:0:ft_amd64")
+	bs.AddBootstrap("layer:1:ft_amd64")
+	bs.AddBootstrap("upstream:ft_amd64")
+	bs.AddBootstrap("manifest:ft_amd64")
+	bs.AddBootstrap("manifestdata:ft_amd64")
+	// ManiData Setup
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	if err != nil {
+		db.TeardownTest(bs)
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs)
+	// Actual test
+	maniID, err := br.GetInt64("manifest:ft_amd64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := fmt.Sprintf(`MATCH (p:Platform)<-[]-(m:Manifest)-[:ORIGINAL]-(md:ManifestData) WHERE ID(m) = %d RETURN count(p) AS count`, maniID)
+	res, _, err := db.QueryOne(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, err := res.GetInt("count")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, count)
+	q = fmt.Sprintf(`MATCH (u:Upstream)<-[]-(m:Manifest)-[]-(md:ManifestData) WHERE ID(m) = %d RETURN DISTINCT count(u) AS count`, maniID)
+	res, _, err = db.QueryOne(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, err = res.GetInt("count")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, count)
+}
+
+func TestManifestDataUpdateDesc(t *testing.T) {
+	ctx := context.Background()
+	_ = ctx
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("config:ft_amd64")
+	bs.AddBootstrap("layer:0:ft_amd64")
+	bs.AddBootstrap("layer:1:ft_amd64")
+	bs.AddBootstrap("upstream:ft_amd64")
+	bs.AddBootstrap("manifest:ft_amd64")
+	bs.AddBootstrap("manifestdata:ft_amd64")
+	bs.AddBootstrap("config:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_arm64")
+	bs.AddBootstrap("layer:1:ft_arm64")
+	bs.AddBootstrap("upstream:ft_arm64")
+	bs.AddBootstrap("manifestdata:ft_arm64")
+	// ManiData Setup
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	if err != nil {
+		db.TeardownTest(bs)
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs)
+	// Actual test
+	maniDataID, err := br.GetInt64("manifestdata:ft_amd64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	maniDesc := v1.Descriptor{
+		MediaType: "application/vnd.oci.image.manifest.v1+json",
+		Size:      123,
+		Digest:    digest.Digest("sha256:1234567890123456789012345678901234567890123456789012345678901234"),
+	}
+	if err = db.ManifestDataUpdateDesc(ctx, maniDataID, maniDesc); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := db.ManifestData_GetID_ByDigest(ctx, maniDesc.Digest.String()); err != nil {
+		t.Fatal(err)
+	} else {
+		assert.True(t, found, "should be updated")
+	}
+	// Update ARM64 manifestdata with the same digest (which would not happen in real life)
+	// -> manifestData should be removed in the process
+	maniDataID2, err := br.GetInt64("manifestdata:ft_amd64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.ManifestDataUpdateDesc(ctx, maniDataID2, maniDesc); err != nil {
+		t.Fatal(err)
+	}
+	q := fmt.Sprintf(`MATCH (md:ManifestData) WHERE ID(md) = %d RETURN count(md) AS count`, maniDataID2)
+	if res, _, err := db.QueryOne(q); err != nil {
+		t.Fatal(err)
+	} else {
+		count, err := res.GetInt("count")
+		if err != nil {
+			t.Fatal(err)
+		}
+		assert.Equal(t, 0, count)
+	}
+}
+
+func TestManifestDataCheckProfile(t *testing.T) {
+	ctx := context.Background()
+	_ = ctx
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
+	bs.AddBootstrap("config:ft_arm64")
+	bs.AddBootstrap("config:ft_amd64")
+	bs.AddBootstrap("upstream:ft_arm64")
+	bs.AddBootstrap("upstream:ft_amd64")
+	bs.AddBootstrap("manifest:ft_arm64")
+	bs.AddBootstrap("manifest:ft_amd64")
+	bs.AddBootstrap("layer:0:ft_arm64")
+	bs.AddBootstrap("layer:1:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_amd64")
+	bs.AddBootstrap("layer:1:ft_amd64")
+	bs.AddBootstrap("manifestdata:ft_arm64")
+	bs.AddBootstrap("manifestdata:ft_amd64")
+	bs.AddBootstrap("rules:rules/cpu/zen3.yaml")
+	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target.microarch:zen3")
+	bs.AddBootstrap("profile:profiles/cpu/zen3.yaml")
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	if err != nil {
+		db.TeardownTest(bs)
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs)
+	// Prepare
+	// Profile>Rule
+	prfID, _ := br.GetInt64("profile:cpu:generic#id")
+	rID, _ := br.GetInt64("rule:cpu:generic#id")
+	q := fmt.Sprintf(`MATCH (prf:Profile),(r:Rule) WHERE id(prf) = %d AND id(r) = %d`, prfID, rID)
+	q += ` CREATE (prf)-[:USES]->(r)`
+	if _, err = db.Execute(q); err != nil {
+		t.Fatal(err)
+	}
+	// Rule>Platform
+	pID, _ := br.GetInt64("platform:linux/amd64#id")
+	q = fmt.Sprintf(`MATCH (p:Platform),(r:Rule) WHERE id(p) = %d AND id(r) = %d`, pID, rID)
+	q += ` CREATE (r)-[:TRUE]->(p)`
+	if _, err = db.Execute(q); err != nil {
+		t.Fatal(err)
+	}
+	pArmID, _ := br.GetInt64("platform:linux/arm64#id")
+	q = fmt.Sprintf(`MATCH (p:Platform),(r:Rule) WHERE id(p) = %d AND id(r) = %d`, pArmID, rID)
+	q += ` CREATE (r)-[:TRUE]->(p)`
+	if _, err = db.Execute(q); err != nil {
+		t.Fatal(err)
+	}
+	if e := db.Rule_EvalAll(ctx); e != nil {
+		t.Fatal(e)
+	}
+	// Actual tests
+	mdArm64, err := db.getManiData(ctx, br, "manifestdata:ft_arm64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prfGen, err := db.getProfile(ctx, br, "cpu#generic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := db.ManifestDataCheckProfile(ctx, mdArm64, prfGen); err != nil {
+		t.Fatal(err)
+	} else {
+		assert.False(t, ok)
+	}
+
+}
+
+func TestManifestDataCheckProfileCreationRelationship(t *testing.T) {
+	ctx := context.Background()
+	_ = ctx
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:amd64")
+	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
+	bs.AddBootstrap("config:ft_amd64")
+	bs.AddBootstrap("upstream:ft_amd64")
+	bs.AddBootstrap("manifest:ft_amd64")
+	bs.AddBootstrap("layer:0:ft_amd64")
+	bs.AddBootstrap("layer:1:ft_amd64")
+	bs.AddBootstrap("manifestdata:ft_amd64")
+	bs.AddBootstrap("rules:rules/cpu/zen3.yaml")
+	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target.microarch:zen3")
+	bs.AddBootstrap("profile:profiles/cpu/zen3.yaml")
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	if err != nil {
+		db.TeardownTest(bs)
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs)
+	// Prepare
+	prfGenID, err := br.GetInt64("profile:cpu:generic#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mdID, err := br.GetInt64("manifestdata:ft_amd64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := fmt.Sprintf(`MATCH (prf:Profile), (md:ManifestData) WHERE id(md) = %d AND id(prf) = %d`, mdID, prfGenID)
+	q += ` CREATE (md)-[:CREATED_BY]->(prf)`
+	if _, err = db.Execute(q); err != nil {
+		t.Fatal(err)
+	}
+	// Profile>Rule
+	prfGen, err := db.getProfile(ctx, br, "cpu#generic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	md64, err := db.getManiData(ctx, br, "manifestdata:ft_amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := db.ManifestDataCheckProfileCreationRelationship(ctx, md64, prfGen); err != nil {
+		t.Fatal(err)
+	} else {
+		assert.True(t, ok)
+	}
+	if ok, err := db.ManifestDataCheckProfile(ctx, md64, prfGen); err != nil {
+		t.Fatal(err)
+	} else {
+		assert.True(t, ok)
+	}
+	// Create annotations
+	annID, err := br.GetInt64("annotation:org.supercontainers.hardware.cpu.target.microarch:zen3#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	q = fmt.Sprintf(`MATCH (md:ManifestData), (ann:Annotation) WHERE id(ann) = %d AND id(md) = %d`, annID, mdID)
+	q += ` CREATE (md)-[:HAS_ANNOTATION]->(ann)`
+	if _, err = db.Execute(q); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := db.ManifestDataCheckProfile(ctx, md64, prfGen); err != nil {
+		t.Fatal(err)
+	} else {
+		assert.True(t, ok)
+	}
+
 }

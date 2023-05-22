@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"github.com/metahub-registry/metahub-core/pkg/yaml/config"
-	"golang.org/x/crypto/bcrypt"
 )
 
 func Setup_Manifestlist_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
@@ -153,7 +153,7 @@ func Setup_Upstream_FT_amd64(sq *Sqlite, br *utils.BootstrapResult) (err error) 
 func Setup_Upstream_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	//logrus.Warn("Setup_Upstream_FTarm")
 	// Create upstream for qnib/featuretest
-	up := types.FT_arm_Upstream()
+	up := types.FT_arm64_Upstream()
 	err = sq.Upstream.Insert(&up)
 	if err != nil {
 		return
@@ -537,27 +537,22 @@ func Setup_Users(sqObj *Sqlite, br *utils.BootstrapResult) (err error) {
 		{Username: "admin", Email: "admin@test.de", FirstName: "Admin", LastName: "Mustermann", Password: "admin", Role: "admin"},
 	}
 	for _, user := range usrs {
-		u := types.User{
-			Username:     user.Username,
-			FirstName:    user.FirstName,
-			LastName:     user.LastName,
-			Email:        user.Email,
-			PasswordHash: "",
-			Role:         user.Role,
+		scrt := types.Secret{
+			Key:       user.Password,
+			Name:      "test0",
+			CreatedAt: time.Now(),
+			IsCopied:  false,
 		}
-		switch {
-		case (user.Hash != "") && (user.Password != ""):
-			logrus.Errorf("User '%s' has both 'hash' and 'password' set. Please remove one of them.", user.Username)
-			return
-		case user.Hash != "":
-			u.PasswordHash = user.Hash
-		case user.Password != "":
-			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), 12)
-			if err != nil {
-				logrus.Errorf("Error while hashing password for user '%s': %s", user.Username, err)
-				return err
-			}
-			u.PasswordHash = string(hashedPassword)
+
+		u := types.User{
+			Username:  user.Username,
+			FirstName: user.FirstName,
+			LastName:  user.LastName,
+			Email:     user.Email,
+			Role:      user.Role,
+			Secrets: []types.Secret{
+				scrt,
+			},
 		}
 		_, err = sqObj.InsertUser(ctx, u)
 		if err != nil {
@@ -565,7 +560,7 @@ func Setup_Users(sqObj *Sqlite, br *utils.BootstrapResult) (err error) {
 		}
 		bearerToken := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", u.Username, user.Password)))
 		br.Add(fmt.Sprintf("user:%s#bearer", u.Username), bearerToken)
-		br.Add(fmt.Sprintf("user:%s#hash", u.Username), u.PasswordHash)
+		br.Add(fmt.Sprintf("user:%s#password", u.Username), user.Password)
 	}
 	return
 }

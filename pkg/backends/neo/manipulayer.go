@@ -7,6 +7,7 @@ import (
 
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"github.com/metahub-registry/metahub-core/pkg/yaml/config"
 )
 
 const (
@@ -19,9 +20,11 @@ const (
 	FailManipuLayerLinkToUpstream       = "fail to link ManipuLayer to upstream"
 	FailManipuLayersGetByManipulationID = "fail to get ManipuLayers by manipulation ID"
 	FailManipuLayerLinkToRule           = "fail to link ManipuLayer to rule"
+	FailManipuLayerCreate               = "fail to create ManipuLayer"
+	FailManipuLayerFromConfigYAML       = "fail to create ManipuLayer from config YAML"
 )
 
-func (n Neo) ManipuLayerCreate(ctx context.Context, mpl types.ManipuLayer) (mplID int64, err error) {
+func (n Neo) ManipuLayerCreate(ctx context.Context, mpl *types.ManipuLayer) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameManipuLayer,
 		"func":    "ManipuLayerCreate",
@@ -32,47 +35,63 @@ func (n Neo) ManipuLayerCreate(ctx context.Context, mpl types.ManipuLayer) (mplI
 	q := fmt.Sprintf(`CREATE (mpl:ManipuLayer {label: "%s", rule: "%s"}) RETURN id(mpl) AS %s`, mpl.Label, mpl.Rule, key)
 	utils.Debug(l, span, q)
 	if res, err := n.Execute(q); err != nil {
-		return mplID, utils.ErrorHandler(l, span, err, FailNeoExecute)
+		return utils.ErrorHandler(l, span, err, FailNeoExecute)
 	} else {
-		if mplID, err = res.GetInt64(key); err != nil {
-			return mplID, utils.ErrorHandler(l, span, err, types.FailBrGet, key)
+		if mplID, err := res.GetInt64(key); err != nil {
+			return utils.ErrorHandler(l, span, err, types.FailBrGet, key)
+		} else {
+			mpl.ID = mplID
 		}
 	}
-	mpl.ID = mplID
+	// Connect to ManifestData
+	if md, found, err := n.ManifestDataGetByDigest(ctx, mpl.Image.Digest); err != nil {
+		return utils.ErrorHandler(l, span, err, FailManifestDataGetByDigest)
+	} else if !found {
+		return utils.NewError(l, span, "failed to get ManifestData: %s", mpl.Image.Digest)
+	} else {
+		if err = n.ManifestDataLinkToManipulayer(ctx, md.ID, mpl.ID); err != nil {
+			return utils.ErrorHandler(l, span, err, FailManipuLayerLinkToManifestData)
+		}
+	}
 	// Connect to Rule
 	rLabel := strings.TrimSuffix(mpl.Rule, "=true")
 	utils.Debug(l, span, "RuleGetByLabel: %s", rLabel)
 	if rl, found, err := n.RuleGetByLabel(ctx, rLabel); err != nil {
-		return mplID, utils.ErrorHandler(l, span, err, FailRuleGetByLabel)
+		return utils.ErrorHandler(l, span, err, FailRuleGetByLabel)
 	} else if !found {
-		return mplID, fmt.Errorf("failed to get Rule: %s", rLabel)
+		return utils.NewError(l, span, "failed to get Rule: %s", rLabel)
 	} else {
 		if err = n.ManipuLayerLinkToRule(ctx, mpl.ID, rl.ID); err != nil {
-			return mplID, utils.ErrorHandler(l, span, err, FailManipuLayerLinkToRule)
+			return utils.ErrorHandler(l, span, err, FailManipuLayerLinkToRule)
 		}
 	}
 
-	return mplID, nil
+	return nil
 }
 
-func (n Neo) ManipuLayerGetCreate(ctx context.Context, mpl types.ManipuLayer) (mplID int64, err error) {
+func (n Neo) ManipuLayerGetCreate(ctx context.Context, mpl *types.ManipuLayer) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameManipuLayer,
 		"func":    "ManipuLayerGetCreate",
 	})
 	defer span.End()
-	if mplGot, found, err := n.ManipuLayerGetByLabel(ctx, mpl.Label); err != nil {
-		return 0, utils.ErrorHandler(l, span, err, FailManipuLayerGetByLabel)
+	if mplGot, found, e := n.ManipuLayerGetByLabel(ctx, mpl.Label); e != nil {
+		return utils.ErrorHandler(l, span, e, FailManipuLayerGetByLabel)
 	} else if found {
-		return mplGot.ID, nil
+		mpl.ID = mplGot.ID
+		return nil
 	} else {
-		return n.ManipuLayerCreate(ctx, mpl)
+		if err := n.ManipuLayerCreate(ctx, mpl); err != nil {
+			return utils.ErrorHandler(l, span, err, FailManipuLayerCreate)
+		}
+		return
 	}
 }
 func (n Neo) ManipuLayersGetByManipulationID(ctx context.Context, mpID int64) (mpls []types.ManipuLayer, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameManipuLayer,
 		"func":    "ManipuLayerGetByManipulationID",
+		"mpID":    mpID,
 	})
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (mp:Manipulation)-[]->(mpl:ManipuLayer) WHERE id(mp) = %d RETURN  %s`, mpID, ManipuLayerReturn)
@@ -98,7 +117,8 @@ func (n Neo) ManipuLayerGetByLabel(ctx context.Context, label string) (mpl types
 	})
 	defer span.End()
 
-	q := fmt.Sprintf(`MATCH (mpl:ManipuLayer) WHERE mpl.label = "%s" RETURN  %s`, label, ManipuLayerReturn)
+	q := fmt.Sprintf(`MATCH (mpl:ManipuLayer) WHERE mpl.label = "%s"`, label)
+	q += fmt.Sprintf(` RETURN  %s`, ManipuLayerReturn)
 	utils.Debug(l, span, q)
 	if res, found, err := n.QueryOne(q); err != nil {
 		return mpl, false, utils.ErrorHandler(l, span, err, FailNeoExecute)
@@ -110,17 +130,6 @@ func (n Neo) ManipuLayerGetByLabel(ctx context.Context, label string) (mpl types
 		}
 
 	}
-	/*utils.Debug(l, span, q)
-	if res, found, err := n.QueryOne(q); err != nil {
-		return mpID, false, utils.ErrorHandler(l, span, err, FailNeoExecute)
-	} else if !found {
-		return mpID, false, nil
-	} else {
-		if mpID, err = res.GetInt64(key); err != nil {
-			return mpID, false, utils.ErrorHandler(l, span, err, types.FailBrGet, key)
-		}
-	}
-	*/
 	return mpl, true, nil
 }
 
@@ -137,16 +146,15 @@ func (n Neo) ManipuLayerFromResult(ctx context.Context, res types.Result) (mpl t
 	id, _ := res.GetInt64("mplID")
 	label, _ := res.GetStr("mplLabel")
 	rule, _ := res.GetStr("mplRule")
-	lyrs, err := n.GetLayersForManipuLayerID(ctx, id)
+	md, err := n.ManifestDataForManipuLayerID(ctx, id)
 	if err != nil {
 		return mpl, utils.ErrorHandler(l, span, err, FailGetLayersForManipuLayerID)
 	}
-
 	mpl = types.ManipuLayer{
-		ID:     id,
-		Label:  label,
-		Rule:   rule,
-		Layers: lyrs,
+		ID:    id,
+		Label: label,
+		Rule:  rule,
+		Image: md,
 	}
 
 	return mpl, nil
@@ -192,6 +200,19 @@ func (n Neo) ManipuLayerLinkToLayer(ctx context.Context, mplID, lyrID int64, idx
 	return nil
 }
 
+func (n Neo) ManipuLayerFromConfigYAML(ctx context.Context, cmpl config.ManipuLayer) (mpl types.ManipuLayer, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameManipuLayer,
+		"func":    "ManipuLayerFromUpstream",
+	})
+	defer span.End()
+	up, err := types.NewUpstreamByName(cmpl.Image)
+	if err != nil {
+		return mpl, utils.ErrorHandler(l, span, err, types.FailNewUpstreamByName)
+	}
+	return n.ManipuLayerFromUpstream(ctx, up, cmpl.Rule)
+}
+
 func (n Neo) ManipuLayerFromUpstream(ctx context.Context, up types.Upstream, rule string) (mpl types.ManipuLayer, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameManipuLayer,
@@ -205,17 +226,22 @@ func (n Neo) ManipuLayerFromUpstream(ctx context.Context, up types.Upstream, rul
 	} else {
 		up.ID = upID
 	}
+	md, found, err := n.ManifestDataGetByUpstream(ctx, up)
+	if err != nil {
+		return mpl, utils.ErrorHandler(l, span, err, FailManifestDataGetByUpstream)
+	} else if !found {
+		return mpl, utils.NewError(l, span, FailManifestDataNotFound)
+	}
 	mpl = types.ManipuLayer{
 		Label: up.GetLabel(),
 		Rule:  rule,
-		Image: up,
+		Image: md,
 	}
-	mplID, err := n.ManipuLayerGetCreate(ctx, mpl)
+	err = n.ManipuLayerGetCreate(ctx, &mpl)
 	if err != nil {
 		return mpl, utils.ErrorHandler(l, span, err, FailManipuLayerGetByLabel)
 	}
-	mpl.ID = mplID
-	if err = n.ManipuLayerLinkToUpstream(ctx, mplID, up.ID); err != nil {
+	if err = n.ManipuLayerLinkToUpstream(ctx, mpl.ID, up.ID); err != nil {
 		return mpl, utils.ErrorHandler(l, span, err, FailManipuLayerLinkToUpstream)
 	}
 	return mpl, nil

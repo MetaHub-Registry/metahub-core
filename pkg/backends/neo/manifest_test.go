@@ -83,7 +83,7 @@ func TestManifestGetByLabel(t *testing.T) {
 	}
 	defer db.TeardownTest(bs)
 	// Actual test
-	expLabel := "registry.gitlab.com/qnib-pub-containers/qnib/plain-featuretest:20220715-amd64-generic"
+	expLabel := "registry:5050/qnib-pub-containers/qnib/plain-featuretest:20220715-amd64-generic"
 	m, found, err := db.ManifestGetByLabel(ctx, expLabel)
 	if err != nil {
 		t.Fatal(err)
@@ -101,7 +101,7 @@ func TestManifestGetByLabel(t *testing.T) {
 	}
 	assert.Equal(t, m.ID, maniID)
 	// Fail to link
-	newLabel := fmt.Sprintf("registry.gitlab.com/qnib-pub-containers/qnib/plain-featuretest:NEWLABEL-%s", time.Now().GoString())
+	newLabel := fmt.Sprintf("registry:5050/qnib-pub-containers/qnib/plain-featuretest:NEWLABEL-%s", time.Now().GoString())
 	_, err = db.manifestCreateViaUpstream(ctx, newLabel, upID)
 	if err != nil {
 		t.Fatal(err)
@@ -368,7 +368,7 @@ func TestManifest_GetByLabel(t *testing.T) {
 	}
 	defer db.TeardownTest(bs)
 	// Actual test
-	m, found, e := db.ManifestGetByLabel(ctx, "registry.gitlab.com/qnib-pub-containers/qnib/plain-featuretest:3-17-3-amd64-cpu_zen3")
+	m, found, e := db.ManifestGetByLabel(ctx, "registry:5050/qnib-pub-containers/qnib/plain-featuretest:3-17-3-amd64-cpu_zen3")
 	if e != nil {
 		t.Log(e)
 		t.Fatal(e)

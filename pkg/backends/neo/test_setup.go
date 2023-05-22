@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -128,42 +127,6 @@ func (n Neo) Setup_Annotation(bs utils.Bootstrap, br *utils.BootstrapResult, k, 
 	return
 }
 
-func (n Neo) Setup_Manipulation(bs utils.Bootstrap, br *utils.BootstrapResult, d string) (err error) {
-	logrus.Warn("Setup_Manipulation")
-	ctx := context.Background()
-	_ = ctx
-	pre := bs.YAMLPrefix
-	if pre == "" {
-		err = fmt.Errorf(`the YAMLPrefix is empty, please use "bs.SetYAMLPrefix(<relative path to yaml root>)"`)
-		return
-	}
-	path := filepath.Join(pre, d)
-	cfgMps, e := config.FindManipulations(path)
-	if e != nil {
-		err = errors.Wrap(e, fmt.Sprintf("failed to find manipulation in %s", path))
-		return err
-	}
-	for _, cfgMp := range cfgMps {
-		tmp, e := n.ManipulationFromConfigManipulation(ctx, cfgMp)
-		if e != nil {
-			err = e
-			return err
-		}
-		if tmpID, err := n.ManipulationGetCreate(ctx, tmp); err != nil {
-			return err
-		} else {
-			tmp.ID = tmpID
-		}
-		br.Add(fmt.Sprintf("manipulation:%s#id", tmp.Label), fmt.Sprint(tmp.ID))
-		msg := fmt.Sprintf("Manipulation '%s' created with ID: %d", tmp.Label, tmp.ID)
-		logrus.Info(msg)
-		for _, mpl := range tmp.ManipuLayers {
-			br.Add(fmt.Sprintf("manipulayer:%s#id", mpl.Label), fmt.Sprint(mpl.ID))
-		}
-
-	}
-	return
-}
 func (n Neo) Setup_ManipuLayer(bs utils.Bootstrap, br *utils.BootstrapResult, d string) (err error) {
 	logrus.Warnf("Setup_ManipuLayer: %s", d)
 	ctx := context.Background()
@@ -200,25 +163,19 @@ func (n Neo) Setup_Profiles(bs utils.Bootstrap, br *utils.BootstrapResult, d str
 	logrus.Warn("Setup_Profiles")
 	ctx := context.Background()
 	fname := d
-	passErr := false
-	if p, pass, found := strings.Cut(d, "#"); found {
-		fname = p
-		fmt.Println("pass:", pass)
-		passErr = pass == "pass"
-	}
 	pre := bs.YAMLPrefix
 	if pre == "" {
 		err = fmt.Errorf(`the YAMLPrefix is empty, please use "bs.SetYAMLPrefix(<relative path to yaml root>)"`)
 		return
 	}
 	path := filepath.Join(pre, fname)
-	prfs, e := config.FindProfiles(path)
+	cPrfs, e := config.FindProfiles(path)
 	if e != nil {
 		err = errors.Wrap(e, fmt.Sprintf("failed to find profiles in %s", path))
 		return err
 	}
-	for _, prf := range prfs {
-		p, _ := prf.ToProfile()
+	for _, cPrf := range cPrfs {
+		p, _ := n.ProfileFromYAML(ctx, cPrf)
 		err = n.Profile_GetInsert(ctx, &p)
 		if err != nil {
 			return err
@@ -228,17 +185,7 @@ func (n Neo) Setup_Profiles(bs utils.Bootstrap, br *utils.BootstrapResult, d str
 			label = p.Tag
 		}
 		br.Add(fmt.Sprintf("profile:%s#id", label), fmt.Sprint(p.ID))
-		// Connect to ManipuLayer
-		for _, mp := range p.Manipulations {
-			if mpID, found, err := n.ManipulationGetIDByLabel(ctx, mp.Label); (err != nil || !found) && !passErr {
-				return fmt.Errorf("failed to get Manipulation for label '%s': %v", mp.Label, err)
-			} else {
-				err = n.ProfileLinkToManipulation(ctx, p.ID, mpID)
-				if err != nil && !passErr {
-					return err
-				}
-			}
-		}
+
 		msg := fmt.Sprintf("Profile '%s' created with ID: %d", label, p.ID)
 		if p.Rule != "" {
 			msg += fmt.Sprintf(" and Rule: %s", p.Rule)
@@ -429,305 +376,6 @@ func (n Neo) Setup_Manifest_FT_mpich_amd64(br *utils.BootstrapResult) (err error
 	return
 }
 
-func (n Neo) Setup_Manifest_FT_amd64(ctx context.Context, br *utils.BootstrapResult) (err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"func": "Setup_Manifest_FT_amd64",
-	})
-	defer span.End()
-	// Add Upstream
-	upID, err := br.GetInt64("upstream:ft_amd64#id")
-	if err != nil {
-		return err
-	}
-	utils.Debug(l, span, "Get Upstream w/ ID: %d", upID)
-	up, _, err := n.UpstreamGetByID(ctx, upID)
-	if err != nil {
-		return utils.ErrorHandler(l, span, err, "failed to get upstream id from BR")
-	}
-	/// Get Platform
-	plaID, err := br.GetInt64("platform:linux/amd64#id")
-	if err != nil {
-		return utils.ErrorHandler(l, span, err, "failed to get platform id from BR")
-	}
-	utils.Debug(l, span, "Get Platform w/ ID: %d", plaID)
-	plat, found, err := n.Platform_GetByID(plaID)
-	if err != nil {
-		return utils.ErrorHandler(l, span, err, "failed to get platform by id")
-	}
-	if !found {
-		return utils.NewError(l, span, "platformID '%d' not found", plaID)
-	}
-	utils.Debug(l, span, "Get Platform: %s/%s/%s", plat.OS, plat.Arch, plat.Variant)
-	as := types.NewAnnotations()
-	m := types.Manifest{
-		Upstream:    up,
-		Platform:    plat,
-		Annotations: as,
-	}
-	maniID, err := n.ManifestGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
-	br.Add("manifest:ft_amd64#id", fmt.Sprint(maniID))
-	if err != nil {
-		return err
-	}
-	err = n.ManifestLinkToUpstream(ctx, maniID, upID)
-	if err != nil {
-		return err
-	}
-	err = n.LinkManifestToPlatform(ctx, maniID, plaID)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	// Link Config
-	config_id, err := br.GetInt64(fmt.Sprintf("config:ft_%s#id", m.Platform.Arch))
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	config, found, err := n.Config_GetByID(ctx, config_id)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	if !found {
-		err = fmt.Errorf("config not found")
-		return
-	}
-	config.MediaType, err = br.Get(fmt.Sprintf("config:ft_%s#mediaType", m.Platform.Arch))
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	err = n.ManifestData_LinkToConfig(ctx, maniID, config)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	return
-}
-
-func (n Neo) Setup_Manifest_FT_arm64(br *utils.BootstrapResult) (err error) {
-	ctx := context.Background()
-	// Add Manifest
-	/// Get Upstream
-	upID, err := br.GetInt64("upstream:ft_arm64#id")
-	if err != nil {
-		return err
-	}
-	up, _, err := n.UpstreamGetByID(ctx, upID)
-	if err != nil {
-		return err
-	}
-	/// Get Platform
-	plaID, err := br.GetInt64("platform:linux/arm64#id")
-	if err != nil {
-		return err
-	}
-	plat, found, err := n.Platform_GetByID(plaID)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("platform not found")
-	}
-	m := types.Manifest{
-		Upstream: up,
-		Platform: plat,
-	}
-	maniID, err := n.ManifestGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
-	br.Add("manifest:ft_arm64#id", fmt.Sprint(maniID))
-	if err != nil {
-		return err
-	}
-	err = n.ManifestLinkToUpstream(ctx, maniID, upID)
-	if err != nil {
-		return err
-	}
-	// Link Platform
-	err = n.LinkManifestToPlatform(ctx, maniID, plaID)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	/*
-		// Link Config
-		arm_config_id, err := br.GetInt64(fmt.Sprintf("config:ft_%s#id", m.Platform.Arch))
-		if err != nil {
-			logrus.Error(err)
-			return err
-		}
-		arm_config, found, err := n.Config_GetByID(ctx, arm_config_id)
-		if err != nil {
-			logrus.Error(err)
-			return err
-		}
-		if !found {
-			err = fmt.Errorf("config not found")
-			return
-		}
-		arm_config.MediaType, err = br.Get(fmt.Sprintf("config:ft_%s#mediaType", m.Platform.Arch))
-		if err != nil {
-			logrus.Error(err)
-			return err
-		}
-		err = n.ManifestData_LinkToConfig(ctx, maniID, arm_config)
-		if err != nil {
-			logrus.Error(err)
-			return err
-		}
-	*/
-	return
-}
-func (n Neo) SetupManifestFTZen(br *utils.BootstrapResult) (err error) {
-	ctx := context.Background()
-	// Add Manifest
-	/// Get Upstream
-	upID, err := br.GetInt64("upstream:ft_zen#id")
-	if err != nil {
-		return err
-	}
-	up, _, err := n.UpstreamGetByID(ctx, upID)
-	if err != nil {
-		return err
-	}
-	/// Get Platform
-	plaID, err := br.GetInt64("platform:linux/amd64#id")
-	if err != nil {
-		return err
-	}
-	plat, found, err := n.Platform_GetByID(plaID)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("platform not found")
-	}
-	// Annotations
-	as := types.NewAnnotations()
-	z3 := types.NewAnnotation("org.supercontainers.hardware.cpu.target.microarch", "zen")
-	as.AddAnnotation(z3)
-	m := types.Manifest{
-		Upstream:    up,
-		Platform:    plat,
-		Annotations: as,
-	}
-	// Manifest
-	maniID, err := n.ManifestGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
-	br.Add("manifest:ft_zen#id", fmt.Sprint(maniID))
-	if err != nil {
-		return err
-	}
-	// Link Platform
-	err = n.LinkManifestToPlatform(ctx, maniID, plaID)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	// Link Config
-	config_id, err := br.GetInt64("config:ft_zen#id")
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	config, found, err := n.Config_GetByID(ctx, config_id)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	if !found {
-		err = fmt.Errorf("config not found")
-		return
-	}
-	config.MediaType, err = br.Get("config:ft_zen#mediaType")
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	err = n.ManifestData_LinkToConfig(ctx, maniID, config)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	return
-}
-
-func (n Neo) Setup_Manifest_FT_zen3(br *utils.BootstrapResult) (err error) {
-	ctx := context.Background()
-	// Add Manifest
-	/// Get Upstream
-	upID, err := br.GetInt64("upstream:ft_zen3#id")
-	if err != nil {
-		return err
-	}
-	up, _, err := n.UpstreamGetByID(ctx, upID)
-	if err != nil {
-		return err
-	}
-	/// Get Platform
-	plaID, err := br.GetInt64("platform:linux/amd64#id")
-	if err != nil {
-		return err
-	}
-	plat, found, err := n.Platform_GetByID(plaID)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("platform not found")
-	}
-	// Annotations
-	as := types.NewAnnotations()
-	z3 := types.NewAnnotation("org.supercontainers.hardware.cpu.target.microarch", "zen3")
-	as.AddAnnotation(z3)
-	m := types.Manifest{
-		Upstream:    up,
-		Platform:    plat,
-		Annotations: as,
-	}
-	// Manifest
-	maniID, err := n.ManifestGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
-	br.Add("manifest:ft_zen3#id", fmt.Sprint(maniID))
-	if err != nil {
-		return err
-	}
-	err = n.ManifestLinkToUpstream(ctx, maniID, upID)
-	if err != nil {
-		return err
-	}
-	// Link Platform
-	err = n.LinkManifestToPlatform(ctx, maniID, plaID)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	// Link Config
-	config_id, err := br.GetInt64("config:ft_zen3#id")
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	config, found, err := n.Config_GetByID(ctx, config_id)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	if !found {
-		err = fmt.Errorf("config not found")
-		return
-	}
-	config.MediaType, err = br.Get("config:ft_zen3#mediaType")
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	err = n.ManifestData_LinkToConfig(ctx, maniID, config)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	return
-}
-
 func (n Neo) Setup_Collection_FT_amd64(br *utils.BootstrapResult) (err error) {
 	ctx := context.Background()
 	// Add Collection
@@ -873,46 +521,6 @@ func (n Neo) Setup_ManifestList_FT_generic(br *utils.BootstrapResult) (err error
 	err = n.LinkManifestListToManifests(ml_generic_id, []types.ManifestData{arm_ml, amd_ml})
 	if err != nil {
 		return err
-	}
-	return
-}
-
-func (n Neo) Setup_ManifestData(br *utils.BootstrapResult, mani types.ManifestData, label string) (err error) {
-	ctx := context.Background()
-	err = n.ManifestData_GetInsert(ctx, &mani)
-	if err != nil {
-		return err
-	}
-	br.Add(fmt.Sprintf("%s#digest", label), mani.Digest)
-	br.Add(fmt.Sprintf("%s#id", label), fmt.Sprint(mani.ID))
-	// Check if manifest with the same label is already in DB
-	re := `^manifestdata:(?P<name>.*)$`
-	r := regexp.MustCompile(re)
-	if r.MatchString(label) {
-		m := r.FindStringSubmatch(label)
-		k := m[1]
-		key := fmt.Sprintf("manifest:%s#id", k)
-		mID, err := br.GetInt64(key)
-		if err != nil {
-			return nil
-		}
-		// Link ManifestData to Manifest
-		err = n.LinkManifestToManifestData(ctx, mID, mani.ID, mani.Type)
-		if err != nil {
-			return err
-		}
-		// Link from ManifestData to Upstream
-		if upID, found, e := n.UpstreamGetIDByDigest(ctx, mani.Upstream.Digest.String()); e != nil {
-			return e
-		} else if found {
-			err = n.ManifestDataLinkToUpstream(ctx, mani.ID, upID)
-			if err != nil {
-				return err
-			}
-		} else {
-			err = fmt.Errorf("could not find upstream with digest '%s'", mani.Upstream.Digest.String())
-			return err
-		}
 	}
 	return
 }
@@ -1084,13 +692,23 @@ func (n Neo) TeardownTest(bs utils.Bootstrap) {
 }
 
 func (n Neo) BootstrapTestWithBR(ctx context.Context, b string, bs utils.Bootstrap, br *utils.BootstrapResult) (err error) {
-	sl := strings.Split(b, ":")
-	if len(sl) < 2 {
-		err = fmt.Errorf("invalid bootstrap string '%s'", b)
-		return
+	before, rest, found := strings.Cut(b, ":")
+	if !found {
+		err = fmt.Errorf("no Setup for '%s'", b)
+		return err
 	}
-	rest := strings.Join(sl[1:], ":")
-	switch sl[0] {
+	switch before {
+	case "empty":
+		emptyAll := false
+		if rest == "all" {
+			emptyAll = true
+		}
+		err = n.EmptyData(emptyAll)
+		if err != nil {
+			err = errors.Wrapf(err, whileFmrt, b)
+			return
+		}
+		return
 	case "annotation":
 		err = n.Bootstrap_Annotation(bs, br, rest)
 		if err != nil {
@@ -1099,7 +717,7 @@ func (n Neo) BootstrapTestWithBR(ctx context.Context, b string, bs utils.Bootstr
 		}
 		return
 	case "manipulation":
-		err = n.Bootstrap_Manipulation(bs, br, rest)
+		err = n.Bootstrap_Manipulation(ctx, bs, br, rest)
 		if err != nil {
 			err = errors.Wrapf(err, whileFmrt, b)
 			return
@@ -1134,7 +752,7 @@ func (n Neo) BootstrapTestWithBR(ctx context.Context, b string, bs utils.Bootstr
 		}
 		return
 	case "upstream":
-		err = n.Bootstrap_Upstream(bs, br, rest)
+		err = n.Bootstrap_Upstream(ctx, bs, br, rest)
 		if err != nil {
 			err = errors.Wrapf(err, whileFmrt, b)
 			return
@@ -1148,6 +766,16 @@ func (n Neo) BootstrapTestWithBR(ctx context.Context, b string, bs utils.Bootstr
 
 	case "collection":
 		if err = n.Bootstrap_Collection(bs, br, rest); err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
+		return
+	case "manifestdata":
+		if err = n.Bootstrap_ManifestData(ctx, bs, br, rest); err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
+		return
+	case "manifest":
+		if err = n.Bootstrap_Manifest(ctx, bs, br, rest); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 		return
@@ -1172,56 +800,9 @@ func (n Neo) BootstrapTestWithBR(ctx context.Context, b string, bs utils.Bootstr
 			err = errors.Wrap(err, "Setup_Platforms:AMD64")
 			return
 		}
-
-	case "manifestdata:ft_arm64":
-		err = n.Setup_ManifestData(br, types.FT_arm_ManifestData(), b)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
-	case "manifestdata:ft_amd64":
-		err = n.Setup_ManifestData(br, types.FT_amd_ManifestData(), b)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
-	case "manifestdata:ft_zen_5c99":
-		err = n.Setup_ManifestData(br, types.ManifestDataAmd64Zen(), b)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
-	case "manifestdata:ft_zen3":
-		err = n.Setup_ManifestData(br, types.FT_zen3_ManifestData(), b)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
 	case "manifestlist:ft_generic":
 		err = n.Setup_ManifestList_FT_generic(br)
 		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
-	case "manifest:ft_arm64":
-		err = n.Setup_Manifest_FT_arm64(br)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
-	case "manifest:ft_zen":
-		err = n.SetupManifestFTZen(br)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
-	case "manifest:ft_zen3":
-		err = n.Setup_Manifest_FT_zen3(br)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
-	case "manifest:ft_amd64":
-		err = n.Setup_Manifest_FT_amd64(ctx, br)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
-	case "manifest:ft_mpich_amd64":
-		err = n.Setup_Manifest_FT_mpich_amd64(br)
-		if err != nil {
-			br.PrintDict()
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "cypher:manifestlist:ft_generic":
@@ -1288,16 +869,6 @@ func (n Neo) Bootstrap_Annotation(bs utils.Bootstrap, br *utils.BootstrapResult,
 	return
 }
 
-func (n Neo) Bootstrap_Manipulation(bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
-	err = n.Setup_Manipulation(bs, br, b)
-	if err != nil {
-		err = errors.Wrapf(err, "Setup_Manipulation(%s)", b)
-		return
-	}
-
-	return
-}
-
 func (n Neo) Bootstrap_ManipuLayer(bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
 	err = n.Setup_ManipuLayer(bs, br, b)
 	if err != nil {
@@ -1340,6 +911,12 @@ func (n Neo) Bootstrap_Config(bs utils.Bootstrap, br *utils.BootstrapResult, b s
 			err = errors.Wrapf(err, whileFmrt, b)
 			return
 		}
+	case "glow150arm64":
+		err = n.Setup_Config(br, types.ConfigGlow150ARM64(), b)
+		if err != nil {
+			err = errors.Wrapf(err, whileFmrt, b)
+			return
+		}
 	}
 
 	return
@@ -1372,10 +949,11 @@ func (n Neo) Bootstrap_Collection(bs utils.Bootstrap, br *utils.BootstrapResult,
 	}
 	return
 }
-func (n Neo) Bootstrap_Upstream(bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
+
+func (n Neo) Bootstrap_Upstream(ctx context.Context, bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
 	switch b {
 	case "ft_arm64":
-		err = n.Setup_Upstream(br, types.FT_arm_Upstream(), b)
+		err = n.Setup_Upstream(br, types.FT_arm64_Upstream(), b)
 		if err != nil {
 			err = errors.Wrapf(err, whileFmrt, b)
 			return
@@ -1393,7 +971,7 @@ func (n Neo) Bootstrap_Upstream(bs utils.Bootstrap, br *utils.BootstrapResult, b
 			return
 		}
 	case "ft_zen":
-		err = n.Setup_Upstream(br, types.ManifestDataAmd64Zen().Upstream, b)
+		err = n.Setup_Upstream(br, types.ManifestDataAmd64Zen.Upstream, b)
 		if err != nil {
 			err = errors.Wrapf(err, whileFmrt, b)
 			return

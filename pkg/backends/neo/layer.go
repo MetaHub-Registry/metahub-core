@@ -142,6 +142,7 @@ func (n Neo) LayerDeleteByID(ctx context.Context, lyrID int64) (err error) {
 	return nil
 
 }
+
 func (n Neo) LayerDeleteByDigest(ctx context.Context, dig string) (err error) {
 	q := `MATCH (n:Layer) WHERE n.digest = "%s" DETACH DELETE n`
 	query := fmt.Sprintf(q, dig)
@@ -310,12 +311,12 @@ func (n Neo) Layer_Create_ByDescriptor(l distribution.Descriptor) (layerID int64
 	return
 }
 
-func (n Neo) GetLayersForManifestID(ctx context.Context, maniID int64) (layers []types.Layer, err error) {
+func (n Neo) GetLayersForManifestDataID(ctx context.Context, maniDataID int64) (layers []types.Layer, err error) {
 	layers = []types.Layer{}
 	q := `MATCH (l:Layer)<-[r]-(m:ManifestData) WHERE id(m) = %d`
 	q += ` RETURN id(l) AS layerID, l.digest AS layerDigest, TYPE(r) AS layerMediaType, l.size AS layerSize`
 	q += ` ORDER BY r.order`
-	query := fmt.Sprintf(q, maniID)
+	query := fmt.Sprintf(q, maniDataID)
 	res, err := n.Query(query)
 	if err != nil {
 		logrus.Errorf("Failed to run query: %s", err)

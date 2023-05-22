@@ -30,6 +30,36 @@ func ErrorHandler(l *logrus.Entry, span trace.Span, e error, frmt string, a ...a
 	return
 }
 
+func ErrTypeToHTTPStatus(w http.ResponseWriter, eType string) {
+	switch eType {
+	case "BAD_REQUEST":
+		w.WriteHeader(http.StatusBadRequest)
+	case "UNAUTHORIZED":
+		w.WriteHeader(http.StatusUnauthorized)
+	case "FORBIDDEN":
+		w.WriteHeader(http.StatusForbidden)
+	case "NOT_FOUND":
+		w.WriteHeader(http.StatusNotFound)
+	case "INTERNAL_ERROR":
+		w.WriteHeader(http.StatusInternalServerError)
+	default:
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
+func ErrorHandlerPlainWWW(w http.ResponseWriter, l *logrus.Entry, span trace.Span, e error, eType, frmt string, a ...any) (err error) {
+	err = ErrorHandler(l, span, e, frmt, a...)
+	ErrTypeToHTTPStatus(w, eType)
+	return
+
+}
+
+func NewErrorPlainWWW(w http.ResponseWriter, l *logrus.Entry, span trace.Span, eType, frmt string, a ...any) (err error) {
+	err = NewError(l, span, frmt, a...)
+	ErrTypeToHTTPStatus(w, eType)
+	return
+}
+
 func ErrorHandler_WithWWW(w http.ResponseWriter, l *logrus.Entry, span trace.Span, repo, action string, e error, eType, frmt string, a ...any) (err error) {
 	var msg string
 	msg = e.Error()

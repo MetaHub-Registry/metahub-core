@@ -2,11 +2,14 @@ package neo
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"github.com/metahub-registry/metahub-core/pkg/yaml/config"
 )
 
 func TestProfileCRUD(t *testing.T) {
@@ -241,4 +244,157 @@ func TestProfileFromManifestIDZen3(t *testing.T) {
 	if err = db.ProfileUnwindRules(ctx, prfZen3.ID, maniID_zen3); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestFilterReadFilterConfig(t *testing.T) {
+	bs := utils.NewBootstrap()
+	debug := 0
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs)
+	// Actual test
+	pGlow, err := config.LoadProfile(ctx, filepath.Join("../../../misc/yaml", "profiles/glow/1.5.0-arm64.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "1.5.0-arm64", pGlow.Tag)
+	tpGlow, err := db.ProfileFromYAML(ctx, pGlow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, len(tpGlow.Manipulations))
+}
+
+func TestProfileFromManifestIDManipulations(t *testing.T) {
+	ctx := context.Background()
+	_ = ctx
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("upstream:glow150arm64")
+	bs.AddBootstrap("rules:rules/platform/arch/arm64.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("layer:0:glow150arm64_2660")
+	bs.AddBootstrap("layer:1:glow150arm64_3571")
+	bs.AddBootstrap("layer:2:glow150arm64_d54e")
+	bs.AddBootstrap("config:glow150arm64")
+	bs.AddBootstrap("manifestdata:glow150arm64")
+	bs.AddBootstrap("manipulation:manipulations/layer/glow/1.5.0-arm64.yaml")
+	bs.AddBootstrap("profile:profiles/glow/1.5.0-arm64.yaml")
+	// ManiData Setup
+	bs.AddBootstrap("platforms:amd64")
+	bs.AddBootstrap("config:ft_amd64")
+	bs.AddBootstrap("upstream:ft_amd64")
+	bs.AddBootstrap("manifest:ft_amd64")
+	bs.AddBootstrap("layer:0:ft_amd64")
+	bs.AddBootstrap("layer:1:ft_amd64")
+	bs.AddBootstrap("manifestdata:ft_amd64")
+	bs.AddBootstrap("collection:ft_amd64")
+	//ARM64
+	bs.AddBootstrap("platforms:arm64")
+	bs.AddBootstrap("config:ft_arm64")
+	bs.AddBootstrap("upstream:ft_arm64")
+	bs.AddBootstrap("manifest:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_arm64")
+	bs.AddBootstrap("layer:1:ft_arm64")
+	bs.AddBootstrap("manifestdata:ft_arm64")
+	bs.AddBootstrap("collection:ft_arm64")
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs)
+	// Connect Collection/Tag
+	maniAmd64ID, err := br.GetInt64("manifest:ft_amd64#id")
+	if err != nil {
+		t.Fatalf("Failed to get manifest:ft_amd64#id: %v", err)
+	}
+	colID, err := br.GetInt64("collection:ft#id")
+	if err != nil {
+		t.Fatalf("Failed to get collection:ft#id: %v", err)
+	}
+	tagAmd64ID, err := br.GetInt64("tag:amd64#id")
+	if err != nil {
+		t.Fatalf("Failed to get tag:amd64#id: %v", err)
+	}
+	if e := db.LinkCollectionTagToManifest(ctx, tagAmd64ID, maniAmd64ID); e != nil {
+		t.Fatalf("Failed to LinkCollectionTagToManifest: %v", e)
+	}
+	if e := db.LinkCollectionToManifest(ctx, colID, maniAmd64ID); e != nil {
+		t.Fatalf("Failed to LinkCollectionToManifest: %v", e)
+	}
+	maniArm64ID, err := br.GetInt64("manifest:ft_arm64#id")
+	if err != nil {
+		t.Fatalf("Failed to get manifest:ft_arm64#id: %v", err)
+	}
+	tagArm64ID, err := br.GetInt64("tag:arm64#id")
+	if err != nil {
+		t.Fatalf("Failed to get tag:amd64#id: %v", err)
+	}
+	if e := db.LinkCollectionTagToManifest(ctx, tagArm64ID, maniArm64ID); e != nil {
+		t.Fatalf("Failed to LinkCollectionTagToManifest: %v", e)
+	}
+	if e := db.LinkCollectionToManifest(ctx, colID, maniArm64ID); e != nil {
+		t.Fatalf("Failed to LinkCollectionToManifest: %v", e)
+	}
+	/// Link Platform to rules
+	platArm64ID, err := br.GetInt64("platform:linux/arm64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	platAmd64ID, err := br.GetInt64("platform:linux/amd64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	//// Linux to both
+	ruleLinuxID, err := br.GetInt64("rule:os:linux#id")
+	if err != nil {
+		t.Fatalf("Failed to get 'rule:os:linux#id': %v", err)
+	}
+	q := fmt.Sprintf(`MATCH (p:Platform),(r:Rule) WHERE id(p) = %d AND id(r) = %d`, platArm64ID, ruleLinuxID)
+	q += ` CREATE (r)-[:TRUE]->(p)`
+	if _, err = db.Execute(q); err != nil {
+		t.Fatal(err)
+	}
+	q = fmt.Sprintf(`MATCH (p:Platform),(r:Rule) WHERE id(p) = %d AND id(r) = %d`, platAmd64ID, ruleLinuxID)
+	q += ` CREATE (r)-[:TRUE]->(p)`
+	if _, err = db.Execute(q); err != nil {
+		t.Fatal(err)
+	}
+	/// Arm64 to only one
+	ruleArm64ID, err := br.GetInt64("rule:arch:arm64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	q = fmt.Sprintf(`MATCH (p:Platform),(r:Rule) WHERE id(p) = %d AND id(r) = %d`, platArm64ID, ruleArm64ID)
+	q += ` CREATE (r)-[:TRUE]->(p)`
+	if _, err = db.Execute(q); err != nil {
+		t.Fatal(err)
+	}
+	// Actual Test
+
 }

@@ -30,4 +30,20 @@ var (
 		Key:   "os",
 		Value: "linux",
 	}
+	RulePlatArm64 = Rule{
+		Name:  "os",
+		Tag:   "linux",
+		Type:  "plat",
+		Op:    "eq",
+		Key:   "arch",
+		Value: "arm64",
+	}
+	RulePlatAmd64 = Rule{
+		Name:  "os",
+		Tag:   "linux",
+		Type:  "plat",
+		Op:    "eq",
+		Key:   "arch",
+		Value: "amd64",
+	}
 )

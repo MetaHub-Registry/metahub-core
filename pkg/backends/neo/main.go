@@ -154,14 +154,17 @@ func (n Neo) Setup(ctx context.Context) (err error) {
 			name: "Manifest",
 			attr: []string{"label"},
 		}, {
-			name: "ManifestData",
-			attr: []string{"digest"},
-		}, {
+			//name: "ManifestData",
+			//attr: []string{"digest", "mediaType"},
+			//}, {
 			name: "Config",
 			attr: []string{"digest", "mediaType"},
 		}, {
 			name: "Layer",
 			attr: []string{"digest", "mediaType"},
+		}, {
+			name: "ManipuLayer",
+			attr: []string{"label", "rule"},
 		},
 	}
 	for _, t := range nodes {

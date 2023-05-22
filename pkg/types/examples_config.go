@@ -5,6 +5,10 @@ import (
 	imgspecv1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
+var (
+	ConfigDTGlow150ARM64 = NewDataTuple("data/cfg/26608a4ddd90f25b3854b5d5f2543b158f79c6e6bdb4099b65b63eb0dcf9d45d.json")
+)
+
 func DataTupeFTConfigArm64() DataTuple {
 	return NewDataTuple("data/cfg/cf5c26263929e84d7373d23b2692222cceceb3175b3325b183ead2ab6b5a5ce3.json")
 }
@@ -47,6 +51,12 @@ func FT_zen3_ConfigByte() []byte {
 		panic(err)
 	}
 	return dat
+}
+
+func ConfigGlow150ARM64() Config {
+	cfg, _ := NewConfigFromBytes(ConfigDTGlow150ARM64.Data)
+	cfg.MediaType = MediaTypeImageConfig
+	return cfg
 }
 
 func FT_zen3_Config() Config {

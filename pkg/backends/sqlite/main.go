@@ -25,6 +25,7 @@ type Sqlite struct {
 	Sql           *sql.DB
 	BlobUpload    BlobUpload
 	User          User
+	Secret        Secret
 	Token         Token
 	Profile       Profile
 	Config        Config
@@ -173,6 +174,10 @@ func (s *Sqlite) createDB(mhFile string, tables string) (err error) {
 	if len(tables) == 0 || t.Has("users") {
 		err = s.User.CreateTables()
 		checkErr(err, "while creating user-tables")
+	}
+	if len(tables) == 0 || t.Has("secrets") {
+		err = s.Secret.CreateTables()
+		checkErr(err, "while creating secret-tables")
 	}
 	if len(tables) == 0 || t.Has("tokens") {
 		err = s.Token.CreateTables()

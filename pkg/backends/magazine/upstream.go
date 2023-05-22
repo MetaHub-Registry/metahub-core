@@ -25,6 +25,7 @@ const (
 	FailLinkProfileToManifestData   = "failed to link profile and manifestdata"
 	FailUnwind                      = "failed to unwind profile"
 	FailCreateOCIv1Manifest         = "failed to create OCIv1 manifest"
+	FailCacheUpstream               = "failed to cache upstream"
 )
 
 func (mag Magazine) NeoInsertUpstream(ctx context.Context, up types.Upstream) (upID int64, err error) {

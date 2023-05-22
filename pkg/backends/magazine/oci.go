@@ -252,7 +252,7 @@ func (mag Magazine) CreateOCIv1ForProfile(ctx context.Context, mani types.Manife
 		"prf.ID":        prf.ID,
 	})
 	defer span.End()
-	utils.Debug(l, span, "Creating OCIv1 manifest for Manifest.ID: %d // ManifestData.type: '%s'", mani.ID, origMani.Type)
+	utils.Warn(l, span, "Creating OCIv1 manifest for Manifest.ID: %d // ManifestData.type: '%s'", mani.ID, origMani.Type)
 	switch origMani.Type {
 	case "UPLOADED_BY":
 		mdID, success, e := mag.CreateOCIv1_UploadedByPrf(ctx, mani, origMani, prf)
@@ -277,7 +277,7 @@ func (mag Magazine) CreateOCIv1ForProfile(ctx context.Context, mani types.Manife
 			return
 		}
 	case "PARSED", "ORIGINAL":
-		mdID, success, e := mag.CreateOCIv1ParsedManifest(ctx, mani, origMani)
+		mdID, success, e := mag.CreateOCIv1ParsedManifest(ctx, mani, origMani, prf.ID)
 		if e != nil {
 			err = errors.Wrapf(e, "failed to create OCIv1 manifest for parsed Manifest.ID: %d", mani.ID)
 			return
@@ -368,17 +368,71 @@ func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMa
 	return
 }
 
-func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prfID int64) (maniID int64, err error) {
+func (mag Magazine) OCIApplyManipulations(ctx context.Context, mani types.Manifest, origMani *types.ManifestData, prfID, ociManiDataID int64) (v1Cfg v1.Image, ok bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":     pkgNameOci,
+		"func":        "OCIApplyManipulations",
+		"mani.ID":     mani.ID,
+		"origMani.ID": origMani.ID,
+		"prfID":       prfID,
+	})
+	defer span.End()
+	if ok, err := mag.Database.ManinpulationCheckRules(ctx, prfID, mani.ID); err != nil {
+		return v1Cfg, false, utils.ErrorHandler(l, span, err, "failing ManinpulationCheckRules")
+	} else if !ok {
+		utils.Warn(l, span, "ManinpulationCheckRules reports that the manifest does not match the profile to apply manipulations")
+		return v1Cfg, false, nil
+	}
+
+	// Once the origMani becomes ociMani, we apply the manipulations
+	mplCfgDigest, e := mag.Database.ManipulationUnwind(ctx, mani.ID, ociManiDataID, prfID)
+	if e != nil {
+		return v1Cfg, false, utils.ErrorHandler(l, span, e, "while in ManipulationUnwind")
+	}
+	// ///// A. Generate `oci.image.config.v1`
+	if manipuLayer, err := mag.Database.GetLayersForManifestDataID(ctx, ociManiDataID); err != nil {
+		return v1Cfg, false, utils.ErrorHandler(l, span, err, "while in GetLayersForManifestDataID")
+	} else {
+		origMani.Layers = append(origMani.Layers, manipuLayer...)
+	}
+	v1Cfg, e = mag.GenerateOCIv1Config(ctx, mani, *origMani)
+	if e != nil {
+		return v1Cfg, false, utils.ErrorHandler(l, span, e, "failed to GenerateOCIv1Config")
+	}
+	// Add Config from ociManifest to config from original
+	if mplCfgDigest != "" {
+		mplCfg, err := mag.Minio.ConfigGetObj(ctx, mplCfgDigest)
+		if err != nil {
+			return v1Cfg, false, utils.ErrorHandler(l, span, err, "while in ConfigGetObj")
+		}
+		for _, diffID := range mplCfg.Cfg.RootFS.DiffIDs {
+			utils.Info(l, span, "Adding diffID: %s", diffID.String())
+			v1Cfg.RootFS.DiffIDs = append(v1Cfg.RootFS.DiffIDs, diffID)
+
+		}
+	}
+	return v1Cfg, true, nil
+}
+
+// TODO: When no manipulation are applied, no update is needed
+func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prfID int64) (ociManiDataID int64, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameOci,
 		"func":    "OCI_CreateBaseManifest",
 		"mani.ID": mani.ID,
+		"prfID":   prfID,
 	})
 	defer span.End()
+	digStr := fmt.Sprintf("%s#%s-%d", origMani.Upstream.GetLabel(), origMani.Digest, prfID)
+	tempDigest := digest.FromString(digStr)
 	// Empty Manifest
 	m := v1.Manifest{
 		Versioned: specs.Versioned{
 			SchemaVersion: 2,
+		},
+		Config: v1.Descriptor{
+			MediaType: v1.MediaTypeImageConfig,
+			Digest:    tempDigest,
 		},
 		MediaType: v1.MediaTypeImageManifest,
 	}
@@ -387,11 +441,26 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 		err = utils.ErrorHandler(l, span, e, "failed to get anno rules for profile %d", prfID)
 		return
 	}
-	// ///// A. Generate `oci.image.config.v1`
-	v1Cfg, e := mag.GenerateOCIv1Config(ctx, mani, origMani)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to GenerateOCIv1Config")
+	// Create a new ociManifestData as a copy of origMani (as OCIv1)
+	// Graph
+	maniDesc, err := ManifestV1ToDescriptor(m)
+	if err != nil {
 		return
+	}
+	utils.Warn(l, span, "Temp digest: %s", maniDesc.Digest.String())
+	ociManiDataID, _, err = mag.Database.ManifestData_V1_GetInsert(ctx, mani.ID, maniDesc)
+	if err != nil {
+		return
+	}
+	v1Cfg, ok, e := mag.OCIApplyManipulations(ctx, mani, &origMani, prfID, ociManiDataID)
+	if e != nil {
+		return ociManiDataID, utils.ErrorHandler(l, span, e, "failed to apply manipulations")
+	} else if !ok {
+		v1Cfg, e = mag.GenerateOCIv1Config(ctx, mani, origMani)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to GenerateOCIv1Config")
+			return
+		}
 	}
 	utils.Debug(l, span, "Found %d AnnoEqRules", len(rs))
 	for idx, r := range rs {
@@ -403,6 +472,7 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 		}
 		utils.Debug(l, span, "  [SKIP] NOT AnnoEqRule %d > %s", idx, r.ToString())
 	}
+
 	cfgDesc, e := mag.GenerateOCIv1ConfigDescriptor(ctx, v1Cfg)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to GenerateOCIv1ConfigDescriptor")
@@ -415,7 +485,6 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 		err = utils.ErrorHandler(l, span, e, "failed to PutConfig")
 		return
 	}
-	// Put Config into Graph
 	cfg, _, e := mag.Database.OCIv1Config_GetInsertDescriptor(ctx, cfgDesc)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to OCIv1Config_GetInsertDescriptor")
@@ -439,42 +508,39 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 	for _, l := range layerMap {
 		m.Layers = append(m.Layers, l.Descriptor)
 	}
+	utils.Warn(l, span, "Package %d Layers", len(m.Layers))
 	// //// Add Annotations
 	m.Annotations = mani.Annotations.ToMap()
 
+	/// Finalize the Manifest and the Config
 	// Put Manifest into Graph and Minio
 	maniBytes, err := json.Marshal(m)
 	if err != nil {
 		return
 	}
-	// Minio
-	maniDigest := digest.FromBytes(maniBytes)
-	err = mag.Minio.ManifestsPutObj(ctx, maniDigest.String(), maniBytes)
+	maniDesc, err = ManifestV1ToDescriptor(m)
 	if err != nil {
 		return
 	}
+	mag.Minio.ManifestsPutObj(ctx, maniDesc.Digest.String(), maniBytes)
 	// Graph
-	maniDesc, err := ManifestV1ToDescriptor(m)
+	err = mag.Database.ManifestDataUpdateDesc(ctx, ociManiDataID, maniDesc)
 	if err != nil {
-		return
-	}
-	maniID, _, err = mag.Database.ManifestData_V1_GetInsert(ctx, mani.ID, maniDesc)
-	if err != nil {
-		return
+		return ociManiDataID, utils.ErrorHandler(l, span, err, "while in ManifestDataUpdate")
 	}
 	// Link ManifestData to Annotations
-	err = mag.Database.ManifestData_AddAnnotations(ctx, maniID, &mani.Annotations)
+	err = mag.Database.ManifestData_AddAnnotations(ctx, ociManiDataID, &mani.Annotations)
 	if err != nil {
 		return
 	}
 	// //// Link ManifestData to Config
-	err = mag.Database.ManifestData_LinkToOCIv1Config(ctx, maniID, cfg)
+	err = mag.Database.ManifestData_LinkToOCIv1Config(ctx, ociManiDataID, cfg)
 	if err != nil {
 		return
 	}
 	// //// Link ManifestData to Layers
 	for _, ld := range layerMap {
-		err = mag.Database.ManifestData_LinkToOCIv1Layer(ctx, maniID, ld)
+		err = mag.Database.ManifestData_LinkToOCIv1Layer(ctx, ociManiDataID, ld)
 		if err != nil {
 			l.Error(err)
 			return

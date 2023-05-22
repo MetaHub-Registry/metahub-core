@@ -343,6 +343,12 @@ func TestManifestComputeManifestForProfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	prf, found, err := mag.Database.Profile_Get_ByID(ctx, prfID)
+	if err != nil {
+		t.Fatal(err)
+	} else if !found {
+		t.Fatal("Profile not found")
+	}
 	t.Logf("Profile ID: %d // ManiID: %d", prfID, maniID)
 	mani, found, err := mag.Database.Manifest_GetByID(ctx, maniID)
 	if err != nil {
@@ -352,7 +358,7 @@ func TestManifestComputeManifestForProfile(t *testing.T) {
 		t.Fatal("Manifest not found")
 	}
 	// Actual test
-	err = mag.ComputeManifestForProfile(ctx, mani, prfID)
+	err = mag.ComputeManifestForProfile(ctx, mani, prf)
 	if err != nil {
 		t.Fatal(err)
 	}

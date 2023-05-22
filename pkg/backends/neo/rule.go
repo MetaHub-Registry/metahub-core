@@ -93,21 +93,21 @@ func RuleFromResult(res types.Result) (r types.Rule, err error) {
 	return
 }
 
-func (n Neo) Rules_GetByProfileID(ctx context.Context, profileID int64) (rules []types.Rule, err error) {
+func (n Neo) Rules_GetByProfileID(ctx context.Context, profileID int64) (rules types.Rules, err error) {
 	q := fmt.Sprintf(`MATCH (p:Profile)-[]->(r:Rule) WHERE id(p) = %d`, profileID)
 	q += fmt.Sprintf(` RETURN %s`, ruleReturn)
 	res, err := n.Query(q)
 	if err != nil {
 		return
 	}
-	rules = make([]types.Rule, 0)
+	rules = types.NewRules()
 	for _, r := range res {
 		rule, e := RuleFromResult(r)
 		if e != nil {
 			err = e
 			return
 		}
-		rules = append(rules, rule)
+		rules.Add(rule)
 	}
 
 	return
@@ -117,6 +117,7 @@ func (n Neo) RulesGetByManipuLayerID(ctx context.Context, mplID int64) (rules ty
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameRule,
 		"func":    "RulesGetByManipuLayerID",
+		"mplID":   mplID,
 	})
 	defer span.End()
 	_ = ctx

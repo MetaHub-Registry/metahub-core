@@ -8,6 +8,7 @@ import (
 type LayerDesc struct {
 	LayerID    int64
 	Descriptor v1.Descriptor
+	Order      int
 }
 
 func NewLayerDesc_FromLayer(l Layer) (ld LayerDesc) {

@@ -10,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/helper"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/types/www"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -21,28 +22,47 @@ const (
 // User is the stucture which holds one user from the database. Note
 // that it embeds a token type.
 type User struct {
-	ID           int       `json:"id"`
-	UserName     string    `json:"user_name"`
-	Email        string    `json:"email"`
-	FirstName    string    `json:"first_name,omitempty"`
-	LastName     string    `json:"last_name,omitempty"`
-	PasswordHash string    `json:"password_hash"`
-	Active       int       `json:"active"`
-	Role         string    `json:"role"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	Token        Token     `json:"token"`
+	ID        int            `json:"id"`
+	GithubID  string         `json:"github_id"`
+	AvatarURL string         `json:"avatar_url"`
+	UserName  string         `json:"user_name"`
+	Email     string         `json:"email"`
+	FirstName string         `json:"first_name,omitempty"`
+	LastName  string         `json:"last_name,omitempty"`
+	Active    int            `json:"active"`
+	Role      string         `json:"role"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	Token     Token          `json:"token"`
+	Secrets   []types.Secret `json:"secrets"`
+}
+
+func (u User) ToResponse() www.User {
+	usr := www.User{
+		ID:             u.ID,
+		GithubUsername: u.UserName,
+		Email:          u.Email,
+		Active:         u.Active,
+		FirstName:      u.FirstName,
+		LastName:       u.LastName,
+		Role:           u.Role,
+		Secrets:        []www.Secret{},
+	}
+	for _, ele := range u.Secrets {
+		usr.Secrets = append(usr.Secrets, ele.ToResponse())
+	}
+	return usr
 }
 
 // / SQlite specific methods
 func (s Sqlite) InsertUser(ctx context.Context, u types.User) (userID int64, err error) {
-	q := `INSERT INTO users (user_name, email, first_name, last_name, password_hash, user_active, created_at, updated_at, role)`
-	q += ` VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	q := `INSERT INTO users (user_name, github_id, avatar_url, email, first_name, last_name, user_active, created_at, updated_at, role)`
+	q += ` VALUES (?, ?,?, ?, ?, ?, ?, ?, ?, ?)`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		return
 	}
-	res, err := stmt.Exec(u.Username, u.Email, u.FirstName, u.LastName, u.PasswordHash, u.Active, time.Now(), time.Now(), u.Role)
+	res, err := stmt.Exec(u.Username, u.GithubID, u.AvatarURL, u.Email, u.FirstName, u.LastName, u.Active, time.Now(), time.Now(), u.Role)
 	if err != nil {
 		return
 	}
@@ -51,13 +71,19 @@ func (s Sqlite) InsertUser(ctx context.Context, u types.User) (userID int64, err
 		return
 	}
 	u.SqlID = userID
+	for _, ele := range u.Secrets {
+		_, err = s.InsertSecret(ctx, u.SqlID, ele)
+		if err != nil {
+			return
+		}
+	}
 	return
 }
 
 func (s Sqlite) LoginUserWithHash(ctx context.Context, username, pwhash string) (err error) {
 	logrus.Debug(">> LoginUser")
 	// check login and return token
-	u, err := s.User.GetByUsername(ctx, username)
+	u, err := s.GetByUsername(ctx, username)
 	if err != nil {
 		return fmt.Errorf("User not found: %s", err.Error())
 	}
@@ -77,7 +103,7 @@ func (s Sqlite) LoginUserScope(ctx context.Context, username, password string, r
 		"func":    "LoginUserScope",
 	})
 	// check login and return token
-	u, err := s.User.GetByUsername(ctx, username)
+	u, err := s.GetByUsername(ctx, username)
 	if err != nil {
 		l.Errorf("user '%s' not found", username)
 		pl = helper.NewErrPayload(
@@ -116,6 +142,7 @@ func (s Sqlite) LoginUserScope(ctx context.Context, username, password string, r
 	}
 	return http.StatusOK, u.Role, pl, nil
 }
+
 func (s Sqlite) LoginUser(ctx context.Context, username, password string) (err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameUser,
@@ -123,7 +150,7 @@ func (s Sqlite) LoginUser(ctx context.Context, username, password string) (err e
 	})
 	_ = l
 	// check login and return token
-	u, err := s.User.GetByUsername(ctx, username)
+	u, err := s.GetByUsername(ctx, username)
 	if err != nil {
 		return fmt.Errorf("User not found: %s", err.Error())
 	}
@@ -135,6 +162,54 @@ func (s Sqlite) LoginUser(ctx context.Context, username, password string) (err e
 		return fmt.Errorf("password does not match")
 	}
 	return
+}
+
+func (s Sqlite) GetByEmail(ctx context.Context, email string) (*User, error) {
+	usr, err := s.User.getByEmail(email)
+	if err != nil {
+		return nil, err
+	}
+	if srcts, err := s.GetSecrets(ctx, usr.ID); err != nil {
+		return nil, err
+	} else {
+		usr.Secrets = srcts
+	}
+	return usr, nil
+}
+
+func (s Sqlite) GetOne(ctx context.Context, uid int) (*User, error) {
+	usr, err := s.User.getOne(uid)
+	if err != nil {
+		return nil, err
+	}
+	if srcts, err := s.GetSecrets(ctx, usr.ID); err != nil {
+		return nil, err
+	} else {
+		usr.Secrets = srcts
+	}
+	return usr, nil
+}
+
+func (s Sqlite) UserNameExists(ctx context.Context, username string) (ok bool, err error) {
+	return s.User.userNameExists(username)
+}
+
+func (s Sqlite) GetByUsername(ctx context.Context, username string) (*User, error) {
+	usr, err := s.User.getByUsername(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+	if srcts, err := s.GetSecrets(ctx, usr.ID); err != nil {
+		return nil, err
+	} else {
+		usr.Secrets = srcts
+	}
+	return usr, nil
+}
+
+func (s Sqlite) CreateWWWUser(ctx context.Context, wwwUser www.User) (int64, error) {
+	tUsr := types.UserFromWWWUser(wwwUser, "user")
+	return s.InsertUser(ctx, tUsr)
 }
 
 // / User specific methods
@@ -153,6 +228,8 @@ func (u User) CreateTables() (err error) {
 	s := `CREATE TABLE IF NOT EXISTS %s (
         id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 		"user_name" TEXT,
+		"github_id" TEXT,
+		"avatar_url" TEXT,
 		"email" TEXT,
 		"first_name" TEXT,
 		"last_name" TEXT,
@@ -184,25 +261,38 @@ func (u *User) GetAccessToken(token string) (at *types.AccessToken, err error) {
 	return at, nil
 }
 
+func (*User) userNameExists(uname string) (ok bool, err error) {
+	rows, err := db.Query("SELECT id FROM users WHERE user_name = ?", uname)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	if rows.Next() {
+		return true, nil
+	}
+	return false, nil
+}
+
 // GetByEmail returns one user by email
-func (u *User) GetByUsername(ctx context.Context, username string) (*User, error) {
+func (u *User) getByUsername(ctx context.Context, username string) (*User, error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameUser,
 		"func":    "GetByUsername",
 	})
 	defer span.End()
 
-	query := `SELECT id, user_name, email, first_name, last_name, password_hash, user_active, created_at, role FROM users WHERE user_name = $1`
+	query := `SELECT id, user_name, github_id, avatar_url, email, first_name, last_name, user_active, created_at, role FROM users WHERE user_name = $1`
 	utils.Debug(l, span, query)
 	var user User
 	row := db.QueryRowContext(ctx, query, username)
 	err := row.Scan(
 		&user.ID,
 		&user.UserName,
+		&user.GithubID,
+		&user.AvatarURL,
 		&user.Email,
 		&user.FirstName,
 		&user.LastName,
-		&user.PasswordHash,
 		&user.Active,
 		&user.CreatedAt,
 		&user.Role,
@@ -215,10 +305,10 @@ func (u *User) GetByUsername(ctx context.Context, username string) (*User, error
 }
 
 // GetByEmail returns one user by email
-func (u *User) GetByEmail(email string) (*User, error) {
+func (u *User) getByEmail(email string) (*User, error) {
 	ctx := context.Background()
 
-	query := `SELECT id, user_name, email, first_name, last_name, password_hash, user_active, created_at, updated_at ,role FROM users WHERE email = $1`
+	query := `SELECT id, user_name, github_id, avatar_url, email, first_name, last_name, user_active, created_at, updated_at ,role FROM users WHERE email = $1`
 
 	var user User
 	row := db.QueryRowContext(ctx, query, email)
@@ -226,10 +316,11 @@ func (u *User) GetByEmail(email string) (*User, error) {
 	err := row.Scan(
 		&user.ID,
 		&user.UserName,
+		&user.GithubID,
+		&user.AvatarURL,
 		&user.Email,
 		&user.FirstName,
 		&user.LastName,
-		&user.PasswordHash,
 		&user.Active,
 		&user.CreatedAt,
 		&user.UpdatedAt,
@@ -239,26 +330,26 @@ func (u *User) GetByEmail(email string) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
+	// TODO: Get Secrets from db
 
 	return &user, nil
 }
 
 // GetOne returns one user by id
-func (u *User) GetOne(id int) (*User, error) {
+func (u *User) getOne(id int) (*User, error) {
 	ctx := context.Background()
-
-	query := `select id, user_name, email, first_name, last_name, password_hash, user_active, created_at, updated_at, role from users where id = $1`
-
+	query := `select id, user_name,github_id, avatar_url, email, first_name, last_name, user_active, created_at, updated_at, role from users where id = $1`
 	var user User
 	row := db.QueryRowContext(ctx, query, id)
 
 	err := row.Scan(
 		&user.ID,
 		&user.UserName,
+		&user.GithubID,
+		&user.AvatarURL,
 		&user.Email,
 		&user.FirstName,
 		&user.LastName,
-		&user.PasswordHash,
 		&user.Active,
 		&user.CreatedAt,
 		&user.UpdatedAt,
@@ -339,7 +430,7 @@ func (u *User) ResetPassword(password string) error {
 		return err
 	}
 
-	stmt := `update users set password_hash = $1 where id = $2`
+	stmt := `update secrets set secret_hash = $1 where user_id = $2`
 	_, err = db.ExecContext(ctx, stmt, hashedPassword, u.ID)
 	if err != nil {
 		return err
@@ -352,23 +443,31 @@ func (u *User) ResetPassword(password string) error {
 // with the hash we have stored for a given user in the database. If the password
 // and hash match, we return true; otherwise, we return false.
 func (u *User) PasswordMatches(plainText string) (bool, error) {
-	err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(plainText))
-	if err != nil {
-		switch {
-		case errors.Is(err, bcrypt.ErrMismatchedHashAndPassword):
-			// invalid password
-			return false, nil
-		default:
-			return false, err
+	granted := false
+	for _, secr := range u.Secrets {
+		err := bcrypt.CompareHashAndPassword([]byte(secr.SecretHash), []byte(plainText))
+		if err != nil {
+			switch {
+			case errors.Is(err, bcrypt.ErrMismatchedHashAndPassword):
+				// invalid password
+				return false, nil
+			default:
+				return false, err
+			}
+		} else {
+			// Once we hit a hash that matches, the user is authorized
+			granted = true
+			break
 		}
 	}
-
-	return true, nil
+	return granted, nil
 }
 
 func (u *User) PasswordHashMatches(passwordHash string) (bool, error) {
-	if u.PasswordHash == passwordHash {
-		return true, nil
+	for _, secr := range u.Secrets {
+		if secr.SecretHash == passwordHash {
+			return true, nil
+		}
 	}
 	return false, nil
 }
