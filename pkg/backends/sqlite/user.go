@@ -114,7 +114,7 @@ func (s Sqlite) LoginUserScope(ctx context.Context, username, password string, r
 		return http.StatusNotFound, role, pl, nil
 	}
 	//l.Debugf("Found user '%s' (role:%s) in database", u.UserName, u.Role)
-	match, err := u.PasswordMatches(password)
+	match, err := u.PasswordMatches(ctx, password)
 	if err != nil {
 		l.Error(err)
 		return http.StatusInternalServerError, role, pl, err
@@ -154,7 +154,7 @@ func (s Sqlite) LoginUser(ctx context.Context, username, password string) (err e
 	if err != nil {
 		return fmt.Errorf("User not found: %s", err.Error())
 	}
-	match, err := u.PasswordMatches(password)
+	match, err := u.PasswordMatches(ctx, password)
 	if err != nil {
 		return fmt.Errorf("error when matching passwords")
 	}
@@ -442,9 +442,17 @@ func (u *User) ResetPassword(password string) error {
 // PasswordMatches uses Go's bcrypt package to compare a user supplied password
 // with the hash we have stored for a given user in the database. If the password
 // and hash match, we return true; otherwise, we return false.
-func (u *User) PasswordMatches(plainText string) (bool, error) {
+func (u *User) PasswordMatches(ctx context.Context, plainText string) (bool, error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameUser,
+		"func":    "PasswordMatches",
+	})
+	_ = ctx
+	defer span.End()
 	granted := false
+	utils.Debug(l, span, "checking password against %d secrets", len(u.Secrets))
 	for _, secr := range u.Secrets {
+		utils.Debug(l, span, "checking secret %s", secr.Key)
 		err := bcrypt.CompareHashAndPassword([]byte(secr.SecretHash), []byte(plainText))
 		if err != nil {
 			switch {
@@ -452,10 +460,12 @@ func (u *User) PasswordMatches(plainText string) (bool, error) {
 				// invalid password
 				return false, nil
 			default:
+				utils.Debug(l, span, "error when comparing hash and password: %s", err.Error())
 				return false, err
 			}
 		} else {
 			// Once we hit a hash that matches, the user is authorized
+			utils.Debug(l, span, "password matches")
 			granted = true
 			break
 		}

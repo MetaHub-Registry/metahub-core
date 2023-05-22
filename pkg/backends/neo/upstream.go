@@ -268,7 +268,7 @@ func (n Neo) UpstreamGet(ctx context.Context, up types.Upstream) (upID int64, su
 	if up.Digest.String() != "" {
 		q += fmt.Sprintf(` AND u.digest = "%s"`, up.Digest.String())
 	}
-	q += ` RETURN id(u) AS ID`
+	q += ` RETURN id(u) AS ID, u.digest AS upstreamDigest`
 	utils.Debug(l, span, q)
 	if res, found, e := n.QueryOne(q); e != nil {
 		return upID, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)

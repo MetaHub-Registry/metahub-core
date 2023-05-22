@@ -26,6 +26,7 @@ type Database interface {
 	BootstrapTestWithBR(ctx context.Context, b string, bs utils.Bootstrap, br *utils.BootstrapResult) (err error) // BootstrapTest sets up the database backend for testing
 	EmptyData(emptyAll bool) error
 	EmptyData_KeepUpstream() error
+	EmptyDataKeepUpstreamConfigLayer() error
 	TeardownTest(bs utils.Bootstrap)
 	/*******  Platform ********/
 	Platform_GetInsert(ctx context.Context, p *types.Platform) error

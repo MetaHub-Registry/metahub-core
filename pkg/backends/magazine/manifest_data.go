@@ -31,8 +31,12 @@ func (mag Magazine) cacheManifestByUpstream(ctx context.Context, up types.Upstre
 		err = utils.ErrorHandler(l, span, e, FailedToGetUpstream)
 		return
 	}
-	utils.Debug(l, span, "Found upstream: %t", found)
+	utils.Debug(l, span, "Found upstream: %t / digest: %s", found, utils.ShortenDigest(up.Digest.String()))
 	if found {
+		if up, _, err = mag.Database.UpstreamGetByID(ctx, uID); err != nil {
+			err = utils.ErrorHandler(l, span, err, "failed to get upstream by ID")
+			return
+		}
 		// TODO: 2021-04-05 we need an option to invalidate the cached upstream objects
 		maniData, isCached, e := mag.Minio.GetCachedManifest(ctx, up.Digest)
 		if e != nil {
@@ -180,7 +184,7 @@ func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani typ
 		return
 	}
 	if up.Digest.String() == "" {
-		err = utils.NewError(l, span, "digest is empty")
+		utils.Debug(l, span, "digest is empty")
 		blob, found, err := mag.HeadManifestByRegRepoTag(ctx, up.Reg, up.Repo, up.Tag)
 		if err != nil {
 			err = utils.ErrorHandler(l, span, err, "failed to HeadManifestByRegRepoTag")

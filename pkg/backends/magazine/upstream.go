@@ -728,6 +728,7 @@ func (mag Magazine) CacheUpstream(ctx context.Context, up types.Upstream) (err e
 	defer span.End()
 	_ = l
 	// TODO: Get Manifest
+	utils.Debug(l, span, "attempt to cacheManifestByUpstream %d", up.ID)
 	maniData, err := mag.cacheManifestByUpstream(ctx, up)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "while caching manifest")

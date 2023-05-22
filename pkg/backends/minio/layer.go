@@ -21,24 +21,20 @@ const (
 )
 
 func (m Minio) GetLayer(ctx context.Context, up upstream.UpstreamTriple) (isCached bool, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameLayer,
 		"func":    "GetLayer",
-		"digest":  utils.ShortenDigest(up.Digest.String()),
+		"reg":     up.Reg,
+		"repo":    up.Repo,
+		"tag":     up.Tag,
+		"digest":  up.Digest.String(),
 	})
-	_ = l
-	tr := otel.Tracer("neomin")
-	ctx, span := tr.Start(ctx, "GetLayer")
-	span.SetAttributes(
-		attribute.Key("reg").String(up.Reg),
-		attribute.Key("repo").String(up.Repo),
-		attribute.Key("tag").String(up.Tag),
-		attribute.Key("digest").String(utils.ShortenDigest(up.Digest.String())),
-	)
 	defer span.End()
+	_ = l
 	_, err = m.LayersStatObj(ctx, up.Digest.String())
 	if err != nil {
 		if err.Error() == "The specified key does not exist." {
+			utils.Debug(l, span, "Layer '%s' not found in bucket.", up.Digest.String())
 			return false, nil
 		}
 		l.Error(err)
