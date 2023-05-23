@@ -4,6 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/minio/minio-go/pkg/set"
+	"github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
@@ -85,8 +89,6 @@ func TestCreateOCIv1PulledByPrf(t *testing.T) {
 		"ORG_SUPERCONTAINERS_HARDWARE_CPU_TARGET_MICROARCH=zen3",
 	}
 	assert.Equal(t, expEnv, ociManiData.Config.Cfg.Config.Env)
-	//t.Fatal()
-
 }
 func TestGenerateOCIv1Config(t *testing.T) {
 	ctx := context.Background()
@@ -139,5 +141,100 @@ func TestGenerateOCIv1Config(t *testing.T) {
 		t.Fatal(e)
 	}
 	assert.Equal(t, []string{"ORG_SUPERCONTAINERS_HARDWARE_CPU_TARGET=platform", "PLATFORM_FEATURES=amd64"}, cfgGen.Config.Env)
+}
+
+func TestOCIApplyManipulations(t *testing.T) {
+	ctx := context.Background()
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("upstream:glow151arm64")
+	bs.AddBootstrap("rules:rules/platform/arch/arm64.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
+	bs.AddBootstrap("layer:0:glow151arm64_7c57")
+	bs.AddBootstrap("layer:1:glow151arm64_8a17")
+	bs.AddBootstrap("layer:2:glow151arm64_a24c")
+	bs.AddBootstrap("config:glow151arm64")
+	bs.AddBootstrap("manifestdata:glow151arm64")
+	bs.AddBootstrap("manipulation:manipulations/layer/glow/1.5.1-arm64.yaml")
+	bs.AddBootstrap("profile:profiles/glow/1.5.1-arm64.yaml")
+	// ManiData Setup
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("config:ft_arm64")
+	bs.AddBootstrap("upstream:ft_arm64")
+	bs.AddBootstrap("manifest:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_arm64")
+	bs.AddBootstrap("layer:1:ft_arm64")
+	bs.AddBootstrap("manifestdata:ft_arm64")
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := mag.SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	if err != nil {
+		t.Logf("Error while SetupTest: %v", err)
+		TeardownTest(bs)
+		t.Fatal(err)
+	}
+	defer TeardownTest(bs)
+	// Prepare
+	if e := mag.Database.Rule_EvalAll(ctx); e != nil {
+		t.Fatal(e)
+	}
+	// Actual test
+	prf, err := mag.getProfile(ctx, br, "glow#1.5.1-arm64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	origMani, err := mag.getManiData(ctx, br, "manifestdata:ft_arm64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mani, err := mag.getMani(ctx, br, "manifest:ft_arm64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tempDigest := digest.FromString("manifest:ft_arm64")
+	m := v1.Manifest{
+		Versioned: specs.Versioned{
+			SchemaVersion: 2,
+		},
+		Config: v1.Descriptor{
+			MediaType: v1.MediaTypeImageConfig,
+			Digest:    tempDigest,
+		},
+		MediaType: v1.MediaTypeImageManifest,
+	}
+	maniDesc, err := ManifestV1ToDescriptor(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ociManiDataID, _, err := mag.Database.ManifestData_V1_GetInsert(ctx, mani.ID, maniDesc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v1Cfg, ok, err := mag.OCIApplyManipulations(ctx, mani, &origMani, prf.ID, ociManiDataID); err != nil {
+		t.Fatal(err)
+	} else if !ok {
+		t.Fatal("Did not apply manipulations")
+	} else {
+		assert.Equal(t, []string{"hpc3-help", "/usr/bin/entry.sh"}, v1Cfg.Config.Cmd)
+		expEnv := set.CreateStringSet(
+			"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+			"PLATFORM_FEATURES=arm64",
+			"SKIP_ENTRYPOINTS=true",
+			"HPC3_HELP=/usr/share/hpc3/help.md",
+		)
+		gotEnv := set.CreateStringSet(v1Cfg.Config.Env...)
+		assert.Equal(t, expEnv, gotEnv)
+	}
 
 }

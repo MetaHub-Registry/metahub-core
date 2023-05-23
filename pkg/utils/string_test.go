@@ -101,7 +101,6 @@ func TestUpLabelKey(t *testing.T) {
 			t.Error(t, strings.Join(res, "\n"))
 		}
 	}
-
 }
 
 func TestCreateLabelFromTypeAndDigest(t *testing.T) {
@@ -127,7 +126,6 @@ func TestCreateLabelFromTypeAndDigest(t *testing.T) {
 			t.Error(t, strings.Join(res, "\n"))
 		}
 	}
-
 }
 
 func TestGenPasswordHash(t *testing.T) {
@@ -137,5 +135,12 @@ func TestGenPasswordHash(t *testing.T) {
 	assert.NoError(t, err)
 	err = bcrypt.CompareHashAndPassword([]byte(hash), []byte("FAKE"))
 	assert.Error(t, err)
+}
 
+func TestDecodeEncode(t *testing.T) {
+	str := "string"
+	en := Base64Encode(str)
+	assert.Equal(t, "c3RyaW5n", en)
+	de := Base64Decode(en)
+	assert.Equal(t, str, de)
 }

@@ -917,6 +917,12 @@ func (n Neo) Bootstrap_Config(bs utils.Bootstrap, br *utils.BootstrapResult, b s
 			err = errors.Wrapf(err, whileFmrt, b)
 			return
 		}
+	case "glow151arm64":
+		err = n.Setup_Config(br, types.ConfigGlow151ARM64(), b)
+		if err != nil {
+			err = errors.Wrapf(err, whileFmrt, b)
+			return
+		}
 	}
 
 	return
@@ -982,7 +988,12 @@ func (n Neo) Bootstrap_Upstream(ctx context.Context, bs utils.Bootstrap, br *uti
 			err = errors.Wrapf(err, whileFmrt, b)
 			return
 		}
-
+	case "glow151arm64":
+		err = n.Setup_Upstream(br, types.UpstreamGlow151ARM64, b)
+		if err != nil {
+			err = errors.Wrapf(err, whileFmrt, b)
+			return
+		}
 	case "glow150amd64":
 		err = n.Setup_Upstream(br, types.UpstreamGlow150AMD64, b)
 		if err != nil {
@@ -1052,6 +1063,23 @@ func (n Neo) Bootstrap_Layer(bs utils.Bootstrap, br *utils.BootstrapResult, b st
 		if err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
+	case "0:glow151arm64_7c57":
+		err = n.Setup_Layer(br, types.Layer0Glow151ARM64, b)
+		if err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
+	case "1:glow151arm64_8a17":
+		err = n.Setup_Layer(br, types.Layer1Glow151ARM64, b)
+		if err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
+	case "2:glow151arm64_a24c":
+		err = n.Setup_Layer(br, types.Layer2Glow151ARM64, b)
+		if err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
+	default:
+		return fmt.Errorf("no Setup for '%s'", b)
 	}
 	return
 }

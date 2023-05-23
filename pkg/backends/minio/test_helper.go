@@ -228,6 +228,18 @@ func (m Minio) BootstrapLayer(bs utils.Bootstrap, br *utils.BootstrapResult, b s
 		if err = m.SetupLayer(br, types.Layer2Glow150ARM64, b); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
+	case "0:glow151arm64_7c57":
+		if err = m.SetupLayer(br, types.Layer0Glow151ARM64, b); err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
+	case "1:glow151arm64_8a17":
+		if err = m.SetupLayer(br, types.Layer1Glow151ARM64, b); err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
+	case "2:glow151arm64_a24c":
+		if err = m.SetupLayer(br, types.Layer2Glow151ARM64, b); err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
 	case "0:ft_arm64":
 		if err = m.SetupLayer(br, types.FT_arm64_Layer0(), b); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
@@ -278,7 +290,12 @@ func (m Minio) BootstrapTestWithBR(bs utils.Bootstrap, br *utils.BootstrapResult
 				err = errors.Wrapf(err, whileFmrt, b)
 				return
 			}
-
+		case "config:glow151arm64":
+			err = Setup_Config(&m, br, types.ConfigDTGlow151ARM64)
+			if err != nil {
+				err = errors.Wrapf(err, whileFmrt, b)
+				return
+			}
 		case "config:ft_arm64":
 			err = Setup_Config_FT_arm64(&m, br)
 			if err != nil {

@@ -61,6 +61,8 @@ type Database interface {
 	Config_Update(ctx context.Context, cfgID int64, cfg types.Config) (err error)
 	Config_AddLabel(ctx context.Context, cfgID int64, a types.Annotation) (err error)
 	Configs_DeleteUnused(ctx context.Context) (err error)
+	Config_Get_ByManiDataID(ctx context.Context, mdID int64) (cfg types.Config, found bool, err error)
+
 	OCIv1Config_GetInsertDescriptor(ctx context.Context, desc v1.Descriptor) (cfg types.Config, found bool, err error)
 	ConfigExists(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error)
 	/********* Manifest **********/
@@ -176,6 +178,8 @@ type Database interface {
 	Rules_GetAll(ctx context.Context) (rules []types.Rule, err error)
 	Rule_EvalAll(ctx context.Context) (err error)
 	RuleGetByLabel(ctx context.Context, label string) (rule types.Rule, found bool, err error)
+	RulesGetByManifestID(ctx context.Context, maniID int64) (rules types.Rules, err error)
+	RulesGetByManipuLayerID(ctx context.Context, mplID int64) (rules types.Rules, err error)
 	/****** CollectionTagProfilePair ********/
 	CollectionTagProfilePairGetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error)
 	CollectionTagProfilePairGetRegexFiltered(ctx context.Context, repoRegex, tagRegex, prfRegex string) (ctpps []types.CollectionTagProfilePair, err error)
@@ -186,9 +190,10 @@ type Database interface {
 	ManifestGetAllSystemAnnos(ctx context.Context, maniDataID int64) (as types.Annotations, err error)
 	/***** Manipulations *****/
 	ManipulationGetCreate(ctx context.Context, mp *types.Manipulation) (err error)
-	ManipulationUnwind(ctx context.Context, maniID, maniDataID, prfID int64) (cfgDigest string, err error)
 	ManipulationsGetByProfileID(ctx context.Context, prfID int64) (mps []types.Manipulation, err error)
 	ManipuLayerFromConfigYAML(ctx context.Context, cmpl config.ManipuLayer) (mpl types.ManipuLayer, err error)
 	ManipulationFromYAML(ctx context.Context, cmp config.Manipulation) (mp types.Manipulation, err error)
 	ManinpulationCheckRules(ctx context.Context, prfID, maniID int64) (ok bool, err error)
+	ManipuCmdsGetByManipulayerID(ctx context.Context, mplyrID int64) (mpcs []types.ManipuCmd, err error)
+	ManipuEnvsGetByManipulayerID(ctx context.Context, mplyrID int64) (mpes []types.ManipuEnv, err error)
 }

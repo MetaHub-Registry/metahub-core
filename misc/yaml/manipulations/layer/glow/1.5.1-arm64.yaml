@@ -1,0 +1,10 @@
+label: layer/glow#1.5.1-arm64
+layers:
+  - image: registry:5050/cqnib/metahub-layers/hpc3/glow:1.5.1-arm64
+    rule: arch:arm64=true
+    cmd: 
+      - rule: prepend
+        value: hpc3-help
+    environment:
+      - key: HPC3_HELP
+        rule: ifNULL

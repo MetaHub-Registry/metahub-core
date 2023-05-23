@@ -9,4 +9,10 @@ var (
 			ManipuLayerGlow150ARM64,
 		},
 	}
+	ManipulationGlow151 = Manipulation{
+		Label: "layer/glow#151",
+		ManipuLayers: []ManipuLayer{
+			ManipuLayerGlow151ARM64,
+		},
+	}
 )
