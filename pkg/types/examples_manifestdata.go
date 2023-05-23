@@ -22,6 +22,13 @@ var (
 		Layer1Glow150ARM64DT,
 		Layer2Glow150ARM64DT,
 	)
+	ManifestDataGlow151ARM64 = newManifestData(
+		ManifestDataDTGlow151Arm64(),
+		ConfigDTGlow151ARM64,
+		Layer0Glow151ARM64DT,
+		Layer1Glow151ARM64DT,
+		Layer2Glow151ARM64DT,
+	)
 )
 
 func ManifestDataDTGlow150Arm64() DataTuple {
@@ -30,6 +37,16 @@ func ManifestDataDTGlow150Arm64() DataTuple {
 		Reg:    "registry:5050",
 		Repo:   "cqnib/metahub-layers/hpc3/glow",
 		Tag:    "1.5.0-arm64",
+		Digest: dt.Digest,
+	}
+	return dt
+}
+func ManifestDataDTGlow151Arm64() DataTuple {
+	dt := NewDataTuple("data/manifests/7b8f26f6ed712db19b9fd2f8fffff972c22defdf0e5176a09e2842f9a9b01fef.json")
+	dt.Upstream = Upstream{
+		Reg:    "registry:5050",
+		Repo:   "cqnib/metahub-layers/hpc3/glow",
+		Tag:    "1.5.1-arm64",
 		Digest: dt.Digest,
 	}
 	return dt

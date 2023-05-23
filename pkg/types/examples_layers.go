@@ -27,6 +27,27 @@ var (
 		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
 		Data:      Layer2Glow150ARM64DT.Data,
 	}
+	Layer0Glow151ARM64DT = NewDataTuple("data/layer/7c574a510ef9d3b6b3a5bcd60886da206f81277f1b646acd3f11ee9ff31adaa7.dat")
+	Layer0Glow151ARM64   = Layer{
+		Digest:    Layer0Glow151ARM64DT.Digest.String(),
+		Size:      5877038,
+		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
+		Data:      Layer0Glow151ARM64DT.Data,
+	}
+	Layer1Glow151ARM64DT = NewDataTuple("data/layer/8a170a58bdf6977be6f8b7652ba4373dbeb140c5c8173785297117900d13b968.dat")
+	Layer1Glow151ARM64   = Layer{
+		Digest:    Layer1Glow151ARM64DT.Digest.String(),
+		Size:      221,
+		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
+		Data:      Layer1Glow151ARM64DT.Data,
+	}
+	Layer2Glow151ARM64DT = NewDataTuple("data/layer/a24ce36aa43c36ba448b33f11e76ee61a4f8df83d31532558cac872a908e3525.dat")
+	Layer2Glow151ARM64   = Layer{
+		Digest:    Layer2Glow151ARM64DT.Digest.String(),
+		Size:      309,
+		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
+		Data:      Layer2Glow151ARM64DT.Data,
+	}
 	/// ARM64
 	Layer0FTARM64DT = NewDataTuple("data/layer/6ec0f660682c2f5b391af1d81d3b4839da06f050269546177b28e4b51d8d4c30.dat")
 	Layer0FTARM64   = Layer{

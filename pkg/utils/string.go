@@ -43,11 +43,18 @@ func StringUnion(a, b []string) []string {
 	return a
 }
 
+// Encode encodes a string
+func Base64Encode(decoded string) string {
+	var encoded bytes.Buffer
+	encoder := base64.NewEncoder(base64.StdEncoding, &encoded)
+	encoder.Write([]byte(decoded))
+	encoder.Close()
+	return encoded.String()
+}
+
 // Decode decodes an encoded string
-func Decode(encoded string) string {
-	fmt.Println(encoded)
+func Base64Decode(encoded string) string {
 	decoded, err := base64.StdEncoding.DecodeString(encoded)
-	fmt.Println(decoded)
 	if err != nil {
 		return ""
 	}

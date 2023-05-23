@@ -385,7 +385,7 @@ func (mag Magazine) OCIApplyManipulations(ctx context.Context, mani types.Manife
 	}
 
 	// Once the origMani becomes ociMani, we apply the manipulations
-	mplCfgDigest, e := mag.Database.ManipulationUnwind(ctx, mani.ID, ociManiDataID, prfID)
+	mplCfgDigest, e := mag.ManipulationUnwind(ctx, mani.ID, ociManiDataID, prfID)
 	if e != nil {
 		return v1Cfg, false, utils.ErrorHandler(l, span, e, "while in ManipulationUnwind")
 	}
@@ -408,7 +408,9 @@ func (mag Magazine) OCIApplyManipulations(ctx context.Context, mani types.Manife
 		for _, diffID := range mplCfg.Cfg.RootFS.DiffIDs {
 			utils.Info(l, span, "Adding diffID: %s", diffID.String())
 			v1Cfg.RootFS.DiffIDs = append(v1Cfg.RootFS.DiffIDs, diffID)
-
+		}
+		if e := mag.ApplyManipulationToConfig(ctx, mani.ID, prfID, &v1Cfg, mplCfg); e != nil {
+			return v1Cfg, false, utils.ErrorHandler(l, span, e, "while in ApplyManipulationToConfig")
 		}
 	}
 	return v1Cfg, true, nil

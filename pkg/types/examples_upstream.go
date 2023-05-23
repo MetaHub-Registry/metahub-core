@@ -9,6 +9,13 @@ var UpstreamGlow150ARM64 = Upstream{
 	Digest: "sha256:3aabfa0b0457345ef833ca640823da969b0c43e542caf10c497e37a85213df60",
 }
 
+var UpstreamGlow151ARM64 = Upstream{
+	Reg:    "registry:5050",
+	Repo:   "cqnib/metahub-layers/hpc3/glow",
+	Tag:    "1.5.1-arm64",
+	Digest: "sha256:7b8f26f6ed712db19b9fd2f8fffff972c22defdf0e5176a09e2842f9a9b01fef",
+}
+
 var UpstreamGlow150AMD64 = Upstream{
 	Reg:    "registry:5050",
 	Repo:   "cqnib/metahub-layers/hpc3/glow",

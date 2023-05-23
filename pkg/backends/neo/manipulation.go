@@ -220,20 +220,39 @@ func (n Neo) ManipulationFromConfigManipulation(ctx context.Context, m config.Ma
 	})
 	defer span.End()
 	mp := types.Manipulation{
-		Label: m.Label,
+		Label:        m.Label,
+		ManipuLayers: make([]types.ManipuLayer, 0),
 	}
 	for _, cfgMppl := range m.ManipuLayers {
-		utils.Debug(l, span, "ManipuLayer: %s", cfgMppl.Image)
+		utils.Debug(l, span, "ManipuLayer: %s (%d Cmds, %d Envs)", cfgMppl.Image, len(cfgMppl.Cmd), len(cfgMppl.Environment))
 		up, e := types.NewUpstreamByName(cfgMppl.Image)
 		if e != nil {
 			return mp, utils.ErrorHandler(l, span, e, types.FailNewUpstreamByName)
 		}
-		if mpl, err := n.ManipuLayerFromUpstream(ctx, up, cfgMppl.Rule); err != nil {
+		if mpl, err := n.ManipuLayerFromUpstream(ctx, up, cfgMppl); err != nil {
 			return mp, utils.ErrorHandler(l, span, err, FailManipuLayerFromUpstream)
 		} else {
+			utils.Debug(l, span, "Add Env and Cmd to ManipuLayer")
+			mpl.Environment = make([]types.ManipuEnv, 0)
+			for _, cfgEnv := range cfgMppl.Environment {
+				mpe := types.ManipuEnv{
+					Key:  cfgEnv.Key,
+					Rule: cfgEnv.Rule,
+				}
+				utils.Debug(l, span, "Adding %s", mpe.ToString())
+				mpl.Environment = append(mpl.Environment, mpe)
+			}
+			mpl.Cmd = make([]types.ManipuCmd, 0)
+			for _, cfgCmd := range cfgMppl.Cmd {
+				mpc := types.ManipuCmd{
+					Cmd:  cfgCmd.Value,
+					Rule: cfgCmd.Rule,
+				}
+				utils.Debug(l, span, "Adding %s", mpc.ToString())
+				mpl.Cmd = append(mpl.Cmd, mpc)
+			}
 			mp.ManipuLayers = append(mp.ManipuLayers, mpl)
 		}
-
 	}
 	return mp, nil
 }
@@ -278,58 +297,6 @@ func (n Neo) ManinpulationCheckRules(ctx context.Context, prfID, maniID int64) (
 		}
 	}
 	return ok, nil
-}
-
-// ManipulationGetByProfileManiID returns a manipulation which is connected through rules to a profile and a manifest
-func (n Neo) ManipulationUnwind(ctx context.Context, maniID, maniDataID, prfID int64) (cfgDigest string, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package":    pkgNameManipulation,
-		"func":       "ManipulationUnwind",
-		"prfID":      prfID,
-		"maniID":     maniID,
-		"maniDataID": maniDataID,
-	})
-	defer span.End()
-	////////   The rules are going to be matched against the ManiPulayer to figure out a match
-	maniRls, e := n.RulesGetByManifestID(ctx, maniID)
-	if e != nil {
-		return cfgDigest, utils.ErrorHandler(l, span, e, FailRulesGetByManifestID)
-	}
-
-	// Get Manipulations for Profile
-	mps, err := n.ManipulationsGetByProfileID(ctx, prfID)
-	if err != nil {
-		return cfgDigest, utils.ErrorHandler(l, span, err, FailManipulationsGetByProfileID)
-	}
-	utils.Warn(l, span, "Manipulations:  %d", len(mps))
-	for _, mp := range mps {
-		for _, mpl := range mp.ManipuLayers {
-			rls, err := n.RulesGetByManipuLayerID(ctx, mpl.ID)
-			if err != nil {
-				return cfgDigest, utils.ErrorHandler(l, span, err, FailRulesGetByManipuLayerID)
-			}
-			// Check if mpRules all be matched by maniRules
-			if rls.SatisfiedBy(ctx, maniRls) {
-				utils.Warn(l, span, "ManipuLayer: %s (%d Layers) is satisfies by manifest ", mpl.Image.Label, len(mpl.Image.Layers))
-				if cfg, found, err := n.Config_Get_ByManiDataID(ctx, mpl.Image.ID); err != nil {
-					return cfgDigest, utils.ErrorHandler(l, span, err, "Failed to get Config for ManifestData of ManipuLayer %d", mpl.Image.ID)
-				} else if !found {
-					return cfgDigest, utils.NewError(l, span, "Did not find config for ManifestData of ManipuLayer %d", mpl.Image.ID)
-				} else {
-					cfgDigest = cfg.Digest
-				}
-				for idx, lyr := range mpl.Image.Layers {
-					if e := n.ManifestData_LinkToLayer(ctx, maniDataID, lyr, idx); e != nil {
-						return cfgDigest, utils.ErrorHandler(l, span, e, FailManifestDataLinkToLayer)
-					}
-				}
-			} else {
-				utils.Warn(l, span, "ManipuLayer %d is NOT satisfied by Manifest %d", mpl.ID, maniID)
-				continue
-			}
-		}
-	}
-	return cfgDigest, nil
 }
 
 func (n Neo) ManipulationFromYAML(ctx context.Context, cmp config.Manipulation) (mp types.Manipulation, err error) {

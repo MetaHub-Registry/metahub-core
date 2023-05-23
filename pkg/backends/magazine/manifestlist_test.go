@@ -103,6 +103,7 @@ func TestManifestlistComputeWithManipulation(t *testing.T) {
 	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("empty:all")
 	bs.AddBootstrap("upstream:glow150arm64")
 	bs.AddBootstrap("rules:rules/platform/arch/arm64.yaml")
 	bs.AddBootstrap("rules:rules/os/linux.yaml")

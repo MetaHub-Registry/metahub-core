@@ -446,6 +446,8 @@ func (n Neo) Layer_GetByTypeAndDigest(ctx context.Context, mt, dig string) (l ty
 			return
 		default:
 			logrus.Warnf("found layer with same digest but different media type: %s", l.Digest)
+			// TODO: Something is wrong here. For layers with already multiple MediaTypes it
+			//  falls apart in case the first one is not the one we are looking for
 			label := utils.CreateLabelFromTypeAndDigest(mt, l.Digest)
 			qDef := fmt.Sprintf(`CREATE (n:Layer {digest: "%s", mediaType: "%s", size: %d, label: "%s"})`, l.Digest, mt, l.Size, label)
 			qDef += ` RETURN id(n) AS layerID, n.digest AS layerDigest, n.mediaType AS layerMediaType, n.size AS layerSize`
@@ -453,6 +455,7 @@ func (n Neo) Layer_GetByTypeAndDigest(ctx context.Context, mt, dig string) (l ty
 				attribute.String("log.severity", "debug"),
 				attribute.String("log.query", qDef),
 			))
+			logrus.Debug(qDef)
 			resDef, e := n.Execute(qDef)
 			if e != nil {
 				err = errors.Wrap(e, "failed while creating new layer with different mediatype")

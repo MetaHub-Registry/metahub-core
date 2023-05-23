@@ -7,6 +7,7 @@ import (
 
 var (
 	ConfigDTGlow150ARM64 = NewDataTuple("data/cfg/26608a4ddd90f25b3854b5d5f2543b158f79c6e6bdb4099b65b63eb0dcf9d45d.json")
+	ConfigDTGlow151ARM64 = NewDataTuple("data/cfg/e351abc952a4c085ea76be6cfd84aa4b88894729747353cd03a5d161cb525f35.json")
 )
 
 func DataTupeFTConfigArm64() DataTuple {
@@ -55,6 +56,11 @@ func FT_zen3_ConfigByte() []byte {
 
 func ConfigGlow150ARM64() Config {
 	cfg, _ := NewConfigFromBytes(ConfigDTGlow150ARM64.Data)
+	cfg.MediaType = MediaTypeImageConfig
+	return cfg
+}
+func ConfigGlow151ARM64() Config {
+	cfg, _ := NewConfigFromBytes(ConfigDTGlow151ARM64.Data)
 	cfg.MediaType = MediaTypeImageConfig
 	return cfg
 }

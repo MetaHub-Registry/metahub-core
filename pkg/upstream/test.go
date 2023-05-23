@@ -17,7 +17,7 @@ type RegContainer struct {
 func SetupRegistry(ctx context.Context) (*RegContainer, error) {
 	regPort := "5050"
 	req := testcontainers.ContainerRequest{
-		Image:        "quay.io/cqnib/testcontainer-registry:2023-05-12-amd64",
+		Image:        "quay.io/cqnib/testcontainer-registry:2023-05-23-amd64",
 		ExposedPorts: []string{regPort},
 		WaitingFor:   wait.ForListeningPort(nat.Port(regPort)),
 		Env: map[string]string{

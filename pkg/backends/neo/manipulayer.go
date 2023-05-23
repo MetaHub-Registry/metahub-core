@@ -12,7 +12,7 @@ import (
 
 const (
 	FailManipuLayerFromResult           = "fail to create ManipuLayer from result"
-	pkgNameManipuLayer                  = "neo/manipulation_layer.go"
+	pkgNameManipuLayer                  = "neo/manipulayer.go"
 	ManipuLayerReturn                   = "id(mpl) AS mplID, mpl.label AS mplLabel, mpl.rule AS mplRule"
 	FailManipuLayerGetByLabel           = "fail to get ManipuLayer by label"
 	FailManipuLayerGetCreate            = "fail to get or create ManipuLayer"
@@ -41,6 +41,20 @@ func (n Neo) ManipuLayerCreate(ctx context.Context, mpl *types.ManipuLayer) (err
 			return utils.ErrorHandler(l, span, err, types.FailBrGet, key)
 		} else {
 			mpl.ID = mplID
+		}
+	}
+	// Add Cmd
+	utils.Debug(l, span, "ManipuCmd: %d", len(mpl.Cmd))
+	for _, mpc := range mpl.Cmd {
+		if e := n.ManipuCmdInsert(ctx, mpl.ID, &mpc); e != nil {
+			return utils.ErrorHandler(l, span, e, FailManipuCmdCreate)
+		}
+	}
+	// Add Environment
+	utils.Debug(l, span, "ManipuEnv: %d", len(mpl.Environment))
+	for _, mpe := range mpl.Environment {
+		if e := n.ManipuEnvInsert(ctx, mpl.ID, &mpe); e != nil {
+			return utils.ErrorHandler(l, span, e, FailManipuEnvInsert)
 		}
 	}
 	// Connect to ManifestData
@@ -78,6 +92,7 @@ func (n Neo) ManipuLayerGetCreate(ctx context.Context, mpl *types.ManipuLayer) (
 	if mplGot, found, e := n.ManipuLayerGetByLabel(ctx, mpl.Label); e != nil {
 		return utils.ErrorHandler(l, span, e, FailManipuLayerGetByLabel)
 	} else if found {
+		utils.Debug(l, span, "ManipuLayer found: %d", mplGot.ID)
 		mpl.ID = mplGot.ID
 		return nil
 	} else {
@@ -150,11 +165,22 @@ func (n Neo) ManipuLayerFromResult(ctx context.Context, res types.Result) (mpl t
 	if err != nil {
 		return mpl, utils.ErrorHandler(l, span, err, FailGetLayersForManipuLayerID)
 	}
+	mpcs, err := n.ManipuCmdsGetByManipulayerID(ctx, id)
+	if err != nil {
+		return mpl, utils.ErrorHandler(l, span, err, FailManipuCmdsGetByManipulayerID)
+	}
+	mpes, err := n.ManipuEnvsGetByManipulayerID(ctx, id)
+	if err != nil {
+		return mpl, utils.ErrorHandler(l, span, err, FailManipuEnvsGetByManipulayerID)
+	}
+
 	mpl = types.ManipuLayer{
-		ID:    id,
-		Label: label,
-		Rule:  rule,
-		Image: md,
+		ID:          id,
+		Label:       label,
+		Rule:        rule,
+		Image:       md,
+		Cmd:         mpcs,
+		Environment: mpes,
 	}
 
 	return mpl, nil
@@ -203,17 +229,17 @@ func (n Neo) ManipuLayerLinkToLayer(ctx context.Context, mplID, lyrID int64, idx
 func (n Neo) ManipuLayerFromConfigYAML(ctx context.Context, cmpl config.ManipuLayer) (mpl types.ManipuLayer, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameManipuLayer,
-		"func":    "ManipuLayerFromUpstream",
+		"func":    "ManipuLayerFromConfigYAML",
 	})
 	defer span.End()
 	up, err := types.NewUpstreamByName(cmpl.Image)
 	if err != nil {
 		return mpl, utils.ErrorHandler(l, span, err, types.FailNewUpstreamByName)
 	}
-	return n.ManipuLayerFromUpstream(ctx, up, cmpl.Rule)
+	return n.ManipuLayerFromUpstream(ctx, up, cmpl)
 }
 
-func (n Neo) ManipuLayerFromUpstream(ctx context.Context, up types.Upstream, rule string) (mpl types.ManipuLayer, err error) {
+func (n Neo) ManipuLayerFromUpstream(ctx context.Context, up types.Upstream, cfgMpl config.ManipuLayer) (mpl types.ManipuLayer, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameManipuLayer,
 		"func":    "ManipuLayerFromUpstream",
@@ -232,11 +258,28 @@ func (n Neo) ManipuLayerFromUpstream(ctx context.Context, up types.Upstream, rul
 	} else if !found {
 		return mpl, utils.NewError(l, span, FailManifestDataNotFound)
 	}
-	mpl = types.ManipuLayer{
-		Label: up.GetLabel(),
-		Rule:  rule,
-		Image: md,
+	mpes := make([]types.ManipuEnv, 0)
+	for _, e := range cfgMpl.Environment {
+		mpes = append(mpes, types.ManipuEnv{
+			Key:  e.Key,
+			Rule: e.Rule,
+		})
 	}
+	mpcs := make([]types.ManipuCmd, 0)
+	for _, c := range cfgMpl.Cmd {
+		mpcs = append(mpcs, types.ManipuCmd{
+			Cmd:  c.Value,
+			Rule: c.Rule,
+		})
+	}
+	mpl = types.ManipuLayer{
+		Label:       up.GetLabel(),
+		Rule:        cfgMpl.Rule,
+		Image:       md,
+		Environment: mpes,
+		Cmd:         mpcs,
+	}
+
 	err = n.ManipuLayerGetCreate(ctx, &mpl)
 	if err != nil {
 		return mpl, utils.ErrorHandler(l, span, err, FailManipuLayerGetByLabel)

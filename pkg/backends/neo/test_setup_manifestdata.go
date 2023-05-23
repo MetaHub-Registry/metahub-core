@@ -36,6 +36,11 @@ func (n Neo) Bootstrap_ManifestData(ctx context.Context, bs utils.Bootstrap, br 
 		if err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
+	case "glow151arm64":
+		err = n.Setup_ManifestData(ctx, br, types.ManifestDataGlow151ARM64, b)
+		if err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
 	default:
 		return fmt.Errorf("no ManifestData Setup for '%s'", b)
 	}
