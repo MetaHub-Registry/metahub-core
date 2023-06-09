@@ -9,7 +9,6 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
-	"github.com/metahub-registry/metahub-core/pkg/yaml/config"
 	yamlCfg "github.com/metahub-registry/metahub-core/pkg/yaml/config"
 )
 
@@ -35,6 +34,7 @@ type Database interface {
 	Upstream_Get_ByRequest(ctx context.Context, req types.Request) (up types.Upstream, found bool, err error)
 	UpstreamGet(ctx context.Context, up types.Upstream) (upID int64, success bool, err error)
 	UpstreamGetByID(ctx context.Context, upID int64) (up types.Upstream, found bool, err error)
+	UpstreamGetByLayerDigest(ctx context.Context, dig string) (up types.Upstream, found bool, err error)
 	/********* Annotation/Labels *********/
 	Config_AddLabels(ctx context.Context, cfgID int64, a *types.Annotations) (err error)
 	Manifest_AddAnnotations(ctx context.Context, maniID int64, as *types.Annotations) (err error)
@@ -46,10 +46,10 @@ type Database interface {
 	Layer_PlainInsert(ctx context.Context, l types.Layer) (lID int64, err error)
 	LayerDescriptorGetInsert(ctx context.Context, desc v1.Descriptor) (layerID int64, err error)
 	Layers_DeleteUnused(ctx context.Context) (err error)
-	LayerExists(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error)
-	Layer_GetUpstreamRegistry(ctx context.Context, up upstream.UpstreamTriple) (registry string, err error)
+	LayerExists(ctx context.Context, up upstream.UpstreamTriple) (found bool, err error)
 	LayerGetUpstream(ctx context.Context, lID int64) (up types.Upstream, found bool, err error)
 	GetLayersForManifestDataID(ctx context.Context, maniDataID int64) (layers []types.Layer, err error)
+	LayerGetByLayerAndManifestDataID(ctx context.Context, layerID, mdID int64) (lyr types.Layer, found bool, err error)
 	/********* Config **********/
 	Config_GetByDigest(ctx context.Context, dig string) (cfg types.Config, found bool, err error)
 	Config_GetByID(ctx context.Context, cfgID int64) (cfg types.Config, found bool, err error)
@@ -155,7 +155,7 @@ type Database interface {
 	/**** BlobChunks ****/
 	UploadChunk_Get_ByUUID(ctx context.Context, buID int64) (bcs []types.BlobChunks, err error)
 	UploadChunk_Create(ctx context.Context, buID, startByte, lenBytes int64) (bc types.BlobChunks, err error)
-
+	BlobUploadGetByBlobDigest(ctx context.Context, dig string) (bu types.OCIBlobUpload, found bool, err error)
 	/****** Profiles ********/
 	GetProfiles(ctx context.Context) (ps []types.Profile, err error)
 	Profile_GetInsert(ctx context.Context, p *types.Profile) (err error)
@@ -170,7 +170,7 @@ type Database interface {
 	ProfileGetAnnoEqRules(ctx context.Context, prfID int64) (rs []types.Rule, err error)
 	Profile_ManifestType(ctx context.Context, maniID int64) (relType string, found bool, err error)
 	Profile_FromManifestID(ctx context.Context, maniID int64) (prfs []types.Profile, err error)
-	ProfileFromYAML(ctx context.Context, p config.Profile) (prf types.Profile, err error)
+	ProfileFromYAML(ctx context.Context, p yamlCfg.Profile) (prf types.Profile, err error)
 	// Rules
 	Rule_EvalAnnotationRule(ctx context.Context, r types.Rule) (err error)
 	Rule_Get(ctx context.Context, r types.Rule) (ruleID int64, found bool, err error)
@@ -191,8 +191,8 @@ type Database interface {
 	/***** Manipulations *****/
 	ManipulationGetCreate(ctx context.Context, mp *types.Manipulation) (err error)
 	ManipulationsGetByProfileID(ctx context.Context, prfID int64) (mps []types.Manipulation, err error)
-	ManipuLayerFromConfigYAML(ctx context.Context, cmpl config.ManipuLayer) (mpl types.ManipuLayer, err error)
-	ManipulationFromYAML(ctx context.Context, cmp config.Manipulation) (mp types.Manipulation, err error)
+	ManipuLayerFromConfigYAML(ctx context.Context, cmpl yamlCfg.ManipuLayer) (mpl types.ManipuLayer, err error)
+	ManipulationFromYAML(ctx context.Context, cmp yamlCfg.Manipulation) (mp types.Manipulation, err error)
 	ManinpulationCheckRules(ctx context.Context, prfID, maniID int64) (ok bool, err error)
 	ManipuCmdsGetByManipulayerID(ctx context.Context, mplyrID int64) (mpcs []types.ManipuCmd, err error)
 	ManipuEnvsGetByManipulayerID(ctx context.Context, mplyrID int64) (mpes []types.ManipuEnv, err error)

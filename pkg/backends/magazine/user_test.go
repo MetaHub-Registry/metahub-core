@@ -7,9 +7,8 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 )
 
-var ctx = context.Background()
-
 func TestUserInsert(t *testing.T) {
+	ctx := context.Background()
 	user := types.User{
 		Username: "test",
 	}

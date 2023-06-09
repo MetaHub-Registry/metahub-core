@@ -201,7 +201,7 @@ func (n Neo) ManipuLayerLinkToUpstream(ctx context.Context, mplID, upID int64) (
 	return nil
 }
 
-func (n Neo) ManipuLayerLinkToLayer(ctx context.Context, mplID, lyrID int64, idx int) (err error) {
+func (n Neo) ManipuLayerLinkToLayer(ctx context.Context, mplID, lyrID int64, mediaType string, idx int) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameManipuLayer,
 		"func":    "ManipuLayerLinkToLayer",
@@ -211,12 +211,7 @@ func (n Neo) ManipuLayerLinkToLayer(ctx context.Context, mplID, lyrID int64, idx
 	})
 	defer span.End()
 	_ = ctx
-	rel := ""
-	if lyr, found, err := n.Layer_Get_ByID(ctx, lyrID); err != nil || !found {
-		return utils.ErrorHandler(l, span, err, FailLayerGetByID)
-	} else {
-		rel = utils.ShortenMediaType(lyr.MediaType)
-	}
+	rel := utils.ShortenMediaType(mediaType)
 	q := fmt.Sprintf(`MATCH (mpl:ManipuLayer), (l:Layer) WHERE id(mpl) = %d AND id(l) = %d`, mplID, lyrID)
 	q += fmt.Sprintf(` MERGE (mpl)-[:%s {order: %d}]->(l)`, rel, idx)
 	utils.Debug(l, span, q)

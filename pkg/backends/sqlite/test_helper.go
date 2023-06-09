@@ -554,9 +554,10 @@ func Setup_Users(sqObj *Sqlite, br *utils.BootstrapResult) (err error) {
 				scrt,
 			},
 		}
-		_, err = sqObj.InsertUser(ctx, u)
-		if err != nil {
+		if uID, err := sqObj.InsertUser(ctx, u); err != nil {
 			return err
+		} else {
+			br.Add(fmt.Sprintf("user:%s#id", u.Username), fmt.Sprintf("%d", uID))
 		}
 		bearerToken := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", u.Username, user.Password)))
 		br.Add(fmt.Sprintf("user:%s#bearer", u.Username), bearerToken)

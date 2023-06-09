@@ -31,6 +31,7 @@ var (
 	jeagerHttpURI   string
 	jeagerThriftURI string
 	svcName         = "magazine-test"
+	ctx             = context.Background()
 )
 
 var (
@@ -76,7 +77,6 @@ var (
 
 func TestMain(m *testing.M) {
 	logrus.Info("Start TestMain")
-	ctx := context.Background()
 	/// Neo4j
 	neoC, err := neo.SetupNeo4j(ctx)
 	if err != nil {
@@ -169,6 +169,7 @@ func TestMain(m *testing.M) {
 		},
 	}
 	mag.Config.Args = map[string]string{
+		"cache-registry":     regC.HttpURI,
 		"TEST_REGISTRY":      regC.HttpURI,
 		"TEST_JAEGER_HTTP":   jeagerC.HttpURI,
 		"TEST_JAEGER_THRIFT": jeagerC.ThriftURI,

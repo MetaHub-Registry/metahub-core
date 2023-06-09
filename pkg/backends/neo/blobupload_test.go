@@ -62,7 +62,7 @@ func TestBlobuploadCRU(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	q := `MATCH (bu:BlobUpload)-[:IS]->(c:Config) WHERE id(bu) = %d RETURN ID(c) AS configID`
+	q := `MATCH (bu:BlobUpload)-[:UPLOADED]->(c:Config) WHERE id(bu) = %d RETURN ID(c) AS configID`
 	query := fmt.Sprintf(q, ociBU.ID)
 	res, err := db.Query(query)
 	if err != nil {
@@ -79,28 +79,34 @@ func TestBlobuploadCRU(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	q = `MATCH (bu:BlobUpload)-[:IS]->(l:Layer) WHERE id(bu) = %d RETURN ID(l) AS ID`
+	q = `MATCH (bu:BlobUpload)-[:UPLOADED]->(l:Layer) WHERE id(bu) = %d RETURN ID(l) AS ID`
 	query = fmt.Sprintf(q, ociBU.ID)
 	res, err = db.Query(query)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.Equal(t, 1, len(res))
-
 }
 
 func TestBlobChunkCRU(t *testing.T) {
 	ctx := context.Background()
-	_ = ctx
+	debug := 0
 	bs := utils.NewBootstrap()
 	bs.AddBootstrap("config:ft_arm64")
 	bs.AddBootstrap("layer:0:ft_arm64")
 	bs.SetEmptyAll()
-	//bs.PostTestSleep = 90
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
 	br, err := SetupTest(ctx, bs)
-	_ = br
 	if err != nil {
+		db.TeardownTest(bs)
 		t.Fatal(err)
+	}
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
 	}
 	defer db.TeardownTest(bs)
 	// Actual test
@@ -110,7 +116,7 @@ func TestBlobChunkCRU(t *testing.T) {
 		UploadUser:    "test",
 		UploadProfile: "generic",
 		BlobType:      "layer",
-		Digest:        "sha256:1234567890",
+		Digest:        "sha256:6ec0f660682c2f5b391af1d81d3b4839da06f050269546177b28e4b51d8d4c30",
 	}
 	err = db.BlobUpload_Create_ByOCI(ctx, &ociBU)
 	if err != nil {
@@ -127,4 +133,16 @@ func TestBlobChunkCRU(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, 1, len(bcs))
+	// LinkBlobUpdate
+	if e := db.BlobUpload_Update_ByUUID(ctx, &ociBU); e != nil {
+		t.Fatal(e)
+	}
+	// BlobUploadGetByBlobDigest
+	if gotBu, found, err := db.BlobUploadGetByBlobDigest(ctx, ociBU.Digest); err != nil {
+		t.Fatal(err)
+	} else if !found {
+		t.Fatal("Did not find BlobUpload")
+	} else {
+		assert.Equal(t, ociBU.ID, gotBu.ID)
+	}
 }

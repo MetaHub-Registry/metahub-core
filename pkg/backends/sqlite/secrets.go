@@ -3,10 +3,15 @@ package sqlite
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+)
+
+const (
+	pkgNameSqlSecrets = "sqlite/secrets.go"
 )
 
 type Secret struct {
@@ -96,4 +101,77 @@ func (s Sqlite) GetSecrets(ctx context.Context, uID int) (srcts []types.Secret, 
 		return scrts, err
 	}
 	return scrts, nil
+}
+
+func (s Sqlite) DelSecret(ctx context.Context, uID int, sID string) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":  pkgNameSqlSecrets,
+		"func":     "DelSecretByName",
+		"secretID": sID,
+		"uID":      uID,
+	})
+	defer span.End()
+	_ = ctx
+	q := `DELETE FROM secrets WHERE id = ? AND user_id = ?`
+	utils.Debug(l, span, q)
+	stmt, err := db.Prepare(q)
+	if err != nil {
+		return
+	}
+	sInt, err := strconv.Atoi(sID)
+	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "Failed to convert ID to int")
+		return
+	}
+	utils.Debug(l, span, "id=%d // user_id=%d", sInt, uID)
+	res, e := stmt.Exec(sInt, uID)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "Failed to delete secret")
+		return
+	}
+	row, e := res.RowsAffected()
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "Failed to delete secret")
+		return
+	}
+
+	if row == 0 {
+		err = utils.NewError(l, span, "Failed to delete secret, 0 rows affected")
+
+		return
+	}
+	utils.Debug(l, span, "Deleted secret %d", row)
+	return
+}
+
+func (s Sqlite) DelSecretByName(ctx context.Context, uID int, sName string) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameSqlSecrets,
+		"func":    "DelSecretByName",
+		"name":    sName,
+		"uID":     uID,
+	})
+	defer span.End()
+	_ = ctx
+	q := `DELETE FROM secrets WHERE name = ? AND user_id = ?`
+	stmt, err := db.Prepare(q)
+	if err != nil {
+		return
+	}
+	res, err := stmt.Exec(sName, uID)
+	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "Failed to delete secret")
+		return
+	}
+	row, e := res.RowsAffected()
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "Failed to delete secret")
+		return
+	}
+	if row == 0 {
+		err = utils.NewError(l, span, "Failed to delete secret, 0 rows affected")
+		return
+	}
+	utils.Debug(l, span, "Deleted secret '%s' for user '%d'", sName, uID)
+	return
 }

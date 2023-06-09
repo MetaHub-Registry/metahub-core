@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/docker/distribution/manifest/manifestlist"
 	"github.com/opencontainers/go-digest"
 	"github.com/metahub-registry/metahub-core/pkg/backends/minio"
 	"github.com/metahub-registry/metahub-core/pkg/types"
@@ -91,147 +90,149 @@ func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string) (blo
 	return
 }
 
-func (mag Magazine) upstreamBlobInsertManifestDesc(ctx context.Context, req types.Request, maniIn manifestlist.ManifestDescriptor) (err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": pkgNameUp,
-		"func":    "upstreamBlobInsertManifestDesc",
-	})
-	defer span.End()
-	dig := maniIn.Digest
-	ups := types.Upstream{
-		Reg:     req.Host,
-		Repo:    req.Repo,
-		Tag:     req.Tag,
-		Digest:  dig,
-		Profile: req.Profile,
-	}
-	upID, maniID, prf, e := mag.Database.CollectionGetCreateUpstreamTriple(ctx, ups, maniIn)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to NeoInsertUpstream")
+/*
+	func (mag Magazine) upstreamBlobInsertManifestDesc(ctx context.Context, req types.Request, maniIn manifestlist.ManifestDescriptor) (err error) {
+		l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+			"package": pkgNameUp,
+			"func":    "upstreamBlobInsertManifestDesc",
+		})
+		defer span.End()
+		dig := maniIn.Digest
+		ups := types.Upstream{
+			Reg:     req.Host,
+			Repo:    req.Repo,
+			Tag:     req.Tag,
+			Digest:  dig,
+			Profile: req.Profile,
+		}
+		upID, maniID, prf, e := mag.Database.CollectionGetCreateUpstreamTriple(ctx, ups, maniIn)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to NeoInsertUpstream")
+			return
+		}
+		ups.ID = upID
+		// Insert Manifest
+
+		upt := upstream.UpstreamTriple{
+			Reg:     req.Host,
+			Repo:    req.Repo,
+			Tag:     req.Tag,
+			Digest:  dig,
+			Profile: req.Profile,
+		}
+		b, maniMeta, e := mag.GetManifestByUpstreamTripleByDigest(ctx, upt)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, failGetMani)
+		}
+		utils.Debug(l, span, "Got Manifest with digest '%s'", utils.ShortenDigest(maniMeta.Digest.String()))
+		// Put Manifest in Minio
+		e = mag.Minio.PutManifest(ctx, b, upt)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, "Failed to get put manifest in minio")
+		}
+		rawMani, e := minio.RawManifestFromBlob(b)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, "failed to RawManifestFromBlob")
+		}
+		switch maniMeta.MediaType {
+		case "application/vnd.docker.distribution.manifest.v1+prettyjws":
+			err = fmt.Errorf("manifest type is not supported: %s", maniMeta.MediaType)
+			return err
+		case "application/vnd.docker.distribution.manifest.v2+json":
+			upt.Digest = rawMani.ConfigInfo().Digest
+		default:
+			l.Fatalf("Unknown media type: %s", maniMeta.MediaType)
+		}
+		cfgByte, cfgBlob, e := mag.GetBlobByUpstreamTriple(ctx, upt)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, "failed to GetBlobByUpstreamTriple")
+		}
+		l.Warnf("Config Digest: %s", cfgBlob.Digest.String())
+		e = mag.Minio.PutConfig(ctx, cfgByte, cfgBlob.Digest.String())
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, "while Minio.PutConfig")
+		}
+		maniData, e := mag.Minio.NewManifestDataFromBytes(ctx, b)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, "while Minio.NewManifestFromBytes")
+		}
+		maniData.Type = "PULLED_BY"
+		// Insert Config
+		cfgID, e := mag.Database.Config_Insert(ctx, maniData.Config)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, "Failed to insert config")
+		}
+		utils.Debug(l, span, "Config ID: %d", cfgID)
+		utils.Debug(l, span, "Platform: %s/%s", maniData.Platform.OS, maniData.Platform.Arch)
+		e = mag.Database.Platform_GetInsert(ctx, &maniData.Platform)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, "Failed to insert platform")
+		}
+		e = mag.NeoLinkManifestToPlatform(ctx, maniID, maniData.Platform.ID)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, FailLinkManifestToPlatform)
+		}
+		// Create Collection
+		col, _, e := mag.Database.Collection_GetCreate_ByRepoTag(ctx, req.Repo, req.Tag)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, "failed to get collection")
+		}
+		e = mag.Database.LinkCollectionToManifest(ctx, col.ID, maniID)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, FailLinkCollectionToPlatform)
+		}
+		e = mag.Database.LinkCollectionTagToManifest(ctx, col.ColTag.ID, maniID)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, FailLinkCollectionTagToPlatform)
+		}
+		// Insert Layer
+		for idx, layer := range maniData.Layers {
+			lID, e := mag.Database.Layer_PlainInsert(ctx, layer)
+			if e != nil {
+				return utils.ErrorHandler(l, span, e, "Failed to insert layer")
+			}
+			utils.Debug(l, span, "Layer [%d] ID: %d", idx, lID)
+			// TODO: Do we need to pull them here?
+		}
+		maniDataID, e := mag.NeoInsertManifestData(ctx, maniID, maniData, "PULLED_BY")
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, failInsManiData)
+		}
+		l.Warnf("ManifestData ID: %d", maniDataID)
+
+		utils.Debug(l, span, "Insert Config %d", cfgID)
+		e = mag.Database.LinkManifestDataToProfile(ctx, maniDataID, prf.ID, "PULLED_BY")
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, FailLinkProfileToManifestData)
+		}
+		// Unwind Profile
+		e = mag.Database.ProfileUnwindRules(ctx, prf.ID, maniDataID)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, FailUnwind)
+		}
+		// Create OCI Manifest
+		mani, _, e := mag.Database.Manifest_GetByID_WithProfile(ctx, maniID, prf.ID)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, failGetMani)
+		}
+
+		ociDataID, e := mag.CreateOCIv1ForProfile(ctx, mani, maniData, prf)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, FailCreateOCIv1Manifest)
+		}
+		e = mag.Database.ProfileUnwindRules(ctx, prf.ID, ociDataID)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, FailUnwind)
+		}
+
+		// Compute ManifestList?
+		e = mag.ComputeManifestlists(ctx)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, "failed to ComputeManifestlists")
+		}
 		return
 	}
-	ups.ID = upID
-	// Insert Manifest
-
-	upt := upstream.UpstreamTriple{
-		Reg:     req.Host,
-		Repo:    req.Repo,
-		Tag:     req.Tag,
-		Digest:  dig,
-		Profile: req.Profile,
-	}
-	b, maniMeta, e := mag.GetManifestByUpstreamTripleByDigest(ctx, upt)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, failGetMani)
-	}
-	utils.Debug(l, span, "Got Manifest with digest '%s'", utils.ShortenDigest(maniMeta.Digest.String()))
-	// Put Manifest in Minio
-	e = mag.Minio.PutManifest(ctx, b, upt)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, "Failed to get put manifest in minio")
-	}
-	rawMani, e := minio.RawManifestFromBlob(b)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, "failed to RawManifestFromBlob")
-	}
-	switch maniMeta.MediaType {
-	case "application/vnd.docker.distribution.manifest.v1+prettyjws":
-		err = fmt.Errorf("manifest type is not supported: %s", maniMeta.MediaType)
-		return err
-	case "application/vnd.docker.distribution.manifest.v2+json":
-		upt.Digest = rawMani.ConfigInfo().Digest
-	default:
-		l.Fatalf("Unknown media type: %s", maniMeta.MediaType)
-	}
-	cfgByte, cfgBlob, e := mag.GetBlobByUpstreamTriple(ctx, upt)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, "failed to GetBlobByUpstreamTriple")
-	}
-	l.Warnf("Config Digest: %s", cfgBlob.Digest.String())
-	e = mag.Minio.PutConfig(ctx, cfgByte, cfgBlob.Digest.String())
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, "while Minio.PutConfig")
-	}
-	maniData, e := mag.Minio.NewManifestDataFromBytes(ctx, b)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, "while Minio.NewManifestFromBytes")
-	}
-	maniData.Type = "PULLED_BY"
-	// Insert Config
-	cfgID, e := mag.Database.Config_Insert(ctx, maniData.Config)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, "Failed to insert config")
-	}
-	utils.Debug(l, span, "Config ID: %d", cfgID)
-	utils.Debug(l, span, "Platform: %s/%s", maniData.Platform.OS, maniData.Platform.Arch)
-	e = mag.Database.Platform_GetInsert(ctx, &maniData.Platform)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, "Failed to insert platform")
-	}
-	e = mag.NeoLinkManifestToPlatform(ctx, maniID, maniData.Platform.ID)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, FailLinkManifestToPlatform)
-	}
-	// Create Collection
-	col, _, e := mag.Database.Collection_GetCreate_ByRepoTag(ctx, req.Repo, req.Tag)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, "failed to get collection")
-	}
-	e = mag.Database.LinkCollectionToManifest(ctx, col.ID, maniID)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, FailLinkCollectionToPlatform)
-	}
-	e = mag.Database.LinkCollectionTagToManifest(ctx, col.ColTag.ID, maniID)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, FailLinkCollectionTagToPlatform)
-	}
-	// Insert Layer
-	for idx, layer := range maniData.Layers {
-		lID, e := mag.Database.Layer_PlainInsert(ctx, layer)
-		if e != nil {
-			return utils.ErrorHandler(l, span, e, "Failed to insert layer")
-		}
-		utils.Debug(l, span, "Layer [%d] ID: %d", idx, lID)
-		// TODO: Do we need to pull them here?
-	}
-	maniDataID, e := mag.NeoInsertManifestData(ctx, maniID, maniData, "PULLED_BY")
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, failInsManiData)
-	}
-	l.Warnf("ManifestData ID: %d", maniDataID)
-
-	utils.Debug(l, span, "Insert Config %d", cfgID)
-	e = mag.Database.LinkManifestDataToProfile(ctx, maniDataID, prf.ID, "PULLED_BY")
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, FailLinkProfileToManifestData)
-	}
-	// Unwind Profile
-	e = mag.Database.ProfileUnwindRules(ctx, prf.ID, maniDataID)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, FailUnwind)
-	}
-	// Create OCI Manifest
-	mani, _, e := mag.Database.Manifest_GetByID_WithProfile(ctx, maniID, prf.ID)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, failGetMani)
-	}
-
-	ociDataID, e := mag.CreateOCIv1ForProfile(ctx, mani, maniData, prf)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, FailCreateOCIv1Manifest)
-	}
-	e = mag.Database.ProfileUnwindRules(ctx, prf.ID, ociDataID)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, FailUnwind)
-	}
-
-	// Compute ManifestList?
-	e = mag.ComputeManifestlists(ctx)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, "failed to ComputeManifestlists")
-	}
-	return
-}
+*/
 
 func (mag Magazine) upstreamBlobInsertGeneric(ctx context.Context, req types.Request, col types.Collection, ups types.Upstream, maniData types.ManifestData) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
@@ -517,6 +518,10 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 		err = utils.ErrorHandler(l, span, e, "Failed to insert manifest data")
 		return
 	}
+	if e := mag.Database.ManifestDataLinkToUpstream(ctx, maniData.ID, ups.ID); e != nil {
+		err = utils.ErrorHandler(l, span, e, "while linking manifestData to upstream")
+		return
+	}
 	// Layer annotations already present?
 	os, osFound, e := mag.Database.ManifestGetOS(ctx, maniData.ID)
 	if e != nil {
@@ -531,7 +536,7 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 	// Iterate Layer
 	for idx, layer := range maniData.Layers {
 		if idx == 0 {
-			utils.Debug(l, span, "Pulling layer #%d w/ digest '%s'", idx, utils.ShortenDigest(layer.Digest))
+			utils.Warn(l, span, "Pulling layer #%d w/ digest '%s' (%s)", idx, utils.ShortenDigest(layer.Digest), layer.MediaType)
 			up := upstream.UpstreamTriple{
 				MediaType: layer.MediaType,
 				Reg:       req.Host,
@@ -539,7 +544,7 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 				Tag:       req.Tag,
 				Digest:    digest.Digest(layer.Digest),
 			}
-			md, blobFound, e := mag.BlobExists(ctx, up)
+			_, blobFound, e := mag.BlobExists(ctx, up)
 			if e != nil {
 				err = utils.ErrorHandler(l, span, e, "failed to check if blob exists")
 				return
@@ -548,12 +553,23 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 				err = utils.ErrorHandler(l, span, e, "blob not found")
 				return
 			}
+			// Fetch Layer/MD relationship
+			if lyr, found, e := mag.Database.LayerGetByLayerAndManifestDataID(ctx, layer.ID, maniData.ID); e != nil {
+				err = utils.ErrorHandler(l, span, e, "failed to get layer by layer and manifest data id")
+				return
+			} else if !found {
+				err = utils.NewError(l, span, "layer not found")
+				return
+			} else {
+				layer.MediaType = lyr.MediaType
+			}
+			utils.Debug(l, span, "Layer #%d (lID: %d) is %s", idx, layer.ID, layer.MediaType)
 			lyrBytes, e := mag.Minio.LayerGetBytes(ctx, layer.Digest)
 			if e != nil {
 				err = utils.ErrorHandler(l, span, e, "failed to get layer #%d w/ digest '%s'", idx, utils.ShortenDigest(layer.Digest))
 				return
 			}
-			switch md {
+			switch layer.MediaType {
 			case "application/vnd.docker.image.rootfs.diff.tar.gzip":
 				utils.Warn(l, span, "Layer #%d (lID: %d) is tar.gzip", idx, layer.ID)
 				layer.Data = lyrBytes
@@ -569,17 +585,8 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 					return
 				}
 			default:
-				err = utils.NewError(l, span, "unknown media-type: %s", md)
+				err = utils.NewError(l, span, "unknown media-type: %s", layer.MediaType)
 			}
-			/*os, e := mag.BaseLayerEvalOS(ctx, layer)
-			if e != nil {
-				err = utils.ErrorHandler(l, span, e, "failed to eval layer #%d w/ digest '%s'", idx, utils.ShortenDigest(layer.Digest))
-				return
-			}
-			_ = os
-			*/
-			// TODO: Add OS annotation to layer
-
 		}
 	}
 	if !osFound {
@@ -748,4 +755,20 @@ func (mag Magazine) CacheUpstream(ctx context.Context, up types.Upstream) (err e
 		return utils.ErrorHandler(l, span, e, "failed to ManifestData_LinkToConfig")
 	}
 	return nil
+}
+
+func (mag Magazine) AllowsUnauthorizedPull(up types.Upstream) bool {
+	if _, ok := mag.Config.Args["TEST_REGISTRY"]; ok {
+		return true
+	}
+	switch up.Reg {
+	case "registry-1.docker.io", "docker.io":
+		return false
+	case "quay.io":
+		return true
+	case "registry:5050":
+		return true
+	default:
+		return false
+	}
 }

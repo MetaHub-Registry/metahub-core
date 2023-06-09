@@ -2,8 +2,6 @@ package magazine
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -32,6 +30,13 @@ type Magazine struct {
 	Config         MagConfig
 }
 
+func checkErr(err error, msg string) {
+	if err != nil {
+		err = errors.Wrapf(err, msg)
+		logrus.Fatal(err)
+	}
+}
+
 func (mag *Magazine) Setup() (err error) {
 	return
 }
@@ -46,10 +51,7 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 	} else {
 		// Find home directory.
 		home, err := homedir.Dir()
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
+		checkErr(err, err.Error())
 
 		// Search config in home directory with name ".cobra-example" (without extension).
 		viper.AddConfigPath(home)
@@ -57,30 +59,16 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 		viper.SetConfigType("yaml")
 	}
 	err = viper.ReadInConfig()
-	if err != nil {
-		logrus.Fatalf("Error reading config file, %s", err)
-	}
+	checkErr(err, "Error reading config file")
 
 	min, err := minio.NewMinio(cfgFile)
-	if err != nil {
-		err = errors.Wrapf(err, "failed to create minio backend")
-		logrus.Fatal(err)
-	}
+	checkErr(err, "failed to create minio backend")
 	err = min.ConnectClients()
-	if err != nil {
-		err = errors.Wrapf(err, "failed to connect clients")
-		logrus.Fatal(err)
-	}
-
+	checkErr(err, "failed to connect to minio backend")
 	err = min.BucketCheck()
-	if err != nil {
-		err = errors.Wrapf(err, "failed to execute BucketCheck")
-		logrus.Fatal(err)
-	}
+	checkErr(err, "failed to execute BucketCheck")
 	fr := viper.GetString("frontend.redirect")
-	if fr != "" {
-		logrus.Infof("Redirect frontend to: %s", fr)
-	}
+	logrus.Infof("Redirect frontend to: %s", fr)
 	au := viper.GetString("auth.url")
 	var regList []string
 	regs := viper.GetString("registries")
@@ -89,20 +77,36 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 		regList = append(regList, strings.Split(regs, ",")...)
 
 	}
+	// CORS
+	corsEnabled := viper.GetBool("cors.enabled")
+	logrus.Infof("CORS enabled: %t", corsEnabled)
+	cors := CORS{
+		Enabled: corsEnabled,
+	}
 	cfg := parseFlags(cmd, regList)
+	cfg.CORS = cors
 	cfg.AuthURL = au
 	cfg.RedirectDoc = fr
-	ctx, e := initTracing(cmd, &cfg)
-	if e != nil {
-		err = errors.Wrapf(e, "failed to init tracing")
+	if e := initOauth(cmd, &cfg); e != nil {
+		err = errors.Wrapf(e, "failed to init oauth")
 		logrus.Fatal(err)
 	}
+	ctx, err = initTracing(cmd, &cfg)
+	checkErr(err, "failed to init tracing")
+
 	if cfg.Tracing.Enabled {
 		var span trace.Span
 		ctx, span = tracer.Start(ctx, "NewMagazine")
 		defer span.End()
 	}
-
+	cacheReg, _ := cmd.Flags().GetString("cache-registry")
+	if cacheReg != "" {
+		logrus.Infof("Add cache registry: %s", cacheReg)
+		cfg.Args["cache-registry"] = cacheReg
+	}
+	if cacheLayers, e := cmd.Flags().GetString("cache-layers"); e == nil && cacheLayers != "" {
+		cfg.Args["cache-layers"] = cacheLayers
+	}
 	m = Magazine{
 		Minio:  min,
 		Config: cfg,
@@ -116,17 +120,11 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 	}
 	// Neo4j
 	neo4j, err := neo.New(cfgFile)
-	if err != nil {
-		err = errors.Wrapf(err, "failed to create neo4j backend")
-		logrus.Fatal(err)
-	}
+	checkErr(err, "failed to create neo4j backend")
+
 	m.Database = neo4j
 	err = m.Database.Setup(ctx)
-	if err != nil {
-		err = errors.Wrapf(err, "failed to setup neo4j backend")
-		logrus.Fatal(err)
-
-	}
+	checkErr(err, "failed to setup neo4j backend")
 	return
 }
 
@@ -201,6 +199,22 @@ func parseFlags(cmd *cobra.Command, regList []string) (cfg MagConfig) {
 			"registries":   strings.Join(regList, ","),
 		},
 	}
+}
+
+func initOauth(cmd *cobra.Command, cfg *MagConfig) (err error) {
+	cfg.OAuth = OAuthCfg{
+		Enabled: false,
+	}
+	clientID := viper.GetString("oauth.clientID")
+	if clientID != "" {
+		cfg.OAuth = OAuthCfg{
+			Enabled:      true,
+			ClientID:     clientID,
+			ClientSecret: viper.GetString("oauth.secret"),
+			StateString:  viper.GetString("oauth.state"),
+		}
+	}
+	return nil
 }
 
 func initTracing(cmd *cobra.Command, cfg *MagConfig) (ctx context.Context, err error) {

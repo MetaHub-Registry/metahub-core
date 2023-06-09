@@ -7,11 +7,15 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
-	"github.com/metahub-registry/metahub-core/pkg/tracing"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+)
+
+const (
+	pkgNameBlobUpload     = "neo/blobupload.go"
+	FailOCIBlobFromResult = "Failed to create OCIBlobUpload from result"
 )
 
 func (n Neo) BlobUpload_Create_ByOCI(ctx context.Context, i *types.OCIBlobUpload) (err error) {
@@ -22,7 +26,7 @@ func (n Neo) BlobUpload_Create_ByOCI(ctx context.Context, i *types.OCIBlobUpload
 		attribute.Key("uuid").String(i.UUID.String()),
 	)
 	i.Location = fmt.Sprintf("/v2/%s/blobs/uploads/%s", i.Repo, i.UUID.String())
-	q := fmt.Sprintf(`CREATE (bu:BlobUpload {upload_user: "%s", upload_profile:"%s", digest: "%s", uuid: "%s", location:"%s", created_at: TIMESTAMP()})`, i.UploadUser, i.UploadProfile, i.Digest, i.UUID.String(), i.Location)
+	q := fmt.Sprintf(`CREATE (bu:BlobUpload {upload_user: "%s", upload_profile:"%s", digest: "%s", repo: "%s", uuid: "%s", location:"%s", created_at: TIMESTAMP()})`, i.UploadUser, i.UploadProfile, i.Digest, i.Repo, i.UUID.String(), i.Location)
 	q += ` RETURN ID(bu) AS blobuploadID`
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("query", q),
@@ -55,48 +59,47 @@ func (n Neo) BlobUpload_GetOCI_ByUUID(ctx context.Context, uuid string) (bu type
 }
 
 func (n Neo) BlobUpload_Update_ByUUID(ctx context.Context, i *types.OCIBlobUpload) (err error) {
-	// TODO: Is digest a layer or a config?
-	_, span := tracer.Start(ctx, "BlobUpload_Update_ByUUID")
-	shortDig := utils.ShortenDigest(i.Digest)
-	span.SetAttributes(
-		attribute.Key("buID").Int64(i.ID),
-		attribute.Key("digets").String(shortDig),
-	)
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":  pkgNameBlobUpload,
+		"func":     "BlobUpload_Update_ByUUID",
+		"blobType": i.BlobType,
+		"digest":   i.Digest,
+	})
 	defer span.End()
-	q := fmt.Sprintf(`MATCH (n) WHERE n.digest = "%s" RETURN LABELS(n) AS nodeType, ID(n) AS nodeID`, i.Digest)
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
-	))
-	res, found, err := n.QueryOne(q)
+	_ = ctx
+	q := fmt.Sprintf(`MATCH (n) WHERE n.digest = "%s" AND NOT n:BlobUpload RETURN LABELS(n) AS nodeType, ID(n) AS nodeID`, i.Digest)
+	utils.Debug(l, span, q)
+	res, err := n.Query(q)
 	if err != nil {
 		return
 	}
-	if found {
-		nodeID, err := res.GetInt64("nodeID")
+	switch len(res) {
+	case 0:
+		return errors.Errorf("no node with digest found")
+	case 1:
+		r := res[0]
+		nodeID, err := r.GetInt64("nodeID")
 		if err != nil {
 			return err
 		}
-		tracing.SpanLog(span, "debug", "found node with id '%d' with digest '%s'", nodeID, shortDig)
-		nodeType, err := res.GetStr("nodeType")
+		utils.Debug(l, span, "found node with id '%d' with digest", nodeID)
+		nodeType, err := r.GetStr("nodeType")
 		if err != nil {
 			return err
 		}
 		q = `MATCH (bu:BlobUpload) WHERE id(bu) = %d`
 		q += ` MATCH (n:%s) WHERE id(n) = %d`
-		q += ` MERGE (bu)-[:IS]->(n)`
+		q += ` MERGE (bu)-[:UPLOADED]->(n)`
 		query := fmt.Sprintf(q, i.ID, nodeType, nodeID)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.query", query),
-		))
+		utils.Debug(l, span, query)
 		_, err = n.Execute(query)
 		if err != nil {
 			return err
 		}
 		return nil
+	default:
+		return errors.Errorf("more than one node with digest '%s' found", i.Digest)
 	}
-	return fmt.Errorf("no node with digest '%s' found", i.Digest)
 }
 
 func (n Neo) BlobUpload_Complete(ctx context.Context, i *types.OCIBlobUpload) (err error) {
@@ -240,4 +243,32 @@ func (n Neo) BlobUpload_DeleteUnused(ctx context.Context) (err error) {
 		attribute.String("log.message", msg),
 	))
 	return
+}
+
+// layerGetBlobUploadByDigest checks if the layer was UPLOADED without being associated to a manifest.
+// Usually a layer should be connected to a ManifestData eventually, but it might happen that it is just pushed without being associated to a manifest.
+func (n Neo) BlobUploadGetByBlobDigest(ctx context.Context, dig string) (bu types.OCIBlobUpload, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameBlobUpload,
+		"func":    "BlobUploadGetByBlobDigest",
+		"digest":  dig,
+	})
+	_ = ctx
+	defer span.End()
+	q := `MATCH (bu:BlobUpload)-[:UPLOADED]->(b)`
+	q += fmt.Sprintf(` WHERE b.digest = "%s"`, dig)
+	q += ` RETURN ID(bu) AS blobuploadID, bu.upload_user AS blobuploadUploadUser, bu.upload_user AS blobuploadUploadProfile, bu.digest AS blobuploadDigest,`
+	q += ` bu.uuid AS blobuploadUUID, bu.location AS blobuploadLocation`
+	utils.Debug(l, span, q)
+	if res, found, err := n.QueryOne(q); err != nil {
+		return bu, false, utils.ErrorHandler(l, span, err, FailNeoExecute)
+	} else if !found {
+		return bu, false, nil
+	} else {
+		bu, err = OCIBlobUploadFromResult(res)
+		if err != nil {
+			return bu, false, utils.ErrorHandler(l, span, err, FailOCIBlobFromResult)
+		}
+	}
+	return bu, true, nil
 }

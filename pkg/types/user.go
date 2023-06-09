@@ -8,16 +8,17 @@ import (
 )
 
 type User struct {
-	SqlID     int64  `json:"sql_id"`
-	Username  string `yaml:"username"`
-	GithubID  string `yaml:"github_id"`
-	Email     string `yaml:"email"`
-	Active    int    `yaml:"active"`
-	AvatarURL string `yaml:"avatar_url"`
-	FirstName string `yaml:"first_name,omitempty"`
-	LastName  string `yaml:"last_name,omitempty"`
-	Role      string `yaml:"role"`
-	Secrets   []Secret
+	SqlID      int64  `json:"sql_id"`
+	Username   string `yaml:"username"`
+	GithubID   string `yaml:"github_id"`
+	Email      string `yaml:"email"`
+	Active     int    `yaml:"active"`
+	AvatarURL  string `yaml:"avatar_url"`
+	FirstName  string `yaml:"first_name,omitempty"`
+	LastName   string `yaml:"last_name,omitempty"`
+	Role       string `yaml:"role"`
+	IsLoggedIn int    `yaml:"is_logged_in"`
+	Secrets    []Secret
 }
 
 func UserFromWWWUser(w www.User, role string) (u User) {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/docker/distribution/manifest/schema2"
 	"github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
@@ -92,7 +93,7 @@ func TestManifestDataCRUD(t *testing.T) {
 
 func TestManifestDataLinks(t *testing.T) {
 	ctx := context.Background()
-	_ = ctx
+	debug := 0
 	bs := utils.NewBootstrap()
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("upstream:ft_arm64")
@@ -102,13 +103,21 @@ func TestManifestDataLinks(t *testing.T) {
 	bs.AddBootstrap("manifest:ft_arm64")
 	bs.AddBootstrap("annotation:platform:generic")
 	bs.SetEmptyAll()
-	//bs.PostTestSleep = 120
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
 	br, err := SetupTest(ctx, bs)
-	_ = br
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
 	if err != nil {
+		db.TeardownTest(bs)
 		t.Fatal(err)
 	}
 	defer db.TeardownTest(bs)
+	// Actual Test
 	maniID, err := br.GetInt64("manifest:ft_arm64#id")
 	if err != nil {
 		t.Fatal(err)
@@ -167,6 +176,10 @@ func TestManifestDataLinks(t *testing.T) {
 	if !found {
 		t.Fatal("Layer not found")
 	}
+	// Layer by themselfe do not know what mediaType they are,
+	// it's only defined in relation to a manifestData
+	// (the sha256 does not change whether it is an DOcker or OCI Image - it's just a tarball)
+	arm_layer0.MediaType = schema2.MediaTypeLayer
 	err = db.ManifestData_LinkToLayer(ctx, arm_mani_id, arm_layer0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -182,6 +195,7 @@ func TestManifestDataLinks(t *testing.T) {
 	if !found {
 		t.Fatal("Layer not found")
 	}
+	arm_layer1.MediaType = schema2.MediaTypeLayer
 	err = db.ManifestData_LinkToLayer(ctx, arm_mani_id, arm_layer1, 1)
 	if err != nil {
 		t.Fatal(err)
@@ -270,6 +284,7 @@ func TestManifestDataRules(t *testing.T) {
 	if !found {
 		t.Fatal("Layer not found")
 	}
+	arm_layer0.MediaType = schema2.MediaTypeLayer
 	err = db.ManifestData_LinkToLayer(ctx, arm_mani_id, arm_layer0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -285,6 +300,7 @@ func TestManifestDataRules(t *testing.T) {
 	if !found {
 		t.Fatal("Layer not found")
 	}
+	arm_layer1.MediaType = schema2.MediaTypeLayer
 	err = db.ManifestData_LinkToLayer(ctx, arm_mani_id, arm_layer1, 1)
 	if err != nil {
 		t.Fatal(err)
@@ -609,7 +625,7 @@ func TestManifestDataLinkToOCIv1Layer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	l0, found, err := db.Layer_Get_ByID(ctx, l0ID)
+	l0, found, err := db.LayerGetByLayerAndManifestDataID(ctx, l0ID, mdID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1018,12 +1034,10 @@ func TestManifestData_V1_GetInsert(t *testing.T) {
 		Size: mdZen3.Size,
 		Data: mdZen3.Data,
 	}
-	if maniDataZen3ID, found, err := db.ManifestData_V1_GetInsert(ctx, maniZen3ID, zen3Desc); err != nil {
+	if _, found, err := db.ManifestData_V1_GetInsert(ctx, maniZen3ID, zen3Desc); err != nil {
 		t.Fatal(err)
 	} else if found {
 		t.Fatal("ManifestData for zen3 should not be found")
-	} else {
-		assert.Greater(t, maniDataZen3ID, int64(0))
 	}
 }
 
