@@ -329,12 +329,14 @@ func UpstreamFromResult(res types.Result) (u types.Upstream, err error) {
 	repo, _ := res.GetStr("upstreamRepo")
 	tag, _ := res.GetStr("upstreamTag")
 	dig, _ := res.GetStr("upstreamDigest")
+	mt, _ := res.GetStr("upstreamMediaType")
 	u = types.Upstream{
-		ID:     id,
-		Reg:    reg,
-		Repo:   repo,
-		Tag:    tag,
-		Digest: digest.Digest(dig),
+		ID:        id,
+		Reg:       reg,
+		Repo:      repo,
+		Tag:       tag,
+		MediaType: utils.ExpandMediaType(mt),
+		Digest:    digest.Digest(dig),
 	}
 	return
 }
@@ -356,4 +358,29 @@ func UpstreamFromRecord(res neo4j.Result) (u types.Upstream, err error) {
 		}
 	}
 	return UpstreamFromResult(r)
+}
+
+func (n Neo) UpstreamGetByLayerDigest(ctx context.Context, dig string) (up types.Upstream, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameUp,
+		"func":    "mag.UpstreamGetByLayerDigest",
+		"digest":  dig,
+	})
+	defer span.End()
+	_ = l
+	_ = ctx
+	q := `MATCH (l:Layer)<-[r]-(md:ManifestData)-[:ORIGINAL]->(u:Upstream)`
+	q += fmt.Sprintf(` WHERE l.digest = "%s" RETURN type(r) AS upstreamMediaType, %s`, dig, UpstreamReturn)
+	if res, found, err := n.QueryOne(q); err != nil {
+		err = utils.ErrorHandler(l, span, err, FailNeoExecute)
+		return up, false, err
+	} else if !found {
+		return up, false, nil
+	} else {
+		up, err = UpstreamFromResult(res)
+		if err != nil {
+			return up, false, utils.ErrorHandler(l, span, err, FailNeoExecute)
+		}
+	}
+	return up, true, nil
 }

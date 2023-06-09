@@ -47,7 +47,7 @@ func TestUpstreamManifestInsert(t *testing.T) {
 		TeardownTest(bs)
 		t.Fatal(err)
 	}
-	defer mag.Database.TeardownTest(bs)
+	defer TeardownTest(bs)
 	// Actual test
 	//// Generic
 	reqGen := types.Request{
@@ -410,6 +410,14 @@ func TestUpstreamInsertGeneric(t *testing.T) {
 	_ = col
 	_ = ups
 	_ = maniData
+	dig := "sha256:c41833b44d910632b415cd89a9cdaa4d62c9725dc56c99a7ddadafd6719960f9"
+	if up, found, err := mag.Database.UpstreamGetByLayerDigest(ctx, dig); err != nil {
+		t.Fatal(err)
+	} else if !found {
+		t.Fatal("upstream not found")
+	} else {
+		t.Logf("upstream: %+v", up)
+	}
 }
 
 func TestUpstreamDiscoverUpstream(t *testing.T) {
@@ -529,5 +537,4 @@ func TestCacheUpstream(t *testing.T) {
 	} else {
 		assert.Equal(t, up.Digest.String(), md.Upstream.Digest.String())
 	}
-
 }

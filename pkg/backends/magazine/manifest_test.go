@@ -85,6 +85,58 @@ func TestCachManifest(t *testing.T) {
 	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mani.Digest)
 }
 
+func TestCachManifestLocalCache(t *testing.T) {
+	// Using the local test registry
+	ctx := context.Background()
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:arm64")
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := mag.SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	TeardownTest(bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer TeardownTest(bs)
+	// Test
+	//mani := types.FT_arm_Manifest()
+	yMani := config.Manifest{
+		Image: "registry.gitlab.com/qnib-pub-containers/qnib/plain-featuretest:20220715-arm64-generic",
+		Platform: platform.Platform{
+			Architecture: "arm64",
+			OS:           "linux",
+			Variant:      "v8",
+		},
+	}
+	mani, err := mag.CachManifest(ctx, yMani)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mani.Digest)
+	// Check if layers are cached
+	for _, l := range mani.Layers {
+		psUrl, err := mag.Minio.LayerGetPreSignedUrl(ctx, l.Digest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assert.NotEmpty(t, psUrl)
+	}
+	mani, err = mag.CachManifest(ctx, yMani)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mani.Digest)
+}
+
 func TestStoreManifestUploadOCIManifest(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
@@ -297,6 +349,7 @@ func TestManifestComputeManifestForProfile(t *testing.T) {
 	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("empty:all")
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
 	bs.AddBootstrap("rules:rules/os/linux.yaml")

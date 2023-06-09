@@ -147,15 +147,18 @@ func (n Neo) Setup_ManipuLayer(bs utils.Bootstrap, br *utils.BootstrapResult, d 
 	if err != nil {
 		return fmt.Errorf("failed to get Layer ID: %v", err)
 	}
+	mediaType, err := br.Get(fmt.Sprintf("layer:%s#mediaType", lyr))
+	if err != nil {
+		return fmt.Errorf("failed to get Layer MediaType: %v", err)
+	}
 	for k, lyrID := range lyrIDs {
 		ordrKey := strings.Replace(k, "#id", "#order", 1)
 		order := orderIDs[ordrKey]
-		err = n.ManipuLayerLinkToLayer(ctx, mplID, lyrID, order)
+		err = n.ManipuLayerLinkToLayer(ctx, mplID, lyrID, mediaType, order)
 		if err != nil {
 			return err
 		}
 	}
-
 	return
 }
 
@@ -196,7 +199,7 @@ func (n Neo) Setup_Profiles(bs utils.Bootstrap, br *utils.BootstrapResult, d str
 }
 
 func (n Neo) Setup_Rules(bs utils.Bootstrap, br *utils.BootstrapResult, d string) (err error) {
-	logrus.Warn("Setup_Rules")
+	logrus.Debug("Setup_Rules")
 	ctx := context.Background()
 	pre := bs.YAMLPrefix
 	path := filepath.Join(pre, d)
@@ -299,6 +302,10 @@ func (n Neo) Setup_Upstream(br *utils.BootstrapResult, up types.Upstream, label 
 		return err
 	}
 	br.Add(fmt.Sprintf("upstream:%s#id", label), fmt.Sprint(id))
+	br.Add(fmt.Sprintf("upstream:%s#digest", label), up.Digest.String())
+	br.Add(fmt.Sprintf("upstream:%s#registry", label), up.Reg)
+	br.Add(fmt.Sprintf("upstream:%s#repo", label), up.Repo)
+	br.Add(fmt.Sprintf("upstream:%s#tag", label), up.Tag)
 	return
 }
 
@@ -718,13 +725,6 @@ func (n Neo) BootstrapTestWithBR(ctx context.Context, b string, bs utils.Bootstr
 		return
 	case "manipulation":
 		err = n.Bootstrap_Manipulation(ctx, bs, br, rest)
-		if err != nil {
-			err = errors.Wrapf(err, whileFmrt, b)
-			return
-		}
-		return
-	case "manipulayer":
-		err = n.Bootstrap_ManipuLayer(bs, br, rest)
 		if err != nil {
 			err = errors.Wrapf(err, whileFmrt, b)
 			return

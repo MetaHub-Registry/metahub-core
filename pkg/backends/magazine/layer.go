@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/opencontainers/go-digest"
@@ -73,6 +74,23 @@ func (mag Magazine) PullLayer(ctx context.Context, up upstream.UpstreamTriple) (
 	return
 }
 
+func (mag Magazine) parseCacheLayers() (cacheLayers int, err error) {
+	cacheLayers = -1
+	if cLyr, ok := mag.GetConfig("cache-layers"); ok {
+		switch cLyr {
+		case "all":
+			cacheLayers = -1
+		case "none":
+			cacheLayers = 0
+		default:
+			if cacheLayers, err = strconv.Atoi(cLyr); err != nil {
+				return cacheLayers, fmt.Errorf("failed to parse cache-layers: %s", cLyr)
+			}
+		}
+	}
+	return
+}
+
 func (mag Magazine) CacheLayers(ctx context.Context, mani types.ManifestData) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameLayer,
@@ -84,7 +102,16 @@ func (mag Magazine) CacheLayers(ctx context.Context, mani types.ManifestData) (e
 		Repo: mani.Upstream.Repo,
 		Tag:  mani.Upstream.Tag,
 	}
+	cacheLayer, err := mag.parseCacheLayers()
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, "failed to parse cache-layers")
+	}
+	utils.Warn(l, span, "Cache layers: %d", cacheLayer)
 	for idx, layer := range mani.Layers {
+		if cacheLayer == 0 || (cacheLayer > 0 && idx >= cacheLayer) {
+			utils.Info(l, span, " >> Skip caching layer[%-2d] %s for %-90s", idx, utils.ShortenDigest(layer.Digest), up.GetLabel())
+			continue
+		}
 		up.Digest = digest.Digest(layer.Digest)
 		isCached, e := mag.Minio.GetLayer(ctx, up)
 		if e != nil {
@@ -92,7 +119,7 @@ func (mag Magazine) CacheLayers(ctx context.Context, mani types.ManifestData) (e
 			logrus.Error(err)
 			return
 		}
-		utils.Info(l, span, "Caching layer[%-2d] %s for %-90s -> %t", idx, utils.ShortenDigest(layer.Digest), up.GetLabel(), isCached)
+		utils.Info(l, span, "Caching layer[%-2d][%-20s] %s for %-90s -> %t", idx, utils.ShortenMediaType(layer.MediaType), utils.ShortenDigest(layer.Digest), up.GetLabel(), isCached)
 		if !isCached {
 			err = mag.PullLayer(ctx, up)
 			if err != nil {
@@ -113,27 +140,33 @@ func (mag Magazine) NeoInsertLayer(ctx context.Context, layer types.Layer) (laye
 }
 
 func (mag Magazine) StoreLayerUpload(ctx context.Context, bu *types.OCIBlobUpload, buf []byte) (err error) {
-	// Store Blob
-	ctx, span := tracer.Start(ctx, "StoreLayerUpload")
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":  pkgNameLayer,
+		"func":     "mag.BaseLayerEval",
+		"blobType": bu.BlobType,
+		"digest":   bu.Digest,
+	})
 	defer span.End()
 	err = mag.Minio.PutLayer(ctx, buf, bu.Digest)
 	if err != nil {
-		logrus.Error(err)
-		return
+		return utils.ErrorHandler(l, span, err, "failed to put layer into minio")
 	}
 	// Insert Layer into SQLite
-	l := types.Layer{
+	lyr := types.Layer{
 		Digest:    bu.Digest,
 		MediaType: "unknown",
 		Size:      int64(len(buf)),
 	}
 	//err = mag.SQlite.Layer.Upsert(&l)
-	_, err = mag.Database.Layer_PlainInsert(ctx, l)
-	if err != nil {
-		logrus.Error(err)
-		return
+	_, e := mag.Database.Layer_PlainInsert(ctx, lyr)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to insert layer into graph")
 	}
-	return
+	// Link Layer to BlobUpload
+	if e := mag.Database.BlobUpload_Update_ByUUID(ctx, bu); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to link layer to blob upload")
+	}
+	return nil
 }
 
 func (mag Magazine) Layer_GetPresignedUrlByHTTPRequest(r *http.Request) (psUrl string, err error) {

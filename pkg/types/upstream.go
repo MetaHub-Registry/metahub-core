@@ -42,3 +42,24 @@ func NewUpstreamByName(n string) (up Upstream, err error) {
 		Tag:  ref,
 	}, nil
 }
+
+func (up Upstream) GetBlobUrl(dig ...string) string {
+	base := fmt.Sprintf("https://%s/v2/%s/blobs", up.Reg, up.Repo)
+	if len(dig) == 0 {
+		return base + "/" + up.Digest.String()
+	}
+	return base + "/" + dig[0]
+}
+
+func (up Upstream) AllowsUnauthorizedPull() bool {
+	switch up.Reg {
+	case "registry-1.docker.io", "docker.io":
+		return false
+	case "quay.io":
+		return true
+	case "registry:5050":
+		return true
+	default:
+		return false
+	}
+}

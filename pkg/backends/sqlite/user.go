@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -22,25 +23,27 @@ const (
 // User is the stucture which holds one user from the database. Note
 // that it embeds a token type.
 type User struct {
-	ID        int            `json:"id"`
-	GithubID  string         `json:"github_id"`
-	AvatarURL string         `json:"avatar_url"`
-	UserName  string         `json:"user_name"`
-	Email     string         `json:"email"`
-	FirstName string         `json:"first_name,omitempty"`
-	LastName  string         `json:"last_name,omitempty"`
-	Active    int            `json:"active"`
-	Role      string         `json:"role"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	Token     Token          `json:"token"`
-	Secrets   []types.Secret `json:"secrets"`
+	ID         int            `json:"id"`
+	GithubID   string         `json:"github_id"`
+	AvatarURL  string         `json:"avatar_url"`
+	UserName   string         `json:"user_name"`
+	Email      string         `json:"email"`
+	FirstName  string         `json:"first_name,omitempty"`
+	LastName   string         `json:"last_name,omitempty"`
+	Active     int            `json:"active"`
+	Role       string         `json:"role"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+	Token      Token          `json:"token"`
+	IsLoggedIn int            `json:"is_logged_in"`
+	Secrets    []types.Secret `json:"secrets"`
 }
 
 func (u User) ToResponse() www.User {
 	usr := www.User{
-		ID:             u.ID,
 		GithubUsername: u.UserName,
+		GithubUserID:   u.GithubID,
+		AvatarURL:      u.AvatarURL,
 		Email:          u.Email,
 		Active:         u.Active,
 		FirstName:      u.FirstName,
@@ -54,15 +57,24 @@ func (u User) ToResponse() www.User {
 	return usr
 }
 
+func NewUserFromJSON(in string) (User, error) {
+	var u User
+	if e := json.Unmarshal([]byte(in), &u); e != nil {
+		err := errors.Wrapf(e, "Failed to unmarshal user from JSON")
+		return u, err
+	}
+	return u, nil
+}
+
 // / SQlite specific methods
 func (s Sqlite) InsertUser(ctx context.Context, u types.User) (userID int64, err error) {
-	q := `INSERT INTO users (user_name, github_id, avatar_url, email, first_name, last_name, user_active, created_at, updated_at, role)`
-	q += ` VALUES (?, ?,?, ?, ?, ?, ?, ?, ?, ?)`
+	q := `INSERT INTO users (user_name, github_id, avatar_url, email, first_name, last_name, user_active, is_logged_in, created_at, updated_at, role)`
+	q += ` VALUES (?, ?,?, ?, ?, ?, ?, ?, ?, ?,?)`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		return
 	}
-	res, err := stmt.Exec(u.Username, u.GithubID, u.AvatarURL, u.Email, u.FirstName, u.LastName, u.Active, time.Now(), time.Now(), u.Role)
+	res, err := stmt.Exec(u.Username, u.GithubID, u.AvatarURL, u.Email, u.FirstName, u.LastName, u.Active, u.IsLoggedIn, time.Now(), time.Now(), u.Role)
 	if err != nil {
 		return
 	}
@@ -161,7 +173,31 @@ func (s Sqlite) LoginUser(ctx context.Context, username, password string) (err e
 	if !match {
 		return fmt.Errorf("password does not match")
 	}
+	err = s.SetLoggedIn(ctx, u.ID)
+	if err != nil {
+		return errors.Wrap(err, "error when setting logged in")
+	}
 	return
+}
+
+func (s Sqlite) SetLoggedOut(ctx context.Context, uID int) error {
+	q := `UPDATE users SET is_logged_in = 0 WHERE id = ?`
+	stmt, err := db.Prepare(q)
+	if err != nil {
+		return err
+	}
+	_, err = stmt.Exec(uID)
+	return err
+}
+
+func (s Sqlite) SetLoggedIn(ctx context.Context, uID int) error {
+	q := `UPDATE users SET is_logged_in = 1 WHERE id = ?`
+	stmt, err := db.Prepare(q)
+	if err != nil {
+		return err
+	}
+	_, err = stmt.Exec(uID)
+	return err
 }
 
 func (s Sqlite) GetByEmail(ctx context.Context, email string) (*User, error) {
@@ -236,6 +272,7 @@ func (u User) CreateTables() (err error) {
 		"role" TEXT,
 		"password_hash" TEXT,
 		"user_active" INTEGER,
+		"is_logged_in" INTEGER,
 		"created_at" TIMESTAMP,
 		"updated_at" TIMESTAMP
 		);`
@@ -281,7 +318,7 @@ func (u *User) getByUsername(ctx context.Context, username string) (*User, error
 	})
 	defer span.End()
 
-	query := `SELECT id, user_name, github_id, avatar_url, email, first_name, last_name, user_active, created_at, role FROM users WHERE user_name = $1`
+	query := `SELECT id, user_name, github_id, avatar_url, email, first_name, last_name, user_active, is_logged_in, created_at, role FROM users WHERE user_name = $1`
 	utils.Debug(l, span, query)
 	var user User
 	row := db.QueryRowContext(ctx, query, username)
@@ -294,6 +331,7 @@ func (u *User) getByUsername(ctx context.Context, username string) (*User, error
 		&user.FirstName,
 		&user.LastName,
 		&user.Active,
+		&user.IsLoggedIn,
 		&user.CreatedAt,
 		&user.Role,
 	)
@@ -308,7 +346,7 @@ func (u *User) getByUsername(ctx context.Context, username string) (*User, error
 func (u *User) getByEmail(email string) (*User, error) {
 	ctx := context.Background()
 
-	query := `SELECT id, user_name, github_id, avatar_url, email, first_name, last_name, user_active, created_at, updated_at ,role FROM users WHERE email = $1`
+	query := `SELECT id, user_name, github_id, avatar_url, email, first_name, last_name, user_active, is_logged_in, created_at, updated_at ,role FROM users WHERE email = $1`
 
 	var user User
 	row := db.QueryRowContext(ctx, query, email)
@@ -322,6 +360,7 @@ func (u *User) getByEmail(email string) (*User, error) {
 		&user.FirstName,
 		&user.LastName,
 		&user.Active,
+		&user.IsLoggedIn,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 		&user.Role,
@@ -330,15 +369,13 @@ func (u *User) getByEmail(email string) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
-	// TODO: Get Secrets from db
-
 	return &user, nil
 }
 
 // GetOne returns one user by id
 func (u *User) getOne(id int) (*User, error) {
 	ctx := context.Background()
-	query := `select id, user_name,github_id, avatar_url, email, first_name, last_name, user_active, created_at, updated_at, role from users where id = $1`
+	query := `select id, user_name,github_id, avatar_url, email, first_name, last_name, user_active, is_logged_in, created_at, updated_at, role from users where id = $1`
 	var user User
 	row := db.QueryRowContext(ctx, query, id)
 
@@ -351,6 +388,7 @@ func (u *User) getOne(id int) (*User, error) {
 		&user.FirstName,
 		&user.LastName,
 		&user.Active,
+		&user.IsLoggedIn,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 		&user.Role,

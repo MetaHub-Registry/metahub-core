@@ -76,8 +76,9 @@ func WriteOCIErrror(w http.ResponseWriter, statusCode int, errPl ...ErrorPayload
 //[{"Type":"repository","Name":"samalba/my-app","Action":"pull"}
 
 func WriteResponse(w http.ResponseWriter, statusCode int, b []byte) {
-	w.WriteHeader(statusCode)
 	w.Header().Add("Content-Type", "application/json")
 	w.Header().Add("Content-Length", fmt.Sprint(len(b)))
 	w.Write(b)
+	w.WriteHeader(statusCode)
+
 }

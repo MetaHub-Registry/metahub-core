@@ -31,6 +31,9 @@ const (
 	FailManifestByUpstreamNotFound        = "Failed to find manifest by upstream triple"
 	FailHeadManifestByRegRepoTag          = "Failed to HEAD manifest by reg/repo/tag"
 	FailHeadManifestByRegRepoTagNotFound  = "Failed to find manifest by reg/repo/tag"
+	cacheRegFlag                          = "cache-registry"
+	FailGetManifestFromCache              = "Failed getting manifest from cache registry"
+	FoundManifestInCache                  = "Found manifest in cache registry"
 )
 
 func (mag Magazine) NewRegClient(ctx context.Context, reg string) (rc *regclient.RegClient, regOut string, err error) {
@@ -56,6 +59,7 @@ func (mag Magazine) NewRegClient(ctx context.Context, reg string) (rc *regclient
 	rc = regclient.New()
 	// Deal with TLS
 	if !tlsEnabled {
+		utils.Info(l, span, "Disable TLS for registry '%s'", reg)
 		rcHost := config.Host{
 			Name:     reg,
 			Hostname: reg,
@@ -69,7 +73,7 @@ func (mag Magazine) NewRegClient(ctx context.Context, reg string) (rc *regclient
 
 }
 
-func (mag Magazine) getBlob(ctx context.Context, reg, repo, dig, mt string, size int64) (b []byte, blob mhTypes.BlobMeta, err error) {
+func (mag Magazine) getBlob(ctx context.Context, reg, repo, dig, mt string, size int64) (b []byte, blob mhTypes.BlobMeta, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNameRegcli,
 		"func":       "getBlob",
@@ -106,6 +110,7 @@ func (mag Magazine) getBlob(ctx context.Context, reg, repo, dig, mt string, size
 	blob.Size = int64(len(b))
 	blob.Digest = ddigest
 	blob.MediaType = mt
+	found = true
 	return
 }
 
@@ -118,12 +123,64 @@ func (mag Magazine) GetBlobByUpstream(ctx context.Context, up mhTypes.Upstream) 
 		"digest":     up.Digest.String(),
 	})
 	defer span.End()
-	_ = l
-	return mag.getBlob(ctx, up.Reg, up.Repo, up.Digest.String(), up.MediaType, up.Size)
+	// Do we have a cache registry?
+	if cacheReg, ok := mag.Config.Args[cacheRegFlag]; ok {
+		b, blob, found, err := mag.getBlob(ctx, cacheReg, up.Repo, up.Digest.String(), up.MediaType, up.Size)
+		if err != nil {
+			return b, blob, utils.ErrorHandler(l, span, err, FailGetManifestFromCache)
+		}
+		if found {
+			utils.Debug(l, span, FoundManifestInCache)
+			return b, blob, nil
+		}
+		utils.Debug(l, span, "did NOT find blob in cache registry")
+	}
+	b, blob, found, err := mag.getBlob(ctx, up.Reg, up.Repo, up.Digest.String(), up.MediaType, up.Size)
+	if err != nil {
+		return b, blob, utils.ErrorHandler(l, span, err, FailGetManifestFromCache)
+	}
+	if !found {
+		err = utils.NewError(l, span, "did NOT find blob in upstream registry")
+		return b, blob, err
+	}
+	return
+}
+
+func (mag Magazine) getBlobByRegRepoMediaTypeDigestSize(ctx context.Context, reg, repo, mt, dig string, size int64) (b []byte, blob mhTypes.BlobMeta, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":    pkgNameRegcli,
+		"func":       "getBlobByRegRepoMediaTypeDigestSize",
+		"repository": repo,
+		"registry":   reg,
+		"digest":     utils.ShortenDigest(dig),
+		"mediaType":  mt,
+		"size":       size,
+	})
+	defer span.End()
+	if cacheReg, ok := mag.Config.Args[cacheRegFlag]; ok {
+		b, blob, found, err := mag.getBlob(ctx, cacheReg, repo, dig, mt, size)
+		if err != nil {
+			return b, blob, utils.ErrorHandler(l, span, err, FailGetManifestFromCache)
+		}
+		if found {
+			utils.Debug(l, span, FoundManifestInCache)
+			return b, blob, nil
+		}
+		utils.Debug(l, span, "did NOT find blob in cache registry")
+	}
+	b, blob, found, err := mag.getBlob(ctx, reg, repo, dig, mt, size)
+	if err != nil {
+		return b, blob, utils.ErrorHandler(l, span, err, FailGetManifestFromCache)
+	}
+	if !found {
+		err = utils.NewError(l, span, "did NOT find blob in upstream registry")
+		return b, blob, err
+	}
+	return
 }
 
 func (mag Magazine) GetBlobByUpstreamTriple(ctx context.Context, up upstream.UpstreamTriple) (b []byte, blob mhTypes.BlobMeta, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	_, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNameRegcli,
 		"func":       "GetBlobByUpstreamTriple",
 		"repository": up.Repo,
@@ -131,12 +188,11 @@ func (mag Magazine) GetBlobByUpstreamTriple(ctx context.Context, up upstream.Ups
 		"digest":     up.Digest.String(),
 	})
 	defer span.End()
-	_ = l
-	return mag.getBlob(ctx, up.Reg, up.Repo, up.Digest.String(), up.MediaType, up.Size)
+	return mag.getBlobByRegRepoMediaTypeDigestSize(ctx, up.Reg, up.Repo, up.MediaType, up.Digest.String(), up.Size)
 }
 
 func (mag Magazine) GetBlobByUpstreamTripleByDigest(ctx context.Context, up upstream.UpstreamTriple, dig string) (b []byte, blob mhTypes.BlobMeta, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	_, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNameUp,
 		"func":       "GetBlobByUpstreamTripleByDigest",
 		"repository": up.Repo,
@@ -144,31 +200,8 @@ func (mag Magazine) GetBlobByUpstreamTripleByDigest(ctx context.Context, up upst
 		"digest":     utils.ShortenDigest(dig),
 	})
 	defer span.End()
-	_ = l
-	return mag.getBlob(ctx, up.Reg, up.Repo, dig, up.MediaType, up.Size)
+	return mag.getBlobByRegRepoMediaTypeDigestSize(ctx, up.Reg, up.Repo, up.MediaType, dig, up.Size)
 }
-
-/*
-	func GetManifestByUpstream(ctx context.Context, up mhTypes.Upstream) (mani mhTypes.Manifest, err error) {
-		l, ctx, span := utils.InitLogging(ctx, tr, map[string]any{
-			"package":    pkgNameUp,
-			"func":       "GetManifestByUpstream",
-			"repository": up.Repo,
-			"registry":   up.Reg,
-			"digest":     up.Digest.String(),
-		})
-		defer span.End()
-		if b, blob, err := getManifestBytes(ctx, up.Reg, up.Repo, up.Digest.String()); err != nil {
-			return mani, utils.ErrorHandler(l, span, err, FailManifestByUpstreamNotFound)
-		} else {
-			if rawMani, err := minio.RawManifestFromBlob(b); err != nil {
-				return mani, utils.ErrorHandler(l, span, err, "while minio.RawManifestFromBlob")
-			}
-
-		}
-		return mani, nil
-	}
-*/
 
 func (mag Magazine) getManifestBytesByTag(ctx context.Context, reg, repo, tag string) (b []byte, blob mhTypes.BlobMeta, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
@@ -190,10 +223,10 @@ func (mag Magazine) getManifestBytesByTag(ctx context.Context, reg, repo, tag st
 	return mag.getManifestBytesByDigest(ctx, reg, repo, dig)
 }
 
-func (mag Magazine) getManifestBytesByDigest(ctx context.Context, reg, repo, dig string) (b []byte, blob mhTypes.BlobMeta, err error) {
+func (mag Magazine) getManifestBytesByDigestForReg(ctx context.Context, reg, repo, dig string) (b []byte, blob mhTypes.BlobMeta, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNameUp,
-		"func":       "getManifestBytesByDigest",
+		"func":       "getManifestBytesByDigestForReg",
 		"repository": repo,
 		"registry":   reg,
 		"digest":     dig,
@@ -236,6 +269,41 @@ func (mag Magazine) getManifestBytesByDigest(ctx context.Context, reg, repo, dig
 	blob.Digest = mani.GetDescriptor().Digest
 	blob.Size = mani.GetDescriptor().Size
 	blob.MediaType = mani.GetDescriptor().MediaType
+	return b, blob, true, nil
+}
+
+func (mag Magazine) getManifestBytesByDigest(ctx context.Context, reg, repo, dig string) (b []byte, blob mhTypes.BlobMeta, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":    pkgNameUp,
+		"func":       "getManifestBytesByDigest",
+		"repository": repo,
+		"registry":   reg,
+		"digest":     dig,
+	})
+	defer span.End()
+	if dig == "" {
+		err = utils.NewError(l, span, FailNoDigest)
+		return
+	}
+	blob = mhTypes.BlobMeta{}
+	// Do we have a cache registry?
+	if cacheReg, ok := mag.Config.Args[cacheRegFlag]; ok {
+		b, blob, found, e := mag.getManifestBytesByDigestForReg(ctx, cacheReg, repo, dig)
+		if e != nil {
+			return b, blob, utils.ErrorHandler(l, span, err, FailGetManifestFromCache)
+		}
+		if found {
+			utils.Debug(l, span, FoundManifestInCache)
+			return b, blob, nil
+		}
+	}
+	b, blob, found, e := mag.getManifestBytesByDigestForReg(ctx, reg, repo, dig)
+	if e != nil {
+		return b, blob, utils.ErrorHandler(l, span, err, FailGetManifestFromCache)
+	}
+	if !found {
+		return b, blob, utils.NewError(l, span, "did NOT find manifest in upstream registry")
+	}
 	return b, blob, nil
 }
 
@@ -266,43 +334,45 @@ func (mag Magazine) GetManifestByUpstreamTripleByDigest(ctx context.Context, up 
 		"digest":     up.Digest.String(),
 		"registry":   up.Reg,
 	})
-	reg := up.Reg
 	blobUrl := fmt.Sprintf("%s/%s", up.Reg, up.Repo)
 	utils.Debug(l, span, BlobURLFrmt, blobUrl)
 	span.SetAttributes(attribute.Key("url").String(blobUrl))
 	defer span.End()
 	blob = mhTypes.BlobMeta{}
-	rc, reg, err := mag.NewRegClient(ctx, reg)
-	ref, e := ref.New(blobUrl)
+	origUpReg := up.Reg
+	// Do we have a cache registry?
+	if cacheReg, ok := mag.Config.Args[cacheRegFlag]; ok {
+		up.Reg = cacheReg
+		b, blob, found, e := mag.getManifestByUpstreamTripleByDigest(ctx, up)
+		if e != nil {
+			return b, blob, utils.ErrorHandler(l, span, e, FailGetManifestFromCache)
+		}
+		if found {
+			utils.Debug(l, span, FoundManifestInCache)
+			return b, blob, err
+		}
+	}
+	up.Reg = origUpReg
+	b, blob, found, e := mag.getManifestByUpstreamTripleByDigest(ctx, up)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, FailCreateRef)
-		return
+		return b, blob, utils.ErrorHandler(l, span, e, FailGetManifestFromCache)
 	}
-	var mani manifest.Manifest
-	// If we have a digest we use it
-	if up.Digest.String() == "" {
-		err = utils.NewError(l, span, FailNoDigest)
-		return
+	if !found {
+		return b, blob, utils.NewError(l, span, "Could not find manifest in upstream registry")
 	}
-	d := types.Descriptor{
-		MediaType: types.MediaTypeDocker2Manifest,
-		Digest:    up.Digest,
-		Platform:  &platform.Platform{},
-	}
-	mani, err = rc.ManifestGet(ctx, ref, regclient.WithManifestDesc(d))
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "while regcli.ManifestGet")
-		return
-	}
-	b, e = mani.RawBody()
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "while getting RawBody")
-		return
-	}
-	blob.Digest = mani.GetDescriptor().Digest
-	blob.Size = mani.GetDescriptor().Size
-	blob.MediaType = mani.GetDescriptor().MediaType
-	return
+	return b, blob, err
+}
+
+func (mag Magazine) getManifestByUpstreamTripleByDigest(ctx context.Context, up upstream.UpstreamTriple) (b []byte, blob mhTypes.BlobMeta, found bool, err error) {
+	_, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":    pkgNameUp,
+		"func":       "getManifestByUpstreamTripleByDigest",
+		"repository": up.Repo,
+		"digest":     up.Digest.String(),
+		"registry":   up.Reg,
+	})
+	defer span.End()
+	return mag.getManifestByRegRepoRef(ctx, up.Reg, up.Repo, up.Digest.String())
 }
 
 func (mag Magazine) GetManifestByUpstreamTripleByTag(ctx context.Context, up upstream.UpstreamTriple) (b []byte, blob mhTypes.BlobMeta, err error) {
@@ -323,26 +393,68 @@ func (mag Magazine) GetManifestByUpstreamTripleByTag(ctx context.Context, up ups
 	))
 	l.Debug(msg)
 	blob = mhTypes.BlobMeta{}
-	rc, reg, e := mag.NewRegClient(ctx, up.Reg)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "while creating regClient")
-		return
+	origUpReg := up.Reg
+	// Do we have a cache registry?
+	if cacheReg, ok := mag.Config.Args[cacheRegFlag]; ok {
+		up.Reg = cacheReg
+		b, blob, found, e := mag.getManifestByUpstreamTripleByTag(ctx, up)
+		if e != nil {
+			return b, blob, utils.ErrorHandler(l, span, e, FailGetManifestFromCache)
+		}
+		if found {
+			utils.Debug(l, span, FoundManifestInCache)
+			return b, blob, nil
+		}
 	}
-	up.Reg = reg
+	up.Reg = origUpReg
+	b, blob, found, e := mag.getManifestByUpstreamTripleByTag(ctx, up)
+	if e != nil {
+		return b, blob, utils.ErrorHandler(l, span, e, FailGetManifestFromCache)
+	}
+	if !found {
+		return b, blob, utils.NewError(l, span, "Could not find manifest in upstream registry")
+	}
+	return
+}
+
+func (mag Magazine) getManifestByRegRepoRef(ctx context.Context, reg, repo, mRef string) (b []byte, blob mhTypes.BlobMeta, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":    pkgNameUp,
+		"func":       "getManifestByRegRepoRef",
+		"repository": repo,
+		"ref":        utils.ShortenDigest(mRef),
+		"registry":   reg,
+	})
+	defer span.End()
+	defer span.End()
+	blob = mhTypes.BlobMeta{}
+	rc, reg, e := mag.NewRegClient(ctx, reg)
+	if e != nil {
+		return b, blob, false, utils.ErrorHandler(l, span, e, "while creating regClient")
+	}
+	var dig, tag, blobUrl string
+	if strings.HasPrefix(mRef, "sha256:") {
+		dig = mRef
+		blobUrl = fmt.Sprintf("%s/%s", reg, repo)
+	} else {
+		tag = mRef
+		blobUrl = fmt.Sprintf("%s/%s:%s", reg, repo, tag)
+
+	}
+	span.SetAttributes(attribute.Key("url").String(blobUrl))
+	utils.Info(l, span, "BlobURL: '%s'", blobUrl)
 	ref, e := ref.New(blobUrl)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "while creating ref from blobUrl")
-		return
+		return b, blob, false, utils.ErrorHandler(l, span, e, "while creating ref from blobUrl")
 	}
 	var mani manifest.Manifest
 	// If we have a digest we use it
-	if up.Digest.String() != "" {
-		ref.Digest = up.Digest.String()
+	if dig != "" {
+		ref.Digest = dig
 	} else {
 		mani, e = rc.ManifestHead(ctx, ref)
 		if e != nil {
-			err = utils.ErrorHandler(l, span, e, "while ManifestHead")
-			return
+			return b, blob, false, utils.ErrorHandler(l, span, e, "while ManifestHead")
 		}
 		ref.Digest = mani.GetDescriptor().Digest.String()
 		blob.Digest = mani.GetDescriptor().Digest
@@ -356,18 +468,29 @@ func (mag Magazine) GetManifestByUpstreamTripleByTag(ctx context.Context, up ups
 	}
 	mani, e = rc.ManifestGet(ctx, ref, regclient.WithManifestDesc(d))
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "while regcli.ManifestGet")
-		return
+		return b, blob, false, utils.ErrorHandler(l, span, e, "while regcli.ManifestGet")
 	}
 	b, e = mani.RawBody()
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "while getting RawBody")
-		return
+		return b, blob, false, utils.ErrorHandler(l, span, e, "while getting RawBody")
 	}
+	found = true
 	return
 }
 
-func (mag Magazine) HeadManifestByRegRepoTag(ctx context.Context, reg, repo, tag string) (blob mhTypes.BlobMeta, found bool, err error) {
+func (mag Magazine) getManifestByUpstreamTripleByTag(ctx context.Context, up upstream.UpstreamTriple) (b []byte, blob mhTypes.BlobMeta, found bool, err error) {
+	_, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":    pkgNameUp,
+		"func":       "getManifestByUpstreamTripleByTag",
+		"repository": up.Repo,
+		"tag":        up.Tag,
+		"registry":   up.Reg,
+	})
+	defer span.End()
+	return mag.getManifestByRegRepoRef(ctx, up.Reg, up.Repo, up.Tag)
+}
+
+func (mag Magazine) headManifestByRegRepoTag(ctx context.Context, reg, repo, tag string) (blob mhTypes.BlobMeta, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNameUp,
 		"func":       "HeadManifestByRegRepoTag",
@@ -376,7 +499,6 @@ func (mag Magazine) HeadManifestByRegRepoTag(ctx context.Context, reg, repo, tag
 		"reg":        reg,
 	})
 	defer span.End()
-	blob = mhTypes.BlobMeta{}
 	rc, reg, err := mag.NewRegClient(ctx, reg)
 	if err != nil {
 		return blob, false, utils.ErrorHandler(l, span, err, "Failed creating regClient")
@@ -410,4 +532,37 @@ func (mag Magazine) HeadManifestByRegRepoTag(ctx context.Context, reg, repo, tag
 	utils.Debug(l, span, "HEAD sucessfull: %s size:%d ", utils.ShortenDigest(blob.Digest.String()), blob.Size)
 	found = true
 	return
+}
+
+func (mag Magazine) HeadManifestByRegRepoTag(ctx context.Context, reg, repo, tag string) (blob mhTypes.BlobMeta, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":    pkgNameUp,
+		"func":       "HeadManifestByRegRepoTag",
+		"repository": repo,
+		"tag":        tag,
+		"reg":        reg,
+	})
+	defer span.End()
+	blob = mhTypes.BlobMeta{}
+	// Do we have a cache registry?
+	if cacheReg, ok := mag.Config.Args[cacheRegFlag]; ok {
+		blob, found, err := mag.headManifestByRegRepoTag(ctx, cacheReg, repo, tag)
+		if err != nil {
+			return blob, false, utils.ErrorHandler(l, span, err, FailGetManifestFromCache)
+		}
+		if found {
+			utils.Debug(l, span, FoundManifestInCache)
+			return blob, true, nil
+		}
+	}
+	utils.Debug(l, span, "No cache registry configured")
+	blob, found, err = mag.headManifestByRegRepoTag(ctx, reg, repo, tag)
+	if err != nil {
+		return blob, false, utils.ErrorHandler(l, span, err, "Failed getting manifest from registry")
+	}
+	if found {
+		return blob, true, nil
+
+	}
+	return blob, false, nil
 }

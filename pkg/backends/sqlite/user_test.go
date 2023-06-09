@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -31,7 +32,6 @@ func TestUserSimple(t *testing.T) {
 	} else {
 		assert.False(t, ok)
 	}
-
 }
 
 func TestUserInsert(t *testing.T) {
@@ -148,4 +148,66 @@ func TestUserInsert(t *testing.T) {
 	wwwU4 := gotU4.ToResponse()
 	assert.Equal(t, wwwU4.GithubUsername, gotU4.UserName)
 	assert.Equal(t, 1, len(wwwU4.Secrets))
+}
+
+func TestSecretCRD(t *testing.T) {
+	ctx := context.Background()
+	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
+	//bs.SetSqlite("Desktop/metahub.db")
+	br, err := SetupTest(bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = br
+	defer TeardownTest(bs)
+	// Test
+	uname := "user"
+	u1 := types.User{
+		Username: uname,
+		Email:    "test@test.de",
+		Secrets:  []types.Secret{},
+	}
+	uID, err := sq.InsertUser(ctx, u1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlU, e := sq.GetOne(ctx, int(uID))
+	if e != nil {
+		t.Fatal(e)
+	}
+	assert.Equal(t, 0, len(sqlU.Secrets))
+	scrt1 := types.Secret{
+		Name: "name1",
+		Key:  "key1",
+	}
+	scrtID1, err := sq.InsertSecret(ctx, uID, scrt1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEqual(t, int64(-1), scrtID1)
+	sqlU1, err := sq.GetOne(ctx, int(uID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, len(sqlU1.Secrets))
+	if e := sq.DelSecret(ctx, int(uID), fmt.Sprintf("%d", scrtID1)); e != nil {
+		t.Fatal(e)
+	}
+	sqlU2, err := sq.GetOne(ctx, int(uID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 0, len(sqlU2.Secrets))
+	scrt2 := types.Secret{
+		Name: "name2",
+		Key:  "key2",
+	}
+	_, err = sq.InsertSecret(ctx, uID, scrt2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := sq.DelSecretByName(ctx, int(uID), scrt2.Name); e != nil {
+		t.Fatal(e)
+	}
 }

@@ -31,6 +31,22 @@ func TestCacheLayers(t *testing.T) {
 		}
 		assert.NotEmpty(t, psUrl)
 	}
+	mag.Config.Args["cache-layers"] = "all"
+	err = mag.CacheLayers(ctx, mani)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mag.Config.Args["cache-layers"] = "none"
+	err = mag.CacheLayers(ctx, mani)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mag.Config.Args["cache-layers"] = "0"
+	err = mag.CacheLayers(ctx, mani)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 }
 
 func TestBaseLayerEval(t *testing.T) {

@@ -613,7 +613,7 @@ func (n Neo) EvalUploadProfile(ctx context.Context, mani types.Manifest, origMan
 	ctx, span := tracer.Start(ctx, "EvalUploadProfile")
 	defer span.End()
 	_ = ctx
-	q := fmt.Sprintf(`MATCH (bu:BlobUpload)-[:IS]->(cfg:Config) WHERE id(cfg) = %d`, origMani.Config.ID)
+	q := fmt.Sprintf(`MATCH (bu:BlobUpload)-[:UPLOADED]->(cfg:Config) WHERE id(cfg) = %d`, origMani.Config.ID)
 	q += ` RETURN id(bu) AS blobUploadID, bu.upload_profile AS blobUploadProfile`
 	res, found, err := n.QueryOne(q)
 	if err != nil {

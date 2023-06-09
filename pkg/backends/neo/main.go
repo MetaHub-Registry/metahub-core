@@ -161,7 +161,7 @@ func (n Neo) Setup(ctx context.Context) (err error) {
 			attr: []string{"digest", "mediaType"},
 		}, {
 			name: "Layer",
-			attr: []string{"digest", "mediaType"},
+			attr: []string{"digest"},
 		}, {
 			name: "ManipuLayer",
 			attr: []string{"label", "rule"},

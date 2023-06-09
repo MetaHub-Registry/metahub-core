@@ -30,6 +30,7 @@ const (
 	FailManifestDataNotFound          = "ManifestData not found"
 	FailManifestDataGetByDigest       = "ManifestDataGetByDigest failed"
 	FailManipuLayerLinkToManifestData = "ManipuLayer_LinkToManifestData failed"
+	FailMediaTypeEmpty                = "mediaType is empty"
 )
 
 func (n Neo) ManifestDataUpdateDesc(ctx context.Context, maniDataID int64, maniDataV1 v1.Descriptor) (err error) {
@@ -512,6 +513,9 @@ func (n Neo) ManifestData_LinkToOCIv1Layer(ctx context.Context, maniID int64, ld
 	})
 	defer span.End()
 	_ = ctx
+	if ld.Descriptor.MediaType == "" {
+		return utils.NewError(l, span, FailMediaTypeEmpty)
+	}
 	q := fmt.Sprintf(`MATCH (m:ManifestData), (l:Layer) WHERE id(m) = %d AND id(l) = %d MERGE (m)-[:%s]->(l)`, maniID, ld.LayerID, shortMT)
 	utils.Debug(l, span, q)
 	_, err = n.Execute(q)
@@ -784,7 +788,7 @@ func (n Neo) ManifestData_LinkToConfig(ctx context.Context, maniID int64, cfg ty
 	_, span := tracer.Start(ctx, "ManifestData_LinkToConfig")
 	defer span.End()
 	if cfg.MediaType == "" {
-		err = fmt.Errorf("mediaType is empty")
+		err = fmt.Errorf(FailMediaTypeEmpty)
 		span.SetStatus(codes.Error, err.Error())
 		span.AddEvent("log", trace.WithAttributes(
 			attribute.String("log.severity", "error"),
@@ -822,6 +826,9 @@ func (n Neo) ManifestData_LinkToLayer(ctx context.Context, maniID int64, layer t
 		"shortMT": shortMT,
 	})
 	defer span.End()
+	if layer.MediaType == "" {
+		return utils.NewError(l, span, FailMediaTypeEmpty)
+	}
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (m:ManifestData),(l:Layer) WHERE id(m) = %d AND id(l) = %d`, maniID, layer.ID)
 	q += fmt.Sprintf(` MERGE (m)-[:%s {order: %d}]->(l)`, shortMT, idx)
@@ -934,7 +941,8 @@ func (n Neo) createManifestData(ctx context.Context, mani types.ManifestData) (m
 	}
 	// Link Layers
 	for idx, layer := range mani.Layers {
-		layer, found, err := n.Layer_GetByTypeAndDigest(ctx, layer.MediaType, layer.Digest)
+		lyr, found, err := n.LayerGetByDigest(ctx, layer.Digest)
+		layer.ID = lyr.ID
 		if err != nil {
 			err = errors.Wrapf(err, "failed to get layer%d id", idx)
 			return maniID, err
