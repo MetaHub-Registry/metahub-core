@@ -44,7 +44,7 @@ func (r Result) GetStr(key string) (val string, err error) {
 	if v, ok := r.Strings[key]; ok {
 		return v, nil
 	}
-	return "", fmt.Errorf("key '%s' not found", key)
+	return "", fmt.Errorf("key '%s' not found in result '%v'", key, r)
 }
 
 func (r Result) CheckKeys(keys ...string) error {

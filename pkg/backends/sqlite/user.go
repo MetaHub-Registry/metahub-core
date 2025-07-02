@@ -318,20 +318,21 @@ func (u *User) getByUsername(ctx context.Context, username string) (*User, error
 	})
 	defer span.End()
 
-	query := `SELECT id, user_name, github_id, avatar_url, email, first_name, last_name, user_active, is_logged_in, created_at, role FROM users WHERE user_name = $1`
+	//query := `SELECT id, user_name, github_id, avatar_url, email, first_name, last_name, user_active, is_logged_in, created_at, role FROM users WHERE user_name = $1`
+	query := fmt.Sprintf(`SELECT id, user_name, email, first_name, last_name, user_active, created_at, role FROM users WHERE user_name = '%s'`, username)
 	utils.Debug(l, span, query)
 	var user User
-	row := db.QueryRowContext(ctx, query, username)
+	row := db.QueryRowContext(ctx, query)
 	err := row.Scan(
 		&user.ID,
 		&user.UserName,
-		&user.GithubID,
-		&user.AvatarURL,
+		// &user.GithubID,
+		// &user.AvatarURL,
 		&user.Email,
 		&user.FirstName,
 		&user.LastName,
 		&user.Active,
-		&user.IsLoggedIn,
+		//&user.IsLoggedIn,
 		&user.CreatedAt,
 		&user.Role,
 	)
@@ -346,21 +347,21 @@ func (u *User) getByUsername(ctx context.Context, username string) (*User, error
 func (u *User) getByEmail(email string) (*User, error) {
 	ctx := context.Background()
 
-	query := `SELECT id, user_name, github_id, avatar_url, email, first_name, last_name, user_active, is_logged_in, created_at, updated_at ,role FROM users WHERE email = $1`
-
+	//query := `SELECT id, user_name, github_id, avatar_url, email, first_name, last_name, user_active, is_logged_in, created_at, updated_at ,role FROM users WHERE email = $1`
+	query := `SELECT id, user_name, email, first_name, last_name, user_active, created_at, updated_at ,role FROM users WHERE email = $1`
 	var user User
 	row := db.QueryRowContext(ctx, query, email)
 
 	err := row.Scan(
 		&user.ID,
 		&user.UserName,
-		&user.GithubID,
-		&user.AvatarURL,
+		//&user.GithubID,
+		//&user.AvatarURL,
 		&user.Email,
 		&user.FirstName,
 		&user.LastName,
 		&user.Active,
-		&user.IsLoggedIn,
+		//&user.IsLoggedIn,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 		&user.Role,
@@ -375,20 +376,20 @@ func (u *User) getByEmail(email string) (*User, error) {
 // GetOne returns one user by id
 func (u *User) getOne(id int) (*User, error) {
 	ctx := context.Background()
-	query := `select id, user_name,github_id, avatar_url, email, first_name, last_name, user_active, is_logged_in, created_at, updated_at, role from users where id = $1`
+	//query := `select id, user_name,github_id, avatar_url, email, first_name, last_name, user_active, is_logged_in, created_at, updated_at, role from users where id = $1`
+	query := `select id, user_name, email, first_name, last_name, user_active, created_at, updated_at, role from users  where id = $1`
 	var user User
 	row := db.QueryRowContext(ctx, query, id)
-
 	err := row.Scan(
 		&user.ID,
 		&user.UserName,
-		&user.GithubID,
-		&user.AvatarURL,
+		//&user.GithubID,
+		//&user.AvatarURL,
 		&user.Email,
 		&user.FirstName,
 		&user.LastName,
 		&user.Active,
-		&user.IsLoggedIn,
+		//&user.IsLoggedIn,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 		&user.Role,
