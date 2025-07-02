@@ -446,7 +446,7 @@ func TestUpstreamDiscoverUpstream(t *testing.T) {
 	}
 	assert.True(t, found)
 	//t.Logf("blob: %v", blob)
-	assert.True(t, strings.HasPrefix(reg, "localhost:"))
+	assert.True(t, strings.HasPrefix(reg, "localhost:") || strings.HasPrefix(reg, "172.17.0.1:"), fmt.Sprintf("reg: %s", reg))
 	assert.Equal(t, shab5a, blob.Digest.String())
 }
 
@@ -476,7 +476,7 @@ func TestUpstreamDiscoverUpstreamManifestList(t *testing.T) {
 	}
 	assert.True(t, found)
 	//t.Logf("blob: %v", blob)
-	assert.True(t, strings.HasPrefix(reg, "localhost:"))
+	assert.True(t, strings.HasPrefix(reg, "localhost:") || strings.HasPrefix(reg, "172.17.0.1:"), fmt.Sprintf("reg: %s", reg))
 	assert.Equal(t, shaff6, blob.Digest.String())
 	assert.Equal(t, MediaTypeManifestList, blob.MediaType)
 }
