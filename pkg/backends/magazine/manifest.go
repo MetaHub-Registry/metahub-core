@@ -359,17 +359,17 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 		return
 	}
 	// Remove orhpaned layers
-	e = mag.Layers_DeleteUnused(ctx)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to delete unused layers")
-		return
-	}
-	// Remove orhpaned config
-	e = mag.Configs_DeleteUnused(ctx)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to delete unused config")
-		return
-	}
+	// e = mag.Layers_DeleteUnused(ctx)
+	// if e != nil {
+	// 	err = utils.ErrorHandler(l, span, e, "failed to delete unused layers")
+	// 	return
+	// }
+	// // Remove orhpaned config
+	// e = mag.Configs_DeleteUnused(ctx)
+	// if e != nil {
+	// 	err = utils.ErrorHandler(l, span, e, "failed to delete unused config")
+	// 	return
+	// }
 	return
 }
 
@@ -381,6 +381,7 @@ func (mag Magazine) RemoveManifestByRequest(ctx context.Context, req types.Reque
 		"repo":    req.Repo,
 		"tag":     req.Tag,
 		"profile": req.Profile,
+		"digest":  req.Digest,
 	})
 	defer span.End()
 	m := types.ManifestData{
@@ -390,6 +391,7 @@ func (mag Magazine) RemoveManifestByRequest(ctx context.Context, req types.Reque
 		},
 		Digest: req.Digest,
 	}
+
 	found, err = mag.Database.ManifestDataRemove(ctx, req)
 	if err != nil {
 		err = utils.ErrorHandler(l, span, err, "failed to Database.Manifest_Remove")

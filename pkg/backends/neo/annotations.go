@@ -25,7 +25,7 @@ func (n Neo) Config_AddLabels(ctx context.Context, cfgID int64, as *types.Annota
 }
 
 func (n Neo) LabelsGetByConfigDigest(ctx context.Context, cfgDig string) (as types.Annotations, err error) {
-	q := fmt.Sprintf(`MATCH (cfg:Config)-[:HAS_LABEL]->(l:Label) WHERE cfg.digest = "%s"`, cfgDig)
+	q := fmt.Sprintf(`MATCH (cfg:Blob)-[:HAS_LABEL]->(l:Label) WHERE cfg.digest = "%s"`, cfgDig)
 	q += ` RETURN id(l) AS labelID, l.key AS labelKey, l.value AS labelValue`
 	res, err := n.Query(q)
 	if err != nil {
@@ -45,7 +45,7 @@ func (n Neo) LabelsGetByConfigDigest(ctx context.Context, cfgDig string) (as typ
 	return
 }
 func (n Neo) Labels_GetByConfigID(ctx context.Context, cfgID int64) (as types.Annotations, err error) {
-	q := fmt.Sprintf(`MATCH (cfg:Config)-[:HAS_LABEL]->(l:Label) WHERE id(cfg) = %d`, cfgID)
+	q := fmt.Sprintf(`MATCH (cfg:Blob)-[:HAS_LABEL]->(l:Label) WHERE id(cfg) = %d`, cfgID)
 	q += ` RETURN id(l) AS labelID, l.key AS labelKey, l.value AS labelValue`
 	res, err := n.Query(q)
 	if err != nil {

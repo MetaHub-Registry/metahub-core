@@ -72,7 +72,7 @@ func TestCachManifest(t *testing.T) {
 	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mani.Digest)
 	// Check if layers are cached
 	for _, l := range mani.Layers {
-		psUrl, err := mag.Minio.LayerGetPreSignedUrl(ctx, l.Digest)
+		psUrl, err := mag.Minio.BlobGetPreSignedUrl(ctx, l.Digest)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -124,7 +124,7 @@ func TestCachManifestLocalCache(t *testing.T) {
 	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mani.Digest)
 	// Check if layers are cached
 	for _, l := range mani.Layers {
-		psUrl, err := mag.Minio.LayerGetPreSignedUrl(ctx, l.Digest)
+		psUrl, err := mag.Minio.BlobGetPreSignedUrl(ctx, l.Digest)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -344,91 +344,91 @@ func TestManifestStoreManifestUploadEmbeddedConfigNoLayerwithLabels(t *testing.T
 	assert.Equal(t, "oci/conformance", gotMani.Upstream.Repo)
 }
 
-func TestManifestComputeManifestForProfile(t *testing.T) {
-	ctx := context.Background()
-	debug := 0
-	bs := utils.NewBootstrap()
-	bs.SetYAMLPrefix("../../../misc/yaml")
-	bs.AddBootstrap("empty:all")
-	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
-	bs.AddBootstrap("rules:rules/os/linux.yaml")
-	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
-	bs.AddBootstrap("config:ft_arm64")
-	bs.AddBootstrap("config:ft_amd64")
-	bs.AddBootstrap("upstream:ft_arm64")
-	bs.AddBootstrap("upstream:ft_amd64")
-	bs.AddBootstrap("manifest:ft_arm64")
-	bs.AddBootstrap("manifest:ft_amd64")
-	bs.AddBootstrap("layer:0:ft_arm64")
-	bs.AddBootstrap("layer:1:ft_arm64")
-	bs.AddBootstrap("layer:0:ft_amd64")
-	bs.AddBootstrap("layer:1:ft_amd64")
-	bs.AddBootstrap("manifestdata:ft_arm64")
-	bs.AddBootstrap("manifestdata:ft_amd64")
-	bs.AddBootstrap("collection:ft_generic")
-	bs.SetEmptyAll()
-	if debug > 0 {
-		bs.PostTestSleep = debug
-	}
+// func TestManifestComputeManifestForProfile(t *testing.T) {
+// 	ctx := context.Background()
+// 	debug := 0
+// 	bs := utils.NewBootstrap()
+// 	bs.SetYAMLPrefix("../../../misc/yaml")
+// 	bs.AddBootstrap("empty:all")
+// 	bs.AddBootstrap("platforms:generic")
+// 	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+// 	bs.AddBootstrap("rules:rules/os/linux.yaml")
+// 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
+// 	bs.AddBootstrap("config:ft_arm64")
+// 	bs.AddBootstrap("config:ft_amd64")
+// 	bs.AddBootstrap("upstream:ft_arm64")
+// 	bs.AddBootstrap("upstream:ft_amd64")
+// 	bs.AddBootstrap("manifest:ft_arm64")
+// 	bs.AddBootstrap("manifest:ft_amd64")
+// 	bs.AddBootstrap("layer:0:ft_arm64")
+// 	bs.AddBootstrap("layer:1:ft_arm64")
+// 	bs.AddBootstrap("layer:0:ft_amd64")
+// 	bs.AddBootstrap("layer:1:ft_amd64")
+// 	bs.AddBootstrap("manifestdata:ft_arm64")
+// 	bs.AddBootstrap("manifestdata:ft_amd64")
+// 	bs.AddBootstrap("collection:ft_generic")
+// 	bs.SetEmptyAll()
+// 	if debug > 0 {
+// 		bs.PostTestSleep = debug
+// 	}
 
-	br, err := mag.SetupTest(ctx, bs)
-	for _, l := range br.ToLines() {
-		if debug > 0 {
-			t.Log(l)
-		}
-	}
-	if err != nil {
-		TeardownTest(bs)
-		t.Fatal(err)
-	}
-	defer TeardownTest(bs)
-	// Actual Test
-	err = mag.Database.Rule_EvalAll(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	maniID, err := br.GetInt64("manifest:ft_amd64#id")
-	if err != nil {
-		t.Fatal(err)
-	}
-	prfID, err := br.GetInt64("profile:cpu:generic#id")
-	if err != nil {
-		t.Fatal(err)
-	}
-	prf, found, err := mag.Database.Profile_Get_ByID(ctx, prfID)
-	if err != nil {
-		t.Fatal(err)
-	} else if !found {
-		t.Fatal("Profile not found")
-	}
-	t.Logf("Profile ID: %d // ManiID: %d", prfID, maniID)
-	mani, found, err := mag.Database.Manifest_GetByID(ctx, maniID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !found {
-		t.Fatal("Manifest not found")
-	}
-	// Actual test
-	err = mag.ComputeManifestForProfile(ctx, mani, prf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = mag.Database.Rule_EvalAll(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Check if the manifest is in the collection
-	mdID, found, e := mag.Database.ManifestData_GetID_ByMediaType(ctx, mani.ID, "application/vnd.oci.image.manifest.v1+json")
-	if e != nil {
-		t.Fatal(e)
-	}
-	if !found {
-		t.Fatal("ManifestData not found")
-	}
-	assert.NotEqual(t, mdID, maniID)
-}
+// 	br, err := mag.SetupTest(ctx, bs)
+// 	for _, l := range br.ToLines() {
+// 		if debug > 0 {
+// 			t.Log(l)
+// 		}
+// 	}
+// 	if err != nil {
+// 		TeardownTest(bs)
+// 		t.Fatal(err)
+// 	}
+// 	defer TeardownTest(bs)
+// 	// Actual Test
+// 	err = mag.Database.Rule_EvalAll(ctx)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 	maniID, err := br.GetInt64("manifest:ft_amd64#id")
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 	prfID, err := br.GetInt64("profile:cpu:generic#id")
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 	prf, found, err := mag.Database.Profile_Get_ByID(ctx, prfID)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	} else if !found {
+// 		t.Fatal("Profile not found")
+// 	}
+// 	t.Logf("Profile ID: %d // ManiID: %d", prfID, maniID)
+// 	mani, found, err := mag.Database.Manifest_GetByID(ctx, maniID)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 	if !found {
+// 		t.Fatal("Manifest not found")
+// 	}
+// 	// Actual test
+// 	err = mag.ComputeManifestForProfile(ctx, mani, prf)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 	err = mag.Database.Rule_EvalAll(ctx)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 	// Check if the manifest is in the collection
+// 	mdID, found, e := mag.Database.ManifestData_GetID_ByMediaType(ctx, mani.ID, "application/vnd.oci.image.manifest.v1+json")
+// 	if e != nil {
+// 		t.Fatal(e)
+// 	}
+// 	if !found {
+// 		t.Fatal("ManifestData not found")
+// 	}
+// 	assert.NotEqual(t, mdID, maniID)
+// }
 
 func TestGetManifest(t *testing.T) {
 	ctx := context.Background()

@@ -119,25 +119,25 @@ func (n Neo) BlobUpload_Complete(ctx context.Context, i *types.OCIBlobUpload) (e
 }
 
 // // CHUNKS
-func (n Neo) UploadChunk_Create(ctx context.Context, buID, startByte, lenBytes int64) (bc types.BlobChunks, err error) {
+func (n Neo) UploadChunk_Create(ctx context.Context, bu *types.OCIBlobUpload, startByte, lenBytes int64) (bc types.BlobChunk, err error) {
 	_, span := tracer.Start(ctx, "UploadChunk_Create")
 	defer span.End()
 	span.SetAttributes(
-		attribute.Key("id").Int64(buID),
+		attribute.Key("id").Int64(bu.ID),
 		attribute.Key("startByte").Int64(startByte),
 		attribute.Key("lenBytes").Int64(lenBytes),
 	)
-	bc = types.BlobChunks{
-		BlobUploadID: buID,
+	bc = types.BlobChunk{
+		BlobUploadID: bu.ID,
 		CreatedAt:    time.Now(),
 		StartByte:    startByte,
 		Bytes:        lenBytes,
 	}
 	q := `MATCH (bu:BlobUpload) WHERE id(bu) = %d`
-	q += ` CREATE (bc:BlobChunk {start_byte: %d, bytes: %d, range: "%s", created_at: TIMESTAMP()})`
+	q += ` CREATE (bc:BlobChunk {start_byte: %d, bytes: %d, range: "%s", digest: "%s", created_at: TIMESTAMP()})`
 	q += ` MERGE (bu)-[:CHUNK]->(bc)`
 	q += ` RETURN ID(bc) AS blobchunkID`
-	query := fmt.Sprintf(q, buID, startByte, lenBytes, fmt.Sprintf("%d-%d", startByte, startByte+lenBytes))
+	query := fmt.Sprintf(q, bu.ID, startByte, lenBytes, fmt.Sprintf("%d-%d", startByte, startByte+lenBytes), bu.Digest)
 	span.AddEvent("query", trace.WithAttributes(
 		attribute.String("query", query),
 	))
@@ -149,7 +149,7 @@ func (n Neo) UploadChunk_Create(ctx context.Context, buID, startByte, lenBytes i
 	return
 }
 
-func (n Neo) UploadChunk_Get_ByUUID(ctx context.Context, buID int64) (bcs []types.BlobChunks, err error) {
+func (n Neo) UploadChunk_Get_ByUUID(ctx context.Context, buID int64) (bcs []types.BlobChunk, err error) {
 	_, span := tracer.Start(ctx, "UploadChunk_Get_ByUUID")
 	defer span.End()
 	span.SetAttributes(
@@ -157,7 +157,8 @@ func (n Neo) UploadChunk_Get_ByUUID(ctx context.Context, buID int64) (bcs []type
 	)
 	q := `MATCH (bu:BlobUpload) WHERE id(bu) = %d`
 	q += ` MATCH (bu)-[:CHUNK]->(bc:BlobChunk)`
-	q += ` RETURN ID(bc) AS blobchunkID, bc.start_byte AS blobchunkStartByte, bc.bytes AS blobchunkBytes, bc.range AS blobchunkRange, bc.created_at AS blobchunkCreatedAt`
+	q += ` RETURN ID(bc) AS blobchunkID, bc.start_byte AS blobchunkStartByte, bc.bytes AS blobchunkBytes, bc.range AS blobchunkRange, bc.created_at AS blobchunkCreatedAt, bc.digest AS blobchunkDigest`
+	q += ` ORDER BY bc.start_byte ASC`
 	query := fmt.Sprintf(q, buID)
 	span.AddEvent("query", trace.WithAttributes(
 		attribute.String("query", query),
@@ -179,8 +180,8 @@ func (n Neo) UploadChunk_Get_ByUUID(ctx context.Context, buID int64) (bcs []type
 }
 
 // / Helpers
-func BlobChunkFromResult(res types.Result) (bc types.BlobChunks, err error) {
-	err = res.CheckKeys("blobchunkID", "blobchunkStartByte", "blobchunkBytes", "blobchunkCreatedAt")
+func BlobChunkFromResult(res types.Result) (bc types.BlobChunk, err error) {
+	err = res.CheckKeys("blobchunkID", "blobchunkStartByte", "blobchunkBytes", "blobchunkCreatedAt", "blobchunkDigest")
 	if err != nil {
 		return
 	}
@@ -188,9 +189,11 @@ func BlobChunkFromResult(res types.Result) (bc types.BlobChunks, err error) {
 	blobchunkStartByte, _ := res.GetInt64("blobchunkStartByte")
 	blobchunkBytes, _ := res.GetInt64("blobchunkBytes")
 	blobchunkCreatedAt, _ := res.GetInt64("blobchunkCreatedAt")
+	blobchunkDigest, _ := res.GetStr("blobchunkDigest")
 	_ = blobchunkCreatedAt
-	bc = types.BlobChunks{
+	bc = types.BlobChunk{
 		ID:        id,
+		Digest:    blobchunkDigest,
 		StartByte: blobchunkStartByte,
 		Bytes:     blobchunkBytes,
 	}

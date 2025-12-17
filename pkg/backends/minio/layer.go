@@ -1,21 +1,6 @@
 package minio
 
-import (
-	"bytes"
-	"context"
-	"io"
-	"net/url"
-	"time"
-
-	"github.com/minio/minio-go/v7"
-	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
-	"github.com/metahub-registry/metahub-core/pkg/upstream"
-	"github.com/metahub-registry/metahub-core/pkg/utils"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-)
-
+/*
 const (
 	pkgNameLayer = "minio/layer.go"
 )
@@ -144,3 +129,4 @@ func (m Minio) LayerGetPreSignedUrl(ctx context.Context, dig string) (psUrl stri
 func (m Minio) GetLayerBucketConfig() BucketConfig {
 	return m.BucketConfig[layersBucketKey]
 }
+*/

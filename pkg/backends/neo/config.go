@@ -28,7 +28,7 @@ func (n Neo) Config_GetID_ByDigest(ctx context.Context, dig string) (cfgID int64
 	ctx, span := tracer.Start(ctx, "Config_GetID_ByDigest")
 	_ = ctx
 	defer span.End()
-	q := fmt.Sprintf(`MATCH (c:Config) WHERE c.digest = "%s" RETURN id(c) as ID`, dig)
+	q := fmt.Sprintf(`MATCH (c:Blob) WHERE c.digest = "%s" RETURN id(c) as ID`, dig)
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
 		attribute.String("log.query", q),
@@ -49,7 +49,7 @@ func (n Neo) Config_Get_ByManiDataID(ctx context.Context, mdID int64) (cfg types
 		"maniDataID": mdID,
 	})
 	defer span.End()
-	q := fmt.Sprintf(`MATCH (md:ManifestData)-[]->(n:Config) WHERE id(md) = %d`, mdID)
+	q := fmt.Sprintf(`MATCH (md:ManifestData)-[]->(n:Blob) WHERE id(md) = %d`, mdID)
 	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize`
 	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)
@@ -76,7 +76,7 @@ func (n Neo) Config_Get_ByID(ctx context.Context, cfgID int64) (cfg types.Config
 		"configID": cfgID,
 	})
 	defer span.End()
-	q := fmt.Sprintf(`MATCH (n:Config) WHERE id(n) = %d`, cfgID)
+	q := fmt.Sprintf(`MATCH (n:Blob) WHERE id(n) = %d`, cfgID)
 	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize`
 	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)
@@ -111,7 +111,7 @@ func (n Neo) Config_GetByDigest(ctx context.Context, dig string) (cfg types.Conf
 	span.SetAttributes(
 		attribute.Key("dig").String(utils.ShortenDigest(dig)),
 	)
-	q := fmt.Sprintf(`MATCH (n:Config) WHERE n.digest = "%s"`, dig)
+	q := fmt.Sprintf(`MATCH (n:Blob) WHERE n.digest = "%s"`, dig)
 	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize`
 	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)
@@ -142,7 +142,7 @@ func (n Neo) Config_GetByID(ctx context.Context, cfgID int64) (cfg types.Config,
 	span.SetAttributes(
 		attribute.Key("cfgID").Int64(cfgID),
 	)
-	q := fmt.Sprintf(`MATCH (n:Config) WHERE id(n) = %d`, cfgID)
+	q := fmt.Sprintf(`MATCH (n:Blob) WHERE id(n) = %d`, cfgID)
 	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize`
 	l.Debug(q)
 	span.AddEvent("log", trace.WithAttributes(
@@ -181,7 +181,7 @@ func (n Neo) ConfigDeleteByDigest(ctx context.Context, dig string) (err error) {
 	})
 	_ = ctx
 	defer span.End()
-	q := fmt.Sprintf(`MATCH (c:Config)<-[]-(md:ManifestData) WHERE c.digest = "%s" RETURN count(md) AS count`, dig)
+	q := fmt.Sprintf(`MATCH (c:Blob)<-[]-(md:ManifestData) WHERE c.digest = "%s" RETURN count(md) AS count`, dig)
 	utils.Debug(l, span, q)
 	if res, _, err := n.QueryOne(q); err != nil {
 		return utils.ErrorHandler(l, span, err, types.FailNeoExecute)
@@ -198,7 +198,7 @@ func (n Neo) ConfigDeleteByDigest(ctx context.Context, dig string) (err error) {
 		return utils.ErrorHandler(l, span, e, types.FailLabelsGetByConfigDigest)
 	} else {
 		for _, a := range as.ToSlice() {
-			q := fmt.Sprintf(`MATCH (c:Config)-[]->(l:Label) WHERE (NOT c.digest = "%s") AND id(l) = %d`, dig, a.ID)
+			q := fmt.Sprintf(`MATCH (c:Blob)-[]->(l:Label) WHERE (NOT c.digest = "%s") AND id(l) = %d`, dig, a.ID)
 			q += ` RETURN count(c) AS countConfig`
 			utils.Debug(l, span, q)
 			if res, _, e := n.QueryOne(q); e != nil {
@@ -215,7 +215,7 @@ func (n Neo) ConfigDeleteByDigest(ctx context.Context, dig string) (err error) {
 			}
 		}
 	}
-	q = fmt.Sprintf(`MATCH (n:Config) WHERE n.digest = "%s" DETACH DELETE n`, dig)
+	q = fmt.Sprintf(`MATCH (n:Blob) WHERE n.digest = "%s" DETACH DELETE n`, dig)
 	_, e := n.Execute(q)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
@@ -228,7 +228,7 @@ func (n Neo) Config_GetInsert_ByOCIManifest(ctx context.Context, ociMani types.O
 	l := logrus.WithFields(logrus.Fields{
 		"package":   pkgNameConfig,
 		"func":      "Config_GetInsert_ByOCIManifest",
-		"cfgDigest": utils.ShortenDigest(ociMani.Config.Digest.String()),
+		"cfgDigest": ociMani.Config.Digest.String(),
 	})
 	shortDig := utils.ShortenDigest(ociMani.Config.Digest.String())
 	ctx, span := tracer.Start(ctx, "Config_GetInsert_ByOCIManifest")
@@ -273,7 +273,7 @@ func (n Neo) createConfig(ctx context.Context, cfg types.Config) (cfgID int64, e
 	_, span := tracer.Start(ctx, "createConfig")
 	defer span.End()
 	label := utils.ShortenDigest(cfg.Digest)
-	q := `CREATE (n:Config {digest: "%s", size: %d, label: "%s"}) RETURN id(n) AS ID`
+	q := `CREATE (n:Blob {digest: "%s", size: %d, label: "%s"}) RETURN id(n) AS ID`
 	query := fmt.Sprintf(q, cfg.Digest, cfg.Size, label)
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
@@ -375,7 +375,7 @@ func (n Neo) Config_GetMediaType_ByID(ctx context.Context, cfgID int64) (mt stri
 	span.SetAttributes(
 		attribute.Key("cfgID").Int64(cfgID),
 	)
-	q := fmt.Sprintf(`MATCH (cfg:Config)<-[cfgRel]-(md:ManifestData) WHERE id(cfg) = %d`, cfgID)
+	q := fmt.Sprintf(`MATCH (cfg:Blob)<-[cfgRel]-(md:ManifestData) WHERE id(cfg) = %d`, cfgID)
 	q += ` RETURN DISTINCT TYPE(cfgRel) AS configMediaType`
 	res, found, err := n.QueryOne(q)
 	if err != nil {
@@ -404,7 +404,7 @@ func (n Neo) Config_GetMediaType_ByID(ctx context.Context, cfgID int64) (mt stri
 }
 
 func (n Neo) Config_Update(ctx context.Context, cfgID int64, cfg types.Config) (err error) {
-	q := `MATCH (cfg:Config) WHERE id(cfg) = %d SET cfg.digest = "%s", cfg.size = %d`
+	q := `MATCH (cfg:Blob) WHERE id(cfg) = %d SET cfg.digest = "%s", cfg.size = %d`
 	query := fmt.Sprintf(q, cfgID, cfg.Digest, cfg.Size)
 	_, err = n.Execute(query)
 	if err != nil {
@@ -414,7 +414,7 @@ func (n Neo) Config_Update(ctx context.Context, cfgID int64, cfg types.Config) (
 }
 
 func (n Neo) LinkConfigToLabel(ctx context.Context, cfgID, labelID int64) (err error) {
-	q := `MATCH (cfg:Config), (l:Label) WHERE id(cfg) = %d AND id(l) = %d MERGE (cfg)-[:HAS_LABEL]->(l)`
+	q := `MATCH (cfg:Blob), (l:Label) WHERE id(cfg) = %d AND id(l) = %d MERGE (cfg)-[:HAS_LABEL]->(l)`
 	query := fmt.Sprintf(q, cfgID, labelID)
 	_, err = n.Execute(query)
 	if err != nil {
@@ -424,7 +424,7 @@ func (n Neo) LinkConfigToLabel(ctx context.Context, cfgID, labelID int64) (err e
 }
 
 func (n Neo) LinkConfigToAnnotation(ctx context.Context, cfgID, annotationID int64) (err error) {
-	q := `MATCH (cfg:Config), (a:Annotation) WHERE id(cfg) = %d AND id(a) = %d MERGE (cfg)-[:HAS_ANNOTATION]->(a)`
+	q := `MATCH (cfg:Blob), (a:Annotation) WHERE id(cfg) = %d AND id(a) = %d MERGE (cfg)-[:HAS_ANNOTATION]->(a)`
 	query := fmt.Sprintf(q, cfgID, annotationID)
 	_, err = n.Execute(query)
 	if err != nil {
@@ -440,7 +440,7 @@ func (n Neo) Config_AddLabel(ctx context.Context, cfgID int64, a types.Annotatio
 		logrus.Errorf("AddLabel : %v", err)
 		return
 	}
-	q := `MATCH (cfg:Config) WHERE id(cfg) = %d`
+	q := `MATCH (cfg:Blob) WHERE id(cfg) = %d`
 	q += ` MATCH (l:Label) WHERE id(l) = %d`
 	q += ` MERGE (cfg)-[:HAS_LABEL]->(l)`
 	query := fmt.Sprintf(q, cfgID, labelID)
@@ -495,7 +495,7 @@ func (n Neo) Configs_DeleteUnused(ctx context.Context) (err error) {
 	})
 	_, span := tracer.Start(ctx, "Configs_DeleteUnused")
 	defer span.End()
-	q := `MATCH (c:Config) WHERE NOT (c)<-[]-(:ManifestData) DETACH DELETE c RETURN count(c) AS deletedConfigs`
+	q := `MATCH (c:Blob) WHERE NOT (c)<-[]-(:ManifestData) DETACH DELETE c RETURN count(c) AS deletedConfigs`
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
 		attribute.String("log.query", q),
@@ -541,7 +541,7 @@ func (n Neo) ConfigExists(ctx context.Context, up upstream.UpstreamTriple) (medi
 		attribute.Key("tag").String(up.Tag),
 		attribute.Key("digest").String(utils.ShortenDigest(up.Digest.String())),
 	)
-	q := `MATCH (c:Config)`
+	q := `MATCH (c:Blob)`
 	q += fmt.Sprintf(` WHERE c.digest = "%s"`, up.Digest.String())
 	q += ` RETURN c.digest AS configDigest, c.size AS configSize, id(c) AS configID`
 	span.AddEvent("log", trace.WithAttributes(
@@ -603,7 +603,7 @@ func (n Neo) ConfigScrubByID(ctx context.Context, cfgID int64) (err error) {
 	defer span.End()
 	key := "configDigest"
 	// Delete config if not connected anymore (in Minio?)
-	q := fmt.Sprintf(`MATCH (c:Config)<-[r]-(:ManifestData)  WHERE id(c) = %d`, cfgID)
+	q := fmt.Sprintf(`MATCH (c:Blob)<-[r]-(:ManifestData)  WHERE id(c) = %d`, cfgID)
 	q += ` RETURN count(r) AS relCount, c.digest AS configDigest`
 	utils.Debug(l, span, "query to count relationships: %s", q)
 	res, _, e := n.QueryOne(q)

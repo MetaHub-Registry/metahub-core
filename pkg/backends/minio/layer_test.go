@@ -1,14 +1,6 @@
 package minio
 
-import (
-	"context"
-	"testing"
-
-	"github.com/opencontainers/go-digest"
-	"github.com/stretchr/testify/assert"
-	"github.com/metahub-registry/metahub-core/pkg/upstream"
-)
-
+/*
 var layerBlob = []byte(`{
 	"mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
 	"size": 2818413,
@@ -57,3 +49,4 @@ func TestPutStatRemove(t *testing.T) {
 	assert.Error(t, err)
 
 }
+*/

@@ -159,13 +159,15 @@ func (c Config) ToOCISpecV1Image() (res imgspecv1.Image) {
 		})
 	}
 	return imgspecv1.Image{
-		Created:      c.Cfg.Created,
-		Author:       c.Cfg.Author,
-		Architecture: c.Cfg.Architecture,
-		OS:           c.Cfg.OS,
-		Variant:      c.Cfg.Variant,
-		OSVersion:    c.Cfg.OSVersion,
-		OSFeatures:   c.Cfg.OSFeatures,
+		Created: c.Cfg.Created,
+		Author:  c.Cfg.Author,
+		Platform: imgspecv1.Platform{
+			Architecture: c.Cfg.Architecture,
+			OS:           c.Cfg.OS,
+			Variant:      c.Cfg.Variant,
+			OSVersion:    c.Cfg.OSVersion,
+			OSFeatures:   c.Cfg.OSFeatures,
+		},
 		Config: imgspecv1.ImageConfig{
 			User:         c.Cfg.Config.User,
 			ExposedPorts: c.Cfg.Config.ExposedPorts,

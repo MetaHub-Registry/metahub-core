@@ -143,7 +143,7 @@ func TestLayerGetUpstream(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Add more layers to trigger multiple results
-	q := `MATCH (l:Layer), (md:ManifestData)`
+	q := `MATCH (l:Blob), (md:ManifestData)`
 	q += fmt.Sprintf(` WHERE id(l) = %d AND id(md) = %d`, lId, md.ID)
 	q += fmt.Sprintf(` MERGE (l)<-[:%s]-(md)`, utils.ShortenMediaType(v1.MediaTypeImageLayerGzip))
 	if _, e := db.Execute(q); e != nil {
@@ -155,7 +155,7 @@ func TestLayerGetUpstream(t *testing.T) {
 		assert.Equal(t, v1.MediaTypeImageLayerGzip, mt)
 	}
 	//TODO: Create second relationship to trigger multiple results
-	//q := `MATCH (l:Layer), (md:ManifestData) `
+	//q := `MATCH (l:Blob), (md:ManifestData) `
 
 }
 

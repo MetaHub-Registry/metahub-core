@@ -147,13 +147,13 @@ func NewBucketConfig(bucket, url, console string) BucketConfig {
 
 func Setup_Config(min *Minio, br *utils.BootstrapResult, dt types.DataTuple) (err error) {
 	ctx := context.Background()
-	return min.ConfigPutObj(ctx, dt.Digest.String(), dt.Data)
+	return min.BlobPutObj(ctx, dt.Digest.String(), dt.Data)
 }
 func Setup_Config_FT_arm64(min *Minio, br *utils.BootstrapResult) (err error) {
 	ctx := context.Background()
 	cfgByte := types.ConfigByteFtArm64()
 	cfgDig := digest.FromBytes(cfgByte)
-	err = min.ConfigPutObj(ctx, cfgDig.String(), cfgByte)
+	err = min.BlobPutObj(ctx, cfgDig.String(), cfgByte)
 	return
 }
 
@@ -162,7 +162,7 @@ func SetupConfig83f(min *Minio, br *utils.BootstrapResult) (err error) {
 	dt := types.ConfigByteFtArm64x83f()
 	cfgByte := dt.Data
 	cfgDig := digest.FromBytes(cfgByte)
-	err = min.ConfigPutObj(ctx, cfgDig.String(), cfgByte)
+	err = min.BlobPutObj(ctx, cfgDig.String(), cfgByte)
 	return
 }
 
@@ -170,7 +170,7 @@ func SetupConfig(min *Minio, br *utils.BootstrapResult, dt types.DataTuple) (err
 	ctx := context.Background()
 	cfgByte := dt.Data
 	cfgDig := digest.FromBytes(cfgByte)
-	err = min.ConfigPutObj(ctx, cfgDig.String(), cfgByte)
+	err = min.BlobPutObj(ctx, cfgDig.String(), cfgByte)
 	return
 }
 
@@ -178,7 +178,7 @@ func Setup_Config_FT_amd64_b109(min *Minio, br *utils.BootstrapResult) (err erro
 	ctx := context.Background()
 	cfgByte := types.FT_amd64_b109_ConfigByte()
 	cfgDig := digest.FromBytes(cfgByte)
-	err = min.ConfigPutObj(ctx, cfgDig.String(), cfgByte)
+	err = min.BlobPutObj(ctx, cfgDig.String(), cfgByte)
 	return
 }
 
@@ -186,13 +186,13 @@ func Setup_Config_FT_amd64(min *Minio, br *utils.BootstrapResult) (err error) {
 	ctx := context.Background()
 	cfgByte := types.FT_amd64_ConfigByte()
 	cfgDig := digest.FromBytes(cfgByte)
-	err = min.ConfigPutObj(ctx, cfgDig.String(), cfgByte)
+	err = min.BlobPutObj(ctx, cfgDig.String(), cfgByte)
 	return
 }
 
 func (m Minio) Setup_Layer(br *utils.BootstrapResult, layer types.Layer, b string) (err error) {
 	ctx := context.Background()
-	err = m.LayerPutObj(ctx, layer.Digest, layer.Data)
+	err = m.BlobPutObj(ctx, layer.Digest, layer.Data)
 	return
 }
 
@@ -210,7 +210,7 @@ func (m Minio) SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err erro
 
 func (m Minio) SetupLayer(br *utils.BootstrapResult, ly types.Layer, bootstrapstring string) (err error) {
 	ctx := context.Background()
-	err = m.LayerPutObj(ctx, ly.Digest, ly.Data)
+	err = m.BlobPutObj(ctx, ly.Digest, ly.Data)
 	return
 }
 
@@ -327,7 +327,7 @@ func (m Minio) BootstrapTestWithBR(bs utils.Bootstrap, br *utils.BootstrapResult
 				return
 			}
 		case "cfg:generic":
-			err := m.PutConfig(ctx, featureTestGenericCfg, featureTestGenericCfgDigest)
+			err := m.PutBlob(ctx, featureTestGenericCfg, featureTestGenericCfgDigest)
 			if err != nil {
 				logrus.Fatal(err)
 			}

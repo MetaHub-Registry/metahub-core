@@ -105,12 +105,10 @@ func TestMain(m *testing.M) {
 		logrus.Fatal(err)
 	}
 	defer minioC.Terminate(ctx)
-	configsBucketKey := minio.GetConfigsBucketKey()
-	layersBucketKey := minio.GetLayersBucketKey()
+	blobBucketKey := minio.GetBlobBucketKey()
 	manifestsBucketKey := minio.GetManifestsBucketKey()
 	bc := map[string]minio.BucketConfig{
-		configsBucketKey:   minio.NewBucketConfig(configsBucketKey, minioC.HttpURI, minioC.ConsoleURI),
-		layersBucketKey:    minio.NewBucketConfig(layersBucketKey, minioC.HttpURI, minioC.ConsoleURI),
+		blobBucketKey:      minio.NewBucketConfig(blobBucketKey, minioC.HttpURI, minioC.ConsoleURI),
 		manifestsBucketKey: minio.NewBucketConfig(manifestsBucketKey, minioC.HttpURI, minioC.ConsoleURI),
 	}
 	min, err := minio.NewMiniWithCfg(bc)
@@ -176,8 +174,12 @@ func TestMain(m *testing.M) {
 		"registries":         regC.HttpURI,
 	}
 	code := m.Run()
-	os.Exit(code)
-	logrus.Info("End TestMain")
+	switch code {
+	case 0:
+		logrus.Info("Tests OK")
+	default:
+		logrus.Infof("Tests FAILED with code %d", code)
+	}
 }
 
 func TeardownTest(bs utils.Bootstrap) {

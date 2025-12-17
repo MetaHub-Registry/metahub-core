@@ -582,7 +582,7 @@ func (n Neo) getCollectionFilterPairs(ctx context.Context, q string) (cfps []typ
 	cfps = make([]types.CollectionFilterPair, 0)
 	for _, t := range tupels {
 		q := `MATCH (c:Collection)-[:HAS_TAG]->(t:Tag)-[:UPSTREAM]-(m:Manifest)-[:IS]->(p:Platform)<-[:USES]-(f:Filter)`
-		q += ` MATCH (cfg:Config)<-[:USES]-(md:ManifestData)-[]-(m)-[:UPSTREAM]->(u:Upstream)`
+		q += ` MATCH (cfg:Blob)<-[:USES]-(md:ManifestData)-[]-(m)-[:UPSTREAM]->(u:Upstream)`
 		q += ` WHERE id(c) = %d AND id(f) = %d AND id(t) = %d`
 		q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
 		q += ` id(m) AS manifestID, m.digest AS manifestDigest, m.mediaType AS manifestMediaType, m.size AS manifestSize,`

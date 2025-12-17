@@ -473,7 +473,7 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 		return
 	}
 	utils.Debug(l, span, "Found config upstream: %s", utils.ShortenDigest(cfgBlob.Digest.String()))
-	e = mag.Minio.PutConfig(ctx, cfgByte, cfgBlob.Digest.String())
+	e = mag.Minio.PutBlob(ctx, cfgByte, cfgBlob.Digest.String())
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "while putting config in Minio")
 		return
@@ -544,7 +544,7 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 				Tag:       req.Tag,
 				Digest:    digest.Digest(layer.Digest),
 			}
-			_, blobFound, e := mag.BlobExists(ctx, up)
+			blobFound, e := mag.BlobExists(ctx, up)
 			if e != nil {
 				err = utils.ErrorHandler(l, span, e, "failed to check if blob exists")
 				return
@@ -564,7 +564,7 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 				layer.MediaType = lyr.MediaType
 			}
 			utils.Debug(l, span, "Layer #%d (lID: %d) is %s", idx, layer.ID, layer.MediaType)
-			lyrBytes, e := mag.Minio.LayerGetBytes(ctx, layer.Digest)
+			lyrBytes, e := mag.Minio.BlobGetBytes(ctx, layer.Digest)
 			if e != nil {
 				err = utils.ErrorHandler(l, span, e, "failed to get layer #%d w/ digest '%s'", idx, utils.ShortenDigest(layer.Digest))
 				return

@@ -2,7 +2,6 @@ package minio
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -23,8 +22,7 @@ func TestMain(m *testing.M) {
 
 	logrus.Warnf("Minio: %v", min)
 	bc := map[string]BucketConfig{
-		configsBucketKey:   NewBucketConfig(configsBucketKey, minioC.HttpURI, minioC.ConsoleURI),
-		layersBucketKey:    NewBucketConfig(layersBucketKey, minioC.HttpURI, minioC.ConsoleURI),
+		blobBucketKey:      NewBucketConfig(blobBucketKey, minioC.HttpURI, minioC.ConsoleURI),
 		manifestsBucketKey: NewBucketConfig(manifestsBucketKey, minioC.HttpURI, minioC.ConsoleURI),
 	}
 	min, err = NewMiniWithCfg(bc)
@@ -38,8 +36,12 @@ func TestMain(m *testing.M) {
 	min.BucketCheck()
 	defer minioC.Terminate(ctx)
 	code := m.Run()
-	os.Exit(code)
-	logrus.Info("End TestMain")
+	switch code {
+	case 0:
+		logrus.Info("Tests OK")
+	default:
+		logrus.Infof("Tests FAILED with code %d", code)
+	}
 }
 
 /*
