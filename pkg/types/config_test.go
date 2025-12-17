@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	"net/http/httptest"
 	"testing"
 
@@ -8,7 +9,8 @@ import (
 )
 
 func TestNewConfigFromBytes(t *testing.T) {
-	cfg, err := NewConfigFromBytes(ConfigByteFtArm64())
+	ctx := context.Background()
+	cfg, err := NewConfigFromBytes(ctx, ConfigByteFtArm64())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,14 +23,15 @@ func TestNewConfigFromBytes(t *testing.T) {
 		t.Logf("Labels: %#v", cfg.Cfg.Config.Labels)
 		t.Fatal()
 	}
-	_, err = NewConfigFromBytes([]byte(`{`))
+	_, err = NewConfigFromBytes(ctx, []byte(`{`))
 	assert.Error(t, err)
-	_, err = NewConfigFromBytes(ManifestReferenceByte_FT_arm())
+	_, err = NewConfigFromBytes(ctx, ManifestReferenceByte_FT_arm())
 	assert.Error(t, err)
 }
 
 func TestConfigToDescriptor(t *testing.T) {
-	cfg, err := NewConfigFromBytes(ConfigByteFtArm64())
+	ctx := context.Background()
+	cfg, err := NewConfigFromBytes(ctx, ConfigByteFtArm64())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +42,8 @@ func TestConfigToDescriptor(t *testing.T) {
 }
 
 func TestConfigWriteWWWHeader(t *testing.T) {
-	cfg, err := NewConfigFromBytes(ConfigByteFtArm64())
+	ctx := context.Background()
+	cfg, err := NewConfigFromBytes(ctx, ConfigByteFtArm64())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +56,8 @@ func TestConfigWriteWWWHeader(t *testing.T) {
 }
 
 func TestToOCISpecV1Image(t *testing.T) {
-	cfg0, err := NewConfigFromBytes(ConfigByteFtArm64())
+	ctx := context.Background()
+	cfg0, err := NewConfigFromBytes(ctx, ConfigByteFtArm64())
 	if err != nil {
 		t.Fatal(err)
 	}

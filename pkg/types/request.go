@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	gCtx "github.com/gorilla/context"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/go-chi/chi/v5"
@@ -52,7 +53,7 @@ type Request struct {
 }
 
 func NewRequest(ctx context.Context, r *http.Request) Request {
-	debug := 0
+	debug := 10
 	vD := gCtx.Get(r, "debug")
 	if vD != nil {
 		debug = vD.(int)
@@ -78,6 +79,12 @@ func NewRequest(ctx context.Context, r *http.Request) Request {
 	//utils.Debug(l, span, "repo:%s", parRepo)
 	var tag string
 	dig := r.FormValue("digest")
+	if debug > debugLevel {
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("log.message", "Extracted from URL - repo:"+parRepo+" image:"+parImg+" reference:"+parRef),
+		))
+	}
 	if strings.HasPrefix(parRef, "sha256:") {
 		dig = parRef
 	} else {
@@ -213,6 +220,26 @@ func NewRequest(ctx context.Context, r *http.Request) Request {
 		scope = "blobs"
 	default:
 		scope = "unknown"
+	}
+	if debug > debugLevel {
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String("log.severity", "debug"),
+			attribute.String("tag", tag),
+			attribute.String("digest", dig),
+			attribute.String("scope", scope),
+			attribute.String("repo", repo),
+			attribute.String("user", user),
+			attribute.String("profile", profile),
+			attribute.String("method", r.Method),
+			attribute.String("range", rnge),
+			attribute.Int("content-length", cntLen),
+			attribute.String("content-type", cntType),
+			attribute.String("uuid", uid),
+			attribute.String("protocol", req.Protocol),
+			attribute.String("host", req.Host),
+			attribute.Int("number", req.Number),
+			attribute.String("last", req.Last),
+		))
 	}
 	req.Method = r.Method
 	req.Scope = scope

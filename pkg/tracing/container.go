@@ -3,6 +3,7 @@ package tracing
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -21,13 +22,17 @@ type TraceCfg struct {
 }
 
 func SetupJeager(ctx context.Context) (*JeagerContainer, error) {
+	ports := []string{"6831/udp", "14268"}
+	jP := os.Getenv("JEAGER_PORT")
+	if jP != "" {
+		ports = append(ports, fmt.Sprintf("%s:16686/tcp", jP))
+	} else {
+		ports = append(ports, "16686/tcp")
+	}
 	req := testcontainers.ContainerRequest{
-		Image: "jaegertracing/all-in-one:latest",
-		ExposedPorts: []string{
-			"6831/udp",
-			"14268",
-			"16686",
-		},
+		Image:        "jaegertracing/all-in-one:latest",
+		ExposedPorts: ports,
+
 		WaitingFor: wait.ForListeningPort("14268"),
 		Env:        map[string]string{},
 	}

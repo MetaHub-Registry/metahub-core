@@ -2,20 +2,22 @@ package minio
 
 import (
 	"context"
+	"flag"
 	"testing"
 
 	"github.com/sirupsen/logrus"
 )
 
 var (
-	min Minio
-	ctx = context.Background()
+	minioPorts = flag.String("minio-ports", "", "ports for minio test instance")
+	min        Minio
+	ctx        = context.Background()
 )
 
 func TestMain(m *testing.M) {
 	logrus.Info("Start TestMain")
 	ctx := context.Background()
-	minioC, err := SetupMinio(ctx)
+	minioC, err := SetupMinio(ctx, *minioPorts)
 	if err != nil {
 		logrus.Fatal(err)
 	}

@@ -231,6 +231,13 @@ func (m Minio) configGetter(bi imgTypes.BlobInfo) (b []byte, err error) {
 // }
 
 func (m Minio) GetTypesConfig(ctx context.Context, dig string) (cfg types.Config, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "backends/minio/config.go",
+		"func":    "GetTypesConfig",
+		"digest":  dig,
+	})
+	defer span.End()
+	_ = l
 	b, err := m.BlobGetBytes(ctx, dig)
 	switch {
 	case err != nil && err.Error() == "The specified key does not exist.":
@@ -248,7 +255,7 @@ func (m Minio) GetTypesConfig(ctx context.Context, dig string) (cfg types.Config
 	}
 	// No error - off we go
 	found = true
-	cfg, err = types.NewConfigFromBytes(b)
+	cfg, err = types.NewConfigFromBytes(ctx, b)
 	/*
 		cfg.Labels = types.NewAnnotations()
 		if err != nil {

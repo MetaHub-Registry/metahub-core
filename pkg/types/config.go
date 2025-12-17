@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,7 +10,10 @@ import (
 	"github.com/opencontainers/go-digest"
 	imgspecv1 "github.com/opencontainers/image-spec/specs-go/v1"
 	v1 "github.com/regclient/regclient/types/oci/v1"
-	"github.com/sirupsen/logrus"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Config struct {
@@ -23,15 +27,20 @@ type Config struct {
 	Labels     Annotations `json:"labels"`
 }
 
-func NewConfigFromBytes(data []byte) (res Config, err error) {
-	l := logrus.WithFields(logrus.Fields{
-		"packrusage": "types/config.go",
-		"func":       "NewConfigFromBytes",
+func NewConfigFromBytes(ctx context.Context, data []byte) (res Config, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "types",
+		"func":    "NewConfigFromBytes",
 	})
+	defer span.End()
+	_ = l
 	err = json.Unmarshal(data, &res.Cfg)
 	if err != nil {
 		l.Error(err)
 	}
+	span.AddEvent("data", trace.WithAttributes(
+		attribute.String("res", fmt.Sprintf("%v", res.Cfg))),
+	)
 	errs := []string{}
 	if res.Cfg.Architecture == "" {
 		errs = append(errs, "architecture")
@@ -41,6 +50,7 @@ func NewConfigFromBytes(data []byte) (res Config, err error) {
 	}
 	if len(errs) > 0 {
 		err = fmt.Errorf("config object has missing fields: %s", strings.Join(errs, ", "))
+		span.SetStatus(codes.Error, err.Error())
 		l.Error(err)
 		return
 	}

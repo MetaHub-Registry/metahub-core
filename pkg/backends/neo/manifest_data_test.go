@@ -503,6 +503,10 @@ func TestManifestDataRules(t *testing.T) {
 
 func TestManifestDataGetPulledByRepoTag(t *testing.T) {
 	ctx := context.Background()
+	_, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "TestBlobHandlerLayerTest",
+	})
+	defer span.End()
 	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
@@ -576,6 +580,7 @@ func TestManifestDataGetPulledByRepoTag(t *testing.T) {
 	} else {
 		assert.Equal(t, amd64Dig, md.Digest)
 	}
+	span.End()
 }
 
 func TestManifestDataLinkToOCIv1Layer(t *testing.T) {

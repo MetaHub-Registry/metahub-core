@@ -98,12 +98,15 @@ func (m Minio) GetBlobBucketName() string {
 }
 
 func (m Minio) BlobGetBytes(ctx context.Context, path string) (b []byte, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "backends/minio",
 		"func":    "BlobGetBytes",
 		"path":    path,
 	})
+	defer span.End()
+	_ = l
 	blobBucketKey := GetBlobBucketKey()
+	span.SetAttributes(attribute.String("bucket", blobBucketKey))
 	cli := m.BucketConfig[blobBucketKey].Client
 	obj, err := cli.GetObject(ctx, blobBucketKey, path, minio.GetObjectOptions{})
 	if err != nil {

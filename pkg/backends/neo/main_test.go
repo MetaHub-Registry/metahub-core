@@ -3,6 +3,7 @@ package neo
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -19,7 +20,8 @@ var (
 func TestMain(m *testing.M) {
 	logrus.Info("Start TestMain")
 	ctx := context.Background()
-	neoC, err := SetupNeo4j(ctx)
+	neoP := os.Getenv("NEO4J_PORTS")
+	neoC, err := SetupNeo4j(ctx, neoP)
 	if err != nil {
 		logrus.Fatal(err)
 	}

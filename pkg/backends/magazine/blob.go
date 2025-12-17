@@ -147,18 +147,23 @@ func (mag Magazine) ComposeFromChunks(ctx context.Context, bu *types.OCIBlobUplo
 	return nil
 }
 
-func (mag Magazine) Blob_GetByHTTPRequest(r *http.Request) (blob *types.Blob, found bool, err error) {
-	ctx := context.Background()
+func (mag Magazine) BlobGetByHTTPRequest(ctx context.Context, r *http.Request) (blob *types.Blob, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "magazine/blob.go",
+		"func":    "BlobGetByHTTPRequest",
+	})
+	defer span.End()
+	_ = l
 	req := types.NewRequest(ctx, r)
-	logrus.Debugf("Blob_GetByHTTPRequest: %s", req.String())
+	l.Debugf("BlobGetByHTTPRequest: %s", req.String())
 	// Fetch blob from Database
 	blob, found, err = mag.Database.BlobGetByDigest(ctx, req.Digest)
 	if err != nil {
-		logrus.Errorf("failed to fetch blob from database: %v", err)
+		l.Errorf("failed to fetch blob from database: %v", err)
 		return
 	}
 	if !found {
-		logrus.Errorf("did not find blob with dig: %s", req.Digest)
+		l.Errorf("did not find blob with dig: %s", req.Digest)
 		return
 	}
 	if req.Method == "GET" {

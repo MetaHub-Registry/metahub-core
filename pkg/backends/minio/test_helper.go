@@ -91,10 +91,20 @@ type MinioContainer struct {
 	ConsoleURI string
 }
 
-func SetupMinio(ctx context.Context) (*MinioContainer, error) {
+func SetupMinio(ctx context.Context, minioPorts string) (*MinioContainer, error) {
+	ports := []string{"9000/tcp", "9001/tcp"}
+	if minioPorts != "" {
+		k, v, found := strings.Cut(minioPorts, ":")
+		if found {
+			ports = []string{
+				fmt.Sprintf("%s:9000/tcp", k),
+				fmt.Sprintf("%s:9001/tcp", v),
+			}
+		}
+	}
 	req := testcontainers.ContainerRequest{
 		Image:        "quay.io/minio/minio:RELEASE.2022-08-02T23-59-16Z",
-		ExposedPorts: []string{"9000/tcp", "9001/tcp"},
+		ExposedPorts: ports,
 		WaitingFor:   wait.ForHTTP("/minio/health/live").WithPort("9000"),
 		Env: map[string]string{
 			"MINIO_ROOT_USER":     minioAccessKey,
@@ -153,6 +163,7 @@ func Setup_Config_FT_arm64(min *Minio, br *utils.BootstrapResult) (err error) {
 	ctx := context.Background()
 	cfgByte := types.ConfigByteFtArm64()
 	cfgDig := digest.FromBytes(cfgByte)
+	logrus.Infof("Setup_Config_FT_arm64: %s", cfgDig.String())
 	err = min.BlobPutObj(ctx, cfgDig.String(), cfgByte)
 	return
 }

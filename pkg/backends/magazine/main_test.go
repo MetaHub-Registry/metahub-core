@@ -78,7 +78,8 @@ var (
 func TestMain(m *testing.M) {
 	logrus.Info("Start TestMain")
 	/// Neo4j
-	neoC, err := neo.SetupNeo4j(ctx)
+	neoP := os.Getenv("NEO4J_PORTS")
+	neoC, err := neo.SetupNeo4j(ctx, neoP)
 	if err != nil {
 		logrus.Fatal(err)
 	}
@@ -100,7 +101,8 @@ func TestMain(m *testing.M) {
 		logrus.Fatal(err)
 	}
 	/// Minio
-	minioC, err := minio.SetupMinio(ctx)
+	minioP := os.Getenv("MINIO_PORTS")
+	minioC, err := minio.SetupMinio(ctx, minioP)
 	if err != nil {
 		logrus.Fatal(err)
 	}

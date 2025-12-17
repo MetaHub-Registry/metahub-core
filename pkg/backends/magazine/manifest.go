@@ -209,8 +209,7 @@ func (mag Magazine) ManifestGetByRequest(ctx context.Context, req types.Request)
 		return
 	}
 	if !found {
-		err = utils.NewError(l, span, "manifestData not found")
-		return
+		return m, found, nil
 	}
 	m, e = mag.Minio.ManifestGetObj(ctx, m.Digest)
 	if e != nil {

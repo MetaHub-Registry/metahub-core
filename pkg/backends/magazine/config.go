@@ -94,7 +94,30 @@ func (mag Magazine) InsertConfig(ctx context.Context, cfg types.Config, up types
 }
 
 func (mag Magazine) ConfigBlob_GetByHTTPRequest(ctx context.Context, r *http.Request) (cfg types.Config, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "magazine/config.go",
+		"func":    "ConfigBlob_GetByHTTPRequest",
+	})
+	defer span.End()
+	_ = l
 	req := types.NewRequest(ctx, r)
+	span.AddEvent("req", trace.WithAttributes(
+		attribute.String("ContentType", req.ContentType),
+		attribute.String("Digest", req.Digest),
+		attribute.String("Method", req.Method),
+		attribute.String("Host", req.Host),
+		attribute.String("Repo", req.Repo),
+		attribute.String("Tag", req.Tag),
+		attribute.String("Scope", req.Scope),
+		attribute.String("Repo", req.Repo),
+		attribute.String("Tag", req.Tag),
+		attribute.String("User", req.User),
+		attribute.String("UserRole", req.UserRole),
+		attribute.String("Profile", req.Profile),
+		attribute.String("Length", fmt.Sprintf("%d", req.Length)),
+		attribute.String("Range", req.Range),
+		attribute.String("UUID", req.UUID),
+	))
 	return mag.Minio.GetTypesConfig(ctx, req.Digest)
 }
 

@@ -46,9 +46,9 @@ func (m Minio) BucketConfigString() string {
 	res := []string{}
 	for k, v := range m.BucketConfig {
 		if v.Ssl {
-			res = append(res, fmt.Sprintf("%s: https://%s", k, v.ConsoleURL))
+			res = append(res, fmt.Sprintf("%s: https://%s / https://%s", k, v.ConsoleURL, v.URL))
 		} else {
-			res = append(res, fmt.Sprintf("%s: http://%s", k, v.ConsoleURL))
+			res = append(res, fmt.Sprintf("%s: http://%s / http://%s", k, v.ConsoleURL, v.URL))
 		}
 	}
 	return strings.Join(res, " | ")
