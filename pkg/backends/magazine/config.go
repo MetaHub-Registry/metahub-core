@@ -93,10 +93,10 @@ func (mag Magazine) InsertConfig(ctx context.Context, cfg types.Config, up types
 
 }
 
-func (mag Magazine) ConfigBlob_GetByHTTPRequest(ctx context.Context, r *http.Request) (cfg types.Config, found bool, err error) {
+func (mag Magazine) ConfigBlobGetByHTTPRequest(ctx context.Context, r *http.Request) (cfg types.Config, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "magazine/config.go",
-		"func":    "ConfigBlob_GetByHTTPRequest",
+		"package": pkgNameConfig,
+		"func":    "ConfigBlobGetByHTTPRequest",
 	})
 	defer span.End()
 	_ = l
@@ -154,7 +154,7 @@ func (mag Magazine) Config_Get_ByManifest(ctx context.Context, req types.Request
 
 func (mag Magazine) Config_GetByID(ctx context.Context, cfgID int64) (cfg types.Config, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "magazine/config.go",
+		"package": pkgNameConfig,
 		"func":    "mag.Config_GetByID",
 	})
 	defer span.End()

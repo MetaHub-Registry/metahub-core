@@ -1,9 +1,14 @@
 package magazine
 
 import (
+	"context"
 	"encoding/base64"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/opencontainers/go-digest"
 	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/types"
@@ -90,4 +95,59 @@ func TestConfigStoreConfigUpload(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.True(t, found)
+}
+
+func TestConfigBlobGetByHTTPRequest(t *testing.T) {
+	bs := utils.NewBootstrap()
+	ctx := context.Background()
+	_, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "TestBlobHandlerLayerTest",
+	})
+	defer span.End()
+	debug := 0
+	bs.SetEmptyAll()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("users")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
+	bs.AddBootstrap("config:ft_arm64")
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := mag.SetupTest(ctx, bs)
+	if err != nil {
+		TeardownTest(bs)
+		t.Fatal(err)
+	}
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	defer TeardownTest(bs)
+	token, err := br.Get("user:test#bearer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Prepare HTTP Request
+	cfgDigest, err := br.Get("config:ft_arm64#digest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest(http.MethodHead, "/{repo}/{repo2}/{repo3}/{image}/referrers/{reference}", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("repo", "qnib")
+	rctx.URLParams.Add("repo2", "repo")
+	rctx.URLParams.Add("repo3", "sub")
+	rctx.URLParams.Add("image", "featuretest")
+	rctx.URLParams.Add("reference", cfgDigest)
+	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+	r.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	cfg, found, err := mag.ConfigBlobGetByHTTPRequest(ctx, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.True(t, found)
+	assert.Equal(t, "application/vnd.docker.container.image.v1+json", cfg.MediaType)
 }
