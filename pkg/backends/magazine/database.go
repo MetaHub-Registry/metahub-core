@@ -39,7 +39,9 @@ type Database interface {
 	Config_AddLabels(ctx context.Context, cfgID int64, a *types.Annotations) (err error)
 	Manifest_AddAnnotations(ctx context.Context, maniID int64, as *types.Annotations) (err error)
 	Manifest_AddAnnotation(ctx context.Context, maniID int64, a *types.Annotation) (err error)
-
+	/********* Blob **********/
+	BlobExists(ctx context.Context, up upstream.UpstreamTriple) (found bool, err error)
+	BlobGetByDigest(ctx context.Context, dig string) (b *types.Blob, found bool, err error)
 	/********* Layer ***********/
 	LayerGetByDigest(ctx context.Context, dig string) (l types.Layer, found bool, err error)
 	LayerDeleteByDigest(ctx context.Context, dig string) error
@@ -153,9 +155,10 @@ type Database interface {
 	BlobUpload_Complete(ctx context.Context, i *types.OCIBlobUpload) (err error)
 	BlobUpload_DeleteUnused(ctx context.Context) (err error)
 	/**** BlobChunks ****/
-	UploadChunk_Get_ByUUID(ctx context.Context, buID int64) (bcs []types.BlobChunks, err error)
-	UploadChunk_Create(ctx context.Context, buID, startByte, lenBytes int64) (bc types.BlobChunks, err error)
+	UploadChunk_Get_ByUUID(ctx context.Context, buID int64) (bcs []types.BlobChunk, err error)
+	UploadChunk_Create(ctx context.Context, bu *types.OCIBlobUpload, startByte, lenBytes int64) (bc types.BlobChunk, err error)
 	BlobUploadGetByBlobDigest(ctx context.Context, dig string) (bu types.OCIBlobUpload, found bool, err error)
+	CreateBlobFromChunk(ctx context.Context, bu *types.OCIBlobUpload, chunk types.BlobChunk) (err error)
 	/****** Profiles ********/
 	GetProfiles(ctx context.Context) (ps []types.Profile, err error)
 	Profile_GetInsert(ctx context.Context, p *types.Profile) (err error)

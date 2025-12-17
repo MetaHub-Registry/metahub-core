@@ -50,9 +50,6 @@ func NewEmptyFilter(name string) (f Filter) {
 
 func NewFilter(name, typ, op, k, v string) (f Filter, err error) {
 	f = NewEmptyFilter(name)
-	if err != nil {
-		return
-	}
 	r, err := NewRule(typ, op, k, v)
 	if err != nil {
 		return

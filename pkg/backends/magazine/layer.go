@@ -66,7 +66,7 @@ func (mag Magazine) PullLayer(ctx context.Context, up upstream.UpstreamTriple) (
 		return err
 	}
 	_ = blobs
-	err = mag.Minio.PutLayer(ctx, b, up.Digest.String())
+	err = mag.Minio.PutBlob(ctx, b, up.Digest.String())
 	if err != nil {
 		logrus.Error(err)
 		return err
@@ -113,7 +113,7 @@ func (mag Magazine) CacheLayers(ctx context.Context, mani types.ManifestData) (e
 			continue
 		}
 		up.Digest = digest.Digest(layer.Digest)
-		isCached, e := mag.Minio.GetLayer(ctx, up)
+		isCached, e := mag.Minio.GetBlob(ctx, up)
 		if e != nil {
 			err = e
 			logrus.Error(err)
@@ -147,7 +147,7 @@ func (mag Magazine) StoreLayerUpload(ctx context.Context, bu *types.OCIBlobUploa
 		"digest":   bu.Digest,
 	})
 	defer span.End()
-	err = mag.Minio.PutLayer(ctx, buf, bu.Digest)
+	err = mag.Minio.PutBlob(ctx, buf, bu.Digest)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to put layer into minio")
 	}
@@ -172,7 +172,7 @@ func (mag Magazine) StoreLayerUpload(ctx context.Context, bu *types.OCIBlobUploa
 func (mag Magazine) Layer_GetPresignedUrlByHTTPRequest(r *http.Request) (psUrl string, err error) {
 	ctx := context.Background()
 	req := types.NewRequest(ctx, r)
-	return mag.Minio.LayerGetPreSignedUrl(ctx, req.Digest)
+	return mag.Minio.BlobGetPreSignedUrl(ctx, req.Digest)
 }
 
 func (mag Magazine) Layer_GetByHTTPRequest(r *http.Request) (layer types.Layer, found bool, err error) {
@@ -190,7 +190,7 @@ func (mag Magazine) Layer_GetByHTTPRequest(r *http.Request) (layer types.Layer, 
 		return
 	}
 	// Fetch Blob
-	b, err := mag.Minio.LayerGetBytes(ctx, req.Digest)
+	b, err := mag.Minio.BlobGetBytes(ctx, req.Digest)
 	switch {
 	case err != nil && err.Error() == "The specified key does not exist.":
 		// found is false
@@ -218,7 +218,7 @@ func (mag Magazine) GetLayerByOCIManifest(oMani types.OCIManifest) (layers []typ
 			return layers, err
 		}
 		// Fetch Blob
-		b, err := mag.Minio.LayerGetBytes(ctx, l.Digest.String())
+		b, err := mag.Minio.BlobGetBytes(ctx, l.Digest.String())
 		switch {
 		case err != nil && err.Error() == "The specified key does not exist.":
 			// found is false
@@ -300,7 +300,7 @@ func (mag Magazine) BaseLayerEvalOS(ctx context.Context, lyr types.Layer) (os ty
 		"layerID": lyr.ID,
 	})
 	defer span.End()
-	_, e := mag.Minio.LayersStatObj(ctx, lyr.Digest)
+	_, e := mag.Minio.BlobStatObj(ctx, lyr.Digest)
 	if e != nil {
 		utils.ErrorHandler(l, span, e, "failed to stat layer")
 		up, upFound, e := mag.Database.LayerGetUpstream(ctx, lyr.ID)
@@ -325,7 +325,7 @@ func (mag Magazine) BaseLayerEvalOS(ctx context.Context, lyr types.Layer) (os ty
 		}
 	}
 	// We should have a layer in Minio now
-	b, e := mag.Minio.LayerGetBytes(ctx, lyr.Digest)
+	b, e := mag.Minio.BlobGetBytes(ctx, lyr.Digest)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to fetch layer from storage")
 		return

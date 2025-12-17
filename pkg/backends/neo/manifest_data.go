@@ -257,7 +257,7 @@ func (n Neo) ManifestData_GetAll(ctx context.Context) (manis []types.ManifestDat
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	q := `MATCH (p:Platform)-[r]-(m:Manifest)-[]-(u:Upstream)`
-	q += ` MATCH (m)-[]-(md:ManifestData)-[rel]-(cfg:Config)`
+	q += ` MATCH (m)-[]-(md:ManifestData)-[rel]-(cfg:Blob) WHERE TYPE(rel) STARTS WITH "docker_container_image" OR TYPE(rel) STARTS WITH "oci_image_config"`
 	q += ` RETURN type(r) AS manifestdataRelType,`
 	q += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
 	q += ` id(m) AS manifestID,`
@@ -324,7 +324,7 @@ func (n Neo) ManifestData_GetAllByManifestID(ctx context.Context, msID int64) (m
 	})
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (ms:Manifest)-[r]->(m:ManifestData) WHERE id(ms) = %d`, msID)
-	q += ` MATCH (m)-[cfgRel]-(cfg:Config)`
+	q += ` MATCH (m)-[cfgRel]-(cfg:Blob)`
 	q += ` RETURN DISTINCT id(m) AS manifestID, m.digest AS manifestDigest, m.mediaType AS manifestMediaType, m.size AS manifestSize,`
 	q += ` id(cfg) AS configID, cfg.digest AS configDigest, TYPE(cfgRel) AS configMediaType, cfg.size AS configSize,`
 	q += ` type(r) AS manifestdataRelType`
@@ -389,7 +389,7 @@ func (n Neo) ManifestData_GetAllByManifestID_WithProfile(ctx context.Context, ms
 	})
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (ms:Manifest)-[r]->(m:ManifestData) WHERE id(ms) = %d`, msID)
-	q += ` MATCH (m)-[cfgRel]-(cfg:Config)`
+	q += ` MATCH (m)-[cfgRel]-(cfg:Blob)`
 	q += ` RETURN id(m) AS manifestID, m.digest AS manifestDigest, m.mediaType AS manifestMediaType, m.size AS manifestSize,`
 	q += ` id(cfg) AS configID, cfg.digest AS configDigest, TYPE(cfgRel) AS configMediaType, cfg.size AS configSize,`
 	q += ` type(r) AS manifestdataRelType`
@@ -486,7 +486,7 @@ func (n Neo) ManifestData_LinkToOCIv1Config(ctx context.Context, maniID int64, c
 		cfg.MediaType = v1.MediaTypeImageConfig
 	}
 	mt := utils.ShortenMediaType(cfg.MediaType)
-	q := fmt.Sprintf(`MATCH (m:ManifestData), (c:Config) WHERE id(m) = %d AND id(c) = %d MERGE (m)-[:%s]->(c)`, maniID, cfg.ID, mt)
+	q := fmt.Sprintf(`MATCH (m:ManifestData), (c:Blob) WHERE id(m) = %d AND id(c) = %d MERGE (m)-[:%s]->(c)`, maniID, cfg.ID, mt)
 	utils.Debug(l, span, q)
 	_, err = n.Execute(q)
 	if err != nil {
@@ -516,7 +516,7 @@ func (n Neo) ManifestData_LinkToOCIv1Layer(ctx context.Context, maniID int64, ld
 	if ld.Descriptor.MediaType == "" {
 		return utils.NewError(l, span, FailMediaTypeEmpty)
 	}
-	q := fmt.Sprintf(`MATCH (m:ManifestData), (l:Layer) WHERE id(m) = %d AND id(l) = %d MERGE (m)-[:%s]->(l)`, maniID, ld.LayerID, shortMT)
+	q := fmt.Sprintf(`MATCH (m:ManifestData), (l:Blob) WHERE id(m) = %d AND id(l) = %d MERGE (m)-[:%s]->(l)`, maniID, ld.LayerID, shortMT)
 	utils.Debug(l, span, q)
 	_, err = n.Execute(q)
 	if err != nil {
@@ -788,7 +788,7 @@ func (n Neo) ManifestData_LinkToConfig(ctx context.Context, maniID int64, cfg ty
 	_, span := tracer.Start(ctx, "ManifestData_LinkToConfig")
 	defer span.End()
 	if cfg.MediaType == "" {
-		err = fmt.Errorf(FailMediaTypeEmpty)
+		err = fmt.Errorf("%s", FailMediaTypeEmpty)
 		span.SetStatus(codes.Error, err.Error())
 		span.AddEvent("log", trace.WithAttributes(
 			attribute.String("log.severity", "error"),
@@ -799,7 +799,7 @@ func (n Neo) ManifestData_LinkToConfig(ctx context.Context, maniID int64, cfg ty
 		return
 	}
 	mt := utils.ShortenMediaType(cfg.MediaType)
-	q := fmt.Sprintf(`MATCH (m:ManifestData),(c:Config) WHERE id(m) = %d AND id(c) = %d`, maniID, cfg.ID)
+	q := fmt.Sprintf(`MATCH (m:ManifestData),(c:Blob) WHERE id(m) = %d AND id(c) = %d`, maniID, cfg.ID)
 	q += fmt.Sprintf(` MERGE (m)-[:%s]->(c)`, mt)
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
@@ -809,7 +809,7 @@ func (n Neo) ManifestData_LinkToConfig(ctx context.Context, maniID int64, cfg ty
 	defer session.Close()
 	_, err = session.Run(q, map[string]interface{}{})
 	if err != nil {
-		logrus.Errorf("failed to create link (m:ManifestData)-[:%s]->(c:Config): %v", mt, err)
+		logrus.Errorf("failed to create link (m:ManifestData)-[:%s]->(c:Blob): %v", mt, err)
 		return
 	}
 	return
@@ -830,7 +830,7 @@ func (n Neo) ManifestData_LinkToLayer(ctx context.Context, maniID int64, layer t
 		return utils.NewError(l, span, FailMediaTypeEmpty)
 	}
 	_ = ctx
-	q := fmt.Sprintf(`MATCH (m:ManifestData),(l:Layer) WHERE id(m) = %d AND id(l) = %d`, maniID, layer.ID)
+	q := fmt.Sprintf(`MATCH (m:ManifestData),(l:Blob) WHERE id(m) = %d AND id(l) = %d`, maniID, layer.ID)
 	q += fmt.Sprintf(` MERGE (m)-[:%s {order: %d}]->(l)`, shortMT, idx)
 	utils.Debug(l, span, q)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
@@ -1422,7 +1422,7 @@ func (n Neo) ManifestData_GetByCollectionTag(ctx context.Context, colID, colTagI
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	q := `MATCH (p:Platform)-[r]-(m:Manifest)-[]-(u:Upstream)`
-	q += fmt.Sprintf(` MATCH (c:Collection)-[:UPSTREAM]->(m)-[:CREATED]-(md:ManifestData)-[cfgRel]->(cfg:Config) WHERE id(c) = %d`, colID)
+	q += fmt.Sprintf(` MATCH (c:Collection)-[:UPSTREAM]->(m)-[:CREATED]-(md:ManifestData)-[cfgRel]->(cfg:Blob) WHERE id(c) = %d`, colID)
 	q += fmt.Sprintf(` MATCH (t:Tag)-[:UPSTREAM]->(m) WHERE id(t) = %d`, colTagID)
 	q += ` RETURN type(r) AS manifestdataRelType,`
 	q += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
@@ -1521,7 +1521,7 @@ func (n Neo) ManifestData_GetByManifestList(ctx context.Context, mlID int64) (ma
 	// TODO: We'll get different types of ManifestData per Manifest - do we need to filter out the default (OCI manifest)
 	//       - create a map afterwards based on collection name and type
 	q := `MATCH (ml:ManifestList)-[:INCLUDES]-(m:Manifest)-[:IS]->(p:Platform) WHERE id(ml) = %d`
-	q += ` MATCH (cfg:Config)<-[:USES]-(md:ManifestData)-[r]-(m)-[:UPSTREAM]->(u:Upstream)`
+	q += ` MATCH (cfg:Blob)<-[:USES]-(md:ManifestData)-[r]-(m)-[:UPSTREAM]->(u:Upstream)`
 	q += ` RETURN type(r) AS manifestdataRelType,`
 	q += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
 	q += ` id(md) AS manifestID, md.digest AS manifestDigest, md.mediaType AS manifestMediaType, md.size AS manifestSize,`
@@ -1757,7 +1757,7 @@ func (n Neo) ManifestDataUnlinkLayer(ctx context.Context, mdID, lyrID int64) (er
 	})
 	_ = ctx
 	defer span.End()
-	q := `MATCH (md:ManifestData)-[r]->(l:Layer)`
+	q := `MATCH (md:ManifestData)-[r]->(l:Blob)`
 	q += fmt.Sprintf(` WHERE id(md) = %d AND id(l) = %d`, mdID, lyrID)
 	q += ` DELETE r`
 	utils.Debug(l, span, q)
@@ -1777,7 +1777,7 @@ func (n Neo) ManifestDataUnlinkConfig(ctx context.Context, mdID int64, cfgDig st
 	})
 	_ = ctx
 	defer span.End()
-	q := `MATCH (md:ManifestData)-[r]->(c:Config)`
+	q := `MATCH (md:ManifestData)-[r]->(c:Blob)`
 	q += fmt.Sprintf(` WHERE id(md) = %d AND c.digest = "%s"`, mdID, cfgDig)
 	q += ` DELETE r`
 	utils.Debug(l, span, "query to delete ManifestData<>Config relationship: %s", q)

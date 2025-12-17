@@ -17,8 +17,9 @@ type BlobUpload struct {
 	BlobType      string    `json:"blob_type"` //
 }
 
-type BlobChunks struct {
+type BlobChunk struct {
 	ID           int64     `json:"id"`
+	Digest       string    `json:"digest"`
 	BlobUploadID int64     `json:"blob_upload_id"`
 	CreatedAt    time.Time `json:"created_at"`
 	FinishedAt   time.Time `json:"finished_at"`

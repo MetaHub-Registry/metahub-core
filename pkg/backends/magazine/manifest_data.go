@@ -78,7 +78,7 @@ func (mag Magazine) cacheManifestByUpstream(ctx context.Context, up types.Upstre
 			err = utils.ErrorHandler(l, span, e, "failed to GetBlobByUpstreamTriple")
 			return maniData, err
 		}
-		e = mag.Minio.PutConfig(ctx, cfgByte, cfgBlob.Digest.String())
+		e = mag.Minio.PutBlob(ctx, cfgByte, cfgBlob.Digest.String())
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to PutConfig")
 			return maniData, err
@@ -130,9 +130,9 @@ func (mag Magazine) ManifestDataUpsertBackends(ctx context.Context, md *types.Ma
 	})
 	defer span.End()
 	// Make sure config is already in Minio
-	if _, e := mag.Minio.ConfigsStatObj(ctx, md.Config.Digest); e != nil {
+	if _, e := mag.Minio.BlobStatObj(ctx, md.Config.Digest); e != nil {
 		if e.Error() == "The specified key does not exist." {
-			if err = mag.Minio.PutConfig(ctx, md.Config.Data, md.Config.Digest); err != nil {
+			if err = mag.Minio.PutBlob(ctx, md.Config.Data, md.Config.Digest); err != nil {
 				return utils.ErrorHandler(l, span, err, "failed to PutConfig")
 			}
 		} else {
@@ -247,12 +247,14 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 	dig := digest.FromBytes(buf)
 	req.Digest = dig.String()
 	var ociMani types.OCIManifest
+
 	// Put Manifest Blob into Minio
 	m, ociMani, e := mag.storeManifestUpload_OCIManifest(ctx, req, buf)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to mag.storeManifestUpload_OCIManifest")
 		return
 	}
+	utils.Debug(l, span, "ociMani.Config.MediaType:%s", ociMani.Config.MediaType)
 	switch len(m.Manifests) {
 	default:
 		err = utils.NewError(l, span, "expect to have to store Manifest")
@@ -270,12 +272,13 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 		err = utils.ErrorHandler(l, span, e, "failed to mag.Config_Get_ByManifest")
 		return
 	}
+
 	cfg.MediaType = ociMani.Config.MediaType
 	if !found {
 		err = utils.NewError(l, span, "failed to find config for manifest")
 		return
 	}
-	//logrus.Infof("Found Config: ID:%d #Labels:%d", cfg.ID, len(cfg.Labels.Map))
+	utils.Debug(l, span, "Found Config: ID:%d Digest:%s", cfg.ID, cfg.Digest)
 	md.Config = cfg
 	// Link Manifest to Config
 	utils.Debug(l, span, "Linking Manifest to Config: '%d' -> '%d'", md.ID, cfg.ID)

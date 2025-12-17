@@ -25,8 +25,12 @@ func TestMain(m *testing.M) {
 		logrus.Fatal(err)
 	}
 	code := m.Run()
-	os.Exit(code)
-	logrus.Info("End TestMain")
+	switch code {
+	case 0:
+		logrus.Info("Tests OK")
+	default:
+		logrus.Infof("Tests FAILED with code %d", code)
+	}
 }
 
 func TeardownTest(bs utils.Bootstrap) {

@@ -18,20 +18,16 @@ import (
 )
 
 const (
-	layersBucketKey    = "layers"
+	blobBucketKey      = "blobs"
 	manifestsBucketKey = "manifests"
-	configsBucketKey   = "configs"
 )
 
-func GetLayersBucketKey() string {
-	return layersBucketKey
+func GetBlobBucketKey() string {
+	return blobBucketKey
 }
 
 func GetManifestsBucketKey() string {
 	return manifestsBucketKey
-}
-func GetConfigsBucketKey() string {
-	return configsBucketKey
 }
 
 type BucketConfig struct {
@@ -91,14 +87,11 @@ func NewMinio(cfgFile string) (m Minio, err error) {
 		viper.SetConfigType("yaml")
 	}
 	m.BucketConfig = map[string]BucketConfig{
-		layersBucketKey: {
-			Bucket: layersBucketKey,
+		blobBucketKey: {
+			Bucket: blobBucketKey,
 		},
 		manifestsBucketKey: {
 			Bucket: manifestsBucketKey,
-		},
-		configsBucketKey: {
-			Bucket: configsBucketKey,
 		},
 	}
 	bc := BucketConfig{

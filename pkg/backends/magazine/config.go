@@ -13,6 +13,8 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const pkgNameConfig = "magazine/config.go"
@@ -28,7 +30,7 @@ func (mag Magazine) CacheImageConfigViaUpstream(ctx context.Context, up upstream
 		err = utils.ErrorHandler(l, span, e, "failed to get blob for %s", up.GetLabel())
 		return err
 	}
-	e = mag.Minio.PutConfig(ctx, b, up.Digest.String())
+	e = mag.Minio.PutBlob(ctx, b, up.Digest.String())
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to PutConfig")
 		return err
@@ -67,7 +69,7 @@ func (mag Magazine) CachImageConfig(ctx context.Context, mani *types.ManifestDat
 		}
 
 		logrus.Warnf("Blob fetched: %v", blob)
-		e = mag.Minio.PutConfig(ctx, b, mani.Config.Digest)
+		e = mag.Minio.PutBlob(ctx, b, mani.Config.Digest)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to PutConfig")
 			return err
@@ -104,6 +106,7 @@ func (mag Magazine) Config_Get_ByManifest(ctx context.Context, req types.Request
 		"host":    req.Host,
 		"repo":    req.Repo,
 		"tag":     req.Tag,
+		"digest":  cfg.Digest,
 	})
 	defer span.End()
 	label := fmt.Sprintf("%s/%s:%s", req.Host, req.Repo, req.Tag)
@@ -117,7 +120,7 @@ func (mag Magazine) Config_Get_ByManifest(ctx context.Context, req types.Request
 	} else {
 		utils.Debug(l, span, "Config '%s' found: %s", utils.ShortenDigest(cfg.Digest), label)
 	}
-	v1Img, v1Found, e := mag.Minio.GetConfig(ctx, oMani.Config.Digest.String())
+	v1Img, v1Found, e := mag.Minio.GetConfig(ctx, cfg.Digest)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to get Config from Minio")
 		return
@@ -159,7 +162,7 @@ func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUplo
 	defer span.End()
 	// NOTE: Wait; we are getting the actual config, not only the descriptor
 	// Store Blob
-	e := mag.Minio.PutConfig(ctx, buf, bu.Digest)
+	e := mag.Minio.PutBlob(ctx, buf, bu.Digest)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to store config in Minio")
 		return
@@ -238,7 +241,7 @@ func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUplo
 		err = utils.ErrorHandler(l, span, e, "failed to insert Config into graph")
 		return
 	}
-	e = mag.Minio.ConfigPutObj(ctx, bu.Digest, buf)
+	e = mag.Minio.BlobPutObj(ctx, bu.Digest, buf)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to store Config in Minio")
 	}
@@ -253,6 +256,10 @@ func (mag Magazine) Config_GetInsert_ByOCIManifest(ctx context.Context, ociMani 
 		"digest":  ociMani.Config.Digest.String(),
 	})
 	defer span.End()
+	span.AddEvent("debug", trace.WithAttributes(
+		attribute.KeyValue{Key: "oci.manifest.config.digest", Value: attribute.StringValue(ociMani.Config.Digest.String())},
+		attribute.KeyValue{Key: "ociMani.Config.Data.length", Value: attribute.IntValue(len(ociMani.Config.Data))},
+	))
 	/// OCI Manifest might embed the config as Data
 	if len(ociMani.Config.Data) > 0 {
 		utils.Debug(l, span, "Config embedded in OCI Manifest")
@@ -272,6 +279,8 @@ func (mag Magazine) Config_GetInsert_ByOCIManifest(ctx context.Context, ociMani 
 			return
 		}
 		utils.Warn(l, span, "Finished upload of embedded config")
+	} else {
+		utils.Debug(l, span, "Config NOT embedded in OCI Manifest - fetch from Blob Storage")
 	}
 	cfg, found, err = mag.Database.Config_GetInsert_ByOCIManifest(ctx, ociMani, label)
 	return

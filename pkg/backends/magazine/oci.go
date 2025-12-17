@@ -482,7 +482,7 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 	}
 	m.Config = cfgDesc
 	// Upload Config Blob to Minio
-	e = mag.Minio.PutConfig(ctx, cfgDesc.Data, cfgDesc.Digest.String())
+	e = mag.Minio.PutBlob(ctx, cfgDesc.Data, cfgDesc.Digest.String())
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to PutConfig")
 		return

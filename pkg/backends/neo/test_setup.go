@@ -393,9 +393,6 @@ func (n Neo) Setup_Collection_FT_amd64(br *utils.BootstrapResult) (err error) {
 	}
 	br.Add("collection:ft#id", fmt.Sprint(colID))
 	br.Add("tag:amd64#id", fmt.Sprint(colTagID))
-	if err != nil {
-		return err
-	}
 	// Link Collection To Manifest
 	for _, mani := range []string{"manifest:ft_amd64#id"} {
 		maniID, err := br.GetInt64(mani)
@@ -424,9 +421,6 @@ func (n Neo) Setup_Collection_FT_arm64(br *utils.BootstrapResult) (err error) {
 	}
 	br.Add("collection:ft#id", fmt.Sprint(colID))
 	br.Add("tag:arm64#id", fmt.Sprint(colTagID))
-	if err != nil {
-		return err
-	}
 	// Link Collection To Manifest
 	for _, mani := range []string{"manifest:ft_arm64#id"} {
 		maniID, err := br.GetInt64(mani)
@@ -455,9 +449,6 @@ func (n Neo) Setup_Collection_FT_generic(br *utils.BootstrapResult) (err error) 
 	}
 	br.Add("collection:ft#id", fmt.Sprint(colID))
 	br.Add("tag:generic#id", fmt.Sprint(colTagID))
-	if err != nil {
-		return err
-	}
 	// Link Collection To Manifest
 	for _, mani := range []string{"manifest:ft_arm64#id", "manifest:ft_amd64#id"} {
 		maniID, err := br.GetInt64(mani)
@@ -486,9 +477,7 @@ func (n Neo) Setup_Collection_FT_zen3(br *utils.BootstrapResult) (err error) {
 	}
 	br.Add("collection:ft#id", fmt.Sprint(colID))
 	br.Add("tag:zen3#id", fmt.Sprint(colTagID))
-	if err != nil {
-		return err
-	}
+
 	// Link Collection To Manifest
 	for _, mani := range []string{"manifest:ft_zen3#id"} {
 		maniID, err := br.GetInt64(mani)
@@ -580,7 +569,7 @@ func (n Neo) Cypher_AddCollection_FT_generic(br *utils.BootstrapResult) (err err
 	q += ` MERGE (c1)-[:UPSTREAM]->(mArm)`
 	q += ` MERGE (upArm:Upstream {reg: "metahub-registry.org", repo: "qnib/featuretest", tag: "tag1-linux.arm64"})`
 	q += ` MERGE (upArm)<-[:UPSTREAM]-(mArm)`
-	q += ` MERGE (cfgArm:Config {digest: "digest: sha256:cf5c26263929e84d7373d23b2692222cceceb3175b3325b183ead2ab6b5a5ce3", mediaType: "application/vnd.docker.container.image.v1+json", size: 2191})`
+	q += ` MERGE (cfgArm:Blob {digest: "digest: sha256:cf5c26263929e84d7373d23b2692222cceceb3175b3325b183ead2ab6b5a5ce3", mediaType: "application/vnd.docker.container.image.v1+json", size: 2191})`
 	q += ` MERGE (mArm)-[:application/vnd.docker.container.image.v1+json]->(cfgArm)`
 	q += ` MERGE (pAmd:Platform {label: "linux/amd64", arch: "amd64", os: "linux", variant: "", features: ""})`
 	q += ` MERGE (f1)-[:USES]->(pAmd)`
@@ -590,7 +579,7 @@ func (n Neo) Cypher_AddCollection_FT_generic(br *utils.BootstrapResult) (err err
 	q += ` MERGE (c1)-[:UPSTREAM]->(mAmd)`
 	q += ` MERGE (upAmd:Upstream {reg: "metahub-registry.org", repo: "qnib/featuretest", tag: "tag1-linux.amd64"})`
 	q += ` MERGE (upAmd)<-[:UPSTREAM]-(mAmd)`
-	q += ` MERGE (cfgAmd:Config {digest: "digest: sha256:83fdbde95f56beb69853240df571a7f085c561b4f8d914c5cc5e0f171dcb86df", mediaType: "application/vnd.docker.container.image.v1+json", size: 2191})`
+	q += ` MERGE (cfgAmd:Blob {digest: "digest: sha256:83fdbde95f56beb69853240df571a7f085c561b4f8d914c5cc5e0f171dcb86df", mediaType: "application/vnd.docker.container.image.v1+json", size: 2191})`
 	q += ` MERGE (mAmd)-[:application/vnd.docker.container.image.v1+json]->(cfgAmd)`
 	query := fmt.Sprintf(q, colID, tagID)
 	_, err = n.Execute(query)

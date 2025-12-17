@@ -31,6 +31,7 @@ func (b OCIBlobUpload) WriteOCIAcceptedResponse(w http.ResponseWriter) {
 	w.Header().Set("Location", b.Location)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(b.Data)))
 	w.Header().Set("Docker-Upload-UUID", b.UUID.String())
+	w.Header().Set("OCI-Chunk-Min-Length", "4194304") // 4MB
 	w.WriteHeader(http.StatusAccepted)
 }
 

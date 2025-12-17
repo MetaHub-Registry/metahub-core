@@ -369,7 +369,7 @@ func (n Neo) UpstreamGetByLayerDigest(ctx context.Context, dig string) (up types
 	defer span.End()
 	_ = l
 	_ = ctx
-	q := `MATCH (l:Layer)<-[r]-(md:ManifestData)-[:ORIGINAL]->(u:Upstream)`
+	q := `MATCH (l:Blob)<-[r]-(md:ManifestData)-[:ORIGINAL]->(u:Upstream)`
 	q += fmt.Sprintf(` WHERE l.digest = "%s" RETURN type(r) AS upstreamMediaType, %s`, dig, UpstreamReturn)
 	if res, found, err := n.QueryOne(q); err != nil {
 		err = utils.ErrorHandler(l, span, err, FailNeoExecute)
