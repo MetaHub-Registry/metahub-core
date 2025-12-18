@@ -22,17 +22,17 @@ var (
 func (mag Magazine) StoreBlobUpload(ctx context.Context, bu *types.OCIBlobUpload, buf []byte) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":  pkgNameBlob,
-		"func":     "BlobExists",
+		"func":     "StoreBlobUpload",
 		"blobType": bu.BlobType,
 		"digest":   bu.Digest,
 	})
 	defer span.End()
-	logrus.Debugf("uploading blob to Minio: %s", utils.ShortenDigest(bu.Digest))
+	utils.Debug(l, span, "uploading to MinIO: %s", utils.ShortenDigest(bu.Digest))
 	err = mag.Minio.PutBlob(ctx, buf, bu.Digest)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to put layer into minio")
 	}
-	logrus.Debug("Upload done, update database")
+	utils.Debug(l, span, "Upload done, update database")
 	// Link Layer to BlobUpload
 	if e := mag.Database.BlobUpload_Update_ByUUID(ctx, bu); e != nil {
 		return utils.ErrorHandler(l, span, e, "failed to link layer to blob upload")

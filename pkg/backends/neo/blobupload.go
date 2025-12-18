@@ -37,6 +37,9 @@ func (n Neo) BlobUpload_Create_ByOCI(ctx context.Context, i *types.OCIBlobUpload
 		return
 	}
 	i.ID, err = res.GetInt64("blobuploadID")
+	span.AddEvent("blobuploadID", trace.WithAttributes(
+		attribute.Int64("id", i.ID),
+	))
 	return
 }
 
@@ -73,6 +76,7 @@ func (n Neo) BlobUpload_Update_ByUUID(ctx context.Context, i *types.OCIBlobUploa
 	if err != nil {
 		return
 	}
+	utils.Debug(l, span, "Results: %d", len(res))
 	switch len(res) {
 	case 0:
 		return errors.Errorf("no node with digest found")

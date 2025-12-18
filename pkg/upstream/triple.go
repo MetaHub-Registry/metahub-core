@@ -6,6 +6,7 @@ import (
 
 	digestLib "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/platform"
+	"github.com/metahub-registry/metahub-core/pkg/types"
 )
 
 type UpstreamTriple struct {
@@ -52,4 +53,15 @@ func (upt UpstreamTriple) GetObjPath() string {
 func (upt UpstreamTriple) ToBytes() []byte {
 	b, _ := json.Marshal(upt)
 	return b
+}
+
+func UpstreamToUpstreamTriple(up types.Upstream, mediaType string) (upt UpstreamTriple, err error) {
+	upt = UpstreamTriple{
+		Reg:       up.Reg,
+		Repo:      up.Repo,
+		Tag:       up.Tag,
+		MediaType: mediaType,
+		Digest:    up.Digest,
+	}
+	return
 }

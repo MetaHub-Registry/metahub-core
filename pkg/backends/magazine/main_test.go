@@ -208,6 +208,9 @@ func TeardownTest(bs utils.Bootstrap) {
 			logrus.Infof("Jaeger HTTP: http://%s", jh)
 		}
 	}
+	if bs.SpanAdded {
+		bs.Span.End()
+	}
 	mag.Minio.PreTearDown(bs)
 	mag.Database.TeardownTest(bs)
 	err := mag.Minio.EmptyAll()
