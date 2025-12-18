@@ -73,12 +73,7 @@ func (req *Request) ExtractRepoName(span trace.Span, r *http.Request) (err error
 	} else {
 		tag = parRef
 	}
-	if req.DebugLevel > req.DebugThreshold {
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String(logSev, "debug"),
-			attribute.String("log.message", "Extracted from URL - repo:"+parRepo+" / image:"+parImg+" / reference:"+parRef+" / digest:"+dig),
-		))
-	}
+	req.Log(span, "Extracted from URL - repo:"+parRepo+" / image:"+parImg+" / reference:"+parRef+" / digest:"+dig)
 	repo := filepath.Join(parRepo, parImg)
 	req.Repo = repo
 	req.Tag = tag
@@ -113,35 +108,38 @@ func (req *Request) ParseProto(span trace.Span, r *http.Request) (err error) {
 	return nil
 }
 
+func (req Request) Log(span trace.Span, format string, a ...any) {
+	if span == nil {
+		return
+	}
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String(logSev, "debug"),
+		attribute.String("log.message", fmt.Sprintf(format, a...)),
+	))
+}
+
 func (req *Request) ParseProfile(span trace.Span, r *http.Request) (profile, user string, err error) {
+	vU := gCtx.Get(r, "userName")
+	if vU != nil {
+		user = vU.(string)
+	}
+
 	vP := gCtx.Get(r, "profileName")
 	if vP != nil {
 		profile = vP.(string)
-		/*
-			span.AddEvent("log", trace.WithAttributes(
-				attribute.String(logSev, "debug"),
-				attribute.String("log.message", fmt.Sprintf("found profileName '%s' in request,", profile)),
-			))
-		*/
+		req.Log(span, "found profileName '%s' in request,", profile)
 	} else {
 		m, err := utils.ReSubMatchMap(userReg, user)
 		if err != nil {
-			logrus.Errorf("Failed to extract user from: %s", user)
+			logrus.Errorf("Failed to extract user from: '%s'", user)
 		}
 		if _, ok := m["user"]; !ok {
-			logrus.Errorf("Failed to extract user from: %s", user)
+			logrus.Errorf("Failed to extract user from: '%s'", user)
 		} else {
 			user = m["user"]
-			// FIXME: Why is the profileName not carried over?
 			if prf, ok := m["profile"]; ok {
 				if prf != "" {
 					profile = prf
-					/*
-						span.AddEvent("log", trace.WithAttributes(
-							attribute.String(logSev, "debug"),
-							attribute.String("log.message", fmt.Sprintf("found profile '%s' encoded in username '%s'", profile, user)),
-						))
-					*/
 				}
 			}
 		}
@@ -150,7 +148,6 @@ func (req *Request) ParseProfile(span trace.Span, r *http.Request) (profile, use
 }
 
 func (req *Request) ParseAuth(span trace.Span, r *http.Request) (err error) {
-	var l *logrus.Entry
 	user := "anonymous"
 	userRole := "user"
 	profile := "generic"
@@ -169,26 +166,15 @@ func (req *Request) ParseAuth(span trace.Span, r *http.Request) (err error) {
 			user = parts[0]
 		}
 	}
-	vUR := gCtx.Get(r, "userRole")
-	if vUR != nil {
-		userRole = vUR.(string)
-	} else {
-		utils.Debug(l, span, "No userRole found in context")
+
+	vPrf, vUser, _ := req.ParseProfile(span, r)
+	if vPrf != "" {
+		profile = vPrf
 	}
-	vU := gCtx.Get(r, "userName")
-	if vU != nil {
-		user = vU.(string)
+	if vUser != "" {
+		user = vUser
 	}
-	vPrf, vUser, err := req.ParseProfile(span, r)
-	if err != nil {
-		logrus.Errorf("Failed to parse profile from request: %s", err)
-		if vPrf != "" {
-			profile = vPrf
-		}
-		if vUser != "" {
-			user = vUser
-		}
-	}
+
 	req.User = user
 	req.UserRole = userRole
 	req.Profile = profile
@@ -243,12 +229,7 @@ func NewRequest(ctx context.Context, r *http.Request) Request {
 	//logrus.Errorf("Request:#### \n%s\n####", dumpedReq)
 	req := EmptyRequest(0, debug)
 	req.Method = r.Method
-	if debug > debugThreshold {
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String(logSev, "debug"),
-			attribute.String("log.message", fmt.Sprintf("Starting NewRequest processing for %s %s", r.Method, r.URL.Path)),
-		))
-	}
+	req.Log(span, "Starting NewRequest processing for %s %s", r.Method, r.URL.Path)
 	req.ExtractRepoName(span, r)
 	req.ParsePagination(span, r)
 	req.ParseProto(span, r)

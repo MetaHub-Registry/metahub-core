@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
-	"gotest.tools/v3/assert"
 )
 
 // func TestLayerStoreBlobUpload(t *testing.T) {
