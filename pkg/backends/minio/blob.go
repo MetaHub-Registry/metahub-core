@@ -88,9 +88,26 @@ func (m Minio) BlobPutObj(ctx context.Context, object string, data []byte) (err 
 }
 
 func (m Minio) BlobRemoveObj(ctx context.Context, object string) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameBlob,
+		"func":    "BlobRemoveObj",
+		"object":  object,
+	})
+	defer span.End()
+	utils.Debug(l, span, "Removing blob '%s'", utils.ShortenDigest(object))
 	blobBucketKey := GetBlobBucketKey()
 	cli := m.BucketConfig[blobBucketKey].Client
-	return cli.RemoveObject(ctx, blobBucketKey, object, minio.RemoveObjectOptions{})
+	obj, err := m.BlobStatObj(ctx, object)
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, "failed to stat object before removal")
+	}
+	utils.Debug(l, span, "Blob '%s' found: %d bytes", utils.ShortenDigest(object), obj.Size)
+	err = cli.RemoveObject(ctx, blobBucketKey, object, minio.RemoveObjectOptions{})
+	utils.Debug(l, span, "Removed blob '%s': %v", utils.ShortenDigest(object), err)
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, "failed to remove object")
+	}
+	return err
 }
 
 func (m Minio) GetBlobBucketName() string {

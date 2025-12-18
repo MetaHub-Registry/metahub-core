@@ -149,11 +149,11 @@ type Database interface {
 	LinkManifestToManifestData(ctx context.Context, maniID, maniDataID int64, props ...string) error
 	LinkManifestDataToProfile(ctx context.Context, mdID, prfID int64, relation string) error
 	/****** BlobUpload ******/
-	BlobUpload_Create_ByOCI(ctx context.Context, i *types.OCIBlobUpload) (err error)
-	BlobUpload_Update_ByUUID(ctx context.Context, i *types.OCIBlobUpload) (err error)
-	BlobUpload_GetOCI_ByUUID(ctx context.Context, uuid string) (bu types.OCIBlobUpload, found bool, err error)
-	BlobUpload_Complete(ctx context.Context, i *types.OCIBlobUpload) (err error)
-	BlobUpload_DeleteUnused(ctx context.Context) (err error)
+	BlobUploadCreateByOCI(ctx context.Context, i *types.OCIBlobUpload) (err error)
+	BlobUploadUpdateByUUID(ctx context.Context, i *types.OCIBlobUpload) (err error)
+	BlobUploadGetOCIByUUID(ctx context.Context, uuid string) (bu types.OCIBlobUpload, found bool, err error)
+	BlobUploadComplete(ctx context.Context, i *types.OCIBlobUpload) (err error)
+	BlobUploadDeleteUnused(ctx context.Context) (err error)
 	/**** BlobChunks ****/
 	UploadChunk_Get_ByUUID(ctx context.Context, buID int64) (bcs []types.BlobChunk, err error)
 	UploadChunk_Create(ctx context.Context, bu *types.OCIBlobUpload, startByte, lenBytes int64) (bc types.BlobChunk, err error)

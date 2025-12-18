@@ -137,7 +137,7 @@ func TestStoreBlobUpload(t *testing.T) {
 	// Upload a Config Blob
 	bu, buff := types.FT_arm_BlobUpload_Config()
 	utils.Debug(l, span, "Uploading Config Blob")
-	if err := mag.Database.BlobUpload_Create_ByOCI(ctx, &bu); err != nil {
+	if err := mag.Database.BlobUploadCreateByOCI(ctx, &bu); err != nil {
 		t.Fatal(err)
 	}
 	utils.Debug(l, span, "Create Chunk for Blob Upload")
@@ -198,11 +198,11 @@ func TestStoreBlobUpload(t *testing.T) {
 // 		BlobType:      "layer",
 // 		Digest:        "sha256:6ec0f660682c2f5b391af1d81d3b4839da06f050269546177b28e4b51d8d4c30",
 // 	}
-// 	err = mag.Database.BlobUpload_Create_ByOCI(ctx, &ociBU)
+// 	err = mag.Database.BlobUploadCreateByOCI(ctx, &ociBU)
 // 	if err != nil {
 // 		t.Fatal(err)
 // 	}
-// 	bc, err := mag.Database.UploadChunk_Create(ctx, &ociBU, 0, 10)
+// 	bc, err := mag.Database.UploadChunkCreate(ctx, &ociBU, 0, 10)
 // 	if err != nil {
 // 		t.Fatal(err)
 // 	}
@@ -214,7 +214,7 @@ func TestStoreBlobUpload(t *testing.T) {
 // 	}
 // 	assert.Equal(t, 1, len(bcs))
 // 	// LinkBlobUpdate
-// 	if e := mag.Database.BlobUpload_Update_ByUUID(ctx, &ociBU); e != nil {
+// 	if e := mag.Database.BlobUploadUpdateByUUID(ctx, &ociBU); e != nil {
 // 		t.Fatal(e)
 // 	}
 // 	// BlobUploadGetByBlobDigest

@@ -1,5 +1,13 @@
 package minio
 
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
+)
+
 /*
 	func TestConfigGetter(t *testing.T) {
 		bi := types.BlobInfo{
@@ -38,43 +46,60 @@ package minio
 // 	}
 // }
 
-// func TestConfigRemoveObj(t *testing.T) {
-// 	err := min.PutConfig(ctx, []byte(featureTestGenericCfg), "sha256:f70ce6a20a96d310e32c1f5a005b24dc8b225f949a69e1ec46dc5b7c12779dc9")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	b, err := min.ConfigGetBytes(ctx, "sha256:f70ce6a20a96d310e32c1f5a005b24dc8b225f949a69e1ec46dc5b7c12779dc9")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	assert.NotNil(t, b)
-// 	err = min.ConfigRemoveObj(ctx, "sha256:f70ce6a20a96d310e32c1f5a005b24dc8b225f949a69e1ec46dc5b7c12779dc9")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	err = min.ConfigRemoveObj(ctx, "sha256:f70ce6a20a96d310e32c1f5a005b24dc8b225f949a69e1ec46dc5b7c12779dc9")
-// 	assert.Error(t, err)
-// 	_, err = min.ConfigGetBytes(ctx, "sha256:f70ce6a20a96d310e32c1f5a005b24dc8b225f949a69e1ec46dc5b7c12779dc9")
-// 	assert.Error(t, err)
-// }
+func TestBlobRemoveObj(t *testing.T) {
+	ctx := context.Background()
+	l, c, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "TestBlobRemoveObj",
+	})
+	ctx = c
+	defer span.End()
+	_ = l
+	digest := "sha256:f70ce6a20a96d310e32c1f5a005b24dc8b225f949a69e1ec46dc5b7c12779dc9"
+	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
+	bs.PostTestSleep = 0
+	defer min.TearDown(bs)
+	// Tests
+	_, err := min.BlobGetBytes(ctx, digest)
+	if err == nil {
+		t.Fatal("expected error getting non existing blob")
+	}
+	err = min.PutBlob(ctx, []byte(featureTestGenericCfg), digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := min.BlobGetBytes(ctx, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotNil(t, b)
+	err = min.BlobRemoveObj(ctx, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = min.BlobRemoveObj(ctx, digest)
+	assert.Error(t, err)
+	_, err = min.BlobGetBytes(ctx, digest)
+	assert.Error(t, err)
+}
 
-// func TestGetTypesConfig(t *testing.T) {
-// 	bs := utils.NewBootstrap()
-// 	bs.SetEmptyAll()
-// 	bs.AddBootstrap("cfg:generic")
-// 	_, err := min.SetupTest(bs)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	defer min.PreTearDown(bs)
-// 	cfg, found, err := min.GetTypesConfig(ctx, BlobUp_FeaturetestGeneric.Digest)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	assert.True(t, found)
-// 	assert.NotNil(t, cfg)
-// 	assert.Equal(t, BlobUp_FeaturetestGeneric.Digest, cfg.Digest)
-// }
+func TestGetTypesConfig(t *testing.T) {
+	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
+	bs.AddBootstrap("cfg:generic")
+	_, err := min.SetupTest(bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer min.PreTearDown(bs)
+	cfg, found, err := min.GetTypesConfig(ctx, BlobUp_FeaturetestGeneric.Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.True(t, found)
+	assert.NotNil(t, cfg)
+	assert.Equal(t, BlobUp_FeaturetestGeneric.Digest, cfg.Digest)
+}
 
 // func TestConfigGetBytes(t *testing.T) {
 // 	bs := utils.NewBootstrap()

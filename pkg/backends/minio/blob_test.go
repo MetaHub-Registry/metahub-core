@@ -55,5 +55,13 @@ func TestPutStatRemove(t *testing.T) {
 	}
 	_, err = min.BlobStatObj(ctx, layerDig)
 	assert.Error(t, err)
+}
 
+func TestRemoveObj(t *testing.T) {
+	ctx := context.Background()
+	layerDig := "sha256:112233445566"
+	err := min.BlobRemoveObj(ctx, layerDig)
+	if err == nil {
+		t.Fatal("expected error on removing non existing object")
+	}
 }

@@ -324,7 +324,7 @@ func (mag Magazine) Configs_DeleteUnused(ctx context.Context) (err error) {
 		err = utils.ErrorHandler(l, span, e, "failed to delete unused layers")
 		return
 	}
-	e = mag.Database.BlobUpload_DeleteUnused(ctx)
+	e = mag.Database.BlobUploadDeleteUnused(ctx)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to delete unused blobUploads")
 		return

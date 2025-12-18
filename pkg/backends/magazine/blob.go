@@ -34,7 +34,7 @@ func (mag Magazine) StoreBlobUpload(ctx context.Context, bu *types.OCIBlobUpload
 	}
 	utils.Debug(l, span, "Upload done, update database")
 	// Link Layer to BlobUpload
-	if e := mag.Database.BlobUpload_Update_ByUUID(ctx, bu); e != nil {
+	if e := mag.Database.BlobUploadUpdateByUUID(ctx, bu); e != nil {
 		return utils.ErrorHandler(l, span, e, "failed to link layer to blob upload")
 	}
 	return nil

@@ -14,6 +14,7 @@ import (
 	"github.com/mitchellh/go-homedir"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"github.com/metahub-registry/metahub-core/pkg/tracing"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
@@ -54,8 +55,13 @@ func (m Minio) BucketConfigString() string {
 	return strings.Join(res, " | ")
 }
 
+type MinioConfig struct {
+	Tracing tracing.TraceCfg
+}
+
 type Minio struct {
 	BucketConfig map[string]BucketConfig
+	Config       MinioConfig
 }
 
 func NewMiniWithCfg(cfg map[string]BucketConfig) (m Minio, err error) {

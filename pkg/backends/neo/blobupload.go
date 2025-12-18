@@ -18,8 +18,8 @@ const (
 	FailOCIBlobFromResult = "Failed to create OCIBlobUpload from result"
 )
 
-func (n Neo) BlobUpload_Create_ByOCI(ctx context.Context, i *types.OCIBlobUpload) (err error) {
-	_, span := tracer.Start(ctx, "BlobUpload_Create_ByOCI")
+func (n Neo) BlobUploadCreateByOCI(ctx context.Context, i *types.OCIBlobUpload) (err error) {
+	_, span := tracer.Start(ctx, "BlobUploadCreateByOCI")
 	defer span.End()
 	i.UUID = uuid.New()
 	span.SetAttributes(
@@ -43,8 +43,8 @@ func (n Neo) BlobUpload_Create_ByOCI(ctx context.Context, i *types.OCIBlobUpload
 	return
 }
 
-func (n Neo) BlobUpload_GetOCI_ByUUID(ctx context.Context, uuid string) (bu types.OCIBlobUpload, found bool, err error) {
-	_, span := tracer.Start(ctx, "BlobUpload_GetOCI_ByUUID")
+func (n Neo) BlobUploadGetOCIByUUID(ctx context.Context, uuid string) (bu types.OCIBlobUpload, found bool, err error) {
+	_, span := tracer.Start(ctx, "BlobUploadGetOCIByUUID")
 	span.SetAttributes(
 		attribute.Key("uuid").String(uuid),
 	)
@@ -61,10 +61,10 @@ func (n Neo) BlobUpload_GetOCI_ByUUID(ctx context.Context, uuid string) (bu type
 	return
 }
 
-func (n Neo) BlobUpload_Update_ByUUID(ctx context.Context, i *types.OCIBlobUpload) (err error) {
+func (n Neo) BlobUploadUpdateByUUID(ctx context.Context, i *types.OCIBlobUpload) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":  pkgNameBlobUpload,
-		"func":     "BlobUpload_Update_ByUUID",
+		"func":     "BlobUploadUpdateByUUID",
 		"blobType": i.BlobType,
 		"digest":   i.Digest,
 	})
@@ -106,8 +106,8 @@ func (n Neo) BlobUpload_Update_ByUUID(ctx context.Context, i *types.OCIBlobUploa
 	}
 }
 
-func (n Neo) BlobUpload_Complete(ctx context.Context, i *types.OCIBlobUpload) (err error) {
-	_, span := tracer.Start(ctx, "BlobUpload_Complete")
+func (n Neo) BlobUploadComplete(ctx context.Context, i *types.OCIBlobUpload) (err error) {
+	_, span := tracer.Start(ctx, "BlobUploadComplete")
 	defer span.End()
 	span.SetAttributes(
 		attribute.Key("id").Int64(i.ID),
@@ -226,7 +226,7 @@ func OCIBlobUploadFromResult(res types.Result) (ct types.OCIBlobUpload, err erro
 	return
 }
 
-func (n Neo) BlobUpload_DeleteUnused(ctx context.Context) (err error) {
+func (n Neo) BlobUploadDeleteUnused(ctx context.Context) (err error) {
 	_, span := tracer.Start(ctx, "BlobUpload_DeleteUnused")
 	defer span.End()
 	q := `MATCH (bu:BlobUpload)-[:CHUNK]->(bc:BlobChunk) WHERE NOT (bu)-[:IS]-() DETACH DELETE bu,bc RETURN count(bu) AS delCnt`
