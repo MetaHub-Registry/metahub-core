@@ -156,7 +156,7 @@ type Database interface {
 	BlobUploadDeleteUnused(ctx context.Context) (err error)
 	/**** BlobChunks ****/
 	UploadChunk_Get_ByUUID(ctx context.Context, buID int64) (bcs []types.BlobChunk, err error)
-	UploadChunk_Create(ctx context.Context, bu *types.OCIBlobUpload, startByte, lenBytes int64) (bc types.BlobChunk, err error)
+	UploadChunkCreate(ctx context.Context, bu *types.OCIBlobUpload, startByte, lenBytes int64) (bc types.BlobChunk, err error)
 	BlobUploadGetByBlobDigest(ctx context.Context, dig string) (bu types.OCIBlobUpload, found bool, err error)
 	CreateBlobFromChunk(ctx context.Context, bu *types.OCIBlobUpload, chunk types.BlobChunk) (err error)
 	/****** Profiles ********/

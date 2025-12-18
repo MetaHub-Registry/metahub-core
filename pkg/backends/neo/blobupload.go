@@ -123,7 +123,7 @@ func (n Neo) BlobUploadComplete(ctx context.Context, i *types.OCIBlobUpload) (er
 }
 
 // // CHUNKS
-func (n Neo) UploadChunk_Create(ctx context.Context, bu *types.OCIBlobUpload, startByte, lenBytes int64) (bc types.BlobChunk, err error) {
+func (n Neo) UploadChunkCreate(ctx context.Context, bu *types.OCIBlobUpload, startByte, lenBytes int64) (bc types.BlobChunk, err error) {
 	_, span := tracer.Start(ctx, "UploadChunk_Create")
 	defer span.End()
 	span.SetAttributes(

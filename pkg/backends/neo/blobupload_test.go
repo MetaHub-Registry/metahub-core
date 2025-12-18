@@ -158,61 +158,61 @@ func TestBlobuploadCRU(t *testing.T) {
 	assert.Equal(t, 2, len(res))
 }
 
-// func TestBlobChunkCRU(t *testing.T) {
-// 	ctx := context.Background()
-// 	debug := 0
-// 	bs := utils.NewBootstrap()
-// 	bs.AddBootstrap("config:ft_arm64")
-// 	bs.AddBootstrap("layer:0:ft_arm64")
-// 	bs.SetEmptyAll()
-// 	if debug > 0 {
-// 		bs.PostTestSleep = debug
-// 	}
-// 	br, err := SetupTest(ctx, bs)
-// 	if err != nil {
-// 		db.TeardownTest(bs)
-// 		t.Fatal(err)
-// 	}
-// 	for _, l := range br.ToLines() {
-// 		if debug > 0 {
-// 			t.Log(l)
-// 		}
-// 	}
-// 	defer db.TeardownTest(bs)
-// 	// Actual test
-// 	//// CREATE
-// 	ociBU := types.OCIBlobUpload{
-// 		Repo:          "qnib/featuretest",
-// 		UploadUser:    "test",
-// 		UploadProfile: "generic",
-// 		BlobType:      "layer",
-// 		Digest:        "sha256:6ec0f660682c2f5b391af1d81d3b4839da06f050269546177b28e4b51d8d4c30",
-// 	}
-// 	err = db.BlobUpload_Create_ByOCI(ctx, &ociBU)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	bc, err := db.UploadChunk_Create(ctx, &ociBU, 0, 10)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	assert.NotNil(t, bc.ID)
-// 	// / READ
-// 	bcs, err := db.UploadChunk_Get_ByUUID(ctx, ociBU.ID)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	assert.Equal(t, 1, len(bcs))
-// 	// LinkBlobUpdate
-// 	if e := db.BlobUpload_Update_ByUUID(ctx, &ociBU); e != nil {
-// 		t.Fatal(e)
-// 	}
-// 	// BlobUploadGetByBlobDigest
-// 	if gotBu, found, err := db.BlobUploadGetByBlobDigest(ctx, ociBU.Digest); err != nil {
-// 		t.Fatal(err)
-// 	} else if !found {
-// 		t.Fatal("Did not find BlobUpload")
-// 	} else {
-// 		assert.Equal(t, ociBU.ID, gotBu.ID)
-// 	}
-// }
+func TestBlobChunkCRU(t *testing.T) {
+	ctx := context.Background()
+	debug := 0
+	bs := utils.NewBootstrap()
+	// bs.AddBootstrap("config:ft_arm64")
+	// bs.AddBootstrap("layer:0:ft_arm64")
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := SetupTest(ctx, bs)
+	if err != nil {
+		db.TeardownTest(bs)
+		t.Fatal(err)
+	}
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	defer db.TeardownTest(bs)
+	// Actual test
+	//// CREATE
+	ociBU := types.OCIBlobUpload{
+		Repo:          "qnib/featuretest",
+		UploadUser:    "test",
+		UploadProfile: "generic",
+		BlobType:      "layer",
+		Digest:        "sha256:6ec0f660682c2f5b391af1d81d3b4839da06f050269546177b28e4b51d8d4c30",
+	}
+	err = db.BlobUploadCreateByOCI(ctx, &ociBU)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bc, err := db.UploadChunkCreate(ctx, &ociBU, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotNil(t, bc.ID)
+	// / READ
+	bcs, err := db.UploadChunk_Get_ByUUID(ctx, ociBU.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, len(bcs))
+	// LinkBlobUpdate
+	if e := db.BlobUploadUpdateByUUID(ctx, &ociBU); e != nil {
+		t.Fatal(e)
+	}
+	// BlobUploadGetByBlobDigest
+	if gotBu, found, err := db.BlobUploadGetByBlobDigest(ctx, ociBU.Digest); err != nil {
+		t.Fatal(err)
+	} else if !found {
+		t.Fatal("Did not find BlobUpload")
+	} else {
+		assert.Equal(t, ociBU.ID, gotBu.ID)
+	}
+}

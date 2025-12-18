@@ -141,7 +141,7 @@ func TestStoreBlobUpload(t *testing.T) {
 		t.Fatal(err)
 	}
 	utils.Debug(l, span, "Create Chunk for Blob Upload")
-	chunk, err := mag.Database.UploadChunk_Create(ctx, &bu, 0, int64(len(buff)))
+	chunk, err := mag.Database.UploadChunkCreate(ctx, &bu, 0, int64(len(buff)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,63 +168,85 @@ func TestStoreBlobUpload(t *testing.T) {
 	}
 }
 
-// func TestBlobChunkCRU(t *testing.T) {
-// 	ctx := context.Background()
-// 	debug := 0
-// 	bs := utils.NewBootstrap()
-// 	bs.AddBootstrap("config:ft_arm64")
-// 	bs.AddBootstrap("layer:0:ft_arm64")
-// 	bs.SetEmptyAll()
-// 	if debug > 0 {
-// 		bs.PostTestSleep = debug
-// 	}
-// 	br, err := mag.SetupTest(ctx, bs)
-// 	if err != nil {
-// 		TeardownTest(bs)
-// 		t.Fatal(err)
-// 	}
-// 	for _, l := range br.ToLines() {
-// 		if debug > 0 {
-// 			t.Log(l)
-// 		}
-// 	}
-// 	defer TeardownTest(bs)
-// 	// Actual test
-// 	//// CREATE
-// 	ociBU := types.OCIBlobUpload{
-// 		Repo:          "qnib/featuretest",
-// 		UploadUser:    "test",
-// 		UploadProfile: "generic",
-// 		BlobType:      "layer",
-// 		Digest:        "sha256:6ec0f660682c2f5b391af1d81d3b4839da06f050269546177b28e4b51d8d4c30",
-// 	}
-// 	err = mag.Database.BlobUploadCreateByOCI(ctx, &ociBU)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	bc, err := mag.Database.UploadChunkCreate(ctx, &ociBU, 0, 10)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	assert.NotNil(t, bc.ID)
-// 	// / READ
-// 	bcs, err := mag.Database.UploadChunk_Get_ByUUID(ctx, ociBU.ID)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	assert.Equal(t, 1, len(bcs))
-// 	// LinkBlobUpdate
-// 	if e := mag.Database.BlobUploadUpdateByUUID(ctx, &ociBU); e != nil {
-// 		t.Fatal(e)
-// 	}
-// 	// BlobUploadGetByBlobDigest
-// 	upt := upstream.UpstreamTriple{
-// 		Repo:   ociBU.Repo,
-// 		Digest: digest.Digest(ociBU.Digest),
-// 	}
-// 	if found, err := mag.BlobExists(ctx, upt); err != nil {
-// 		t.Fatal(err)
-// 	} else if !found {
-// 		t.Fatal("Did not find BlobUpload")
-// 	}
-// }
+func TestBlobChunkCRU(t *testing.T) {
+	ctx := context.Background()
+	l, c, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "TestBlobChunkCRU",
+	})
+	defer span.End()
+	ctx = c
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.AddSpan(span)
+	// bs.AddBootstrap("config:ft_arm64")
+	// bs.AddBootstrap("layer:0:ft_arm64")
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := mag.SetupTest(ctx, bs)
+	if err != nil {
+		TeardownTest(bs)
+		t.Fatal(err)
+	}
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	defer TeardownTest(bs)
+	// Actual test
+	//// CREATE
+	ociBU, buff := types.FT_arm_BlobUpload_Config()
+
+	// ociBU := types.OCIBlobUpload{
+	// 	Repo:          "qnib/featuretest",
+	// 	UploadUser:    "test",
+	// 	UploadProfile: "generic",
+	// 	BlobType:      "layer",
+	// 	Digest:        "sha256:6ec0f660682c2f5b391af1d81d3b4839da06f050269546177b28e4b51d8d4c30",
+	// }
+	utils.Debug(l, span, "> BlobUploadCreateByOCI")
+	err = mag.Database.BlobUploadCreateByOCI(ctx, &ociBU)
+	if err != nil {
+		t.Fatal(err)
+	}
+	utils.Debug(l, span, "> UploadChunkCreate")
+	bc, err := mag.Database.UploadChunkCreate(ctx, &ociBU, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotNil(t, bc.ID)
+	utils.Debug(l, span, "> Update Blob to Minio")
+	if err := mag.StoreBlobUpload(ctx, &ociBU, buff); err != nil {
+		t.Fatal(err)
+	}
+	// / READ
+	utils.Debug(l, span, "> UploadChunk_Get_ByUUID")
+	bcs, err := mag.Database.UploadChunk_Get_ByUUID(ctx, ociBU.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, len(bcs))
+	// LinkBlobUpdate
+	utils.Debug(l, span, "> BlobUploadUpdateByUUID")
+	if e := mag.Database.BlobUploadUpdateByUUID(ctx, &ociBU); e != nil {
+		t.Fatal(e)
+	}
+	utils.Debug(l, span, "ComposeFromChunks")
+	err = mag.ComposeFromChunks(ctx, &ociBU, []types.BlobChunk{bc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// BlobUploadGetByBlobDigest
+	upt := upstream.UpstreamTriple{
+		Repo:   ociBU.Repo,
+		Digest: digest.Digest(ociBU.Digest),
+	}
+	utils.Debug(l, span, "> BlobUploadGetByBlobDigest")
+	if found, err := mag.BlobExists(ctx, upt); err != nil {
+		t.Fatal(err)
+	} else if !found {
+		t.Fatal("Did not find BlobUpload")
+	}
+}
