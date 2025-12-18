@@ -1,5 +1,15 @@
 package magazine
 
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"testing"
+
+	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"gotest.tools/v3/assert"
+)
+
 // func TestLayerStoreBlobUpload(t *testing.T) {
 // 	bu, b := types.FT_arm_BlobUpload_Layer0()
 // 	err := mag.StoreBlobUpload(ctx, &bu, b)
@@ -21,8 +31,89 @@ package magazine
 // 	} else {
 // 		assert.True(t, found)
 // 	}
-
 // }
+
+func TestBlobGetByHTTPRequest(t *testing.T) {
+	ctx := context.Background()
+	bs := utils.NewBootstrap()
+	debug := 0
+	bs.PostTestSleep = debug
+	bs.AddBootstrap("users")
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("rules:rules/generic/linux.yaml")
+	bs.AddBootstrap("profile:profiles/generic.yaml")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
+	bs.AddBootstrap("config:ft_arm64")
+	bs.SetEmptyAll()
+	br, err := mag.SetupTest(ctx, bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer TeardownTest(bs)
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "TestBlobGetByHTTPRequest",
+	})
+	defer span.End()
+	// Setup
+	token, err := br.Get("user:test#bearer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	testProfile := "generic"
+	testRepo := "qnib"
+	testImage := "featuretest"
+	// testTag := "v1"
+
+	dig, err := br.Get("config:ft_arm64#digest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// HEAD Request
+	utils.Debug(l, span, "Starting HEAD TestBlobGetByHTTPRequest")
+	_, r := utils.CreateNewHTTPTest(http.MethodHead, map[string]string{
+		"repo":      testRepo,
+		"image":     testImage,
+		"reference": dig,
+	}, map[string]string{
+		"accountName": token,
+		"userName":    "qnib",
+		"profileName": testProfile,
+		"debug":       fmt.Sprintf("%d", debug),
+	}, map[string]string{
+		"Authorization": fmt.Sprintf("Bearer %s", token),
+		"Content-Type":  "application/vnd.docker.distribution.manifest.v2+json",
+	}, "/{repo}/{image}/blobs/{reference}", nil)
+
+	blob, found, err := mag.BlobGetByHTTPRequest(ctx, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("Should not have found a blob")
+	}
+	assert.Equal(t, blob.Digest, dig)
+	if blob.Data != nil {
+		t.Fatal("Blob data should be nil for HEAD request")
+	}
+	utils.Debug(l, span, "HEAD TestBlobGetByHTTPRequest OK")
+	// GET Request
+	utils.Debug(l, span, "Starting GET TestBlobGetByHTTPRequest")
+	r.Method = http.MethodGet
+	blob, found, err = mag.BlobGetByHTTPRequest(ctx, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("Should not have found a blob")
+	}
+	assert.Equal(t, blob.Digest, dig)
+	if blob.Data == nil {
+		t.Fatal("Blob data should NOT be nil for GET request")
+	}
+	utils.Debug(l, span, "GET TestBlobGetByHTTPRequest OK")
+}
 
 // func TestConfigStoreBlobUpload(t *testing.T) {
 // 	ctx := context.Background()

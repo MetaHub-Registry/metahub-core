@@ -133,7 +133,7 @@ func (mag Magazine) BlobExists(ctx context.Context, up upstream.UpstreamTriple) 
 func (mag Magazine) ComposeFromChunks(ctx context.Context, bu *types.OCIBlobUpload, chunks []types.BlobChunk) (err error) {
 	switch len(chunks) {
 	case 0:
-		return fmt.Errorf("Why did we upload a blob with no chunks?")
+		return fmt.Errorf("why did we upload a blob with no chunks?")
 	case 1:
 		logrus.Infof("single chunk upload, finalizing")
 		mag.Database.CreateBlobFromChunk(ctx, bu, chunks[0])
@@ -153,17 +153,16 @@ func (mag Magazine) BlobGetByHTTPRequest(ctx context.Context, r *http.Request) (
 		"func":    "BlobGetByHTTPRequest",
 	})
 	defer span.End()
-	_ = l
 	req := types.NewRequest(ctx, r)
-	l.Debugf("BlobGetByHTTPRequest: %s", req.String())
+	utils.Debug(l, span, "BlobGetByHTTPRequest: %s", req.String())
 	// Fetch blob from Database
 	blob, found, err = mag.Database.BlobGetByDigest(ctx, req.Digest)
 	if err != nil {
-		l.Errorf("failed to fetch blob from database: %v", err)
+		utils.ErrorHandler(l, span, err, "failed to fetch blob from database")
 		return
 	}
 	if !found {
-		l.Errorf("did not find blob with dig: %s", req.Digest)
+		utils.Debug(l, span, "did not find blob with dig: %s", req.Digest)
 		return
 	}
 	if req.Method == "GET" {
@@ -172,11 +171,13 @@ func (mag Magazine) BlobGetByHTTPRequest(ctx context.Context, r *http.Request) (
 		switch {
 		case err != nil && err.Error() == "The specified key does not exist.":
 			// found is false
+			utils.Debug(l, span, "did not find blob data with dig: %s", req.Digest)
 			return blob, false, nil
 		case err != nil:
-			logrus.Error(err)
+			utils.ErrorHandler(l, span, err, "failed to fetch blob from minio")
 			return nil, false, err
 		}
+		utils.Debug(l, span, "fetched blob data with dig: %s", req.Digest)
 		blob.Data = b
 	}
 	// No error - off we go

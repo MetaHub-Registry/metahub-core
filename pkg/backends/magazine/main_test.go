@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,13 +131,21 @@ func TestMain(m *testing.M) {
 	defer regC.Terminate(ctx)
 	regHttpURI = regC.HttpURI
 	//jeager
-	jeagerC, err := tracing.SetupJeager(ctx)
-	if err != nil {
-		logrus.Fatal(err)
+	jeagerThriftURI := ""
+	jeagerHttpURI := ""
+	jeagerBase := os.Getenv("JAEGER_BASE")
+	if jeagerBase == "" {
+		jeagerC, err := tracing.SetupJeager(ctx)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+		defer jeagerC.Terminate(ctx)
+		jeagerHttpURI = jeagerC.HttpURI
+		jeagerThriftURI = jeagerC.ThriftURI
+	} else {
+		jeagerHttpURI = fmt.Sprintf("http://%s:16686", jeagerBase)
+		jeagerThriftURI = fmt.Sprintf("%s:14268", jeagerBase)
 	}
-	defer jeagerC.Terminate(ctx)
-	jeagerHttpURI = jeagerC.HttpURI
-	jeagerThriftURI = jeagerC.ThriftURI
 	/// SQLite
 	f, err := os.CreateTemp("", "sqlite-test")
 	if err != nil {
@@ -149,15 +158,21 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	trEnd := fmt.Sprintf("http://%s/api/traces", jeagerC.ThriftURI)
+	trEnd := ""
+	if strings.HasPrefix(jeagerThriftURI, "http://") {
+		trEnd = fmt.Sprintf("%s/api/traces", jeagerThriftURI)
+	} else {
+		trEnd = fmt.Sprintf("http://%s/api/traces", jeagerThriftURI)
+	}
 	logrus.Infof("Tracing endpoint '%s': %s", svcName, trEnd)
+
 	tr, err := tracing.InitTracer(svcName, trEnd)
 	if err != nil {
 		logrus.Fatalf("Could not initialize jaeger tracer: %s", err.Error())
 	}
 	trCfg := TraceCfg{
 		Enabled:  true,
-		Endpoint: jeagerC.ThriftURI,
+		Endpoint: jeagerThriftURI,
 		Tracer:   tr,
 	}
 	mag = Magazine{
@@ -171,8 +186,8 @@ func TestMain(m *testing.M) {
 	mag.Config.Args = map[string]string{
 		"cache-registry":     regC.HttpURI,
 		"TEST_REGISTRY":      regC.HttpURI,
-		"TEST_JAEGER_HTTP":   jeagerC.HttpURI,
-		"TEST_JAEGER_THRIFT": jeagerC.ThriftURI,
+		"TEST_JAEGER_HTTP":   jeagerHttpURI,
+		"TEST_JAEGER_THRIFT": jeagerThriftURI,
 		"registries":         regC.HttpURI,
 	}
 	code := m.Run()

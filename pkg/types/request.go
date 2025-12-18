@@ -27,8 +27,8 @@ var (
 )
 
 const (
-	logSev     = "log.severity"
-	debugLevel = 4
+	logSev         = "log.severity"
+	debugThreshold = 4
 )
 
 type Request struct {
@@ -51,31 +51,33 @@ type Request struct {
 	Method         string `json:"method"`
 	Scope          string `json:"scope"`
 	ContentType    string `json:"content-type"`
+	DebugThreshold int    `json:"debug_threshold"`
 	DebugLevel     int    `json:"debug_level"`
 }
 
 func EmptyRequest(no, debLvl int) Request {
 	return Request{
-		Number:     no,
-		DebugLevel: debLvl,
+		Number:         no,
+		DebugThreshold: debugThreshold,
+		DebugLevel:     debLvl,
 	}
 }
 
-func (req *Request) ExtractRepoName(span trace.Span, debug int, r *http.Request) (err error) {
+func (req *Request) ExtractRepoName(span trace.Span, r *http.Request) (err error) {
 	parRepo, parImg, parRef := extractRepoName(r)
 	//utils.Debug(l, span, "repo:%s", parRepo)
 	var tag string
 	dig := r.FormValue("digest")
-	if debug > req.DebugLevel {
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String(logSev, "debug"),
-			attribute.String("log.message", "Extracted from URL - repo:"+parRepo+" image:"+parImg+" reference:"+parRef),
-		))
-	}
 	if strings.HasPrefix(parRef, "sha256:") {
 		dig = parRef
 	} else {
 		tag = parRef
+	}
+	if req.DebugLevel > req.DebugThreshold {
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String(logSev, "debug"),
+			attribute.String("log.message", "Extracted from URL - repo:"+parRepo+" / image:"+parImg+" / reference:"+parRef+" / digest:"+dig),
+		))
 	}
 	repo := filepath.Join(parRepo, parImg)
 	req.Repo = repo
@@ -83,7 +85,8 @@ func (req *Request) ExtractRepoName(span trace.Span, debug int, r *http.Request)
 	req.Digest = dig
 	return nil
 }
-func (req *Request) ParsePagination(span trace.Span, debug int, r *http.Request) (err error) {
+
+func (req *Request) ParsePagination(span trace.Span, r *http.Request) (err error) {
 	// ENable pagination (n=100&last=tag123)
 	nStr := r.URL.Query().Get("n")
 	if nStr != "" {
@@ -98,7 +101,7 @@ func (req *Request) ParsePagination(span trace.Span, debug int, r *http.Request)
 	return nil
 }
 
-func (req *Request) ParseProto(span trace.Span, debug int, r *http.Request) (err error) {
+func (req *Request) ParseProto(span trace.Span, r *http.Request) (err error) {
 	switch r.Proto {
 	case "HTTP/1.0":
 		req.Protocol = "http"
@@ -110,7 +113,7 @@ func (req *Request) ParseProto(span trace.Span, debug int, r *http.Request) (err
 	return nil
 }
 
-func (req *Request) ParseProfile(span trace.Span, debug int, r *http.Request) (profile, user string, err error) {
+func (req *Request) ParseProfile(span trace.Span, r *http.Request) (profile, user string, err error) {
 	vP := gCtx.Get(r, "profileName")
 	if vP != nil {
 		profile = vP.(string)
@@ -146,7 +149,7 @@ func (req *Request) ParseProfile(span trace.Span, debug int, r *http.Request) (p
 	return profile, user, nil
 }
 
-func (req *Request) ParseAuth(span trace.Span, debug int, r *http.Request) (err error) {
+func (req *Request) ParseAuth(span trace.Span, r *http.Request) (err error) {
 	var l *logrus.Entry
 	user := "anonymous"
 	userRole := "user"
@@ -176,7 +179,7 @@ func (req *Request) ParseAuth(span trace.Span, debug int, r *http.Request) (err 
 	if vU != nil {
 		user = vU.(string)
 	}
-	vPrf, vUser, err := req.ParseProfile(span, debug, r)
+	vPrf, vUser, err := req.ParseProfile(span, r)
 	if err != nil {
 		logrus.Errorf("Failed to parse profile from request: %s", err)
 		if vPrf != "" {
@@ -193,7 +196,7 @@ func (req *Request) ParseAuth(span trace.Span, debug int, r *http.Request) (err 
 	return nil
 }
 
-func (req *Request) ParseRange(span trace.Span, debug int, r *http.Request) (err error) {
+func (req *Request) ParseRange(span trace.Span, r *http.Request) (err error) {
 	rnge := r.Header.Get("Content-Range")
 	req.RangeStartByte = -1
 	req.RangeBytes = -1
@@ -220,11 +223,14 @@ func NewRequest(ctx context.Context, r *http.Request) Request {
 	debug := 0
 	vD := gCtx.Get(r, "debug")
 	if vD != nil {
-		debug = vD.(int)
+		deb, err := strconv.Atoi(vD.(string))
+		if err == nil {
+			debug = deb
+		}
 	}
 	var span trace.Span
 	var l *logrus.Entry
-	if debug > debugLevel {
+	if debug > debugThreshold {
 		l, ctx, span = utils.InitLogging(ctx, tracer, map[string]any{
 			"package": pkgNameReq,
 			"func":    "NewRequest",
@@ -237,15 +243,15 @@ func NewRequest(ctx context.Context, r *http.Request) Request {
 	//logrus.Errorf("Request:#### \n%s\n####", dumpedReq)
 	req := EmptyRequest(0, debug)
 	req.Method = r.Method
-	if debug > debugLevel {
+	if debug > debugThreshold {
 		span.AddEvent("log", trace.WithAttributes(
 			attribute.String(logSev, "debug"),
 			attribute.String("log.message", fmt.Sprintf("Starting NewRequest processing for %s %s", r.Method, r.URL.Path)),
 		))
 	}
-	req.ExtractRepoName(span, debug, r)
-	req.ParsePagination(span, debug, r)
-	req.ParseProto(span, debug, r)
+	req.ExtractRepoName(span, r)
+	req.ParsePagination(span, r)
+	req.ParseProto(span, r)
 
 	srvAddrVal := ctx.Value(http.LocalAddrContextKey)
 	srvAddr := ""
@@ -257,8 +263,8 @@ func NewRequest(ctx context.Context, r *http.Request) Request {
 	}
 	req.Host = srvAddr
 
-	req.ParseRange(span, debug, r)
-	req.ParseAuth(span, debug, r)
+	req.ParseRange(span, r)
+	req.ParseAuth(span, r)
 	uid := chi.URLParam(r, "uuid")
 	cntLenStr := r.Header.Get("Content-Length")
 	cntType := r.Header.Get("Content-Type")
@@ -276,7 +282,7 @@ func NewRequest(ctx context.Context, r *http.Request) Request {
 	default:
 		scope = "unknown"
 	}
-	if debug > debugLevel {
+	if debug > debugThreshold {
 		span.AddEvent("log", trace.WithAttributes(
 			attribute.String(logSev, "debug"),
 			attribute.String("method", r.Method),
