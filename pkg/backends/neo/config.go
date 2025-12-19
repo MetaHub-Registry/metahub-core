@@ -49,7 +49,8 @@ func (n Neo) Config_Get_ByManiDataID(ctx context.Context, mdID int64) (cfg types
 		"maniDataID": mdID,
 	})
 	defer span.End()
-	q := fmt.Sprintf(`MATCH (md:ManifestData)-[]->(n:Blob) WHERE id(md) = %d`, mdID)
+	//q += ` MATCH (m)-[]-(md:ManifestData)-[rel]-(cfg:Blob) WHERE TYPE(rel) STARTS WITH "docker_container_image" OR TYPE(rel) STARTS WITH "oci_image_config"`
+	q := fmt.Sprintf(`MATCH (md:ManifestData)-[rel]->(n:Blob) WHERE id(md) = %d AND (TYPE(rel) STARTS WITH "docker_container_image" OR TYPE(rel) STARTS WITH "oci_image_config")`, mdID)
 	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize`
 	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)

@@ -20,7 +20,7 @@ type UpstreamTriple struct {
 	Platform  platform.Platform `json:"platform"`
 }
 
-func NewUpstreamTriple(k map[string]interface{}) (up UpstreamTriple, err error) {
+func NewUpstreamTriple(k map[string]any) (up UpstreamTriple, err error) {
 	return NewUpstreamTripleBase(k["reg"].(string), k["repo"].(string), k["tag"].(string), k["mediaType"].(string), k["digest"].(string), k["size"].(int64))
 }
 

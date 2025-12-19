@@ -1,5 +1,13 @@
 package magazine
 
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
+)
+
 // func TestCreateOCIv1PulledByPrf(t *testing.T) {
 // 	ctx := context.Background()
 // 	_ = ctx
@@ -79,58 +87,63 @@ package magazine
 // 	assert.Equal(t, expEnv, ociManiData.Config.Cfg.Config.Env)
 // }
 
-// func TestGenerateOCIv1Config(t *testing.T) {
-// 	ctx := context.Background()
-// 	_ = ctx
-// 	debug := 0
-// 	bs := utils.NewBootstrap()
-// 	bs.SetYAMLPrefix("../../../misc/yaml")
-// 	bs.AddBootstrap("platforms:amd64")
-// 	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
-// 	bs.AddBootstrap("rules:rules/os/linux.yaml")
-// 	bs.AddBootstrap("profile:profiles/generic.yaml")
-// 	bs.AddBootstrap("rules:rules/cpu/zen3.yaml")
-// 	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target.microarch:zen3")
-// 	bs.AddBootstrap("profile:profiles/cpu/zen3.yaml")
-// 	bs.AddBootstrap("config:ft_amd64")
-// 	bs.AddBootstrap("upstream:ft_amd64")
-// 	bs.AddBootstrap("manifest:ft_amd64")
-// 	bs.AddBootstrap("layer:0:ft_amd64")
-// 	bs.AddBootstrap("layer:1:ft_amd64")
-// 	bs.AddBootstrap("manifestdata:ft_amd64")
-// 	bs.AddBootstrap("collection:ft_amd64")
-// 	bs.SetEmptyAll()
-// 	if debug > 0 {
-// 		bs.PostTestSleep = debug
-// 	}
-// 	br, err := mag.SetupTest(ctx, bs)
-// 	for _, l := range br.ToLines() {
-// 		if debug > 0 {
-// 			t.Log(l)
-// 		}
-// 	}
-// 	if err != nil {
-// 		t.Logf("Error while SetupTest: %v", err)
-// 		TeardownTest(bs)
-// 		t.Fatal(err)
+func TestGenerateOCIv1Config(t *testing.T) {
+	ctx := context.Background()
+	l, c, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "TestGenerateOCIv1Config",
+	})
+	defer span.End()
+	ctx = c
+	_ = l
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:amd64")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("profile:profiles/generic.yaml")
+	bs.AddBootstrap("rules:rules/cpu/zen3.yaml")
+	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target.microarch:zen3")
+	bs.AddBootstrap("profile:profiles/cpu/zen3.yaml")
+	bs.AddBootstrap("config:ft_amd64")
+	bs.AddBootstrap("upstream:ft_amd64")
+	bs.AddBootstrap("manifest:ft_amd64")
+	bs.AddBootstrap("layer:0:ft_amd64")
+	bs.AddBootstrap("layer:1:ft_amd64")
+	bs.AddBootstrap("manifestdata:ft_amd64")
+	bs.AddBootstrap("collection:ft_amd64")
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := mag.SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	if err != nil {
+		t.Logf("Error while SetupTest: %v", err)
+		TeardownTest(bs)
+		t.Fatal(err)
 
-// 	}
-// 	defer TeardownTest(bs)
-// 	// Actual test
-// 	mani, err := mag.getMani(ctx, br, "manifest:ft_amd64")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	maniData, err := mag.getManiData(ctx, br, "manifestdata:ft_amd64")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	cfgGen, e := mag.GenerateOCIv1Config(ctx, mani, maniData)
-// 	if e != nil {
-// 		t.Fatal(e)
-// 	}
-// 	assert.Equal(t, []string{"ORG_SUPERCONTAINERS_HARDWARE_CPU_TARGET=platform", "PLATFORM_FEATURES=amd64"}, cfgGen.Config.Env)
-// }
+	}
+	defer TeardownTest(bs)
+	// Actual test
+	mani, err := mag.getMani(ctx, br, "manifest:ft_amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	maniData, err := mag.getManiData(ctx, br, "manifestdata:ft_amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfgGen, e := mag.GenerateOCIv1Config(ctx, mani, maniData)
+	if e != nil {
+		t.Fatal(e)
+	}
+	assert.Equal(t, []string{"ORG_SUPERCONTAINERS_HARDWARE_CPU_TARGET=platform", "PLATFORM_FEATURES=amd64"}, cfgGen.Config.Env)
+}
 
 // func TestOCIApplyManipulations(t *testing.T) {
 // 	ctx := context.Background()

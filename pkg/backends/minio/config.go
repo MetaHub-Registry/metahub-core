@@ -9,15 +9,25 @@ import (
 	"github.com/docker/distribution"
 	"github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/pkg/errors"
 	v1RC "github.com/regclient/regclient/types/oci/v1"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+)
+
+const (
+	pkgNameConfig   = "minio/config.go"
+	keyDownNotExist = "The specified key does not exist."
 )
 
 func (m Minio) GetConfig(ctx context.Context, dig string) (cfg v1.Image, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "minio/config.go",
+		"package": pkgNameConfig,
 		"func":    "minio.GetConfig",
 		"digest":  dig,
 	})
@@ -25,7 +35,7 @@ func (m Minio) GetConfig(ctx context.Context, dig string) (cfg v1.Image, found b
 	defer span.End()
 	b, e := m.BlobGetBytes(ctx, dig)
 	switch {
-	case e != nil && e.Error() == "The specified key does not exist.":
+	case e != nil && e.Error() == keyDownNotExist:
 		utils.Warn(l, span, "digest not found in storage")
 		err = nil
 		return
@@ -48,44 +58,44 @@ func (m Minio) GetConfig(ctx context.Context, dig string) (cfg v1.Image, found b
 	return
 }
 
-// func (m Minio) GetConfigByUpTriple(ctx context.Context, up upstream.UpstreamTriple) (res types.Config, isCached bool, err error) {
-// 	l := logrus.WithFields(logrus.Fields{
-// 		"package": "backends/minio",
-// 		"func":    "GetConfig",
-// 	})
-// 	tr := otel.Tracer("neomin")
-// 	ctx, span := tr.Start(ctx, "GetConfig")
-// 	span.SetAttributes(
-// 		attribute.Key("reg").String(up.Reg),
-// 		attribute.Key("repo").String(up.Repo),
-// 		attribute.Key("tag").String(up.Tag),
-// 		attribute.Key("cfg").String(utils.ShortenDigest(up.Digest.String())),
-// 	)
-// 	defer span.End()
-// 	_, err = m.ConfigsStatObj(ctx, up.Digest.String())
-// 	if err != nil {
-// 		if err.Error() == "The specified key does not exist." {
-// 			return res, false, nil
-// 		}
-// 		err = errors.Wrap(err, "failed to stat config")
-// 		l.Error(err)
-// 		return
-// 	} else {
-// 		isCached = true
-// 		res, err = m.ConfigGetObj(ctx, up.Digest.String())
-// 		if err != nil {
-// 			err = errors.Wrap(err, "failed to get config")
-// 			l.Error(err)
-// 			return
-// 		}
+func (m Minio) GetConfigByUpTriple(ctx context.Context, up upstream.UpstreamTriple) (res types.Config, isCached bool, err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": pkgNameConfig,
+		"func":    "GetConfig",
+	})
+	tr := otel.Tracer("neomin")
+	ctx, span := tr.Start(ctx, "GetConfig")
+	span.SetAttributes(
+		attribute.Key("reg").String(up.Reg),
+		attribute.Key("repo").String(up.Repo),
+		attribute.Key("tag").String(up.Tag),
+		attribute.Key("cfg").String(utils.ShortenDigest(up.Digest.String())),
+	)
+	defer span.End()
+	_, err = m.BlobStatObj(ctx, up.Digest.String())
+	if err != nil {
+		if err.Error() == keyDownNotExist {
+			return res, false, nil
+		}
+		err = errors.Wrap(err, "failed to stat config")
+		l.Error(err)
+		return
+	} else {
+		isCached = true
+		res, err = m.ConfigGetObj(ctx, up.Digest.String())
+		if err != nil {
+			err = errors.Wrap(err, "failed to get config")
+			l.Error(err)
+			return
+		}
 
-// 	}
-// 	return
-// }
+	}
+	return
+}
 
 // func (m Minio) ConfigGetBytes(ctx context.Context, path string) (b []byte, err error) {
 // 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-// 		"package": "backends/minio",
+// 		"package": pkgNameConfig,
 // 		"func":    "ConfigGetBytes",
 // 	})
 // 	defer span.End()
@@ -111,7 +121,7 @@ func (m Minio) GetConfig(ctx context.Context, dig string) (cfg v1.Image, found b
 
 func (m Minio) ConfigGetObj(ctx context.Context, path string) (cfg types.Config, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "backends/minio",
+		"package": pkgNameConfig,
 		"func":    "minio.ConfigGetObj",
 		"path":    path,
 	})
@@ -122,6 +132,7 @@ func (m Minio) ConfigGetObj(ctx context.Context, path string) (cfg types.Config,
 		return cfg, err
 	}
 	utils.Debug(l, span, "got config obj with len %d", len(b))
+
 	cfg, err = ConfigFromCfgBlob(ctx, b)
 	if err != nil {
 		err = utils.ErrorHandler(l, span, err, "failed to ConfigFromCfgBlob")
@@ -133,7 +144,7 @@ func (m Minio) ConfigGetObj(ctx context.Context, path string) (cfg types.Config,
 
 // func (m Minio) PutConfig(ctx context.Context, b []byte, dig string) (err error) {
 // 	l := logrus.WithFields(logrus.Fields{
-// 		"package": "backends/minio",
+// 		"package": pkgNameConfig,
 // 		"func":    "PutConfig",
 // 	})
 // 	tr := otel.Tracer("neomin")
@@ -163,11 +174,14 @@ func (m Minio) ConfigGetObj(ctx context.Context, path string) (cfg types.Config,
 
 func ConfigFromCfgBlob(ctx context.Context, blob []byte) (cfg types.Config, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "backends/minio",
+		"package": pkgNameConfig,
 		"func":    "ConfigGetObj",
 	})
 	defer span.End()
 	_ = ctx
+	span.AddEvent("blob", trace.WithAttributes(
+		attribute.KeyValue{Key: "data", Value: attribute.StringValue(string(blob))},
+	))
 	var desc distribution.Descriptor
 	err = json.Unmarshal(blob, &desc)
 	if err != nil {
@@ -214,25 +228,9 @@ func (m Minio) configGetter(bi imgTypes.BlobInfo) (b []byte, err error) {
 	return m.BlobGetBytes(context.Background(), bi.Digest.String())
 }
 
-// func (m Minio) ConfigRemoveObj(ctx context.Context, object string) (err error) {
-// 	cli := m.BucketConfig[configsBucketKey].Client
-// 	_, err = cli.StatObject(ctx, m.GetConfigsBucketName(), object, minio.StatObjectOptions{})
-// 	if err != nil {
-// 		return
-// 	}
-// 	err = cli.RemoveObject(ctx, m.GetConfigsBucketName(), object, minio.RemoveObjectOptions{})
-// 	return
-// }
-
-// func (m Minio) ConfigsStatObj(ctx context.Context, object string) (obj minio.ObjectInfo, err error) {
-// 	bucket := m.GetConfigsBucketName()
-// 	cli := m.BucketConfig[configsBucketKey].Client
-// 	return cli.StatObject(ctx, bucket, object, minio.StatObjectOptions{})
-// }
-
 func (m Minio) GetTypesConfig(ctx context.Context, dig string) (cfg types.Config, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "backends/minio/config.go",
+		"package": pkgNameConfig,
 		"func":    "GetTypesConfig",
 		"digest":  dig,
 	})
@@ -240,7 +238,7 @@ func (m Minio) GetTypesConfig(ctx context.Context, dig string) (cfg types.Config
 	_ = l
 	b, err := m.BlobGetBytes(ctx, dig)
 	switch {
-	case err != nil && err.Error() == "The specified key does not exist.":
+	case err != nil && err.Error() == keyDownNotExist:
 		// found is false
 		logrus.Debugf("GetTypesConfig(%s) not found", dig)
 		err = nil

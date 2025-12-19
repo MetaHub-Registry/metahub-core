@@ -83,6 +83,7 @@ func (n Neo) Setup_Manifest_FT_amd64(ctx context.Context, br *utils.BootstrapRes
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to insert manifest")
 	}
+	utils.Debug(l, span, "Inserted Manifest with ID: %d", maniID)
 	br.Add("manifest:ft_amd64#id", fmt.Sprint(maniID))
 	err = n.ManifestLinkToUpstream(ctx, maniID, upID)
 	if err != nil {
