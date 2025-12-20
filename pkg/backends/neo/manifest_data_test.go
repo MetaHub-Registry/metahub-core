@@ -147,7 +147,7 @@ func TestManifestDataLinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	arm_config, found, err := db.Config_GetByID(ctx, arm_config_id)
+	arm_config, found, err := db.ConfigGetByID(ctx, arm_config_id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestManifestDataRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	arm_config, found, err := db.Config_GetByID(ctx, arm_config_id)
+	arm_config, found, err := db.ConfigGetByID(ctx, arm_config_id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -696,7 +696,7 @@ func TestManifestDataLinkToOCIv1Config(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, found, err := db.Config_GetByID(ctx, cfgID)
+	cfg, found, err := db.ConfigGetByID(ctx, cfgID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -715,8 +715,11 @@ func TestManifestDataLinkToOCIv1Config(t *testing.T) {
 }
 
 func TestManifestDataInsert(t *testing.T) {
-	ctx := context.Background()
-	_ = ctx
+	c := context.Background()
+	l, ctx, span := utils.InitLogging(c, tracer, map[string]any{
+		"func": "TestBlobHandlerLayerTest",
+	})
+	defer span.End()
 	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
@@ -743,6 +746,7 @@ func TestManifestDataInsert(t *testing.T) {
 
 	}
 	defer db.TeardownTest(bs)
+
 	// Actual Tests
 	mdArm64 := types.ManifestDataFeaturetestArm64
 	if e := db.ManifestDataInsert(ctx, &mdArm64); e != nil {
@@ -750,7 +754,8 @@ func TestManifestDataInsert(t *testing.T) {
 	}
 	// Test the insert
 	/// MD<>Config<>Label
-	q := `MATCH (md:ManifestData)-[]->(c:Blob)-[]->(l:Label) WHERE l.value = "arm64" RETURN md.label AS mdLabel`
+	q := `MATCH (md:ManifestData)-[]->(c:Blob)-[]->(l:Label) WHERE l.value = "arm64" AND c.type = "config" RETURN md.label AS mdLabel`
+	utils.Debug(l, span, "Querying ManifestData Label: %s", q)
 	if res, found, err := db.QueryOne(q); err != nil {
 		t.Fatal(err)
 	} else if !found {
@@ -764,6 +769,7 @@ func TestManifestDataInsert(t *testing.T) {
 	}
 	// Count Blobs (Layers/Config)
 	q = `MATCH (md:ManifestData)-[]->(l:Blob) RETURN COUNT(l) AS count`
+	utils.Debug(l, span, "Querying ManifestData Blobs: %s", q)
 	if res, found, err := db.QueryOne(q); err != nil {
 		t.Fatal(err)
 	} else if !found {
@@ -775,10 +781,11 @@ func TestManifestDataInsert(t *testing.T) {
 			assert.Equal(t, 3, cnt)
 		}
 	}
-	// Again to trigger found
+	// // Again to trigger found
 	if e := db.ManifestDataInsert(ctx, &mdArm64); e != nil {
 		t.Fatal(e)
 	}
+	span.End()
 }
 
 func TestManifestDataGetByUpstream(t *testing.T) {

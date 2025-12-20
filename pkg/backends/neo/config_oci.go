@@ -26,7 +26,7 @@ func (n Neo) OCIv1Config_GetInsertDescriptor(ctx context.Context, desc v1.Descri
 	span.SetAttributes(
 		attribute.Key("digest").String(shortDig),
 	)
-	cfg, found, err = n.Config_GetByDigest(ctx, desc.Digest.String())
+	cfg, found, err = n.ConfigGetByDigest(ctx, desc.Digest.String())
 	if err != nil {
 		return
 	}

@@ -801,6 +801,7 @@ func (n Neo) ManifestData_LinkToConfig(ctx context.Context, maniID int64, cfg ty
 	mt := utils.ShortenMediaType(cfg.MediaType)
 	q := fmt.Sprintf(`MATCH (m:ManifestData),(c:Blob) WHERE id(m) = %d AND id(c) = %d`, maniID, cfg.ID)
 	q += fmt.Sprintf(` MERGE (m)-[:%s]->(c)`, mt)
+	q += fmt.Sprintf(` SET c.mediaType = "%s", c.type = "config"`, cfg.MediaType)
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
 		attribute.String("log.query", q),
@@ -832,6 +833,7 @@ func (n Neo) ManifestData_LinkToLayer(ctx context.Context, maniID int64, layer t
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (m:ManifestData),(l:Blob) WHERE id(m) = %d AND id(l) = %d`, maniID, layer.ID)
 	q += fmt.Sprintf(` MERGE (m)-[:%s {order: %d}]->(l)`, shortMT, idx)
+	q += fmt.Sprintf(` SET l.mediaType = "%s", l.type = "layer"`, layer.MediaType)
 	utils.Debug(l, span, q)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
@@ -923,7 +925,7 @@ func (n Neo) createManifestData(ctx context.Context, mani types.ManifestData) (m
 	}
 	// Link Config
 	if mani.Config.Digest != "" {
-		cfg, found, err := n.Config_GetByDigest(ctx, mani.Config.Digest)
+		cfg, found, err := n.ConfigGetByDigest(ctx, mani.Config.Digest)
 		if err != nil {
 			err = errors.Wrap(err, "failed to get config id")
 			return maniID, err
@@ -1376,7 +1378,7 @@ func (n Neo) ManifestDataFromResult(ctx context.Context, res types.Result, prfs 
 		return
 	}
 	// Config
-	cfg, cfgFound, err := n.Config_Get_ByManiDataID(ctx, maniID)
+	cfg, cfgFound, err := n.ConfigGetByManiDataID(ctx, maniID)
 	if err != nil {
 		err = utils.ErrorHandler(l, span, err, "failed to get config by manifest data id")
 		return

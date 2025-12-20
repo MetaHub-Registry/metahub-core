@@ -98,7 +98,7 @@ func (n Neo) Setup_Manifest_FT_amd64(ctx context.Context, br *utils.BootstrapRes
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to get config id from BR")
 	}
-	config, found, err := n.Config_GetByID(ctx, config_id)
+	config, found, err := n.ConfigGetByID(ctx, config_id)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to get config by id")
 	}
@@ -246,7 +246,7 @@ func (n Neo) SetupManifestFTZen(br *utils.BootstrapResult) (err error) {
 		logrus.Error(err)
 		return err
 	}
-	config, found, err := n.Config_GetByID(ctx, config_id)
+	config, found, err := n.ConfigGetByID(ctx, config_id)
 	if err != nil {
 		logrus.Error(err)
 		return err
@@ -323,7 +323,7 @@ func (n Neo) Setup_Manifest_FT_zen3(br *utils.BootstrapResult) (err error) {
 		logrus.Error(err)
 		return err
 	}
-	config, found, err := n.Config_GetByID(ctx, config_id)
+	config, found, err := n.ConfigGetByID(ctx, config_id)
 	if err != nil {
 		logrus.Error(err)
 		return err

@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	pkgNameBlob = "minio/blob.go"
+	pkgNameBlob          = "minio/blob.go"
+	keyDoesNotExistError = "The specified key does not exist."
 )
 
 func (m Minio) GetBlob(ctx context.Context, up upstream.UpstreamTriple) (isCached bool, err error) {
@@ -33,7 +34,7 @@ func (m Minio) GetBlob(ctx context.Context, up upstream.UpstreamTriple) (isCache
 	_ = l
 	_, err = m.BlobStatObj(ctx, up.Digest.String())
 	if err != nil {
-		if err.Error() == "The specified key does not exist." {
+		if err.Error() == keyDoesNotExistError {
 			utils.Debug(l, span, "blob '%s' not found in bucket.", up.Digest.String())
 			return false, nil
 		}
@@ -43,6 +44,25 @@ func (m Minio) GetBlob(ctx context.Context, up upstream.UpstreamTriple) (isCache
 		isCached = true
 	}
 	return
+}
+
+func (m Minio) EnsureBlobExists(c context.Context, objPath string, dat []byte) (err error) {
+	l, ctx, span := utils.InitLogging(c, tracer, map[string]any{
+		"package": pkgNameBlob,
+		"func":    "EnsureBlobExists",
+	})
+	defer span.End()
+	// Make sure blob is already in Minio
+	if _, e := m.BlobStatObj(ctx, objPath); e != nil {
+		if e.Error() == keyDoesNotExistError {
+			if err = m.PutBlob(ctx, dat, objPath); err != nil {
+				return utils.ErrorHandler(l, span, err, "failed to PutBlob")
+			}
+		} else {
+			return utils.ErrorHandler(l, span, e, "failed to BlobStatObj")
+		}
+	}
+	return nil
 }
 
 func (m Minio) BlobStatObj(ctx context.Context, object string) (obj minio.ObjectInfo, err error) {
@@ -133,7 +153,7 @@ func (m Minio) BlobGetBytes(ctx context.Context, path string) (b []byte, err err
 	defer obj.Close()
 	b, e := io.ReadAll(obj)
 	if e != nil {
-		if e.Error() == "The specified key does not exist." {
+		if e.Error() == keyDoesNotExistError {
 			l.Error("")
 			return nil, e
 		}

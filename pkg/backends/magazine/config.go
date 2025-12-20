@@ -8,6 +8,7 @@ import (
 
 	"github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/pkg/errors"
 	ociv1 "github.com/regclient/regclient/types/oci/v1"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
@@ -89,7 +90,7 @@ func (mag Magazine) CachImageConfig(ctx context.Context, mani *types.ManifestDat
 }
 
 func (mag Magazine) InsertConfig(ctx context.Context, cfg types.Config, up types.Upstream) (cfgID int64, err error) {
-	return mag.Database.Config_Insert(ctx, cfg)
+	return mag.Database.ConfigInsert(ctx, cfg)
 
 }
 
@@ -133,7 +134,7 @@ func (mag Magazine) Config_Get_ByManifest(ctx context.Context, req types.Request
 	})
 	defer span.End()
 	label := fmt.Sprintf("%s/%s:%s", req.Host, req.Repo, req.Tag)
-	cfg, cfgFound, e := mag.Config_GetInsert_ByOCIManifest(ctx, oMani, label)
+	cfg, cfgFound, e := mag.ConfigGetInsertByOCIManifest(ctx, oMani, label)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to Config.GetCreateByRequest")
 		return
@@ -158,7 +159,7 @@ func (mag Magazine) Config_GetByID(ctx context.Context, cfgID int64) (cfg types.
 		"func":    "mag.Config_GetByID",
 	})
 	defer span.End()
-	cfg, found, err = mag.Database.Config_GetByID(ctx, cfgID)
+	cfg, found, err = mag.Database.ConfigGetByID(ctx, cfgID)
 	if err != nil {
 		err = utils.ErrorHandler(l, span, err, "failed to get Config by ID from graph")
 		return
@@ -203,63 +204,16 @@ func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUplo
 		Data:      buf,
 		Cfg:       c,
 	}
-	utils.Debug(l, span, "Store config upload without knowing which mediaType it actually is")
-	/*
-		switch bu.MediaType {
-		case "application/vnd.docker.container.image.v1+json":
-			var imgCfg v1.Image
-			err = json.Unmarshal(buf, &imgCfg)
-			if err != nil {
-				logrus.Error(err)
-				return
-			}
-			cfg.Cfg.Config.Labels = imgCfg.Config.Labels
-			//anno, err := types.NewAnnotationsFromMap(imgCfg.Config.Labels)
-			//if err != nil {
-			//	logrus.Error(err)
-			//	return err
-			//}
-			//cfg.Labels = anno
 
-		case "application/vnd.oci.image.config.v1+json":
-			var imgCfg ociv1.Image
-			err = json.Unmarshal(buf, &imgCfg)
-			if err != nil {
-				logrus.Error(err)
-				return
-			}
-			//	anno, err := types.NewAnnotationsFromMap(imgCfg.Config.Labels)
-			//	if err != nil {
-			//		logrus.Error(err)
-			//		return err
-			//	}
-			//	cfg.Cfg.Config.Labels = imgCfg.Config.Labels
-			//	cfg.Labels = anno
-		case "":
-			// OCI conformance test does not set the media type
-			bu.MediaType = "application/vnd.oci.image.config.v1+json"
-			var imgCfg ociv1.Image
-			err = json.Unmarshal(buf, &imgCfg)
-			if err != nil {
-				logrus.Error(err)
-				return
-			}
-			//	anno, err := types.NewAnnotationsFromMap(imgCfg.Config.Labels)
-			//	if err != nil {
-			//		logrus.Error(err)
-			//		return err
-			//	}
-			//	cfg.Cfg.Config.Labels = imgCfg.Config.Labels
-			//	cfg.Labels = anno
-		default:
-			err := errors.Errorf("unknown media type: %s", bu.MediaType)
-			logrus.Error(err)
-			return err
-		}
-	*/
+	err = cfg.SwitchMediaType(bu, buf)
+	if err != nil {
+		err = errors.Wrap(err, "failed to switch media type")
+		return
+	}
+
 	utils.Debug(l, span, "What if config is already there?")
 
-	_, e = mag.Database.Config_Insert(ctx, cfg)
+	_, e = mag.Database.ConfigInsert(ctx, cfg)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to insert Config into graph")
 		return
@@ -271,10 +225,10 @@ func (mag Magazine) StoreConfigUpload(ctx context.Context, bu *types.OCIBlobUplo
 	return
 }
 
-func (mag Magazine) Config_GetInsert_ByOCIManifest(ctx context.Context, ociMani types.OCIManifest, label string) (cfg types.Config, found bool, err error) {
+func (mag Magazine) ConfigGetInsertByOCIManifest(ctx context.Context, ociMani types.OCIManifest, label string) (cfg types.Config, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameConfig,
-		"func":    "mag.Config_GetInsert_ByOCIManifest",
+		"func":    "mag.ConfigGetInsertByOCIManifest",
 		"label":   label,
 		"digest":  ociMani.Config.Digest.String(),
 	})
@@ -305,21 +259,21 @@ func (mag Magazine) Config_GetInsert_ByOCIManifest(ctx context.Context, ociMani 
 	} else {
 		utils.Debug(l, span, "Config NOT embedded in OCI Manifest - fetch from Blob Storage")
 	}
-	cfg, found, err = mag.Database.Config_GetInsert_ByOCIManifest(ctx, ociMani, label)
+	cfg, found, err = mag.Database.ConfigGetInsertByOCIManifest(ctx, ociMani, label)
 	return
 }
 
-func (mag Magazine) Config_AddLabel(ctx context.Context, cfgID int64, a types.Annotation) (err error) {
-	return mag.Database.Config_AddLabel(ctx, cfgID, a)
+func (mag Magazine) ConfigAddLabel(ctx context.Context, cfgID int64, a types.Annotation) (err error) {
+	return mag.Database.ConfigAddLabel(ctx, cfgID, a)
 }
 
-func (mag Magazine) Configs_DeleteUnused(ctx context.Context) (err error) {
+func (mag Magazine) ConfigsDeleteUnused(ctx context.Context) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameConfig,
-		"func":    "mag.Configs_DeleteUnused",
+		"func":    "mag.ConfigsDeleteUnused",
 	})
 	defer span.End()
-	e := mag.Database.Configs_DeleteUnused(ctx)
+	e := mag.Database.ConfigsDeleteUnused(ctx)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to delete unused layers")
 		return

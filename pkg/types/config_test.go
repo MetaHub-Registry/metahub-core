@@ -68,3 +68,70 @@ func TestToOCISpecV1Image(t *testing.T) {
 	assert.Equal(t, 1, len(v1.Config.Cmd))
 
 }
+
+func TestConfigSwitchMediaTypes(t *testing.T) {
+	ctx := context.Background()
+
+	cfg0, err := NewConfigFromBytes(ctx, ConfigByteFtArm64())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Fail
+	buFail1 := &OCIBlobUpload{
+		MediaType: "FAIL",
+	}
+	err = cfg0.SwitchMediaType(buFail1, []byte{})
+	if err == nil {
+		t.Fatal("expected error on unknown media type")
+	}
+	buFail1 = &OCIBlobUpload{
+		MediaType: "application/vnd.oci.image.config.v1+json",
+	}
+	err = cfg0.SwitchMediaType(buFail1, []byte{})
+	if err == nil {
+		t.Fatal("expected error missmatch media type")
+	}
+	// Docker
+	bu := &OCIBlobUpload{
+		Digest:    cfg0.Digest,
+		Data:      cfg0.Data,
+		MediaType: "application/vnd.docker.container.image.v1+json",
+	}
+	err = cfg0.SwitchMediaType(bu, cfg0.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "application/vnd.docker.container.image.v1+json", cfg0.MediaType)
+	err = cfg0.SwitchMediaType(bu, []byte(`{invalid json}`))
+	if err == nil {
+		t.Fatal("expected error on invalid json")
+	}
+	// Empty
+	bu2 := &OCIBlobUpload{
+		Digest:    cfg0.Digest,
+		Data:      cfg0.Data,
+		MediaType: "",
+	}
+	err = cfg0.SwitchMediaType(bu2, cfg0.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "application/vnd.oci.image.config.v1+json", cfg0.MediaType)
+	//
+	bu3 := &OCIBlobUpload{
+		Digest:    cfg0.Digest,
+		Data:      cfg0.Data,
+		MediaType: "application/vnd.oci.image.config.v1+json",
+	}
+	cfg0.MediaType = "application/vnd.oci.image.config.v1+json"
+	err = cfg0.SwitchMediaType(bu3, cfg0.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "application/vnd.oci.image.config.v1+json", cfg0.MediaType)
+	err = cfg0.SwitchMediaType(bu, []byte(`{invalid json}`))
+	if err == nil {
+		t.Fatal("expected error on invalid json")
+	}
+
+}

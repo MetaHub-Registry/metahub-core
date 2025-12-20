@@ -233,7 +233,7 @@ func TestManifestStoreManifestUploadEmbeddedConfigNoLayer(t *testing.T) {
 	}
 	assert.Equal(t, bufDig.String(), mani.Digest)
 	// Check if config is in DB
-	cfg, found, err := mag.Database.Config_GetByDigest(ctx, "sha256:65b1de14a76de70a46ff0839ab79775aceb96ee12069fb6ed45bc35f958fdbcb")
+	cfg, found, err := mag.Database.ConfigGetByDigest(ctx, "sha256:65b1de14a76de70a46ff0839ab79775aceb96ee12069fb6ed45bc35f958fdbcb")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +319,7 @@ func TestManifestStoreManifestUploadEmbeddedConfigNoLayerwithLabels(t *testing.T
 	}
 	assert.Equal(t, bufDig.String(), mani.Digest)
 	// Check if config is in DB
-	cfg, found, err := mag.Database.Config_GetByDigest(ctx, cfgDigest)
+	cfg, found, err := mag.Database.ConfigGetByDigest(ctx, cfgDigest)
 	if err != nil {
 		t.Fatal(err)
 	}

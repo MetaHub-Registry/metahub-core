@@ -16,8 +16,15 @@ import (
 )
 
 func TestConfigStoreConfigUpload(t *testing.T) {
+	c := context.Background()
+	l, ctx, span := utils.InitLogging(c, tracer, map[string]any{
+		"func": "TestConfigStoreConfigUpload",
+	})
+	defer span.End()
+	_ = l
 	bs := utils.NewBootstrap()
 	debug := 0
+	bs.AddSpan(span)
 	bs.SetEmptyAll()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("users")
@@ -61,10 +68,10 @@ func TestConfigStoreConfigUpload(t *testing.T) {
 	bu := types.OCIBlobUpload{
 		Digest:    bufDig.String(),
 		Data:      []byte(bufEnc),
-		MediaType: "application/vnd.docker.container.image.v1+json",
+		MediaType: "application/vnd.oci.image.config.v1+json",
 	}
 	// Check if config is NOT in DB
-	_, found, err := mag.Database.Config_GetByDigest(ctx, bufDig.String())
+	_, found, err := mag.Database.ConfigGetByDigest(ctx, bufDig.String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,13 +88,13 @@ func TestConfigStoreConfigUpload(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check if config is in DB
-	cfg, found, err := mag.Database.Config_GetByDigest(ctx, bufDig.String())
+	cfg, found, err := mag.Database.ConfigGetByDigest(ctx, bufDig.String())
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.True(t, found)
 	// TODO: check if unknown is correct
-	assert.Equal(t, "unknownConfig", cfg.MediaType)
+	assert.Equal(t, "application/vnd.oci.image.config.v1+json", cfg.MediaType)
 	//assert.Equal(t, 2, len(cfg.Labels.Map))
 	// Check if config is in Minio
 	_, found, err = mag.Minio.GetConfig(ctx, bufDig.String())
@@ -95,6 +102,7 @@ func TestConfigStoreConfigUpload(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.True(t, found)
+
 }
 
 func TestConfigBlobGetByHTTPRequest(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func (n Neo) Config_AddLabels(ctx context.Context, cfgID int64, as *types.Annotations) (err error) {
+func (n Neo) ConfigAddLabels(ctx context.Context, cfgID int64, as *types.Annotations) (err error) {
 	for _, a := range as.Data {
 		aID, e := n.Label_GetInsert(ctx, a)
 		if e != nil {

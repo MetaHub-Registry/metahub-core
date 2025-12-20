@@ -158,7 +158,7 @@ func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string) (blo
 		}
 		maniData.Type = "PULLED_BY"
 		// Insert Config
-		cfgID, e := mag.Database.Config_Insert(ctx, maniData.Config)
+		cfgID, e := mag.Database.ConfigInsert(ctx, maniData.Config)
 		if e != nil {
 			return utils.ErrorHandler(l, span, e, "Failed to insert config")
 		}
@@ -486,7 +486,7 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 	}
 	maniData.Type = "PULLED_BY"
 	// Insert Raw Config
-	cfgID, e := mag.Database.Config_Insert(ctx, maniData.Config)
+	cfgID, e := mag.Database.ConfigInsert(ctx, maniData.Config)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "Failed to insert config")
 		return
