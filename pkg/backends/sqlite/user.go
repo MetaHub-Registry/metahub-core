@@ -110,10 +110,11 @@ func (s Sqlite) LoginUserWithHash(ctx context.Context, username, pwhash string) 
 }
 
 func (s Sqlite) LoginUserScope(ctx context.Context, username, password string, req types.Request) (status int, role string, pl helper.ErrorPayload, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "sqlite/user.go",
 		"func":    "LoginUserScope",
 	})
+	defer span.End()
 	// check login and return token
 	u, err := s.GetByUsername(ctx, username)
 	if err != nil {

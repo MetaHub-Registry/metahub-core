@@ -633,6 +633,7 @@ func (n Neo) EvalUploadProfile(ctx context.Context, mani types.Manifest, origMan
 func (n Neo) ProfileAuthorizedPushHandler(ctx context.Context, req types.Request) (prf types.Profile, err error) {
 	ctx, span := tracer.Start(ctx, "ProfileAuthorizedPushHandler")
 	defer span.End()
+
 	// check if profile already has a manifest uploaded
 	prf, found, e := n.Profile_Get_ByLabel(ctx, req.Profile)
 

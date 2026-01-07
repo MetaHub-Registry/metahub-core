@@ -209,10 +209,8 @@ func NewRequest(ctx context.Context, r *http.Request) Request {
 	debug := 0
 	vD := gCtx.Get(r, "debug")
 	if vD != nil {
-		deb, err := strconv.Atoi(vD.(string))
-		if err == nil {
-			debug = deb
-		}
+		debug = vD.(int)
+
 	}
 	var span trace.Span
 	var l *logrus.Entry
@@ -275,6 +273,14 @@ func NewRequest(ctx context.Context, r *http.Request) Request {
 			attribute.Int("number", req.Number),
 			attribute.String("last", req.Last),
 		))
+	}
+	uRole := gCtx.Get(r, "userRole")
+	if uRole != nil {
+		req.UserRole = uRole.(string)
+	}
+	uName := gCtx.Get(r, "userName")
+	if uName != nil {
+		req.User = uName.(string)
 	}
 	req.Method = r.Method
 	req.Scope = scope
