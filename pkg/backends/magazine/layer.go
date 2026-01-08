@@ -163,7 +163,7 @@ func (mag Magazine) StoreLayerUpload(ctx context.Context, bu *types.OCIBlobUploa
 		return utils.ErrorHandler(l, span, e, "failed to insert layer into graph")
 	}
 	// Link Layer to BlobUpload
-	if e := mag.Database.BlobUpload_Update_ByUUID(ctx, bu); e != nil {
+	if e := mag.Database.BlobUploadUpdateByUUID(ctx, bu); e != nil {
 		return utils.ErrorHandler(l, span, e, "failed to link layer to blob upload")
 	}
 	return nil
@@ -285,7 +285,7 @@ func (mag Magazine) Layers_DeleteUnused(ctx context.Context) (err error) {
 		err = errors.Wrapf(err, "failed to delete unused layers")
 		return
 	}
-	err = mag.Database.BlobUpload_DeleteUnused(ctx)
+	err = mag.Database.BlobUploadDeleteUnused(ctx)
 	if err != nil {
 		err = errors.Wrapf(err, "failed to delete unused blobUploads")
 		return

@@ -22,19 +22,19 @@ var (
 func (mag Magazine) StoreBlobUpload(ctx context.Context, bu *types.OCIBlobUpload, buf []byte) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":  pkgNameBlob,
-		"func":     "BlobExists",
+		"func":     "StoreBlobUpload",
 		"blobType": bu.BlobType,
 		"digest":   bu.Digest,
 	})
 	defer span.End()
-	logrus.Debugf("uploading blob to Minio: %s", utils.ShortenDigest(bu.Digest))
+	utils.Debug(l, span, "uploading to MinIO: %s", utils.ShortenDigest(bu.Digest))
 	err = mag.Minio.PutBlob(ctx, buf, bu.Digest)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to put layer into minio")
 	}
-	logrus.Debug("Upload done, update database")
+	utils.Debug(l, span, "Upload done, update database")
 	// Link Layer to BlobUpload
-	if e := mag.Database.BlobUpload_Update_ByUUID(ctx, bu); e != nil {
+	if e := mag.Database.BlobUploadUpdateByUUID(ctx, bu); e != nil {
 		return utils.ErrorHandler(l, span, e, "failed to link layer to blob upload")
 	}
 	return nil
@@ -79,7 +79,7 @@ func (mag Magazine) BlobDelete(ctx context.Context, req types.Request) (found bo
 		return true, nil
 	}
 	// Not a layer, so it must be a config
-	_, found, err = mag.Database.Config_GetByDigest(ctx, req.Digest)
+	_, found, err = mag.Database.ConfigGetByDigest(ctx, req.Digest)
 	if err != nil {
 		return false, err
 	}
@@ -133,7 +133,7 @@ func (mag Magazine) BlobExists(ctx context.Context, up upstream.UpstreamTriple) 
 func (mag Magazine) ComposeFromChunks(ctx context.Context, bu *types.OCIBlobUpload, chunks []types.BlobChunk) (err error) {
 	switch len(chunks) {
 	case 0:
-		return fmt.Errorf("Why did we upload a blob with no chunks?")
+		return fmt.Errorf("why did we upload a blob with no chunks?")
 	case 1:
 		logrus.Infof("single chunk upload, finalizing")
 		mag.Database.CreateBlobFromChunk(ctx, bu, chunks[0])
@@ -147,18 +147,22 @@ func (mag Magazine) ComposeFromChunks(ctx context.Context, bu *types.OCIBlobUplo
 	return nil
 }
 
-func (mag Magazine) Blob_GetByHTTPRequest(r *http.Request) (blob *types.Blob, found bool, err error) {
-	ctx := context.Background()
+func (mag Magazine) BlobGetByHTTPRequest(ctx context.Context, r *http.Request) (blob *types.Blob, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "magazine/blob.go",
+		"func":    "BlobGetByHTTPRequest",
+	})
+	defer span.End()
 	req := types.NewRequest(ctx, r)
-	logrus.Debugf("Blob_GetByHTTPRequest: %s", req.String())
+	utils.Debug(l, span, "BlobGetByHTTPRequest: %s", req.String())
 	// Fetch blob from Database
 	blob, found, err = mag.Database.BlobGetByDigest(ctx, req.Digest)
 	if err != nil {
-		logrus.Errorf("failed to fetch blob from database: %v", err)
+		utils.ErrorHandler(l, span, err, "failed to fetch blob from database")
 		return
 	}
 	if !found {
-		logrus.Errorf("did not find blob with dig: %s", req.Digest)
+		utils.Debug(l, span, "did not find blob with dig: %s", req.Digest)
 		return
 	}
 	if req.Method == "GET" {
@@ -167,11 +171,13 @@ func (mag Magazine) Blob_GetByHTTPRequest(r *http.Request) (blob *types.Blob, fo
 		switch {
 		case err != nil && err.Error() == "The specified key does not exist.":
 			// found is false
+			utils.Debug(l, span, "did not find blob data with dig: %s", req.Digest)
 			return blob, false, nil
 		case err != nil:
-			logrus.Error(err)
+			utils.ErrorHandler(l, span, err, "failed to fetch blob from minio")
 			return nil, false, err
 		}
+		utils.Debug(l, span, "fetched blob data with dig: %s", req.Digest)
 		blob.Data = b
 	}
 	// No error - off we go

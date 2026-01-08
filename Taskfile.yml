@@ -1,0 +1,16 @@
+version: '3'
+
+dotenv: ['.env']
+tasks:
+  git:*:
+    vars:
+      GCMD: '{{index .MATCH 0}}' 
+    cmds:
+      - git commit -{{.GCMD}} "{{.CLI_ARGS}}"
+      - git push
+  test:
+    cmds:
+      - ./test.sh
+  sonar:
+    cmds:
+      - ./misc/bin/sonar.sh

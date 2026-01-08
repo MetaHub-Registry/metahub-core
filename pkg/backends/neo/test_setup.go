@@ -30,10 +30,21 @@ type Neo4jContainer struct {
 	BoltURI string
 }
 
-func SetupNeo4j(ctx context.Context) (*Neo4jContainer, error) {
+func SetupNeo4j(ctx context.Context, neoPorts string) (*Neo4jContainer, error) {
+	ports := []string{"7474/tcp", "7687/tcp"}
+	if neoPorts != "" {
+		k, v, found := strings.Cut(neoPorts, ":")
+		if found {
+			ports = []string{
+				fmt.Sprintf("%s:7474/tcp", k),
+				fmt.Sprintf("%s:7687/tcp", v),
+			}
+		}
+	}
+	logrus.Infof("Starting Neo4j with ports: %v", ports)
 	req := testcontainers.ContainerRequest{
 		Image:        "neo4j:4.4.9",
-		ExposedPorts: []string{"7474/tcp", "7687/tcp"},
+		ExposedPorts: ports,
 		WaitingFor:   wait.ForHTTP("/").WithPort("7474"),
 		Env: map[string]string{
 			"NEO4J_AUTH": fmt.Sprintf("%s/%s", neoUser, neoPasswd),
@@ -268,7 +279,7 @@ func (n Neo) Setup_Platforms(br *utils.BootstrapResult, plts []types.Platform) (
 
 func (n Neo) Setup_Config(br *utils.BootstrapResult, cfg types.Config, label string) (err error) {
 	ctx := context.Background()
-	cfgId, err := n.Config_Insert(ctx, cfg)
+	cfgId, err := n.ConfigInsert(ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -361,7 +372,7 @@ func (n Neo) Setup_Manifest_FT_mpich_amd64(br *utils.BootstrapResult) (err error
 		logrus.Error(err)
 		return err
 	}
-	config, found, err := n.Config_GetByID(ctx, config_id)
+	config, found, err := n.ConfigGetByID(ctx, config_id)
 	if err != nil {
 		logrus.Error(err)
 		return err

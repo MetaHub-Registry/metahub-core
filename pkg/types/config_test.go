@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	"net/http/httptest"
 	"testing"
 
@@ -8,7 +9,8 @@ import (
 )
 
 func TestNewConfigFromBytes(t *testing.T) {
-	cfg, err := NewConfigFromBytes(ConfigByteFtArm64())
+	ctx := context.Background()
+	cfg, err := NewConfigFromBytes(ctx, ConfigByteFtArm64())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,14 +23,15 @@ func TestNewConfigFromBytes(t *testing.T) {
 		t.Logf("Labels: %#v", cfg.Cfg.Config.Labels)
 		t.Fatal()
 	}
-	_, err = NewConfigFromBytes([]byte(`{`))
+	_, err = NewConfigFromBytes(ctx, []byte(`{`))
 	assert.Error(t, err)
-	_, err = NewConfigFromBytes(ManifestReferenceByte_FT_arm())
+	_, err = NewConfigFromBytes(ctx, ManifestReferenceByte_FT_arm())
 	assert.Error(t, err)
 }
 
 func TestConfigToDescriptor(t *testing.T) {
-	cfg, err := NewConfigFromBytes(ConfigByteFtArm64())
+	ctx := context.Background()
+	cfg, err := NewConfigFromBytes(ctx, ConfigByteFtArm64())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +42,8 @@ func TestConfigToDescriptor(t *testing.T) {
 }
 
 func TestConfigWriteWWWHeader(t *testing.T) {
-	cfg, err := NewConfigFromBytes(ConfigByteFtArm64())
+	ctx := context.Background()
+	cfg, err := NewConfigFromBytes(ctx, ConfigByteFtArm64())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +56,8 @@ func TestConfigWriteWWWHeader(t *testing.T) {
 }
 
 func TestToOCISpecV1Image(t *testing.T) {
-	cfg0, err := NewConfigFromBytes(ConfigByteFtArm64())
+	ctx := context.Background()
+	cfg0, err := NewConfigFromBytes(ctx, ConfigByteFtArm64())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,5 +66,72 @@ func TestToOCISpecV1Image(t *testing.T) {
 	assert.Equal(t, "linux", v1.OS)
 	assert.Equal(t, 0, len(v1.Config.Entrypoint))
 	assert.Equal(t, 1, len(v1.Config.Cmd))
+
+}
+
+func TestConfigSwitchMediaTypes(t *testing.T) {
+	ctx := context.Background()
+
+	cfg0, err := NewConfigFromBytes(ctx, ConfigByteFtArm64())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Fail
+	buFail1 := &OCIBlobUpload{
+		MediaType: "FAIL",
+	}
+	err = cfg0.SwitchMediaType(buFail1, []byte{})
+	if err == nil {
+		t.Fatal("expected error on unknown media type")
+	}
+	buFail1 = &OCIBlobUpload{
+		MediaType: "application/vnd.oci.image.config.v1+json",
+	}
+	err = cfg0.SwitchMediaType(buFail1, []byte{})
+	if err == nil {
+		t.Fatal("expected error missmatch media type")
+	}
+	// Docker
+	bu := &OCIBlobUpload{
+		Digest:    cfg0.Digest,
+		Data:      cfg0.Data,
+		MediaType: "application/vnd.docker.container.image.v1+json",
+	}
+	err = cfg0.SwitchMediaType(bu, cfg0.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "application/vnd.docker.container.image.v1+json", cfg0.MediaType)
+	err = cfg0.SwitchMediaType(bu, []byte(`{invalid json}`))
+	if err == nil {
+		t.Fatal("expected error on invalid json")
+	}
+	// Empty
+	bu2 := &OCIBlobUpload{
+		Digest:    cfg0.Digest,
+		Data:      cfg0.Data,
+		MediaType: "",
+	}
+	err = cfg0.SwitchMediaType(bu2, cfg0.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "application/vnd.oci.image.config.v1+json", cfg0.MediaType)
+	//
+	bu3 := &OCIBlobUpload{
+		Digest:    cfg0.Digest,
+		Data:      cfg0.Data,
+		MediaType: "application/vnd.oci.image.config.v1+json",
+	}
+	cfg0.MediaType = "application/vnd.oci.image.config.v1+json"
+	err = cfg0.SwitchMediaType(bu3, cfg0.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "application/vnd.oci.image.config.v1+json", cfg0.MediaType)
+	err = cfg0.SwitchMediaType(bu, []byte(`{invalid json}`))
+	if err == nil {
+		t.Fatal("expected error on invalid json")
+	}
 
 }

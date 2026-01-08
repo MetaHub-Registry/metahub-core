@@ -135,6 +135,7 @@ func Debug(l *logrus.Entry, span trace.Span, frmt string, a ...any) {
 		l.Debug(msg)
 	}
 }
+
 func DebugOK(l *logrus.Entry, span trace.Span, frmt string, a ...any) {
 	msg := fmt.Sprintf(frmt, a...)
 	if span != nil {

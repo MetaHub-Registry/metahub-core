@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -21,6 +22,8 @@ type Bootstrap struct {
 	EmptyAll      bool
 	PostTestSleep int
 	YAMLPrefix    string
+	SpanAdded     bool
+	Span          trace.Span
 }
 
 func NewBootstrap() Bootstrap {
@@ -30,6 +33,11 @@ func NewBootstrap() Bootstrap {
 		EmptyAll:      false,
 		PostTestSleep: 0,
 	}
+}
+
+func (bs *Bootstrap) AddSpan(span trace.Span) {
+	bs.Span = span
+	bs.SpanAdded = true
 }
 
 func (bs *Bootstrap) SetEmptyAll() {

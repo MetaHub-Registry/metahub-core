@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"strings"
 
 	gCtx "github.com/gorilla/context"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/go-chi/chi/v5"
@@ -25,7 +27,8 @@ var (
 )
 
 const (
-	debugLevel = 4
+	logSev         = "log.severity"
+	debugThreshold = 4
 )
 
 type Request struct {
@@ -48,32 +51,19 @@ type Request struct {
 	Method         string `json:"method"`
 	Scope          string `json:"scope"`
 	ContentType    string `json:"content-type"`
+	DebugThreshold int    `json:"debug_threshold"`
 	DebugLevel     int    `json:"debug_level"`
 }
 
-func NewRequest(ctx context.Context, r *http.Request) Request {
-	debug := 0
-	vD := gCtx.Get(r, "debug")
-	if vD != nil {
-		debug = vD.(int)
+func EmptyRequest(no, debLvl int) Request {
+	return Request{
+		Number:         no,
+		DebugThreshold: debugThreshold,
+		DebugLevel:     debLvl,
 	}
-	var span trace.Span
-	var l *logrus.Entry
-	if debug > debugLevel {
-		l, ctx, span = utils.InitLogging(ctx, tracer, map[string]any{
-			"package": pkgNameReq,
-			"func":    "NewRequest",
-		})
-		defer span.End()
-	}
-	utils.Debug(l, span, "Repo from URLParam: %s", chi.URLParam(r, "repo"))
+}
 
-	//dumpedReq, _ := httputil.DumpRequest(r, false)
-	//logrus.Errorf("Request:#### \n%s\n####", dumpedReq)
-	req := Request{
-		Number:     0,
-		DebugLevel: debug,
-	}
+func (req *Request) ExtractRepoName(span trace.Span, r *http.Request) (err error) {
 	parRepo, parImg, parRef := extractRepoName(r)
 	//utils.Debug(l, span, "repo:%s", parRepo)
 	var tag string
@@ -83,16 +73,30 @@ func NewRequest(ctx context.Context, r *http.Request) Request {
 	} else {
 		tag = parRef
 	}
+	req.Log(span, "Extracted from URL - repo:"+parRepo+" / image:"+parImg+" / reference:"+parRef+" / digest:"+dig)
+	repo := filepath.Join(parRepo, parImg)
+	req.Repo = repo
+	req.Tag = tag
+	req.Digest = dig
+	return nil
+}
+
+func (req *Request) ParsePagination(span trace.Span, r *http.Request) (err error) {
 	// ENable pagination (n=100&last=tag123)
 	nStr := r.URL.Query().Get("n")
 	if nStr != "" {
 		n, err := strconv.Atoi(nStr)
 		if err != nil {
 			logrus.Errorf("Failed to convert nStr: %s", err)
+			return err
 		}
 		req.Number = n
 	}
 	req.Last = r.FormValue("last")
+	return nil
+}
+
+func (req *Request) ParseProto(span trace.Span, r *http.Request) (err error) {
 	switch r.Proto {
 	case "HTTP/1.0":
 		req.Protocol = "http"
@@ -101,17 +105,49 @@ func NewRequest(ctx context.Context, r *http.Request) Request {
 	case "HTTP/2.0":
 		req.Protocol = "https"
 	}
+	return nil
+}
 
-	srvAddrVal := ctx.Value(http.LocalAddrContextKey)
-	srvAddr := ""
-	if srvAddrVal != nil {
-		srvAddr = srvAddrVal.(net.Addr).String()
-	} else {
-		logrus.Debugf("Not able to derive the server address from the context")
-		srvAddr = r.Host
+func (req Request) Log(span trace.Span, format string, a ...any) {
+	if span == nil {
+		return
 	}
-	req.Host = srvAddr
-	repo := filepath.Join(parRepo, parImg)
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String(logSev, "debug"),
+		attribute.String("log.message", fmt.Sprintf(format, a...)),
+	))
+}
+
+func (req *Request) ParseProfile(span trace.Span, r *http.Request) (profile, user string, err error) {
+	vU := gCtx.Get(r, "userName")
+	if vU != nil {
+		user = vU.(string)
+	}
+
+	vP := gCtx.Get(r, "profileName")
+	if vP != nil {
+		profile = vP.(string)
+		req.Log(span, "found profileName '%s' in request,", profile)
+	} else {
+		m, err := utils.ReSubMatchMap(userReg, user)
+		if err != nil {
+			logrus.Errorf("Failed to extract user from: '%s'", user)
+		}
+		if _, ok := m["user"]; !ok {
+			logrus.Errorf("Failed to extract user from: '%s'", user)
+		} else {
+			user = m["user"]
+			if prf, ok := m["profile"]; ok {
+				if prf != "" {
+					profile = prf
+				}
+			}
+		}
+	}
+	return profile, user, nil
+}
+
+func (req *Request) ParseAuth(span trace.Span, r *http.Request) (err error) {
 	user := "anonymous"
 	userRole := "user"
 	profile := "generic"
@@ -130,54 +166,23 @@ func NewRequest(ctx context.Context, r *http.Request) Request {
 			user = parts[0]
 		}
 	}
-	vUR := gCtx.Get(r, "userRole")
-	if vUR != nil {
-		userRole = vUR.(string)
-	} else {
-		utils.Debug(l, span, "No userRole found in context")
+
+	vPrf, vUser, _ := req.ParseProfile(span, r)
+	if vPrf != "" {
+		profile = vPrf
 	}
-	vU := gCtx.Get(r, "userName")
-	if vU != nil {
-		user = vU.(string)
+	if vUser != "" {
+		user = vUser
 	}
-	vP := gCtx.Get(r, "profileName")
-	if vP != nil {
-		profile = vP.(string)
-		/*
-			span.AddEvent("log", trace.WithAttributes(
-				attribute.String("log.severity", "debug"),
-				attribute.String("log.message", fmt.Sprintf("found profileName '%s' in request,", profile)),
-			))
-		*/
-	} else {
-		m, err := utils.ReSubMatchMap(userReg, user)
-		if err != nil {
-			logrus.Errorf("Failed to extract user from: %s", user)
-		}
-		if _, ok := m["user"]; !ok {
-			logrus.Errorf("Failed to extract user from: %s", user)
-		} else {
-			user = m["user"]
-			// FIXME: Why is the profileName not carried over?
-			if prf, ok := m["profile"]; ok {
-				if prf != "" {
-					profile = prf
-					/*
-						span.AddEvent("log", trace.WithAttributes(
-							attribute.String("log.severity", "debug"),
-							attribute.String("log.message", fmt.Sprintf("found profile '%s' encoded in username '%s'", profile, user)),
-						))
-					*/
-				}
-			}
-		}
-	}
-	/*
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", fmt.Sprintf("user:'%s' / profile:'%s'", user, profile)),
-		))
-	*/
+
+	req.User = user
+	req.UserRole = userRole
+	req.Profile = profile
+
+	return nil
+}
+
+func (req *Request) ParseRange(span trace.Span, r *http.Request) (err error) {
 	rnge := r.Header.Get("Content-Range")
 	req.RangeStartByte = -1
 	req.RangeBytes = -1
@@ -197,6 +202,50 @@ func NewRequest(ctx context.Context, r *http.Request) Request {
 			req.RangeBytes = int64(iB)
 		}
 	}
+	return nil
+}
+
+func NewRequest(ctx context.Context, r *http.Request) Request {
+	debug := 0
+	vD := gCtx.Get(r, "debug")
+	switch v := vD.(type) {
+	case string:
+		debug, _ = strconv.Atoi(v)
+	case int:
+		debug = v
+	}
+	var span trace.Span
+	var l *logrus.Entry
+	if debug > debugThreshold {
+		l, ctx, span = utils.InitLogging(ctx, tracer, map[string]any{
+			"package": pkgNameReq,
+			"func":    "NewRequest",
+		})
+		defer span.End()
+	}
+	utils.Debug(l, span, "Repo from URLParam: %s", chi.URLParam(r, "repo"))
+
+	//dumpedReq, _ := httputil.DumpRequest(r, false)
+	//logrus.Errorf("Request:#### \n%s\n####", dumpedReq)
+	req := EmptyRequest(0, debug)
+	req.Method = r.Method
+	req.Log(span, "Starting NewRequest processing for %s %s", r.Method, r.URL.Path)
+	req.ExtractRepoName(span, r)
+	req.ParsePagination(span, r)
+	req.ParseProto(span, r)
+
+	srvAddrVal := ctx.Value(http.LocalAddrContextKey)
+	srvAddr := ""
+	if srvAddrVal != nil {
+		srvAddr = srvAddrVal.(net.Addr).String()
+	} else {
+		logrus.Debugf("Not able to derive the server address from the context")
+		srvAddr = r.Host
+	}
+	req.Host = srvAddr
+
+	req.ParseRange(span, r)
+	req.ParseAuth(span, r)
 	uid := chi.URLParam(r, "uuid")
 	cntLenStr := r.Header.Get("Content-Length")
 	cntType := r.Header.Get("Content-Type")
@@ -214,16 +263,30 @@ func NewRequest(ctx context.Context, r *http.Request) Request {
 	default:
 		scope = "unknown"
 	}
+	if debug > debugThreshold {
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String(logSev, "debug"),
+			attribute.String("method", r.Method),
+			attribute.Int("content-length", cntLen),
+			attribute.String("content-type", cntType),
+			attribute.String("uuid", uid),
+			attribute.String("protocol", req.Protocol),
+			attribute.String("host", req.Host),
+			attribute.Int("number", req.Number),
+			attribute.String("last", req.Last),
+		))
+	}
+	uRole := gCtx.Get(r, "userRole")
+	if uRole != nil {
+		req.UserRole = uRole.(string)
+	}
+	uName := gCtx.Get(r, "userName")
+	if uName != nil {
+		req.User = uName.(string)
+	}
 	req.Method = r.Method
 	req.Scope = scope
-	req.Repo = repo
-	req.Tag = tag
-	req.Digest = dig
-	req.User = user
-	req.UserRole = userRole
-	req.Profile = profile
 	req.Length = cntLen
-	req.Range = rnge
 	req.UUID = uid
 	req.ContentType = cntType
 	return req

@@ -209,8 +209,7 @@ func (mag Magazine) ManifestGetByRequest(ctx context.Context, req types.Request)
 		return
 	}
 	if !found {
-		err = utils.NewError(l, span, "manifestData not found")
-		return
+		return m, found, nil
 	}
 	m, e = mag.Minio.ManifestGetObj(ctx, m.Digest)
 	if e != nil {
@@ -365,7 +364,7 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 	// 	return
 	// }
 	// // Remove orhpaned config
-	// e = mag.Configs_DeleteUnused(ctx)
+	// e = mag.ConfigsDeleteUnused(ctx)
 	// if e != nil {
 	// 	err = utils.ErrorHandler(l, span, e, "failed to delete unused config")
 	// 	return

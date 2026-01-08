@@ -156,7 +156,7 @@ func (n Neo) BlobGetByDigest(ctx context.Context, dig string) (b *types.Blob, fo
 			err = fmt.Errorf("BlobGetByDigest: failed to get ID")
 			return
 		}
-		logrus.Infof("BlobGetByDigest: got blob ID: %v", v)
+		utils.Debug(l, span, "BlobGetByDigest: got blob ID: %v", v)
 		b.ID = v.(int64)
 		v, ok = result.Record().Get("size")
 		if !ok {

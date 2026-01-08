@@ -129,23 +129,17 @@ func (mag Magazine) ManifestDataUpsertBackends(ctx context.Context, md *types.Ma
 		"func":    "ManifestDataUpsertBackends",
 	})
 	defer span.End()
-	// Make sure config is already in Minio
-	if _, e := mag.Minio.BlobStatObj(ctx, md.Config.Digest); e != nil {
-		if e.Error() == "The specified key does not exist." {
-			if err = mag.Minio.PutBlob(ctx, md.Config.Data, md.Config.Digest); err != nil {
-				return utils.ErrorHandler(l, span, err, "failed to PutConfig")
-			}
-		} else {
-			return utils.ErrorHandler(l, span, e, "failed to ConfigsStatObj")
-		}
+
+	if err := mag.Minio.EnsureBlobExists(ctx, md.Config.Digest, md.Config.Data); err != nil {
+		return utils.ErrorHandler(l, span, err, "failed to EnsureBlobExists")
 	}
 	// Make sure config is in Graph
-	if _, found, err := mag.Database.Config_GetByDigest(ctx, md.Config.Digest); err != nil {
-		return utils.ErrorHandler(l, span, err, "failed to Config_GetByDigest")
+	if _, found, err := mag.Database.ConfigGetByDigest(ctx, md.Config.Digest); err != nil {
+		return utils.ErrorHandler(l, span, err, "failed to ConfigGetByDigest")
 	} else if !found {
-		cfgID, err := mag.Database.Config_Insert(ctx, md.Config)
+		cfgID, err := mag.Database.ConfigInsert(ctx, md.Config)
 		if err != nil {
-			return utils.ErrorHandler(l, span, err, "failed to Config_Insert")
+			return utils.ErrorHandler(l, span, err, "failed to ConfigInsert")
 		}
 		md.Config.ID = cfgID
 	}
@@ -287,7 +281,7 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 		err = utils.ErrorHandler(l, span, e, "failed to mag.LinkManifestToConfig")
 		return
 	}
-	/// Extract Platform (Will be put in by Config_GetInsert_ByOCIManifest in case it is embedded)
+	/// Extract Platform (Will be put in by ConfigGetInsertByOCIManifest in case it is embedded)
 	if v1Img.Architecture == "" {
 		l.Infof("cfg: %v", cfg)
 		l.Fatal("architecture should not be empty")

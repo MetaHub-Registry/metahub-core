@@ -497,7 +497,7 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 	for k, v := range origMani.Config.Cfg.Config.Labels {
 		utils.Warn(l, span, "origMani.Config.Cfg.Config.Labels: %s=%s", k, v)
 		a := types.NewAnnotation(k, v)
-		err = mag.Database.Config_AddLabel(ctx, cfg.ID, a)
+		err = mag.Database.ConfigAddLabel(ctx, cfg.ID, a)
 		if err != nil {
 			return
 		}

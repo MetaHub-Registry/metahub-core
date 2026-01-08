@@ -34,6 +34,8 @@ func (r *Result) Add(key string, val interface{}) (err error) {
 			logrus.Warnf("  > %s: %s", key, str)
 			r.Strings[key] = str
 		}
+	case nil:
+		// do nothing
 	default:
 		return fmt.Errorf("unknown type for key '%s': %T", key, val)
 	}

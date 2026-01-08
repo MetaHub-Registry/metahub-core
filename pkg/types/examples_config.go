@@ -1,6 +1,8 @@
 package types
 
 import (
+	"context"
+
 	"github.com/opencontainers/go-digest"
 	imgspecv1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -55,25 +57,29 @@ func FT_zen3_ConfigByte() []byte {
 }
 
 func ConfigGlow150ARM64() Config {
-	cfg, _ := NewConfigFromBytes(ConfigDTGlow150ARM64.Data)
+	ctx := context.Background()
+	cfg, _ := NewConfigFromBytes(ctx, ConfigDTGlow150ARM64.Data)
 	cfg.MediaType = MediaTypeImageConfig
 	return cfg
 }
 func ConfigGlow151ARM64() Config {
-	cfg, _ := NewConfigFromBytes(ConfigDTGlow151ARM64.Data)
+	ctx := context.Background()
+	cfg, _ := NewConfigFromBytes(ctx, ConfigDTGlow151ARM64.Data)
 	cfg.MediaType = MediaTypeImageConfig
 	return cfg
 }
 
 func FT_zen3_Config() Config {
-	cfg, _ := NewConfigFromBytes(FT_zen3_ConfigByte())
+	ctx := context.Background()
+	cfg, _ := NewConfigFromBytes(ctx, FT_zen3_ConfigByte())
 	cfg.MediaType = MediaTypeImageConfig
 	return cfg
 }
 
 func ExmplConfigAmd64x83f() Config {
 	dt := ConfigByteFtArm64x83f()
-	cfg, _ := NewConfigFromBytes(dt.Data)
+	ctx := context.Background()
+	cfg, _ := NewConfigFromBytes(ctx, dt.Data)
 	cfg.Data = dt.Data
 	cfg.MediaType = MediaTypeImageConfig
 	return cfg
@@ -81,19 +87,22 @@ func ExmplConfigAmd64x83f() Config {
 
 func ConfigAmd64ZenConfig() Config {
 	dt := ConfigDTFeaturetestZenc259()
-	cfg, _ := NewConfigFromBytes(dt.Data)
+	ctx := context.Background()
+	cfg, _ := NewConfigFromBytes(ctx, dt.Data)
 	cfg.MediaType = MediaTypeImageConfig
 	return cfg
 }
 
 func newCofigFromDT(dt DataTuple) Config {
-	cfg, _ := NewConfigFromBytes(dt.Data)
+	ctx := context.Background()
+	cfg, _ := NewConfigFromBytes(ctx, dt.Data)
 	cfg.MediaType = MediaTypeImageConfig
 	return cfg
 }
 
 func FT_amd64_Config() Config {
-	cfg, _ := NewConfigFromBytes(FT_amd64_ConfigByte())
+	ctx := context.Background()
+	cfg, _ := NewConfigFromBytes(ctx, FT_amd64_ConfigByte())
 	cfg.MediaType = MediaTypeImageConfig
 	return cfg
 }
@@ -120,7 +129,8 @@ func FT_amd64_OCIManifest() OCIManifest {
 }
 
 func FT_arm_Config() Config {
-	cfg, _ := NewConfigFromBytes(ConfigByteFtArm64())
+	ctx := context.Background()
+	cfg, _ := NewConfigFromBytes(ctx, ConfigByteFtArm64())
 	cfg.MediaType = MediaTypeImageConfig
 	return cfg
 }

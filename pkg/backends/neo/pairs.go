@@ -82,7 +82,9 @@ func (n Neo) CollectionTagProfilePairPlatform_GetRegexFiltered(ctx context.Conte
 }
 
 func (n Neo) CollectionTagProfilePairPlatformGetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error) {
-	ctx, span := tracer.Start(ctx, "CollectionTagProfilePair_Platform_GetAll")
+	_, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "CollectionTagProfilePairPlatformGetAll",
+	})
 	defer span.End()
 	rel := types.RelationSuccess
 	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(Rule)-[%s]->(p:Platform)<-[:IS]-(m:Manifest)-[:CREATED]-(md:ManifestData)`, rel)
@@ -103,7 +105,9 @@ func (n Neo) CollectionTagProfilePairPlatformGetAll(ctx context.Context) (ctpps 
 }
 
 func (n Neo) CollectionTagProfilePairAnnotationGetRegexFiltered(ctx context.Context, repoRegex, tagRegex, profileRegex string) (ctpps []types.CollectionTagProfilePair, err error) {
-	ctx, span := tracer.Start(ctx, "CollectionTagProfilePair_Annotation_GetRegexFiltered")
+	_, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "CollectionTagProfilePairAnnotationGetRegexFiltered",
+	})
 	defer span.End()
 	q := `MATCH (prf:Profile)-[:USES]->(Rule)-[:TRUE]->(Annotation)<-[:HAS_ANNOTATION]-(:ManifestData)<-[:CREATED]-(m:Manifest)`
 	q += fmt.Sprintf(` WHERE prf.label =~ "%s"`, profileRegex)

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/opencontainers/go-digest"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
@@ -34,12 +36,12 @@ func TestConfigCRUD(t *testing.T) {
 	// Actual test
 	arm_cfg := types.FT_arm_Config()
 
-	_, found, err := db.Config_GetByDigest(ctx, arm_cfg.Digest)
+	_, found, err := db.ConfigGetByDigest(ctx, arm_cfg.Digest)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.False(t, found)
-	_, found, err = db.Config_GetByDigest(ctx, arm_cfg.Digest)
+	_, found, err = db.ConfigGetByDigest(ctx, arm_cfg.Digest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,17 +55,17 @@ func TestConfigCRUD(t *testing.T) {
 	amd64_ocimani := types.FT_amd64_OCIManifest()
 	amd64_up := types.FT_amd64_Upstream()
 	amd64_label := fmt.Sprintf("%s/%s:%s", amd64_up.Reg, amd64_up.Repo, amd64_up.Tag)
-	amd64_cfg_got, found, err := db.Config_GetInsert_ByOCIManifest(ctx, amd64_ocimani, amd64_label)
+	amd64_cfg_got, found, err := db.ConfigGetInsertByOCIManifest(ctx, amd64_ocimani, amd64_label)
 	assert.NoError(t, err)
 	assert.False(t, found)
 	assert.NotNil(t, amd64_cfg_got.ID)
-	amd64_cfg_got2, found, err := db.Config_GetInsert_ByOCIManifest(ctx, amd64_ocimani, amd64_label)
+	amd64_cfg_got2, found, err := db.ConfigGetInsertByOCIManifest(ctx, amd64_ocimani, amd64_label)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.True(t, found)
 	assert.Equal(t, amd64_cfg_got.ID, amd64_cfg_got2.ID)
-	amd64_cfg_got3, found, err := db.Config_GetByDigest(ctx, amd64_cfg_got.Digest)
+	amd64_cfg_got3, found, err := db.ConfigGetByDigest(ctx, amd64_cfg_got.Digest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +76,7 @@ func TestConfigCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, found, err = db.Config_GetByDigest(ctx, amd64_cfg_got.Digest)
+	_, found, err = db.ConfigGetByDigest(ctx, amd64_cfg_got.Digest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +121,19 @@ func TestConfigMediaType(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, found, err := db.Config_GetByID(ctx, cfgID)
+	cfg, found, err := db.ConfigGetByID(ctx, cfgID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("Config not found")
+	}
+	assert.Equal(t, "application/vnd.docker.container.image.v1+json", cfg.MediaType)
+	ociCfg := v1.Descriptor{
+		Digest:    digest.Digest(cfg.Digest),
+		MediaType: cfg.MediaType,
+	}
+	cfg, found, err = db.ConfigGetByCfgDescriptor(ctx, ociCfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +143,7 @@ func TestConfigMediaType(t *testing.T) {
 	assert.Equal(t, "application/vnd.docker.container.image.v1+json", cfg.MediaType)
 
 	// Get MediaType
-	mediaType, err := db.Config_GetMediaType_ByID(ctx, cfg.ID)
+	mediaType, err := db.ConfigGetMediaTypeByID(ctx, cfg.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

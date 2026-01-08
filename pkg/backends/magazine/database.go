@@ -36,7 +36,7 @@ type Database interface {
 	UpstreamGetByID(ctx context.Context, upID int64) (up types.Upstream, found bool, err error)
 	UpstreamGetByLayerDigest(ctx context.Context, dig string) (up types.Upstream, found bool, err error)
 	/********* Annotation/Labels *********/
-	Config_AddLabels(ctx context.Context, cfgID int64, a *types.Annotations) (err error)
+	ConfigAddLabels(ctx context.Context, cfgID int64, a *types.Annotations) (err error)
 	Manifest_AddAnnotations(ctx context.Context, maniID int64, as *types.Annotations) (err error)
 	Manifest_AddAnnotation(ctx context.Context, maniID int64, a *types.Annotation) (err error)
 	/********* Blob **********/
@@ -53,17 +53,17 @@ type Database interface {
 	GetLayersForManifestDataID(ctx context.Context, maniDataID int64) (layers []types.Layer, err error)
 	LayerGetByLayerAndManifestDataID(ctx context.Context, layerID, mdID int64) (lyr types.Layer, found bool, err error)
 	/********* Config **********/
-	Config_GetByDigest(ctx context.Context, dig string) (cfg types.Config, found bool, err error)
-	Config_GetByID(ctx context.Context, cfgID int64) (cfg types.Config, found bool, err error)
+	ConfigGetByDigest(ctx context.Context, dig string) (cfg types.Config, found bool, err error)
+	ConfigGetByID(ctx context.Context, cfgID int64) (cfg types.Config, found bool, err error)
 
-	//Config_GetByDigestAndType(ctx context.Context, dig, mediaType string) (cfg types.Config, found bool, err error)
+	//ConfigGetByDigestAndType(ctx context.Context, dig, mediaType string) (cfg types.Config, found bool, err error)
 	ConfigDeleteByDigest(ctx context.Context, dig string) error
-	Config_Insert(ctx context.Context, cfg types.Config) (cfgId int64, err error)
-	Config_GetInsert_ByOCIManifest(ctx context.Context, ociMani types.OCIManifest, label string) (cfg types.Config, found bool, err error)
-	Config_Update(ctx context.Context, cfgID int64, cfg types.Config) (err error)
-	Config_AddLabel(ctx context.Context, cfgID int64, a types.Annotation) (err error)
-	Configs_DeleteUnused(ctx context.Context) (err error)
-	Config_Get_ByManiDataID(ctx context.Context, mdID int64) (cfg types.Config, found bool, err error)
+	ConfigInsert(ctx context.Context, cfg types.Config) (cfgId int64, err error)
+	ConfigGetInsertByOCIManifest(ctx context.Context, ociMani types.OCIManifest, label string) (cfg types.Config, found bool, err error)
+	ConfigUpdate(ctx context.Context, cfgID int64, cfg types.Config) (err error)
+	ConfigAddLabel(ctx context.Context, cfgID int64, a types.Annotation) (err error)
+	ConfigsDeleteUnused(ctx context.Context) (err error)
+	ConfigGetByManiDataID(ctx context.Context, mdID int64) (cfg types.Config, found bool, err error)
 
 	OCIv1Config_GetInsertDescriptor(ctx context.Context, desc v1.Descriptor) (cfg types.Config, found bool, err error)
 	ConfigExists(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error)
@@ -103,6 +103,7 @@ type Database interface {
 	ManifestDataGetByDigest(ctx context.Context, dig string) (m types.ManifestData, found bool, err error)
 	ManifestDataLinkToUpstream(ctx context.Context, maniID, upID int64) (err error)
 	////// OS
+
 	ManifestGetOS(ctx context.Context, maniDataID int64) (os types.OS, found bool, err error)
 	ManifestUpsertOS(ctx context.Context, maniDataID int64, os types.OS) (err error)
 	/******* Manifest OCI Transformation ********/
@@ -149,14 +150,14 @@ type Database interface {
 	LinkManifestToManifestData(ctx context.Context, maniID, maniDataID int64, props ...string) error
 	LinkManifestDataToProfile(ctx context.Context, mdID, prfID int64, relation string) error
 	/****** BlobUpload ******/
-	BlobUpload_Create_ByOCI(ctx context.Context, i *types.OCIBlobUpload) (err error)
-	BlobUpload_Update_ByUUID(ctx context.Context, i *types.OCIBlobUpload) (err error)
-	BlobUpload_GetOCI_ByUUID(ctx context.Context, uuid string) (bu types.OCIBlobUpload, found bool, err error)
-	BlobUpload_Complete(ctx context.Context, i *types.OCIBlobUpload) (err error)
-	BlobUpload_DeleteUnused(ctx context.Context) (err error)
+	BlobUploadCreateByOCI(ctx context.Context, i *types.OCIBlobUpload) (err error)
+	BlobUploadUpdateByUUID(ctx context.Context, i *types.OCIBlobUpload) (err error)
+	BlobUploadGetOCIByUUID(ctx context.Context, uuid string) (bu types.OCIBlobUpload, found bool, err error)
+	BlobUploadComplete(ctx context.Context, i *types.OCIBlobUpload) (err error)
+	BlobUploadDeleteUnused(ctx context.Context) (err error)
 	/**** BlobChunks ****/
 	UploadChunk_Get_ByUUID(ctx context.Context, buID int64) (bcs []types.BlobChunk, err error)
-	UploadChunk_Create(ctx context.Context, bu *types.OCIBlobUpload, startByte, lenBytes int64) (bc types.BlobChunk, err error)
+	UploadChunkCreate(ctx context.Context, bu *types.OCIBlobUpload, startByte, lenBytes int64) (bc types.BlobChunk, err error)
 	BlobUploadGetByBlobDigest(ctx context.Context, dig string) (bu types.OCIBlobUpload, found bool, err error)
 	CreateBlobFromChunk(ctx context.Context, bu *types.OCIBlobUpload, chunk types.BlobChunk) (err error)
 	/****** Profiles ********/

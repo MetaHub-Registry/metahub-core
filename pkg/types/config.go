@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -8,8 +9,20 @@ import (
 
 	"github.com/opencontainers/go-digest"
 	imgspecv1 "github.com/opencontainers/image-spec/specs-go/v1"
+
+	"github.com/pkg/errors"
 	v1 "github.com/regclient/regclient/types/oci/v1"
 	"github.com/sirupsen/logrus"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+)
+
+const (
+	dockerConfigMediaType = "application/vnd.docker.container.image.v1+json"
+	ociConfigMediaType    = "application/vnd.oci.image.config.v1+json"
 )
 
 type Config struct {
@@ -23,15 +36,20 @@ type Config struct {
 	Labels     Annotations `json:"labels"`
 }
 
-func NewConfigFromBytes(data []byte) (res Config, err error) {
-	l := logrus.WithFields(logrus.Fields{
-		"packrusage": "types/config.go",
-		"func":       "NewConfigFromBytes",
+func NewConfigFromBytes(ctx context.Context, data []byte) (res Config, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "types",
+		"func":    "NewConfigFromBytes",
 	})
+	defer span.End()
+	_ = l
 	err = json.Unmarshal(data, &res.Cfg)
 	if err != nil {
 		l.Error(err)
 	}
+	span.AddEvent("data", trace.WithAttributes(
+		attribute.String("res", fmt.Sprintf("%v", res.Cfg))),
+	)
 	errs := []string{}
 	if res.Cfg.Architecture == "" {
 		errs = append(errs, "architecture")
@@ -41,10 +59,11 @@ func NewConfigFromBytes(data []byte) (res Config, err error) {
 	}
 	if len(errs) > 0 {
 		err = fmt.Errorf("config object has missing fields: %s", strings.Join(errs, ", "))
+		span.SetStatus(codes.Error, err.Error())
 		l.Error(err)
 		return
 	}
-	res.MediaType = "application/vnd.docker.container.image.v1+json"
+	res.MediaType = dockerConfigMediaType
 	res.Digest = digest.FromBytes(data).String()
 	res.Data = data
 	res.Size = int64(len(data))
@@ -82,7 +101,7 @@ func (c Config) WriteWWW(w http.ResponseWriter) {
 }
 
 func ConfigFromOCISpecV1Image(v1Img imgspecv1.Image) (res Config) {
-	res.MediaType = "application/vnd.docker.container.image.v1+json"
+	res.MediaType = dockerConfigMediaType
 	v1ImageConfig := v1.ImageConfig{
 		User:         v1Img.Config.User,
 		ExposedPorts: v1Img.Config.ExposedPorts,
@@ -186,4 +205,67 @@ func (c Config) ToOCISpecV1Image() (res imgspecv1.Image) {
 		},
 		History: h,
 	}
+}
+
+func (cfg *Config) SwitchMediaType(bu *OCIBlobUpload, buf []byte) (err error) {
+	if bu.MediaType != "" && cfg.MediaType != bu.MediaType {
+		msg := fmt.Sprintf("Mismatched media types: cfg='%s' / bu='%s'", cfg.MediaType, bu.MediaType)
+		logrus.Errorf(msg)
+		return fmt.Errorf(msg)
+
+	}
+	switch bu.MediaType {
+	case dockerConfigMediaType:
+		var imgCfg v1.Image
+		err = json.Unmarshal(buf, &imgCfg)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		cfg.Cfg.Config.Labels = imgCfg.Config.Labels
+		anno, err := NewAnnotationsFromMap(imgCfg.Config.Labels)
+		if err != nil {
+			logrus.Error(err)
+			return err
+		}
+		cfg.Labels = anno
+
+	case ociConfigMediaType:
+		var imgCfg v1.Image
+		err = json.Unmarshal(buf, &imgCfg)
+		if err != nil {
+			logrus.Error(err)
+			logrus.Errorf("Failed to unmarshal JSON: %s", string(buf))
+			return
+		}
+		anno, err := NewAnnotationsFromMap(imgCfg.Config.Labels)
+		if err != nil {
+			logrus.Error(err)
+			return err
+		}
+		cfg.Cfg.Config.Labels = imgCfg.Config.Labels
+		cfg.Labels = anno
+	case "":
+		// OCI conformance test does not set the media type
+		bu.MediaType = ociConfigMediaType
+		cfg.MediaType = bu.MediaType
+		var imgCfg v1.Image
+		err = json.Unmarshal(buf, &imgCfg)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		anno, err := NewAnnotationsFromMap(imgCfg.Config.Labels)
+		if err != nil {
+			logrus.Error(err)
+			return err
+		}
+		cfg.Cfg.Config.Labels = imgCfg.Config.Labels
+		cfg.Labels = anno
+	default:
+		err := errors.Errorf("unknown media type: %s", bu.MediaType)
+		logrus.Error(err)
+		return err
+	}
+	return nil
 }

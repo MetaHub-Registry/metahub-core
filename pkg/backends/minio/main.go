@@ -14,6 +14,7 @@ import (
 	"github.com/mitchellh/go-homedir"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"github.com/metahub-registry/metahub-core/pkg/tracing"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
@@ -46,16 +47,21 @@ func (m Minio) BucketConfigString() string {
 	res := []string{}
 	for k, v := range m.BucketConfig {
 		if v.Ssl {
-			res = append(res, fmt.Sprintf("%s: https://%s", k, v.ConsoleURL))
+			res = append(res, fmt.Sprintf("%s: https://%s / https://%s", k, v.ConsoleURL, v.URL))
 		} else {
-			res = append(res, fmt.Sprintf("%s: http://%s", k, v.ConsoleURL))
+			res = append(res, fmt.Sprintf("%s: http://%s / http://%s", k, v.ConsoleURL, v.URL))
 		}
 	}
 	return strings.Join(res, " | ")
 }
 
+type MinioConfig struct {
+	Tracing tracing.TraceCfg
+}
+
 type Minio struct {
 	BucketConfig map[string]BucketConfig
+	Config       MinioConfig
 }
 
 func NewMiniWithCfg(cfg map[string]BucketConfig) (m Minio, err error) {

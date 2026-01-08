@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
@@ -42,14 +43,14 @@ func (n Neo) Config_GetID_ByDigest(ctx context.Context, dig string) (cfgID int64
 	return
 }
 
-func (n Neo) Config_Get_ByManiDataID(ctx context.Context, mdID int64) (cfg types.Config, found bool, err error) {
+func (n Neo) ConfigGetByManiDataID(ctx context.Context, mdID int64) (cfg types.Config, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNameConfig,
 		"func":       "Config_Get_ByManiDataID",
 		"maniDataID": mdID,
 	})
 	defer span.End()
-	q := fmt.Sprintf(`MATCH (md:ManifestData)-[]->(n:Blob) WHERE id(md) = %d`, mdID)
+	q := fmt.Sprintf(`MATCH (md:ManifestData)-[rel]->(n:Blob) WHERE id(md) = %d AND n.type = "config"`, mdID)
 	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize`
 	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)
@@ -95,11 +96,28 @@ func (n Neo) Config_Get_ByID(ctx context.Context, cfgID int64) (cfg types.Config
 	}
 	return
 }
+func (n Neo) ConfigGetByCfgDescriptor(ctx context.Context, ociCfg v1.Descriptor) (cfg types.Config, found bool, err error) {
+	_, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameConfig,
+		"func":    "ConfigGetByCfgDescriptor",
+	})
+	_ = ctx
+	defer span.End()
+	dig := ociCfg.Digest.String()
+	cfg, found, err = n.ConfigGetByDigest(ctx, dig)
+	if err != nil {
+		return
+	}
+	if cfg.MediaType == "" {
+		cfg.MediaType = ociCfg.MediaType
+	}
+	return
+}
 
-func (n Neo) Config_GetByDigest(ctx context.Context, dig string) (cfg types.Config, found bool, err error) {
+func (n Neo) ConfigGetByDigest(ctx context.Context, dig string) (cfg types.Config, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameConfig,
-		"func":    "Config_GetByDigest",
+		"func":    "ConfigGetByDigest",
 	})
 	_ = ctx
 	defer span.End()
@@ -109,10 +127,10 @@ func (n Neo) Config_GetByDigest(ctx context.Context, dig string) (cfg types.Conf
 	}
 	shortDig := utils.ShortenDigest(dig)
 	span.SetAttributes(
-		attribute.Key("dig").String(utils.ShortenDigest(dig)),
+		attribute.Key("dig").String(shortDig),
 	)
 	q := fmt.Sprintf(`MATCH (n:Blob) WHERE n.digest = "%s"`, dig)
-	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize`
+	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize, n.mediaType AS configMediaType`
 	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
@@ -131,7 +149,7 @@ func (n Neo) Config_GetByDigest(ctx context.Context, dig string) (cfg types.Conf
 	return
 }
 
-func (n Neo) Config_GetByID(ctx context.Context, cfgID int64) (cfg types.Config, found bool, err error) {
+func (n Neo) ConfigGetByID(ctx context.Context, cfgID int64) (cfg types.Config, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameConfig,
 		"func":    "Config_GetByID",
@@ -143,7 +161,7 @@ func (n Neo) Config_GetByID(ctx context.Context, cfgID int64) (cfg types.Config,
 		attribute.Key("cfgID").Int64(cfgID),
 	)
 	q := fmt.Sprintf(`MATCH (n:Blob) WHERE id(n) = %d`, cfgID)
-	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize`
+	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize, n.mediaType AS configMediaType`
 	l.Debug(q)
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
@@ -224,14 +242,15 @@ func (n Neo) ConfigDeleteByDigest(ctx context.Context, dig string) (err error) {
 	return nil
 }
 
-func (n Neo) Config_GetInsert_ByOCIManifest(ctx context.Context, ociMani types.OCIManifest, label string) (cfg types.Config, found bool, err error) {
+func (n Neo) ConfigGetInsertByOCIManifest(ctx context.Context, ociMani types.OCIManifest, label string) (cfg types.Config, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package":   pkgNameConfig,
-		"func":      "Config_GetInsert_ByOCIManifest",
-		"cfgDigest": ociMani.Config.Digest.String(),
+		"package":      pkgNameConfig,
+		"func":         "ConfigGetInsertByOCIManifest",
+		"cfgDigest":    ociMani.Config.Digest.String(),
+		"cfgMediaType": ociMani.Config.MediaType,
 	})
 	shortDig := utils.ShortenDigest(ociMani.Config.Digest.String())
-	ctx, span := tracer.Start(ctx, "Config_GetInsert_ByOCIManifest")
+	ctx, span := tracer.Start(ctx, "ConfigGetInsertByOCIManifest")
 	defer span.End()
 	if ociMani.Config.Digest.String() == "" {
 		err = fmt.Errorf("config digest is emtpy")
@@ -240,7 +259,7 @@ func (n Neo) Config_GetInsert_ByOCIManifest(ctx context.Context, ociMani types.O
 		l.Error(err)
 		return
 	}
-	cfg, found, err = n.Config_GetByDigest(ctx, ociMani.Config.Digest.String())
+	cfg, found, err = n.ConfigGetByDigest(ctx, ociMani.Config.Digest.String())
 	if err != nil {
 		l.Error(err)
 		return
@@ -273,8 +292,8 @@ func (n Neo) createConfig(ctx context.Context, cfg types.Config) (cfgID int64, e
 	_, span := tracer.Start(ctx, "createConfig")
 	defer span.End()
 	label := utils.ShortenDigest(cfg.Digest)
-	q := `CREATE (n:Blob {digest: "%s", size: %d, label: "%s"}) RETURN id(n) AS ID`
-	query := fmt.Sprintf(q, cfg.Digest, cfg.Size, label)
+	q := `CREATE (n:Blob {digest: "%s", size: %d, label: "%s", type: "config", mediaType: "%s"}) RETURN id(n) AS ID`
+	query := fmt.Sprintf(q, cfg.Digest, cfg.Size, label, cfg.MediaType)
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
 		attribute.String("log.query", query),
@@ -294,17 +313,17 @@ func (n Neo) createConfig(ctx context.Context, cfg types.Config) (cfgID int64, e
 	return
 }
 
-func (n Neo) Config_Insert(ctx context.Context, cfg types.Config) (cfgID int64, err error) {
+func (n Neo) ConfigInsert(ctx context.Context, cfg types.Config) (cfgID int64, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameConfig,
-		"func":    "Config_Insert",
+		"func":    "ConfigInsert",
 	})
-	ctx, span := tracer.Start(ctx, "Config_Insert")
+	ctx, span := tracer.Start(ctx, "ConfigInsert")
 	defer span.End()
 	span.SetAttributes(
 		attribute.Key("digest").String(utils.ShortenDigest(cfg.Digest)),
 	)
-	gotCfg, success, err := n.Config_GetByDigest(ctx, cfg.Digest)
+	gotCfg, success, err := n.ConfigGetByDigest(ctx, cfg.Digest)
 	if err != nil {
 		return
 	}
@@ -347,12 +366,9 @@ func (n Neo) ConfigFromResult(ctx context.Context, res types.Result) (cfg types.
 	}
 	id, _ := res.GetInt64("configID")
 	dig, _ := res.GetStr("configDigest")
-	mt, _ := res.GetStr("configMediaType")
-	if mt == "" {
-		mt, err = n.Config_GetMediaType_ByID(ctx, id)
-		if err != nil {
-			return cfg, err
-		}
+	var mt string
+	if m, err := res.GetStr("configMediaType"); err == nil {
+		mt = m
 	}
 	size, _ := res.GetInt64("configSize")
 	cfg = types.Config{
@@ -364,19 +380,19 @@ func (n Neo) ConfigFromResult(ctx context.Context, res types.Result) (cfg types.
 	return
 }
 
-func (n Neo) Config_GetMediaType_ByID(ctx context.Context, cfgID int64) (mt string, err error) {
+func (n Neo) ConfigGetMediaTypeByID(ctx context.Context, cfgID int64) (mt string, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameConfig,
-		"func":    "Config_GetMediaType_ByID",
+		"func":    "ConfigGetMediaTypeByID",
 	})
-	ctx, span := tracer.Start(ctx, "Config_GetMediaType_ByID")
+	ctx, span := tracer.Start(ctx, "ConfigGetMediaTypeByID")
 	_ = ctx
 	defer span.End()
 	span.SetAttributes(
 		attribute.Key("cfgID").Int64(cfgID),
 	)
 	q := fmt.Sprintf(`MATCH (cfg:Blob)<-[cfgRel]-(md:ManifestData) WHERE id(cfg) = %d`, cfgID)
-	q += ` RETURN DISTINCT TYPE(cfgRel) AS configMediaType`
+	q += ` RETURN cfg.mediaType AS configMediaType`
 	res, found, err := n.QueryOne(q)
 	if err != nil {
 		logrus.Errorf("Failed to run query: %s", err)
@@ -403,7 +419,7 @@ func (n Neo) Config_GetMediaType_ByID(ctx context.Context, cfgID int64) (mt stri
 	return
 }
 
-func (n Neo) Config_Update(ctx context.Context, cfgID int64, cfg types.Config) (err error) {
+func (n Neo) ConfigUpdate(ctx context.Context, cfgID int64, cfg types.Config) (err error) {
 	q := `MATCH (cfg:Blob) WHERE id(cfg) = %d SET cfg.digest = "%s", cfg.size = %d`
 	query := fmt.Sprintf(q, cfgID, cfg.Digest, cfg.Size)
 	_, err = n.Execute(query)
@@ -433,7 +449,7 @@ func (n Neo) LinkConfigToAnnotation(ctx context.Context, cfgID, annotationID int
 	return
 }
 
-func (n Neo) Config_AddLabel(ctx context.Context, cfgID int64, a types.Annotation) (err error) {
+func (n Neo) ConfigAddLabel(ctx context.Context, cfgID int64, a types.Annotation) (err error) {
 	// GetAnnotationID
 	labelID, err := n.Label_GetInsert(ctx, a)
 	if err != nil {
@@ -446,7 +462,7 @@ func (n Neo) Config_AddLabel(ctx context.Context, cfgID int64, a types.Annotatio
 	query := fmt.Sprintf(q, cfgID, labelID)
 	_, err = n.Execute(query)
 	if err != nil {
-		logrus.Errorf("Config_AddLabel: %v", err)
+		logrus.Errorf("ConfigAddLabel: %v", err)
 		return
 	}
 	return
@@ -479,7 +495,7 @@ func (n Neo) ConfigFromRecord(ctx context.Context, res neo4j.Result) (c types.Co
 	}
 	mt := v.(string)
 	if mt == "" {
-		mt, err = n.Config_GetMediaType_ByID(ctx, c.ID)
+		mt, err = n.ConfigGetMediaTypeByID(ctx, c.ID)
 		if err != nil {
 			return c, err
 		}
@@ -488,12 +504,12 @@ func (n Neo) ConfigFromRecord(ctx context.Context, res neo4j.Result) (c types.Co
 	return
 }
 
-func (n Neo) Configs_DeleteUnused(ctx context.Context) (err error) {
+func (n Neo) ConfigsDeleteUnused(ctx context.Context) (err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameConfig,
-		"func":    "Configs_DeleteUnused",
+		"func":    "ConfigsDeleteUnused",
 	})
-	_, span := tracer.Start(ctx, "Configs_DeleteUnused")
+	_, span := tracer.Start(ctx, "ConfigsDeleteUnused")
 	defer span.End()
 	q := `MATCH (c:Blob) WHERE NOT (c)<-[]-(:ManifestData) DETACH DELETE c RETURN count(c) AS deletedConfigs`
 	span.AddEvent("log", trace.WithAttributes(

@@ -61,7 +61,7 @@ func (mag Magazine) ManipulationUnwind(ctx context.Context, maniID, maniDataID, 
 			// Check if mpRules all be matched by maniRules
 			if rls.SatisfiedBy(ctx, maniRls) {
 				utils.Warn(l, span, "ManipuLayer: %s (%d Layers) is satisfies by manifest ", mpl.Image.Label, len(mpl.Image.Layers))
-				cfg, found, err := mag.Database.Config_Get_ByManiDataID(ctx, mpl.Image.ID)
+				cfg, found, err := mag.Database.ConfigGetByManiDataID(ctx, mpl.Image.ID)
 				if err != nil {
 					return mplCfgDigest, utils.ErrorHandler(l, span, err, "Failed to get Config for ManifestData of ManipuLayer %d", mpl.Image.ID)
 				} else if !found {
