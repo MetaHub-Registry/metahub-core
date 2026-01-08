@@ -208,9 +208,11 @@ func (req *Request) ParseRange(span trace.Span, r *http.Request) (err error) {
 func NewRequest(ctx context.Context, r *http.Request) Request {
 	debug := 0
 	vD := gCtx.Get(r, "debug")
-	if vD != nil {
-		debug = vD.(int)
-
+	switch v := vD.(type) {
+	case string:
+		debug, _ = strconv.Atoi(v)
+	case int:
+		debug = v
 	}
 	var span trace.Span
 	var l *logrus.Entry

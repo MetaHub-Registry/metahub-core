@@ -162,7 +162,7 @@ func (n Neo) ConfigGetByID(ctx context.Context, cfgID int64) (cfg types.Config, 
 		attribute.Key("cfgID").Int64(cfgID),
 	)
 	q := fmt.Sprintf(`MATCH (n:Blob) WHERE id(n) = %d`, cfgID)
-	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize`
+	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize, n.mediaType AS configMediaType`
 	l.Debug(q)
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
