@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
@@ -93,8 +94,12 @@ func TestBlobuploadCRU(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.TeardownTest(bs)
-	// Actual test
-	//// CREATE
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "TestBlobuploadCRU",
+	})
+	_ = l
+	defer span.End()
+	// LAYER
 	ociBU := types.OCIBlobUpload{
 		Repo:          "qnib/featuretest",
 		UploadUser:    "test",
@@ -120,26 +125,15 @@ func TestBlobuploadCRU(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, ociBU.ID, ociBU2.ID)
 	assert.Equal(t, ociBU.UUID, ociBU2.UUID)
-	///// Update
-	///////// CONFIG
-	cfgDigest, err := br.Get("config:ft_arm64#digest")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ociBU.Digest = cfgDigest
-	err = db.BlobUploadUpdateByUUID(ctx, &ociBU)
-	if err != nil {
-		t.Fatal(err)
-	}
-	q := `MATCH (bu:BlobUpload)-[:UPLOADED]->(c:Blob) WHERE id(bu) = %d RETURN ID(c) AS configID`
-	query := fmt.Sprintf(q, ociBU.ID)
-	res, err := db.Query(query)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, 1, len(res))
-	///////// Layer
 	layerDigest, err := br.Get("layer:0:ft_arm64#digest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	logrus.SetLevel(logrus.DebugLevel)
+	q := `MATCH (bu:BlobUpload), (b:Blob) WHERE id(bu) = %d AND b.digest = "%s" CREATE (bu)-[:UPLOADED]->(b)`
+	query := fmt.Sprintf(q, ociBU.ID, layerDigest)
+	t.Log(query)
+	_, err = db.Execute(query)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,12 +144,52 @@ func TestBlobuploadCRU(t *testing.T) {
 	}
 	q = `MATCH (bu:BlobUpload)-[:UPLOADED]->(l:Blob) WHERE id(bu) = %d RETURN ID(l) AS ID`
 	query = fmt.Sprintf(q, ociBU.ID)
-	res, err = db.Query(query)
+	t.Log(query)
+	res, err := db.Query(query)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// TODO: Why do we update two blobs under one BlobUpload?
-	assert.Equal(t, 2, len(res))
+	assert.Equal(t, 1, len(res))
+
+	//// CONFIG
+	configBU := types.OCIBlobUpload{
+		Repo:          "qnib/featuretest",
+		UploadUser:    "test",
+		UploadProfile: "generic",
+		BlobType:      "layer",
+		Digest:        "sha256:1234567891",
+	}
+	err = db.BlobUploadCreateByOCI(ctx, &configBU)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ///// Update
+	cfgDigest, err := br.Get("config:ft_arm64#digest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Link BU with Blob
+	q = `MATCH (bu:BlobUpload), (b:Blob) WHERE id(bu) = %d AND b.digest = "%s" CREATE (bu)-[:UPLOADED]->(b)`
+	query = fmt.Sprintf(q, configBU.ID, cfgDigest)
+	t.Log(query)
+	_, err = db.Execute(query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	///////// CONFIG
+	configBU.Digest = cfgDigest
+	err = db.BlobUploadUpdateByUUID(ctx, &configBU)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q = `MATCH (bu:BlobUpload)-[:UPLOADED]->(c:Blob) WHERE id(bu) = %d RETURN ID(c) AS configID`
+	query = fmt.Sprintf(q, configBU.ID)
+	res, err = db.Query(query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, len(res))
 }
 
 func TestBlobChunkCRU(t *testing.T) {

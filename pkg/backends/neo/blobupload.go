@@ -70,7 +70,7 @@ func (n Neo) BlobUploadUpdateByUUID(ctx context.Context, i *types.OCIBlobUpload)
 	})
 	defer span.End()
 	_ = ctx
-	q := fmt.Sprintf(`MATCH (n:BlobChunk)<-[]-(bu:BlobUpload) WHERE n.digest = "%s" AND bu.uuid = "%s" RETURN DISTINCT LABELS(n) AS nodeType, ID(n) AS nodeID`, i.Digest, i.UUID.String())
+	q := fmt.Sprintf(`MATCH (n)<-[]-(bu:BlobUpload) WHERE (n:Blob OR n:BlobChunk) AND n.digest = "%s" AND bu.uuid = "%s" RETURN DISTINCT LABELS(n) AS nodeType, ID(n) AS nodeID`, i.Digest, i.UUID.String())
 	utils.Debug(l, span, q)
 	res, err := n.Query(q)
 	if err != nil {
