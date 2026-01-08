@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/opencontainers/go-digest"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
@@ -120,6 +122,18 @@ func TestConfigMediaType(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg, found, err := db.ConfigGetByID(ctx, cfgID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("Config not found")
+	}
+	assert.Equal(t, "application/vnd.docker.container.image.v1+json", cfg.MediaType)
+	ociCfg := v1.Descriptor{
+		Digest:    digest.Digest(cfg.Digest),
+		MediaType: cfg.MediaType,
+	}
+	cfg, found, err = db.ConfigGetByCfgDescriptor(ctx, ociCfg)
 	if err != nil {
 		t.Fatal(err)
 	}

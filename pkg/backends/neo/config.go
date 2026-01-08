@@ -110,7 +110,6 @@ func (n Neo) ConfigGetByCfgDescriptor(ctx context.Context, ociCfg v1.Descriptor)
 	}
 	if cfg.MediaType == "" {
 		cfg.MediaType = ociCfg.MediaType
-		// TODO: Update MediaType in Graph
 	}
 	return
 }
