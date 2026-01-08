@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
@@ -95,6 +96,24 @@ func (n Neo) Config_Get_ByID(ctx context.Context, cfgID int64) (cfg types.Config
 	}
 	return
 }
+func (n Neo) ConfigGetByCfgDescriptor(ctx context.Context, ociCfg v1.Descriptor) (cfg types.Config, found bool, err error) {
+	_, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameConfig,
+		"func":    "ConfigGetByCfgDescriptor",
+	})
+	_ = ctx
+	defer span.End()
+	dig := ociCfg.Digest.String()
+	cfg, found, err = n.ConfigGetByDigest(ctx, dig)
+	if err != nil {
+		return
+	}
+	if cfg.MediaType == "" {
+		cfg.MediaType = ociCfg.MediaType
+		// TODO: Update MediaType in Graph
+	}
+	return
+}
 
 func (n Neo) ConfigGetByDigest(ctx context.Context, dig string) (cfg types.Config, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
@@ -109,7 +128,7 @@ func (n Neo) ConfigGetByDigest(ctx context.Context, dig string) (cfg types.Confi
 	}
 	shortDig := utils.ShortenDigest(dig)
 	span.SetAttributes(
-		attribute.Key("dig").String(utils.ShortenDigest(dig)),
+		attribute.Key("dig").String(shortDig),
 	)
 	q := fmt.Sprintf(`MATCH (n:Blob) WHERE n.digest = "%s"`, dig)
 	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize, n.mediaType AS configMediaType`
@@ -226,9 +245,10 @@ func (n Neo) ConfigDeleteByDigest(ctx context.Context, dig string) (err error) {
 
 func (n Neo) ConfigGetInsertByOCIManifest(ctx context.Context, ociMani types.OCIManifest, label string) (cfg types.Config, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package":   pkgNameConfig,
-		"func":      "ConfigGetInsertByOCIManifest",
-		"cfgDigest": ociMani.Config.Digest.String(),
+		"package":      pkgNameConfig,
+		"func":         "ConfigGetInsertByOCIManifest",
+		"cfgDigest":    ociMani.Config.Digest.String(),
+		"cfgMediaType": ociMani.Config.MediaType,
 	})
 	shortDig := utils.ShortenDigest(ociMani.Config.Digest.String())
 	ctx, span := tracer.Start(ctx, "ConfigGetInsertByOCIManifest")
@@ -347,12 +367,9 @@ func (n Neo) ConfigFromResult(ctx context.Context, res types.Result) (cfg types.
 	}
 	id, _ := res.GetInt64("configID")
 	dig, _ := res.GetStr("configDigest")
-	mt, _ := res.GetStr("configMediaType")
-	if mt == "" {
-		mt, err = n.ConfigGetMediaTypeByID(ctx, id)
-		if err != nil {
-			return cfg, err
-		}
+	var mt string
+	if m, err := res.GetStr("configMediaType"); err == nil {
+		mt = m
 	}
 	size, _ := res.GetInt64("configSize")
 	cfg = types.Config{

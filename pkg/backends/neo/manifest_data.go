@@ -1384,8 +1384,7 @@ func (n Neo) ManifestDataFromResult(ctx context.Context, res types.Result, prfs 
 		return
 	}
 	if !cfgFound {
-		err = utils.NewError(l, span, "no config found for manifest data")
-		return
+		utils.Debug(l, span, "no config found for manifestData (might already have been deleted)")
 	}
 	lyrs, e := n.GetLayersForManifestDataID(ctx, maniID)
 	if e != nil {
