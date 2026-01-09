@@ -18,12 +18,15 @@ const (
 	pkgNameBlob = "neo/blob.go"
 )
 
-// CreateBlobFromChunk(ctx context.Context, bu *types.OCIBlobUpload, chunk types.BlobChunk) (err error)
 func (n Neo) CreateBlobFromChunk(ctx context.Context, bu *types.OCIBlobUpload, chunk types.BlobChunk) (err error) {
 	_, span := tracer.Start(ctx, "CreateBlobFromChunk")
 	defer span.End()
 	// Create Blob node with same digest as chunk
-	q := fmt.Sprintf(`CREATE (b:Blob {digest: "%s", label: "%s", created_at: TIMESTAMP(), size: %d})`, bu.Digest, utils.ShortenDigest(bu.Digest), chunk.Bytes)
+	dig := chunk.Digest
+	if dig == "" {
+		dig = bu.Digest
+	}
+	q := fmt.Sprintf(`CREATE (b:Blob {digest: "%s", label: "%s", created_at: TIMESTAMP(), size: %d})`, dig, utils.ShortenDigest(dig), chunk.Bytes)
 	q = q + ` RETURN ID(b) AS blobID`
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("query", q),
@@ -172,4 +175,41 @@ func (n Neo) BlobGetByDigest(ctx context.Context, dig string) (b *types.Blob, fo
 		b.Digest = v.(string)
 	}
 	return
+}
+
+func (n Neo) BlobDeleteByDigest(ctx context.Context, dig string) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameBlob,
+		"func":    "BlobDeleteByDigest",
+		"digest":  utils.ShortenDigest(dig),
+	})
+	defer span.End()
+	_ = l
+	// b, found, err := n.BlobGetByDigest(ctx, dig)
+	// if err != nil {
+	// 	return utils.ErrorHandler(l, span, err, "failed to get blob by digest")
+	// }
+	// if !found {
+	// 	err = utils.NewError(l, span, "BlobDeleteByDigest: blob with digest %s not found", dig)
+	// 	return err
+	// }
+	q := `MATCH (n:Blob) WHERE n.digest = "%s" DETACH DELETE n RETURN id(n) AS deletedID`
+	query := fmt.Sprintf(q, dig)
+	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close()
+	res, err := session.Run(query, map[string]interface{}{})
+	if err != nil {
+		logrus.Errorf("Failed to run query: %s", err)
+		return
+	}
+	if res.Next() {
+		delIdInt := res.Record().Values[0]
+		delId, ok := delIdInt.(int64)
+		if !ok {
+			err = utils.NewError(l, span, "Failed to convert deletedID to int64: %v", delIdInt)
+			return err
+		}
+		utils.Debug(l, span, "Deleted Blob ID: %v", delId)
+	}
+	return err
 }

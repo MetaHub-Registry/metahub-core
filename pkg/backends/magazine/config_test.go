@@ -37,7 +37,7 @@ func TestConfigStoreConfigUpload(t *testing.T) {
 	}
 	br, err := mag.SetupTest(ctx, bs)
 	if err != nil {
-		TeardownTest(bs)
+		TeardownTest(bs, br)
 		t.Fatal(err)
 	}
 	for _, l := range br.ToLines() {
@@ -45,7 +45,7 @@ func TestConfigStoreConfigUpload(t *testing.T) {
 			t.Log(l)
 		}
 	}
-	defer TeardownTest(bs)
+	defer TeardownTest(bs, br)
 	// Tests
 	buf := []byte(`{
 		"author": "dnIc4tc80O5Lp598",
@@ -125,7 +125,7 @@ func TestConfigBlobGetByHTTPRequest(t *testing.T) {
 	}
 	br, err := mag.SetupTest(ctx, bs)
 	if err != nil {
-		TeardownTest(bs)
+		TeardownTest(bs, br)
 		t.Fatal(err)
 	}
 	for _, l := range br.ToLines() {
@@ -133,7 +133,7 @@ func TestConfigBlobGetByHTTPRequest(t *testing.T) {
 			t.Log(l)
 		}
 	}
-	defer TeardownTest(bs)
+	defer TeardownTest(bs, br)
 	token, err := br.Get("user:test#bearer")
 	if err != nil {
 		t.Fatal(err)

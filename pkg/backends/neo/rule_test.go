@@ -19,10 +19,10 @@ func TestRuleGetCreate(t *testing.T) {
 	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	r := types.Rule{
 		Op:    "eq",
 		Type:  "anno",
@@ -83,7 +83,7 @@ func TestRuleEvalAnnotationRule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual Test
 	_, found, err := db.RuleGetByLabel(ctx, "target:platform")
 	if err != nil {
@@ -132,7 +132,7 @@ func TestRuleEvalAnnotationRuleNoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual Test
 	_, found, err := db.RuleGetByLabel(ctx, "target:platform")
 	if err != nil {
@@ -184,9 +184,9 @@ func TestRuleEvalAll(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual Test
-	err = db.Rule_EvalAll(ctx)
+	err = db.RuleEvalAll(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

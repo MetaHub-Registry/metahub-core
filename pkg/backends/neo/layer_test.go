@@ -25,7 +25,7 @@ func TestLayerCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	arm_l0 := types.FT_arm_Layer0Reference()
 	_, found, err := db.LayerGetByDigest(ctx, arm_l0.Digest.String())
@@ -108,11 +108,11 @@ func TestLayerGetUpstream(t *testing.T) {
 		}
 	}
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	lId, e := br.GetInt64("layer:0:ft_amd64#id")
 	if e != nil {
@@ -177,11 +177,11 @@ func TestLayerDescriptorGetInsert(t *testing.T) {
 		}
 	}
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	desc := v1.Descriptor{
 		MediaType: "application/vnd.oci.image.layer.v1.tar+gzip",

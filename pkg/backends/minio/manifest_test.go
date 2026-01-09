@@ -15,7 +15,7 @@ func TestManifestFromBlob(t *testing.T) {
 	bs.SetEmptyAll()
 	// TODO: Bootstrap config correctly
 	bs.AddBootstrap("config:ft_amd64_b109")
-	_, err := min.SetupTest(bs)
+	_, err := min.SetupTest(ctx, bs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,13 +33,13 @@ func TestManifestFromBlob(t *testing.T) {
 func TestManifestPutStatRemove(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
-	_, err := min.SetupTest(bs)
+	ctx := context.Background()
+	_, err := min.SetupTest(ctx, bs)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer min.PreTearDown(bs)
 	// Test
-	ctx := context.Background()
 	err = min.ManifestsPutObj(ctx, featureTestGenericManiDigest, []byte(featureTestGenericMani))
 	if err != nil {
 		t.Fatal(err)

@@ -23,10 +23,10 @@ func TestExprSimple(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	///// Eval all rules first
-	err = db.Rule_EvalAll(ctx)
+	err = db.RuleEvalAll(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

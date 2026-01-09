@@ -25,7 +25,7 @@ func TestManifestListCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 }
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	ml_arm64 := types.FT_arm_Manifestlist()
 	_, found, err := db.GetManifestList(digest.Digest(ml_arm64.Digest), ml_arm64.MediaType, int(ml_arm64.Size))
@@ -92,7 +92,7 @@ func TestManifestListByRequestSeedNeoSkylake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 }
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual Test
 	//// Generic
 	req := types.Request{

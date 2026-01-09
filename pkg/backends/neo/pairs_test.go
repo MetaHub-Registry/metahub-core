@@ -39,10 +39,10 @@ package neo
 // 		}
 // 	}
 // 	if err != nil {
-// 		db.TeardownTest(bs)
+// 		db.TeardownTest(bs, br)
 // 		t.Fatal(err)
 // 	}
-// 	defer db.TeardownTest(bs)
+// 	defer db.TeardownTest(bs, br)
 // 	// Actual test
 // 	ctpps, err := db.CollectionTagProfilePairGetAll(ctx)
 // 	if err != nil {

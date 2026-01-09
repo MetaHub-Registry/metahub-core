@@ -16,9 +16,9 @@ func (mag Magazine) ComputeAllManifests(ctx context.Context) (err error) {
 		"func":    "ComputeAllManifests",
 	})
 	defer span.End()
-	e := mag.Database.Rule_EvalAll(ctx)
+	e := mag.Database.RuleEvalAll(ctx)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "while Rule_EvalAll")
+		err = utils.ErrorHandler(l, span, e, "while RuleEvalAll")
 		return
 	}
 	// 	1. Get all manifest(standins)
@@ -30,7 +30,7 @@ func (mag Magazine) ComputeAllManifests(ctx context.Context) (err error) {
 	for _, mani := range manis {
 		utils.Info(l, span, ">> Manifest: %s", mani.Upstream.String())
 		// Get profiles connected to this manifest?
-		prfs, e := mag.Database.Profile_FromManifestID(ctx, mani.ID)
+		prfs, e := mag.Database.ProfileFromManifestID(ctx, mani.ID)
 		if e != nil {
 			return utils.ErrorHandler(l, span, e, "while getting profiles for manifest %d", mani.ID)
 		}
@@ -79,7 +79,7 @@ func (mag Magazine) ComputeManifestForProfile(ctx context.Context, mani types.Ma
 		"package": pkgNameCompMani,
 		"func":    "ComputeManifestForProfile",
 		"mani":    mani.ID,
-		"name":    mani.Upstream.String(),
+		"name":    mani.Upstream.ShortString(),
 		"prfID":   prf.ID,
 	})
 	defer span.End()
@@ -98,6 +98,10 @@ func (mag Magazine) ComputeManifestForProfile(ctx context.Context, mani types.Ma
 			utils.NewError(l, span, "  >> No profile found, skipping")
 			continue
 		}
+		for _, lyr := range maniData.Layers {
+			utils.Debug(l, span, "   >> Layer: %s: %s", utils.ShortenDigest(lyr.Digest), lyr.MediaType)
+		}
+		utils.Debug(l, span, "Config: %v", maniData.Config)
 		ociManiDataID, e := mag.CreateOCIv1ForProfile(ctx, mani, maniData, prf)
 		if e != nil {
 			return utils.ErrorHandler(l, span, e, "while in ComputeManifest")

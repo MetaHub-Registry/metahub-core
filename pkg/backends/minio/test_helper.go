@@ -207,10 +207,10 @@ func (m Minio) Setup_Layer(br *utils.BootstrapResult, layer types.Layer, b strin
 	return
 }
 
-func (m Minio) SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
+func (m Minio) SetupTest(ctx context.Context, bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 	br = utils.NewBootstrapResult()
 	for _, b := range bs.Bootstraps {
-		err = m.BootstrapTestWithBR(bs, &br, b)
+		err = m.BootstrapTestWithBR(ctx, bs, &br, b)
 		if err != nil {
 			err = errors.Wrapf(err, whileFmrt, b)
 			return
@@ -219,60 +219,65 @@ func (m Minio) SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err erro
 	return
 }
 
-func (m Minio) SetupLayer(br *utils.BootstrapResult, ly types.Layer, bootstrapstring string) (err error) {
-	ctx := context.Background()
+func (m Minio) SetupLayer(ctx context.Context, br *utils.BootstrapResult, ly types.Layer, bootstrapstring string) (err error) {
 	err = m.BlobPutObj(ctx, ly.Digest, ly.Data)
 	return
 }
 
-func (m Minio) BootstrapLayer(bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
+func (m Minio) BootstrapLayer(ctx context.Context, bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func":  "BootstrapLayer",
+		"layer": b,
+	})
+	_ = l
+	defer span.End()
 	switch b {
 	case "0:glow150arm64_2660":
-		if err = m.SetupLayer(br, types.Layer0Glow150ARM64, b); err != nil {
+		if err = m.SetupLayer(ctx, br, types.Layer0Glow150ARM64, b); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "1:glow150arm64_3571":
-		if err = m.SetupLayer(br, types.Layer1Glow150ARM64, b); err != nil {
+		if err = m.SetupLayer(ctx, br, types.Layer1Glow150ARM64, b); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "2:glow150arm64_d54e":
-		if err = m.SetupLayer(br, types.Layer2Glow150ARM64, b); err != nil {
+		if err = m.SetupLayer(ctx, br, types.Layer2Glow150ARM64, b); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "0:glow151arm64_7c57":
-		if err = m.SetupLayer(br, types.Layer0Glow151ARM64, b); err != nil {
+		if err = m.SetupLayer(ctx, br, types.Layer0Glow151ARM64, b); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "1:glow151arm64_8a17":
-		if err = m.SetupLayer(br, types.Layer1Glow151ARM64, b); err != nil {
+		if err = m.SetupLayer(ctx, br, types.Layer1Glow151ARM64, b); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "2:glow151arm64_a24c":
-		if err = m.SetupLayer(br, types.Layer2Glow151ARM64, b); err != nil {
+		if err = m.SetupLayer(ctx, br, types.Layer2Glow151ARM64, b); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "0:ft_arm64":
-		if err = m.SetupLayer(br, types.FT_arm64_Layer0(), b); err != nil {
+		if err = m.SetupLayer(ctx, br, types.FT_arm64_Layer0(), b); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "1:ft_zen_4c85":
-		if err = m.SetupLayer(br, types.LayerFeaturetestL4c85(), b); err != nil {
+		if err = m.SetupLayer(ctx, br, types.LayerFeaturetestL4c85(), b); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "0:ft_zen_f144":
-		if err = m.SetupLayer(br, types.LayerFeaturetestLf144(), b); err != nil {
+		if err = m.SetupLayer(ctx, br, types.LayerFeaturetestLf144(), b); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "1:ft_amd64":
-		if err = m.SetupLayer(br, types.FT_amd64_Layer1(), b); err != nil {
+		if err = m.SetupLayer(ctx, br, types.FT_amd64_Layer1(), b); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "0:ft_amd64":
-		if err = m.SetupLayer(br, types.FT_amd64_Layer0(), b); err != nil {
+		if err = m.SetupLayer(ctx, br, types.FT_amd64_Layer0(), b); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "1:ft_arm64":
-		if err = m.SetupLayer(br, types.FT_arm64_Layer1(), b); err != nil {
+		if err = m.SetupLayer(ctx, br, types.FT_arm64_Layer1(), b); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	default:
@@ -281,15 +286,14 @@ func (m Minio) BootstrapLayer(bs utils.Bootstrap, br *utils.BootstrapResult, b s
 	return nil
 }
 
-func (m Minio) BootstrapTestWithBR(bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
-	ctx := context.Background()
+func (m Minio) BootstrapTestWithBR(ctx context.Context, bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
 	bsType, bsName, found := strings.Cut(b, ":")
 	if !found {
 		return errors.Errorf("invalid bootstrap %s", b)
 	}
 	switch bsType {
 	case "layer":
-		if err = m.BootstrapLayer(bs, br, bsName); err != nil {
+		if err = m.BootstrapLayer(ctx, bs, br, bsName); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 

@@ -7,7 +7,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func TestGgetManiData(t *testing.T) {
+func TestGetManiData(t *testing.T) {
 	ctx := context.Background()
 	l, c, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"func": "TestGenerateOCIv1ConfigPrep.Setup",
@@ -44,11 +44,11 @@ func TestGgetManiData(t *testing.T) {
 	}
 	if err != nil {
 		t.Logf("Error while SetupTest: %v", err)
-		TeardownTest(bs)
+		TeardownTest(bs, br)
 		t.Fatal(err)
 
 	}
-	defer TeardownTest(bs)
+	defer TeardownTest(bs, br)
 	span.End()
 	///
 	_, newCtx, newSpan := utils.InitLogging(context.Background(), tracer, map[string]any{

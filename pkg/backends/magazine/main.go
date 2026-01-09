@@ -132,7 +132,7 @@ func (mag Magazine) setupBootStrap(ctx context.Context, bs utils.Bootstrap, br *
 	switch b {
 	// Users/Profile/Platforms
 	case "users":
-		err = sqlite.Setup_Users(&mag.UserManagement, br)
+		err = sqlite.Setup_Users(ctx, &mag.UserManagement, br)
 		if err != nil {
 			err = errors.Wrap(err, "Setup_Users")
 			return
@@ -155,7 +155,7 @@ func (mag Magazine) setupBootStrap(ctx context.Context, bs utils.Bootstrap, br *
 			err = errors.Wrap(err, "Setup_Users in Database")
 			return
 		}
-		err = mag.Minio.BootstrapTestWithBR(bs, br, b)
+		err = mag.Minio.BootstrapTestWithBR(ctx, bs, br, b)
 		if err != nil {
 			err = errors.Wrap(err, "Setup_Users in Minio")
 			return
@@ -165,7 +165,11 @@ func (mag Magazine) setupBootStrap(ctx context.Context, bs utils.Bootstrap, br *
 }
 
 func (mag Magazine) SetupTest(ctx context.Context, bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
-	logrus.Info("> SetupTest")
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "SetupTest",
+	})
+	_ = l
+	defer span.End()
 	//return
 	br = utils.NewBootstrapResult()
 	for _, b := range bs.Bootstraps {

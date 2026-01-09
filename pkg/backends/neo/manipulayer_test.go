@@ -38,10 +38,10 @@ func TestManipuLayerCheckLinks(t *testing.T) {
 		}
 	}
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 
 	ruleLinuxID, err := br.GetInt64("rule:os:linux#id")
@@ -111,10 +111,10 @@ func TestManipuLayerFromConfigYAML(t *testing.T) {
 		}
 	}
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	cfgMp, err := config.LoadManipulation(ctx, filepath.Join("../../../misc/yaml", "manipulations/layer/glow/1.5.0-arm64.yaml"))
 	if err != nil {

@@ -32,7 +32,7 @@ func TestProfileCRUD(t *testing.T) {
 		t.Fatal(err)
 
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	pFoo := types.Profile{
 		Name: "foo",
@@ -140,13 +140,13 @@ func TestProfileFromManifestID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	maniID, err := br.GetInt64("manifest:ft_arm64#id")
 	if err != nil {
 		t.Fatal(err)
 	}
-	prfs, err := db.Profile_FromManifestID(ctx, maniID)
+	prfs, err := db.ProfileFromManifestID(ctx, maniID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestProfileFromManifestID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prfs_AMD, err := db.Profile_FromManifestID(ctx, maniID_AMD)
+	prfs_AMD, err := db.ProfileFromManifestID(ctx, maniID_AMD)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestProfileFromManifestID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prfs_zen3, err := db.Profile_FromManifestID(ctx, maniID_zen3)
+	prfs_zen3, err := db.ProfileFromManifestID(ctx, maniID_zen3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestProfileFromManifestID(t *testing.T) {
 		t.Fatal("Expected 2 profile, got", len(prfs_zen3))
 	}
 	// Rules
-	if e := db.Rule_EvalAll(ctx); e != nil {
+	if e := db.RuleEvalAll(ctx); e != nil {
 		t.Fatal(e)
 	}
 	prfZen3 := prfs_zen3[0]
@@ -211,12 +211,12 @@ func TestProfileFromManifestIDZen3(t *testing.T) {
 	_ = br
 	if err != nil {
 		t.Log(err)
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
-	err = db.Rule_EvalAll(ctx)
+	err = db.RuleEvalAll(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestProfileFromManifestIDZen3(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prfs_zen3, err := db.Profile_FromManifestID(ctx, maniID_zen3)
+	prfs_zen3, err := db.ProfileFromManifestID(ctx, maniID_zen3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +263,7 @@ func TestFilterReadFilterConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	pGlow, err := config.LoadProfile(ctx, filepath.Join("../../../misc/yaml", "profiles/glow/1.5.0-arm64.yaml"))
 	if err != nil {
@@ -327,7 +327,7 @@ func TestProfileFromManifestIDManipulations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Connect Collection/Tag
 	maniAmd64ID, err := br.GetInt64("manifest:ft_amd64#id")
 	if err != nil {

@@ -37,10 +37,10 @@ func TestManipulationCRUD(t *testing.T) {
 		}
 	}
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	mpGlow := types.ManipulationGlow150
 	/// Check if manipulation exists
@@ -135,12 +135,12 @@ func TestUpstreamGetByManipuLayerID(t *testing.T) {
 		}
 	}
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Eval RUles
-	if err := db.Rule_EvalAll(ctx); err != nil {
+	if err := db.RuleEvalAll(ctx); err != nil {
 		t.Fatal(err)
 	}
 	// Actual tests
@@ -213,10 +213,10 @@ func TestManipulationFromConfigManipulation(t *testing.T) {
 		}
 	}
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	//
 	cfgMp := config.Manipulation{
 		Label: "glow150arm64",
@@ -257,10 +257,10 @@ func TestManipulationFromYAML(t *testing.T) {
 		}
 	}
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	cfgMp, err := config.LoadManipulation(ctx, filepath.Join("../../../misc/yaml", "manipulations/layer/glow/1.5.0-arm64.yaml"))
 	if err != nil {

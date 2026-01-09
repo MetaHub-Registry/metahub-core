@@ -28,11 +28,11 @@ func (mag Magazine) LinkManifestToManifestData(ctx context.Context, maniID, mani
 }
 
 func (mag Magazine) NeoLinkManifestDataToConfig(ctx context.Context, maniID int64, cfg types.Config) (err error) {
-	return mag.Database.ManifestData_LinkToConfig(ctx, maniID, cfg)
+	return mag.Database.ManifestDataLinkToConfig(ctx, maniID, cfg)
 }
 
 func (mag Magazine) NeoLinkManifestToLayer(ctx context.Context, maniID int64, l types.Layer, idx int) (err error) {
-	return mag.Database.ManifestData_LinkToLayer(ctx, maniID, l, idx)
+	return mag.Database.ManifestDataLinkToLayer(ctx, maniID, l, idx)
 }
 
 func (mag Magazine) NeoLinkManifestToPlatform(ctx context.Context, maniID, platID int64) (err error) {
@@ -250,7 +250,7 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 		err = utils.ErrorHandler(l, span, e, "failed to put Manifest into Minio")
 		return
 	}
-	col, _, e := mag.Database.Collection_GetCreate_ByRepoTag(ctx, req.Repo, req.Tag)
+	col, _, e := mag.Database.CollectionGetCreateByRepoTag(ctx, req.Repo, req.Tag)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to get Collection from Database")
 		return

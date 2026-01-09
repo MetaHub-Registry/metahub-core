@@ -24,10 +24,10 @@ func TestConfigCRUD(t *testing.T) {
 	}
 	br, err := SetupTest(ctx, bs)
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	for _, l := range br.ToLines() {
 		if debug > 0 {
 			t.Log(l)
@@ -112,10 +112,10 @@ func TestConfigMediaType(t *testing.T) {
 	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	cfgID, err := br.GetInt64("config:ft_arm64#id")
 	if err != nil {

@@ -543,12 +543,12 @@ func (n Neo) ManifestGetIDByManifestDataID(ctx context.Context, maniDataID int64
 	}
 }
 
-func (n Neo) Manifest_GetByID(ctx context.Context, maniID int64) (mani types.Manifest, found bool, err error) {
+func (n Neo) ManifestGetByID(ctx context.Context, maniID int64) (mani types.Manifest, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameMani,
-		"func":    "Manifest_GetByID",
+		"func":    "ManifestGetByID",
 	})
-	ctx, span := tracer.Start(ctx, "Manifest_GetByID")
+	ctx, span := tracer.Start(ctx, "ManifestGetByID")
 	defer span.End()
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
@@ -574,12 +574,12 @@ func (n Neo) Manifest_GetByID(ctx context.Context, maniID int64) (mani types.Man
 	return mani, false, nil
 }
 
-func (n Neo) Manifest_GetByID_WithProfile(ctx context.Context, maniID, prfID int64) (mani types.Manifest, found bool, err error) {
+func (n Neo) ManifestGetByIDWithProfile(ctx context.Context, maniID, prfID int64) (mani types.Manifest, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameMani,
-		"func":    "Manifest_GetByID_WithProfile",
+		"func":    "ManifestGetByIDWithProfile",
 	})
-	ctx, span := tracer.Start(ctx, "Manifest_GetByID_WithProfile")
+	ctx, span := tracer.Start(ctx, "ManifestGetByIDWithProfile")
 	defer span.End()
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()

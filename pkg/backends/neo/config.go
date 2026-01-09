@@ -152,9 +152,9 @@ func (n Neo) ConfigGetByDigest(ctx context.Context, dig string) (cfg types.Confi
 func (n Neo) ConfigGetByID(ctx context.Context, cfgID int64) (cfg types.Config, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameConfig,
-		"func":    "Config_GetByID",
+		"func":    "ConfigGetByID",
 	})
-	ctx, span := tracer.Start(ctx, "Config_GetByID")
+	ctx, span := tracer.Start(ctx, "ConfigGetByID")
 	_ = ctx
 	defer span.End()
 	span.SetAttributes(

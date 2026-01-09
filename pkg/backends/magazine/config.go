@@ -123,10 +123,10 @@ func (mag Magazine) ConfigBlobGetByHTTPRequest(ctx context.Context, r *http.Requ
 }
 
 // Take in a manifest with a config DIGEST and return the config from Blob Storage
-func (mag Magazine) Config_Get_ByManifest(ctx context.Context, req types.Request, oMani types.OCIManifest) (cfg types.Config, v1Img v1.Image, found bool, err error) {
+func (mag Magazine) ConfigGetByManifest(ctx context.Context, req types.Request, oMani types.OCIManifest) (cfg types.Config, v1Img v1.Image, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameConfig,
-		"func":    "mag.Config_Get_ByManifest",
+		"func":    "mag.ConfigGetByManifest",
 		"host":    req.Host,
 		"repo":    req.Repo,
 		"tag":     req.Tag,
@@ -153,10 +153,10 @@ func (mag Magazine) Config_Get_ByManifest(ctx context.Context, req types.Request
 	return
 }
 
-func (mag Magazine) Config_GetByID(ctx context.Context, cfgID int64) (cfg types.Config, found bool, err error) {
+func (mag Magazine) ConfigGetByID(ctx context.Context, cfgID int64) (cfg types.Config, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameConfig,
-		"func":    "mag.Config_GetByID",
+		"func":    "mag.ConfigGetByID",
 	})
 	defer span.End()
 	cfg, found, err = mag.Database.ConfigGetByID(ctx, cfgID)

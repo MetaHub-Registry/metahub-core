@@ -20,7 +20,7 @@ func TestAnnotationCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	a0 := types.NewAnnotation("foo", "bar")
 	a0_id, err := db.Annotation_GetInsert(ctx, a0)

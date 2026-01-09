@@ -12,7 +12,7 @@ func TestFilterCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 }
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	/// Get Nothing
 	fGen := types.NewEmptyFilter("generic")

@@ -233,7 +233,7 @@ func (n Neo) GetLayersForManifest(ctx context.Context, m types.ManifestData) (la
 	_ = ctx
 	defer span.End()
 	layers = []types.Layer{}
-	q := fmt.Sprintf(`MATCH (l:Blob)<-[lyRel]-(m:ManifestData) WHERE m.digest = "%s"`, m.Digest)
+	q := fmt.Sprintf(`MATCH (l:Blob)<-[lyRel]-(m:ManifestData) WHERE m.digest = "%s" AND l.type = "layer"`, m.Digest)
 	q += ` RETURN id(l) AS ID, l.digest AS digest, TYPE(lyRel) AS mediaType, l.size AS size`
 	utils.Debug(l, span, q)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
@@ -276,7 +276,7 @@ func (n Neo) GetLayersForManifest(ctx context.Context, m types.ManifestData) (la
 
 func (n Neo) CreateLayer(layer types.Layer) (layerID int64, err error) {
 	label := utils.ShortenDigest(layer.Digest)
-	q := `CREATE (n:Blob {digest: "%s", size: %d, label: "%s"}) RETURN id(n) AS ID`
+	q := `CREATE (n:Blob {digest: "%s", size: %d, label: "%s", type: "layer"}) RETURN id(n) AS ID`
 	query := fmt.Sprintf(q, layer.Digest, layer.Size, label)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
@@ -298,7 +298,7 @@ func (n Neo) CreateLayer(layer types.Layer) (layerID int64, err error) {
 
 func (n Neo) LayerCreateByDescriptor(l distribution.Descriptor) (layerID int64, err error) {
 	label := utils.ShortenDigest(l.Digest.String())
-	q := `CREATE (n:Blob {digest: "%s", size: %d, label: "%s"}) RETURN id(n) AS ID`
+	q := `CREATE (n:Blob {digest: "%s", size: %d, label: "%s", type: "layer"}) RETURN id(n) AS ID`
 	query := fmt.Sprintf(q, l.Digest.String(), l.Size, label)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
@@ -320,7 +320,7 @@ func (n Neo) LayerCreateByDescriptor(l distribution.Descriptor) (layerID int64, 
 
 func (n Neo) GetLayersForManifestDataID(ctx context.Context, maniDataID int64) (layers []types.Layer, err error) {
 	layers = []types.Layer{}
-	q := `MATCH (l:Blob)<-[r]-(m:ManifestData) WHERE id(m) = %d AND (TYPE(r) STARTS WITH "oci_image_layer" OR TYPE(r) STARTS WITH "docker_image_rootfs")`
+	q := `MATCH (l:Blob)<-[r]-(m:ManifestData) WHERE id(m) = %d AND l.type = "layer"`
 	q += ` RETURN id(l) AS layerID, l.digest AS layerDigest, TYPE(r) AS layerMediaType, l.size AS layerSize`
 	q += ` ORDER BY r.order`
 	query := fmt.Sprintf(q, maniDataID)
@@ -378,7 +378,7 @@ func (n Neo) Layer_GetMediaType_ByID(ctx context.Context, lyID int64) (mt string
 	})
 	defer span.End()
 	_ = ctx
-	q := fmt.Sprintf(`MATCH (l:Blob)<-[layerRel]-(md:ManifestData) WHERE id(l) = %d`, lyID)
+	q := fmt.Sprintf(`MATCH (l:Blob)<-[layerRel]-(md:ManifestData) WHERE id(l) = %d AND l.type = "layer"`, lyID)
 	q += ` RETURN DISTINCT TYPE(layerRel) AS layerMediaType`
 	utils.Debug(l, span, q)
 	res, e := n.Query(q)
@@ -421,7 +421,7 @@ func (n Neo) Layer_GetMediaType_ByID(ctx context.Context, lyID int64) (mt string
 }
 
 func (n Neo) Layer_DescriporGet(ctx context.Context, desc v1.Descriptor) (layerID int64, found bool, err error) {
-	q := `MATCH (n:Blob) WHERE n.digest = "%s" RETURN id(n) AS ID`
+	q := `MATCH (n:Blob) WHERE n.digest = "%s" AND n.type = "layer" RETURN id(n) AS ID`
 	query := fmt.Sprintf(q, desc.Digest.String())
 	res, found, err := n.QueryOne(query)
 	if err != nil {
@@ -453,7 +453,7 @@ func (n Neo) LayerDescriptorGetInsert(ctx context.Context, desc v1.Descriptor) (
 	}
 	// Create Layer
 	label := utils.ShortenDigest(desc.Digest.String())
-	q := `CREATE (n:Blob {digest: "%s", size: %d, label: "%s"}) RETURN id(n) AS ID`
+	q := `CREATE (n:Blob {digest: "%s", size: %d, label: "%s", type: "layer"}) RETURN id(n) AS ID`
 	query := fmt.Sprintf(q, desc.Digest.String(), desc.Size, label)
 	utils.Debug(l, span, q)
 	res, err := n.Execute(query)
@@ -470,7 +470,7 @@ func (n Neo) LayerDescriptorGetInsert(ctx context.Context, desc v1.Descriptor) (
 func (n Neo) Layers_DeleteUnused(ctx context.Context) (err error) {
 	_, span := tracer.Start(ctx, "Layers_DeleteUnused")
 	defer span.End()
-	q := `MATCH (l:Blob) WHERE NOT (l)<-[]-(:ManifestData) DETACH DELETE l RETURN count(l) AS deletedLayers`
+	q := `MATCH (l:Blob) WHERE l.type = "layer" AND NOT (l)<-[]-(:ManifestData) DETACH DELETE l RETURN count(l) AS deletedLayers`
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
 		attribute.String("log.query", q),
@@ -502,7 +502,7 @@ func (n Neo) layerGetUpstreamRegistryMediaTypeTypeByDigest(ctx context.Context, 
 	_ = ctx
 	defer span.End()
 	q := `MATCH (l:Blob)<-[r]-(md:ManifestData)-[]-(u:Upstream) `
-	q += fmt.Sprintf(` WHERE l.digest = "%s"`, dig)
+	q += fmt.Sprintf(` WHERE l.digest = "%s" AND l.type = "layer"`, dig)
 	q += " RETURN DISTINCT u.reg AS upstreamRegistry, TYPE(r) AS layerMediaType"
 	utils.Debug(l, span, q)
 	res, err := n.Query(q)
@@ -565,7 +565,7 @@ func (n Neo) LayerExists(ctx context.Context, up upstream.UpstreamTriple) (found
 		attribute.Key("tag").String(up.Tag),
 		attribute.Key("digest").String(utils.ShortenDigest(up.Digest.String())),
 	)
-	q := fmt.Sprintf(`MATCH (l:Blob) WHERE l.digest = "%s"`, up.Digest.String())
+	q := fmt.Sprintf(`MATCH (l:Blob) WHERE l.digest = "%s" AND l.type = "layer"`, up.Digest.String())
 	q += ` RETURN id(l) AS layerID, l.digest AS layerDigest, l.size AS layerSize`
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
@@ -609,7 +609,7 @@ func (n Neo) LayerGetUpstream(ctx context.Context, lID int64) (up types.Upstream
 	defer span.End()
 	_ = ctx
 	q := `MATCH (u:Upstream)<-[]-(m:Manifest)-[]->(md:ManifestData)-[]->(l:Blob)`
-	q += fmt.Sprintf(` WHERE id(l) = %d`, lID)
+	q += fmt.Sprintf(` WHERE id(l) = %d AND l.type = "layer"`, lID)
 	q += ` RETURN DISTINCT id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag, u.digest AS upstreamDigest`
 	res, found, e := n.QueryOne(q)
 	if e != nil {
@@ -636,7 +636,7 @@ func (n Neo) GetLayersForManipuLayerID(ctx context.Context, mplID int64) (layers
 	})
 	defer span.End()
 	layers = []types.Layer{}
-	q := fmt.Sprintf(`MATCH (l:Blob)<-[r]-(mpl:ManipuLayer) WHERE id(mpl) = %d`, mplID)
+	q := fmt.Sprintf(`MATCH (l:Blob)<-[r]-(mpl:ManipuLayer) WHERE id(mpl) = %d AND l.type = "layer"`, mplID)
 	q += fmt.Sprintf(` RETURN %s`, layerReturn)
 	q += ` ORDER BY r.order`
 	utils.Debug(l, span, q)
