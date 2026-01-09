@@ -33,10 +33,10 @@ func TestManipuCmdCRUD(t *testing.T) {
 		}
 	}
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	mplID, err := br.GetInt64("manipulation:layer/glow#1.5.0-arm64#id")
 	if err != nil {

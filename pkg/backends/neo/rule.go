@@ -40,8 +40,14 @@ func (n Neo) Rule_Create(ctx context.Context, r types.Rule) (ruleID int64, err e
 }
 
 func (n Neo) Rule_Get(ctx context.Context, r types.Rule) (ruleID int64, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "Rule_Get",
+	})
+	_ = l
+	defer span.End()
 	q := `MATCH (r:Rule) WHERE r.name = "%s" AND r.tag = "%s" AND r.op = "%s" AND r.key = "%s" AND r.value = "%s" RETURN id(r) AS ID`
 	query := fmt.Sprintf(q, r.Name, r.Tag, r.Op, r.Key, r.Value)
+	utils.Debug(l, span, query)
 	res, found, err := n.QueryOne(query)
 	if err != nil {
 		logrus.Error(err)
@@ -203,12 +209,12 @@ func (n Neo) RulesGetByManifestID(ctx context.Context, maniID int64) (rules type
 
 }
 
-func (n Neo) Rule_EvalAll(ctx context.Context) (err error) {
+func (n Neo) RuleEvalAll(ctx context.Context) (err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "neo/rule.go",
-		"func":    "Rule_EvalAll",
+		"func":    "RuleEvalAll",
 	})
-	ctx, span := tracer.Start(ctx, "Rule_EvalAll")
+	ctx, span := tracer.Start(ctx, "RuleEvalAll")
 	defer span.End()
 	rls, err := n.Rules_GetAll(ctx)
 	if err != nil {

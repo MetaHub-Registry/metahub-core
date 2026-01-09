@@ -44,11 +44,11 @@ func TestBlobUploadCreateByOCI(t *testing.T) {
 		}
 	}
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	bu := types.OCIBlobUpload{
 		Repo:          "qnib/featuretest",
 		UploadUser:    "test",
@@ -93,7 +93,7 @@ func TestBlobuploadCRU(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"func": "TestBlobuploadCRU",
 	})
@@ -149,7 +149,6 @@ func TestBlobuploadCRU(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// TODO: Why do we update two blobs under one BlobUpload?
 	assert.Equal(t, 1, len(res))
 
 	//// CONFIG
@@ -204,7 +203,7 @@ func TestBlobChunkCRU(t *testing.T) {
 	}
 	br, err := SetupTest(ctx, bs)
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
 	for _, l := range br.ToLines() {
@@ -212,7 +211,7 @@ func TestBlobChunkCRU(t *testing.T) {
 			t.Log(l)
 		}
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	//// CREATE
 	ociBU := types.OCIBlobUpload{

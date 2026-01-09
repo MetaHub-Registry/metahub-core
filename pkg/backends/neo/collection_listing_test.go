@@ -29,7 +29,7 @@ func TestCollectionListingGetByID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 }
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	colID, err := br.GetInt64("collection:ft#id")
 	if err != nil {

@@ -32,6 +32,8 @@ const (
 	FailCollectionNotFound             = "Collection not found"
 	FailCollectionUpdate               = "Failed to update collection"
 	FailManifestDataGetByManifestList  = "Failed to get manifest data by manifest list"
+	FailBlobGetByDigest                = "Failed to get blob by digest"
+	FailBlobRemoveObj                  = "Failed to remove blob object from minio"
 	FailLayerGetByDigest               = "Failed to get layer by digest"
 	FailLayerRemoveObj                 = "Failed to remove layer object from minio"
 	FailConfigRemoveObj                = "Failed to remove config object from minio"

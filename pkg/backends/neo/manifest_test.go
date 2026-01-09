@@ -29,10 +29,10 @@ func TestManifest_Create_WithLabel(t *testing.T) {
 		}
 	}
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	q := `MATCH (n) WHERE NOT n:Upstream DETACH DELETE n`
 	if _, e := db.Execute(q); e != nil {
@@ -78,10 +78,10 @@ func TestManifestGetByLabel(t *testing.T) {
 		}
 	}
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	expLabel := "registry:5050/qnib-pub-containers/qnib/plain-featuretest:20220715-amd64-generic"
 	m, found, err := db.ManifestGetByLabel(ctx, expLabel)
@@ -139,10 +139,10 @@ func TestManifestCR(t *testing.T) {
 		}
 	}
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	/// Get Upstream
 	upID, err := br.GetInt64("upstream:ft_arm64#id")
 	if err != nil {
@@ -203,10 +203,10 @@ func TestManifestGetInsert(t *testing.T) {
 	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	upID, err := br.GetInt64("upstream:ft_arm64#id")
 	if err != nil {
@@ -269,11 +269,11 @@ func TestManifestUpsertOS(t *testing.T) {
 		}
 	}
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	maniID, err := br.GetInt64("manifest:ft_zen3#id")
 	if err != nil {
@@ -362,11 +362,11 @@ func TestManifest_GetByLabel(t *testing.T) {
 		}
 	}
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	m, found, e := db.ManifestGetByLabel(ctx, "registry:5050/qnib-pub-containers/qnib/plain-featuretest:3-17-3-amd64-cpu_zen3")
 	if e != nil {

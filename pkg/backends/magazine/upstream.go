@@ -173,7 +173,7 @@ func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string) (blo
 			return utils.ErrorHandler(l, span, e, FailLinkManifestToPlatform)
 		}
 		// Create Collection
-		col, _, e := mag.Database.Collection_GetCreate_ByRepoTag(ctx, req.Repo, req.Tag)
+		col, _, e := mag.Database.CollectionGetCreateByRepoTag(ctx, req.Repo, req.Tag)
 		if e != nil {
 			return utils.ErrorHandler(l, span, e, "failed to get collection")
 		}
@@ -211,7 +211,7 @@ func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string) (blo
 			return utils.ErrorHandler(l, span, e, FailUnwind)
 		}
 		// Create OCI Manifest
-		mani, _, e := mag.Database.Manifest_GetByID_WithProfile(ctx, maniID, prf.ID)
+		mani, _, e := mag.Database.ManifestGetByIDWithProfile(ctx, maniID, prf.ID)
 		if e != nil {
 			return utils.ErrorHandler(l, span, e, failGetMani)
 		}
@@ -289,14 +289,14 @@ func (mag Magazine) upstreamBlobInsertGeneric(ctx context.Context, req types.Req
 		return utils.ErrorHandler(l, span, e, FailLinkProfileToManifestData)
 	}
 	// Create generic OCI Manifest (no manipulations)
-	mani, maniFound, e := mag.Database.Manifest_GetByID(ctx, maniID)
+	mani, maniFound, e := mag.Database.ManifestGetByID(ctx, maniID)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, "Failed to get manifest by ID")
 	}
 	if !maniFound {
 		return utils.NewError(l, span, "manifest with ID '%d' not found", maniID)
 	}
-	ociManiID, e := mag.OCI_CreateBaseManifest(ctx, mani, maniData, 0)
+	ociManiID, e := mag.OCICreateBaseManifest(ctx, mani, maniData, 0)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, FailCreateOCIv1Manifest)
 	}
@@ -365,7 +365,7 @@ func (mag Magazine) upstreamBlobInsertProfile(ctx context.Context, req types.Req
 		}
 	*/
 	// Create OCI Manifest
-	mani, _, e := mag.Database.Manifest_GetByID_WithProfile(ctx, maniID, prf.ID)
+	mani, _, e := mag.Database.ManifestGetByIDWithProfile(ctx, maniID, prf.ID)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, failGetMani)
 	}
@@ -399,7 +399,7 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 	})
 	defer span.End()
 	// Get Collection
-	col, _, e := mag.Database.Collection_GetCreate_ByRepoTag(ctx, req.Repo, req.Tag)
+	col, _, e := mag.Database.CollectionGetCreateByRepoTag(ctx, req.Repo, req.Tag)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to get/create collection")
 		return
@@ -523,11 +523,12 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 		return
 	}
 	// Layer annotations already present?
-	os, osFound, e := mag.Database.ManifestGetOS(ctx, maniData.ID)
+	os, osFound, e := mag.Database.ManifestGetOS(ctx, maniID)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "Failed to get annotations")
 		return
 	}
+
 	e = mag.Database.LinkManifestToManifestData(ctx, maniID, maniData.ID)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "Failed to link manifest to manifest data")
@@ -751,8 +752,8 @@ func (mag Magazine) CacheUpstream(ctx context.Context, up types.Upstream) (err e
 	if e := mag.Database.ManifestDataInsert(ctx, &maniData); e != nil {
 		return utils.ErrorHandler(l, span, e, "failed to ManifestDataInsert")
 	}
-	if e := mag.Database.ManifestData_LinkToConfig(ctx, maniData.ID, maniData.Config); e != nil {
-		return utils.ErrorHandler(l, span, e, "failed to ManifestData_LinkToConfig")
+	if e := mag.Database.ManifestDataLinkToConfig(ctx, maniData.ID, maniData.Config); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to ManifestDataLinkToConfig")
 	}
 	return nil
 }

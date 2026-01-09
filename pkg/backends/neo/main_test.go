@@ -91,7 +91,7 @@ func TestNeoTest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual Tests
 	_, err = db.Query("MATCH (n) RETURN n")
 	if err != nil {

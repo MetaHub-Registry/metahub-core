@@ -31,7 +31,7 @@ func TestBlobGetByHTTPRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer TeardownTest(bs)
+	defer TeardownTest(bs, br)
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"func": "TestBlobGetByHTTPRequest",
 	})
@@ -117,7 +117,7 @@ func TestStoreBlobUpload(t *testing.T) {
 	}
 	br, err := mag.SetupTest(ctx, bs)
 	if err != nil {
-		TeardownTest(bs)
+		TeardownTest(bs, br)
 		t.Fatal(err)
 	}
 	for _, l := range br.ToLines() {
@@ -125,7 +125,7 @@ func TestStoreBlobUpload(t *testing.T) {
 			t.Log(l)
 		}
 	}
-	defer TeardownTest(bs)
+	defer TeardownTest(bs, br)
 	/// Vars
 	testRepo := "qnib"
 	br.Add("repo", testRepo)
@@ -186,7 +186,7 @@ func TestBlobChunkCRU(t *testing.T) {
 	}
 	br, err := mag.SetupTest(ctx, bs)
 	if err != nil {
-		TeardownTest(bs)
+		TeardownTest(bs, br)
 		t.Fatal(err)
 	}
 	for _, l := range br.ToLines() {
@@ -194,7 +194,7 @@ func TestBlobChunkCRU(t *testing.T) {
 			t.Log(l)
 		}
 	}
-	defer TeardownTest(bs)
+	defer TeardownTest(bs, br)
 	// Actual test
 	//// CREATE
 	ociBU, buff := types.FT_arm_BlobUpload_Config()

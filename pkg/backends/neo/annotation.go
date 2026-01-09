@@ -83,6 +83,11 @@ func (n Neo) AnnotationUpdate(ctx context.Context, a types.Annotation) (err erro
 }
 
 func (n Neo) Annotation_GetInsert(ctx context.Context, in types.Annotation) (aID int64, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "Annotation_GetInsert",
+	})
+	_ = l
+	defer span.End()
 	a, found, err := n.Annotation_GetByKeyValue(ctx, in.Key, in.Value)
 	if err != nil {
 		return
@@ -94,7 +99,12 @@ func (n Neo) Annotation_GetInsert(ctx context.Context, in types.Annotation) (aID
 }
 
 func (n Neo) Annotation_EvalRule(ctx context.Context, a types.Annotation) (err error) {
-	ctx, span := tracer.Start(ctx, "Annotation_EvalRule")
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func":  "Annotation_EvalRule",
+		"key":   a.Key,
+		"value": a.Value,
+	})
+	_ = l
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (r:Rule) WHERE r.key = "%s" AND r.type = "%s"`, a.Key, types.RuleTypeAnnotation)
 	q += fmt.Sprintf(` RETURN %s`, ruleReturn)
@@ -142,8 +152,16 @@ func (n Neo) Annotation_EvalRule(ctx context.Context, a types.Annotation) (err e
 }
 
 func (n Neo) Annotation_GetByKeyValue(ctx context.Context, k, v string) (a types.Annotation, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func":  "Annotation_GetByKeyValue",
+		"key":   k,
+		"value": v,
+	})
+	_ = l
+	defer span.End()
 	q := fmt.Sprintf(`MATCH (a:Annotation {key: '%s', value: '%s'})`, k, v)
 	q += ` RETURN id(a) as annotationID, a.key as annotationKey, a.value as annotationValue`
+	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)
 	if err != nil || !found {
 		return

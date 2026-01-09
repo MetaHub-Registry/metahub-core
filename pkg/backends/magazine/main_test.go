@@ -199,7 +199,7 @@ func TestMain(m *testing.M) {
 	}
 }
 
-func TeardownTest(bs utils.Bootstrap) {
+func TeardownTest(bs utils.Bootstrap, br utils.BootstrapResult) {
 	logrus.Info("> magazine.TeardownTest")
 	if bs.PostTestSleep > 0 {
 		logrus.Infof("Sleep %d seconds before teardown", bs.PostTestSleep)
@@ -212,7 +212,7 @@ func TeardownTest(bs utils.Bootstrap) {
 		bs.Span.End()
 	}
 	mag.Minio.PreTearDown(bs)
-	mag.Database.TeardownTest(bs)
+	mag.Database.TeardownTest(bs, br)
 	err := mag.Minio.EmptyAll()
 	if err != nil {
 		logrus.Fatal(err)

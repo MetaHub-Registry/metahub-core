@@ -21,7 +21,7 @@ func TestPlatformCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	platform_amd64 := types.Platform{Arch: "amd64", Variant: "", OS: "linux"}
 	platform_arm64 := types.Platform{Arch: "arm64", Variant: "", OS: "linux"}

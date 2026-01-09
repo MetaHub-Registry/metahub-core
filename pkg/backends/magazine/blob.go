@@ -64,13 +64,13 @@ func (mag Magazine) BlobDelete(ctx context.Context, req types.Request) (found bo
 		"digest":  utils.ShortenDigest(req.Digest),
 	})
 	defer span.End()
-	_, found, err = mag.Database.LayerGetByDigest(ctx, req.Digest)
+	_, found, err = mag.Database.BlobGetByDigest(ctx, req.Digest)
 	if err != nil {
-		return false, utils.ErrorHandler(l, span, err, types.FailLayerGetByDigest)
+		return false, utils.ErrorHandler(l, span, err, types.FailBlobGetByDigest)
 	}
 	if found {
-		if err = mag.Database.LayerDeleteByDigest(ctx, req.Digest); err != nil {
-			return false, utils.ErrorHandler(l, span, err, types.FailLayerDeleteByDigest)
+		if err = mag.Database.BlobDeleteByDigest(ctx, req.Digest); err != nil {
+			return false, utils.ErrorHandler(l, span, err, types.FailBlobGetByDigest)
 		}
 		// Remove Blob
 		if err = mag.Minio.BlobRemoveObj(ctx, req.Digest); err != nil {

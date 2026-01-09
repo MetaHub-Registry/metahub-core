@@ -324,14 +324,14 @@ func (n Neo) GetAllCollections(ctx context.Context) (collections []types.Collect
 
 func (n Neo) Collection_Create_ByRequest(req types.Request) (col types.Collection, err error) {
 	ctx := context.Background()
-	col, _, err = n.Collection_GetCreate_ByRepoTag(ctx, req.Repo, req.Tag)
+	col, _, err = n.CollectionGetCreateByRepoTag(ctx, req.Repo, req.Tag)
 	return
 }
 
-func (n Neo) Collection_GetCreate_ByRepoTag(ctx context.Context, repo, tag string) (c types.Collection, found bool, err error) {
+func (n Neo) CollectionGetCreateByRepoTag(ctx context.Context, repo, tag string) (c types.Collection, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "neo/collection.go",
-		"func":    "Collection_GetCreate_ByRepoTag",
+		"func":    "CollectionGetCreateByRepoTag",
 		"repo":    repo,
 		"tag":     tag,
 	})
@@ -422,7 +422,7 @@ func (n Neo) Collection_GetCreate_ByRepo(ctx context.Context, repo string) (c ty
 func (n Neo) CreateCollection(ctx context.Context, col yamlCfg.ManifestCollection) (colId, colTagId int64, err error) {
 	ctx, span := tracer.Start(ctx, "CreateCollection")
 	defer span.End()
-	c, _, err := n.Collection_GetCreate_ByRepoTag(ctx, col.Name, col.Tag)
+	c, _, err := n.CollectionGetCreateByRepoTag(ctx, col.Name, col.Tag)
 	if err != nil {
 		return
 	}

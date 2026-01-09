@@ -38,7 +38,7 @@ func TestCollectionCRUD(t *testing.T) {
 	}
 	br, err := SetupTest(ctx, bs)
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
 	for _, l := range br.ToLines() {
@@ -46,7 +46,7 @@ func TestCollectionCRUD(t *testing.T) {
 			t.Log(l)
 		}
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	col1 := yamlCfg.ManifestCollection{
 		Name: "qnib/featuretest",
@@ -155,14 +155,14 @@ func TestCollectionGetCreateUpstreamTriple(t *testing.T) {
 		}
 	}
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	ups := types.Upstream{
 		Reg:     "localhost:5000",
@@ -210,7 +210,7 @@ func TestCollectionGetCreateUpstreamTriple(t *testing.T) {
 	expPrfId, _ := br.GetInt64("profile:generic#id")
 	assert.Equal(t, expPrfId, prf.ID)
 	// Test Collection
-	cCreate, found, e := db.Collection_GetCreate_ByRepoTag(ctx, ups.Repo, ups.Tag)
+	cCreate, found, e := db.CollectionGetCreateByRepoTag(ctx, ups.Repo, ups.Tag)
 	if e != nil {
 		t.Fatal(e)
 	}

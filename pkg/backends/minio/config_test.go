@@ -106,10 +106,11 @@ func TestBlobRemoveObj(t *testing.T) {
 }
 
 func TestGetTypesConfig(t *testing.T) {
+	ctx := context.Background()
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	bs.AddBootstrap("cfg:generic")
-	_, err := min.SetupTest(bs)
+	_, err := min.SetupTest(ctx, bs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +128,7 @@ func TestConfigGetBytes(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	bs.AddBootstrap("cfg:generic")
-	_, err := min.SetupTest(bs)
+	_, err := min.SetupTest(ctx, bs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +147,7 @@ func TestConfigFromCfgBlob(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	bs.AddBootstrap("cfg:generic")
-	_, err := min.SetupTest(bs)
+	_, err := min.SetupTest(ctx, bs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +189,7 @@ func TestConfigSetup(t *testing.T) {
 	if debug > 0 {
 		bs.PostTestSleep = debug
 	}
-	br, err := min.SetupTest(bs)
+	br, err := min.SetupTest(ctx, bs)
 	for _, l := range br.ToLines() {
 		if debug > 0 {
 			t.Log(l)

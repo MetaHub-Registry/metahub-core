@@ -1,8 +1,10 @@
 package sqlite
 
 import (
+	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
@@ -31,9 +33,26 @@ func TestMain(m *testing.M) {
 	default:
 		logrus.Infof("Tests FAILED with code %d", code)
 	}
+
 }
 
-func TeardownTest(bs utils.Bootstrap) {
+func TeardownTest(bs utils.Bootstrap, br utils.BootstrapResult) {
+	if bs.PostTestSleep > 0 {
+		// Start SQLiteBroser
+		sqbC, err := SetupSQBrowser(context.Background(), sq.MhFile, "")
+		if err != nil {
+			logrus.Fatal(err)
+		}
+		defer func() {
+			if err := sqbC.Terminate(context.Background()); err != nil {
+				logrus.Fatal(err)
+			}
+		}()
+		logrus.Infof("SQLiteBrowser HTTP URI: %s", sqbC.HttpURI)
+
+		logrus.Infof("Sleeping %d seconds for inspection...", bs.PostTestSleep)
+		time.Sleep(time.Duration(bs.PostTestSleep) * time.Second)
+	}
 	if bs.CopySqlite != "" {
 		logrus.Infof("Copy SQlite DB to '%s'", bs.CopySqlite)
 		sq.Close()
@@ -50,7 +69,8 @@ func TeardownTest(bs utils.Bootstrap) {
 
 }
 
-func SetupTest(bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
+func SetupTest(ctx context.Context, bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
 	logrus.Debug("> SetupTest")
-	return sq.BootstrapTest(bs)
+
+	return sq.BootstrapTest(ctx, bs)
 }

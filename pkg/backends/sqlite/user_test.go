@@ -18,12 +18,12 @@ func TestUserSimple(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	//bs.SetSqlite("Desktop/metahub.db")
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = br
-	defer TeardownTest(bs)
+	defer TeardownTest(bs, br)
 	// Test
 	_, e := sq.User.getByUsername(ctx, "test")
 	assert.Error(t, e)
@@ -39,11 +39,11 @@ func TestUserInsert(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	//bs.SetSqlite("Desktop/metahub.db")
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer TeardownTest(bs)
+	defer TeardownTest(bs, br)
 	// Test
 	_ = br
 	passwd := "test"
@@ -155,12 +155,12 @@ func TestSecretCRD(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	//bs.SetSqlite("Desktop/metahub.db")
-	br, err := SetupTest(bs)
+	br, err := SetupTest(ctx, bs)
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = br
-	defer TeardownTest(bs)
+	defer TeardownTest(bs, br)
 	// Test
 	uname := "user"
 	u1 := types.User{

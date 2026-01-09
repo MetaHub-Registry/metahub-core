@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
@@ -529,9 +530,12 @@ func Setup_Collection_QNIB_FeatureTest_amd64(sq *Sqlite, br *utils.BootstrapResu
 	return
 }
 
-func Setup_Users(sqObj *Sqlite, br *utils.BootstrapResult) (err error) {
-	//logrus.Warn("Setup Users")
-	ctx := context.Background()
+func Setup_Users(ctx context.Context, sqObj *Sqlite, br *utils.BootstrapResult) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "Setup_Users",
+	})
+	_ = l
+	defer span.End()
 	usrs := []config.User{
 		{Username: "test", Email: "test@test.de", FirstName: "Max", LastName: "Mustermann", Password: "test", Role: "user"},
 		{Username: "admin", Email: "admin@test.de", FirstName: "Admin", LastName: "Mustermann", Password: "admin", Role: "admin"},
@@ -562,6 +566,122 @@ func Setup_Users(sqObj *Sqlite, br *utils.BootstrapResult) (err error) {
 		bearerToken := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", u.Username, user.Password)))
 		br.Add(fmt.Sprintf("user:%s#bearer", u.Username), bearerToken)
 		br.Add(fmt.Sprintf("user:%s#password", u.Username), user.Password)
+	}
+	return
+}
+
+func (s Sqlite) BootstrapTest(ctx context.Context, bs utils.Bootstrap) (br utils.BootstrapResult, err error) {
+	br = utils.NewBootstrapResult()
+	for _, b := range bs.Bootstraps {
+		switch b {
+		case "profiles":
+			err = Setup_Profiles(&s, &br, "../../../misc/yaml/profiles")
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Profiles")
+				return
+			}
+		case "platforms":
+			err = Setup_Platforms(&s, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Platforms")
+				return
+			}
+		case "users":
+			err = Setup_Users(ctx, &s, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Users")
+				return
+			}
+		case "manifest:qnib/featuretest:arm64":
+			err = Setup_Manifest_QNIB_FeatureTest_arm(&s, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Manifest_QNIB_FeatureTest_arm")
+				return
+			}
+		case "manifest:qnib/featuretest:amd64":
+			err = Setup_Manifest_QNIB_FeatureTest_amd(&s, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Manifest_QNIB_FeatureTest_amd")
+				return
+			}
+		case "config:qnib/featuretest:arm64":
+			err = Setup_Config_FTarm(&s, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Config_FTarm")
+				return
+			}
+		case "config:qnib/featuretest:amd64":
+			err = Setup_Config_FT_amd64(&s, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Config_FT_amd64")
+				return
+			}
+
+		case "upstreams:qnib/featuretest:arm64":
+			err = Setup_Upstream_FTarm(&s, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Upstream_FTarm")
+				return
+			}
+		case "upstreams:qnib/featuretest:amd64":
+			err = Setup_Upstream_FT_amd64(&s, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Upstream_FT_amd64")
+				return
+			}
+		case "layers:qnib/featuretest:arm64":
+			err = Setup_Layers_FTarm(&s, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Layers_FTarm")
+				return
+			}
+		case "layers:qnib/featuretest:amd64":
+			err = Setup_Layers_FT_amd64(&s, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Layers_FT_amd64")
+				return
+			}
+		case "manifestlist:qnib/featuretest:amd64":
+			err = Setup_Manifestlist_FTamd64(&s, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Manifestlist_FTamd64")
+				return
+			}
+
+		case "manifestlist:qnib/featuretest:arm64":
+			err = Setup_Manifestlist_FTarm(&s, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Manifestlist_FTarm")
+				return
+			}
+		case "collection:qnib/featuretest:arm64":
+			err = Setup_Collection_QNIB_FeatureTest_arm(&s, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Collection_QNIB_FeatureTest_arm")
+				return
+			}
+		case "collection:qnib/featuretest:amd64":
+			err = Setup_Collection_QNIB_FeatureTest_amd64(&s, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Collection_QNIB_FeatureTest_amd64")
+				return
+			}
+		case "collection:qnib/featuretest:generic":
+			err = Setup_Collection_QNIB_FeatureTest_Generic(&s, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Collection_QNIB_FeatureTest_Generic")
+				return
+			}
+		case "filter:generic":
+			err = Setup_Filter_Generic(&s, &br)
+			if err != nil {
+				err = errors.Wrap(err, "Setup_Filter_Generic")
+				return
+			}
+		default:
+			err = fmt.Errorf("no Setup for '%s'", b)
+			return br, err
+		}
 	}
 	return
 }

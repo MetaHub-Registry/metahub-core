@@ -20,6 +20,13 @@ type Upstream struct {
 	Platform  platform.Platform `json:"platform"`
 }
 
+func (u Upstream) ShortString() string {
+	if u.Digest != "" {
+		return u.Reg + "/" + u.Repo + "@" + utils.ShortenDigest(u.Digest.String())
+	}
+	return u.Reg + "/" + u.Repo + ":" + u.Tag
+}
+
 func (u Upstream) String() string {
 	if u.Digest != "" {
 		return u.Reg + "/" + u.Repo + "@" + u.Digest.String()

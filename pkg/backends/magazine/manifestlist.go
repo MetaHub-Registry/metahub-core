@@ -98,7 +98,7 @@ func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
 	})
 	ctx, span := tracer.Start(ctx, "ComputeManifestlists")
 	defer span.End()
-	err = mag.Database.Rule_EvalAll(ctx)
+	err = mag.Database.RuleEvalAll(ctx)
 	if err != nil {
 		err = errors.Wrap(err, "while evaluating all rules")
 		span.SetStatus(codes.Error, err.Error())
@@ -200,7 +200,7 @@ func (mag Magazine) ComputeManifestlists_ForManiProfile(ctx context.Context, man
 	})
 	defer span.End()
 	l.Info("Compute Manifest Lists")
-	err = mag.Database.Rule_EvalAll(ctx)
+	err = mag.Database.RuleEvalAll(ctx)
 	if err != nil {
 		err = errors.Wrap(err, "while evaluating all rules")
 		span.SetStatus(codes.Error, err.Error())

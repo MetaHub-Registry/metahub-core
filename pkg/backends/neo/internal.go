@@ -23,7 +23,7 @@ func (n Neo) getMani(ctx context.Context, br utils.BootstrapResult, label string
 	if e != nil {
 		return mani, e
 	}
-	mani, maniFound, err := n.Manifest_GetByID(ctx, maniID)
+	mani, maniFound, err := n.ManifestGetByID(ctx, maniID)
 	if err != nil {
 		return mani, err
 	}
@@ -44,7 +44,7 @@ func (n Neo) getManiData(ctx context.Context, br utils.BootstrapResult, label st
 	if e != nil {
 		return maniData, e
 	}
-	maniData, maniDataFound, err := n.ManifestData_Get_ByID(ctx, maniDataID)
+	maniData, maniDataFound, err := n.ManifestDataGetByID(ctx, maniDataID)
 	if err != nil {
 		return maniData, err
 	}

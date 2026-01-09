@@ -12,7 +12,7 @@ func TestBasic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer TeardownTest(bs)
+	defer TeardownTest(bs, br)
 	// Test
 	cols, err := mag.Database.CollectionGetAll(ctx)
 	if err != nil {
@@ -50,7 +50,7 @@ func TestCatalogARM64(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 }
-	defer TeardownTest(bs)
+	defer TeardownTest(bs, br)
 	// Test
 	cols, err := mag.Database.CollectionGetAll()
 	if err != nil {

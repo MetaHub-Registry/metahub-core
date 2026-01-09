@@ -173,7 +173,7 @@ func (n Neo) Setup_Manifest_FT_arm64(br *utils.BootstrapResult) (err error) {
 			logrus.Error(err)
 			return err
 		}
-		arm_config, found, err := n.Config_GetByID(ctx, arm_config_id)
+		arm_config, found, err := n.ConfigGetByID(ctx, arm_config_id)
 		if err != nil {
 			logrus.Error(err)
 			return err
@@ -187,7 +187,7 @@ func (n Neo) Setup_Manifest_FT_arm64(br *utils.BootstrapResult) (err error) {
 			logrus.Error(err)
 			return err
 		}
-		err = n.ManifestData_LinkToConfig(ctx, maniID, arm_config)
+		err = n.ManifestDataLinkToConfig(ctx, maniID, arm_config)
 		if err != nil {
 			logrus.Error(err)
 			return err
@@ -260,7 +260,7 @@ func (n Neo) SetupManifestFTZen(br *utils.BootstrapResult) (err error) {
 		logrus.Error(err)
 		return err
 	}
-	err = n.ManifestData_LinkToConfig(ctx, maniID, config)
+	err = n.ManifestDataLinkToConfig(ctx, maniID, config)
 	if err != nil {
 		logrus.Error(err)
 		return err
@@ -337,7 +337,7 @@ func (n Neo) Setup_Manifest_FT_zen3(br *utils.BootstrapResult) (err error) {
 		logrus.Error(err)
 		return err
 	}
-	err = n.ManifestData_LinkToConfig(ctx, maniID, config)
+	err = n.ManifestDataLinkToConfig(ctx, maniID, config)
 	if err != nil {
 		logrus.Error(err)
 		return err

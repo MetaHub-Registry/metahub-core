@@ -133,6 +133,8 @@ func Debug(l *logrus.Entry, span trace.Span, frmt string, a ...any) {
 	}
 	if l != nil {
 		l.Debug(msg)
+	} else {
+		logrus.Debug(msg)
 	}
 }
 

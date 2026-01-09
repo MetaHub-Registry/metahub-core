@@ -37,7 +37,7 @@ func TestOCIv1ConfigGetInsertDescriptor(t *testing.T) {
 	}
 	br, err := SetupTest(ctx, bs)
 	if err != nil {
-		db.TeardownTest(bs)
+		db.TeardownTest(bs, br)
 		t.Fatal(err)
 	}
 	for _, l := range br.ToLines() {
@@ -45,7 +45,7 @@ func TestOCIv1ConfigGetInsertDescriptor(t *testing.T) {
 			t.Log(l)
 		}
 	}
-	defer db.TeardownTest(bs)
+	defer db.TeardownTest(bs, br)
 	// Actual test
 	// Find config
 	desc := v1.Descriptor{
@@ -53,7 +53,7 @@ func TestOCIv1ConfigGetInsertDescriptor(t *testing.T) {
 		Digest:    digest.Digest("sha256:cf5c26263929e84d7373d23b2692222cceceb3175b3325b183ead2ab6b5a5ce3"),
 		Size:      2191,
 	}
-	cfg, found, err := db.OCIv1Config_GetInsertDescriptor(ctx, desc)
+	cfg, found, err := db.OCIv1ConfigGetInsertDescriptor(ctx, desc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestOCIv1ConfigGetInsertDescriptor(t *testing.T) {
 		Digest:    digest.Digest("sha256:affe26263929e84d7373d23b2692222cceceb3175b3325b183ead2ab6b5a5ce3"),
 		Size:      1234,
 	}
-	cfg2, found2, err := db.OCIv1Config_GetInsertDescriptor(ctx, desc2)
+	cfg2, found2, err := db.OCIv1ConfigGetInsertDescriptor(ctx, desc2)
 	if err != nil {
 		t.Fatal(err)
 	}

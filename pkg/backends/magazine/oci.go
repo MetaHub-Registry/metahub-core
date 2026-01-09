@@ -8,6 +8,7 @@ import (
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
@@ -18,8 +19,9 @@ import (
 )
 
 const (
-	pkgNameOci        = "magazine/oci.go"
-	FailUnwindProfile = "failed to unwind Profile"
+	pkgNameOci                = "magazine/oci.go"
+	FailUnwindProfile         = "failed to unwind Profile"
+	MediaTypeDockerManifestV2 = "application/vnd.docker.distribution.manifest.v2+json"
 )
 
 func (mag Magazine) CreateOCIv1_UploadedByPrf(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prf types.Profile) (maniID int64, found bool, err error) {
@@ -40,7 +42,7 @@ func (mag Magazine) CreateOCIv1_UploadedByPrf(ctx context.Context, mani types.Ma
 		return
 	}
 	// TODO: Check if OCIv1 is already present
-	_, foundOCI, err := mag.Database.ManifestData_Get_ByProfileMediaType(ctx, mani.ID, prf.ID, v1.MediaTypeImageManifest)
+	_, foundOCI, err := mag.Database.ManifestDataGetByProfileMediaType(ctx, mani.ID, prf.ID, []string{v1.MediaTypeImageManifest, MediaTypeDockerManifestV2})
 	if err != nil {
 		return
 	}
@@ -60,7 +62,7 @@ func (mag Magazine) CreateOCIv1_UploadedByPrf(ctx context.Context, mani types.Ma
 		))
 		l.Info(msg)
 	}
-	maniID, e = mag.OCI_CreateBaseManifest(ctx, mani, origMani, prf.ID)
+	maniID, e = mag.OCICreateBaseManifest(ctx, mani, origMani, prf.ID)
 	if e != nil {
 		err = errors.Wrap(e, "failed to create base manifest")
 		return
@@ -106,7 +108,7 @@ func (mag Magazine) CreateOCIv1_UploadedBy(ctx context.Context, mani types.Manif
 		return
 	}
 	// TODO: Check if OCIv1 is already present
-	_, foundOCI, err := mag.Database.ManifestData_Get_ByProfileMediaType(ctx, mani.ID, prf.ID, v1.MediaTypeImageManifest)
+	_, foundOCI, err := mag.Database.ManifestDataGetByProfileMediaType(ctx, mani.ID, prf.ID, []string{v1.MediaTypeImageManifest, MediaTypeDockerManifestV2})
 	if err != nil {
 		return
 	}
@@ -131,7 +133,7 @@ func (mag Magazine) CreateOCIv1_UploadedBy(ctx context.Context, mani types.Manif
 		err = errors.Wrapf(e, "failed to get Profile for ManifestData.ID: %d", origMani.ID)
 		return
 	}
-	maniID, e = mag.OCI_CreateBaseManifest(ctx, mani, origMani, prf.ID)
+	maniID, e = mag.OCICreateBaseManifest(ctx, mani, origMani, prf.ID)
 	if e != nil {
 		err = errors.Wrap(e, "failed to create base manifest")
 		return
@@ -168,7 +170,7 @@ func (mag Magazine) CreateOCIv1_PulledByPrf(ctx context.Context, mani types.Mani
 	})
 	defer span.End()
 	// Get Pulled Manifests
-	maniID, foundManiData, err := mag.Database.ManifestData_Get_ByProfileMediaType(ctx, mani.ID, prf.ID, v1.MediaTypeImageManifest)
+	maniID, foundManiData, err := mag.Database.ManifestDataGetByProfileMediaType(ctx, mani.ID, prf.ID, []string{v1.MediaTypeImageManifest, MediaTypeDockerManifestV2})
 	if err != nil {
 		utils.ErrorHandler(l, span, err, "failed to get ManifestData for Manifest.ID: %d", mani.ID)
 		return
@@ -179,7 +181,7 @@ func (mag Magazine) CreateOCIv1_PulledByPrf(ctx context.Context, mani types.Mani
 	} else {
 		utils.Debug(l, span, "OCIv1 manifest NOT present for Manifest.ID: %d", mani.ID)
 	}
-	maniID, e := mag.OCI_CreateBaseManifest(ctx, mani, origMani, prf.ID)
+	maniID, e := mag.OCICreateBaseManifest(ctx, mani, origMani, prf.ID)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to create base manifest")
 		return
@@ -220,7 +222,7 @@ func (mag Magazine) CreateOCIv1ParsedManifest(ctx context.Context, mani types.Ma
 	}
 
 	// Get parsed manifests
-	maniID, foundOCI, err := mag.Database.ManifestData_GetRelID_ByMediaType(ctx, mani.ID, v1.MediaTypeImageManifest, "PARSED")
+	maniID, foundOCI, err := mag.Database.ManifestDataGetRelIDByMediaType(ctx, mani.ID, []string{v1.MediaTypeImageManifest, MediaTypeDockerManifestV2}, "PARSED")
 	if err != nil {
 		return
 	}
@@ -229,7 +231,7 @@ func (mag Magazine) CreateOCIv1ParsedManifest(ctx context.Context, mani types.Ma
 		success = true
 		return
 	}
-	maniID, e := mag.OCI_CreateBaseManifest(ctx, mani, origMani, prfID)
+	maniID, e := mag.OCICreateBaseManifest(ctx, mani, origMani, prfID)
 	if e != nil {
 		err = errors.Wrap(e, "failed to create base manifest")
 		return
@@ -313,7 +315,7 @@ func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMa
 	ctx, span := tracer.Start(ctx, "CreateOCIv1")
 	defer span.End()
 	// TODO: Check which profiles where used for the manifest
-	maniPrf, e := mag.Database.Profile_FromManifestID(ctx, mani.ID)
+	maniPrf, e := mag.Database.ProfileFromManifestID(ctx, mani.ID)
 	if e != nil {
 		err = errors.Wrapf(e, "failed to get profiles for manifest id '%d'", mani.ID)
 		span.AddEvent("log", trace.WithAttributes(
@@ -389,7 +391,9 @@ func (mag Magazine) OCIApplyManipulations(ctx context.Context, mani types.Manife
 	if e != nil {
 		return v1Cfg, false, utils.ErrorHandler(l, span, e, "while in ManipulationUnwind")
 	}
-	// ///// A. Generate `oci.image.config.v1`
+	utils.Debug(l, span, "Obtained manipulation config digest: %s", mplCfgDigest)
+
+	// A. Generate `oci.image.config.v1`
 	if manipuLayer, err := mag.Database.GetLayersForManifestDataID(ctx, ociManiDataID); err != nil {
 		return v1Cfg, false, utils.ErrorHandler(l, span, err, "while in GetLayersForManifestDataID")
 	} else {
@@ -413,14 +417,18 @@ func (mag Magazine) OCIApplyManipulations(ctx context.Context, mani types.Manife
 			return v1Cfg, false, utils.ErrorHandler(l, span, e, "while in ApplyManipulationToConfig")
 		}
 	}
+	utils.Debug(l, span, "Config.Cmd: %v", v1Cfg.Config.Cmd)
+	utils.Debug(l, span, "Config.Entrypoint: %v", v1Cfg.Config.Entrypoint)
+	utils.Debug(l, span, "Config.Env: %v", v1Cfg.Config.Env)
+	utils.Debug(l, span, "Config.RootFS.DiffIDs: %v", v1Cfg.RootFS.DiffIDs)
 	return v1Cfg, true, nil
 }
 
 // TODO: When no manipulation are applied, no update is needed
-func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prfID int64) (ociManiDataID int64, err error) {
+func (mag Magazine) OCICreateBaseManifest(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prfID int64) (ociManiDataID int64, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameOci,
-		"func":    "OCI_CreateBaseManifest",
+		"func":    "OCICreateBaseManifest",
 		"mani.ID": mani.ID,
 		"prfID":   prfID,
 	})
@@ -449,8 +457,8 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 	if err != nil {
 		return
 	}
-	utils.Warn(l, span, "Temp digest: %s", maniDesc.Digest.String())
-	ociManiDataID, _, err = mag.Database.ManifestData_V1_GetInsert(ctx, mani.ID, maniDesc)
+	utils.Debug(l, span, "Temp digest: %s", maniDesc.Digest.String())
+	ociManiDataID, _, err = mag.Database.ManifestDataV1GetInsert(ctx, mani.ID, maniDesc)
 	if err != nil {
 		return
 	}
@@ -460,7 +468,7 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 	} else if !ok {
 		v1Cfg, e = mag.GenerateOCIv1Config(ctx, mani, origMani)
 		if e != nil {
-			err = utils.ErrorHandler(l, span, e, "failed to GenerateOCIv1Config")
+			err = utils.ErrorHandler(l, span, e, "failed to GenerateOCIv1Config after failed manipulation")
 			return
 		}
 	}
@@ -487,9 +495,9 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 		err = utils.ErrorHandler(l, span, e, "failed to PutConfig")
 		return
 	}
-	cfg, _, e := mag.Database.OCIv1Config_GetInsertDescriptor(ctx, cfgDesc)
+	cfg, _, e := mag.Database.OCIv1ConfigGetInsertDescriptor(ctx, cfgDesc)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to OCIv1Config_GetInsertDescriptor")
+		err = utils.ErrorHandler(l, span, e, "failed to OCIv1ConfigGetInsertDescriptor")
 		return
 	}
 	// Add Labels to Config
@@ -542,7 +550,7 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 	}
 	// //// Link ManifestData to Layers
 	for _, ld := range layerMap {
-		err = mag.Database.ManifestData_LinkToOCIv1Layer(ctx, ociManiDataID, ld)
+		err = mag.Database.ManifestDataLinkToOCIv1Layer(ctx, ociManiDataID, ld)
 		if err != nil {
 			l.Error(err)
 			return
@@ -553,10 +561,11 @@ func (mag Magazine) OCI_CreateBaseManifest(ctx context.Context, mani types.Manif
 
 func (mag Magazine) GenerateOCIv1Config(ctx context.Context, maniSI types.Manifest, origMani types.ManifestData) (v1Cfg v1.Image, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package":    pkgNameOci,
-		"func":       "mag.GenerateOCIv1Config",
-		"maniID":     maniSI.ID,
-		"origManiID": origMani.ID,
+		"package":                pkgNameOci,
+		"func":                   "mag.GenerateOCIv1Config",
+		"maniID":                 maniSI.ID,
+		"origManiID":             origMani.ID,
+		"origMani.Config.Digest": origMani.Config.Digest,
 	})
 	defer span.End()
 	// Fetch config from Minio

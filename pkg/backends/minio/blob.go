@@ -95,6 +95,7 @@ func (m Minio) BlobPutObj(ctx context.Context, object string, data []byte) (err 
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameBlob,
 		"func":    "min.BlobPutObj",
+		"object":  object,
 	})
 	defer span.End()
 	blobBucketKey := GetBlobBucketKey()

@@ -320,7 +320,7 @@ func (u *User) getByUsername(ctx context.Context, username string) (*User, error
 	defer span.End()
 
 	//query := `SELECT id, user_name, github_id, avatar_url, email, first_name, last_name, user_active, is_logged_in, created_at, role FROM users WHERE user_name = $1`
-	query := fmt.Sprintf(`SELECT id, user_name, email, first_name, last_name, user_active, created_at, role FROM users WHERE user_name = '%s'`, username)
+	query := fmt.Sprintf(`SELECT id, user_name, email, first_name, last_name, user_active, is_logged_in, created_at, role FROM users WHERE user_name = '%s'`, username)
 	utils.Debug(l, span, query)
 	var user User
 	row := db.QueryRowContext(ctx, query)
@@ -333,7 +333,7 @@ func (u *User) getByUsername(ctx context.Context, username string) (*User, error
 		&user.FirstName,
 		&user.LastName,
 		&user.Active,
-		//&user.IsLoggedIn,
+		&user.IsLoggedIn,
 		&user.CreatedAt,
 		&user.Role,
 	)

@@ -69,7 +69,7 @@ func (mag Magazine) ManipulationUnwind(ctx context.Context, maniID, maniDataID, 
 				}
 				mplCfgDigest = cfg.Digest
 				for idx, lyr := range mpl.Image.Layers {
-					if e := mag.Database.ManifestData_LinkToLayer(ctx, maniDataID, lyr, idx); e != nil {
+					if e := mag.Database.ManifestDataLinkToLayer(ctx, maniDataID, lyr, idx); e != nil {
 						return mplCfgDigest, utils.ErrorHandler(l, span, e, neo.FailManifestDataLinkToLayer)
 					}
 				}

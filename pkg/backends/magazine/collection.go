@@ -78,7 +78,7 @@ func (mag Magazine) HeadManistNotFound_ForProfile(ctx context.Context, req types
 		return md, false, err
 	}
 	utils.Debug(l, span, "found manifest %s", mani.Upstream.String())
-	maniData, maniDataFound, e := mag.Database.ManifestData_GetPulled_ByRepoTag(ctx, req.Repo, req.Tag)
+	maniData, maniDataFound, e := mag.Database.ManifestDataGetPulledByRepoTag(ctx, req.Repo, req.Tag)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, colErrFrmt, "manifestData", req.Repo, req.Tag)
 		return

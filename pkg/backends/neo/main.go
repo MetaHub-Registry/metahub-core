@@ -15,6 +15,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -246,8 +247,22 @@ func (n Neo) Execute(q string) (res types.Result, err error) {
 	}
 	return
 }
-
 func (n Neo) QueryOne(q string) (res types.Result, found bool, err error) {
+	return n.QueryOneWithCtx(nil, q)
+}
+
+func (n Neo) QueryOneWithCtx(ctx *context.Context, q string) (res types.Result, found bool, err error) {
+	var l *logrus.Entry
+	var span trace.Span
+
+	if ctx != nil {
+		l, _, span = utils.InitLogging(*ctx, tracer, map[string]any{
+			"package": pkgNameMD,
+			"func":    "QueryOneWithCtx",
+		})
+		defer span.End()
+	}
+
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
 	if err != nil {
 		logrus.Errorf("Error creating neo session: %s\n", err)
@@ -255,12 +270,14 @@ func (n Neo) QueryOne(q string) (res types.Result, found bool, err error) {
 	}
 	defer session.Close()
 	input := map[string]interface{}{}
+	utils.Debug(l, span, "QueryOne: %s", q)
 	r, err := session.Run(q, input)
 	if err != nil {
 		logrus.Errorf("Error running query: %s\n", err)
 		return
 	}
 	if r.Next() {
+		utils.Debug(l, span, "after r.Next")
 		record := r.Record()
 		keys, err := r.Keys()
 		if err != nil {
@@ -278,6 +295,7 @@ func (n Neo) QueryOne(q string) (res types.Result, found bool, err error) {
 		}
 		found = true
 	}
+	utils.Debug(l, span, "found: %v", found)
 	return
 }
 

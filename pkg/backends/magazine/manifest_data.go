@@ -261,9 +261,9 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 		md.Label = label
 	}
 	// Fetch Config
-	cfg, v1Img, found, e := mag.Config_Get_ByManifest(ctx, req, ociMani)
+	cfg, v1Img, found, e := mag.ConfigGetByManifest(ctx, req, ociMani)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to mag.Config_Get_ByManifest")
+		err = utils.ErrorHandler(l, span, e, "failed to mag.ConfigGetByManifest")
 		return
 	}
 
@@ -276,7 +276,7 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 	md.Config = cfg
 	// Link Manifest to Config
 	utils.Debug(l, span, "Linking Manifest to Config: '%d' -> '%d'", md.ID, cfg.ID)
-	e = mag.Database.ManifestData_LinkToConfig(ctx, md.ID, cfg)
+	e = mag.Database.ManifestDataLinkToConfig(ctx, md.ID, cfg)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to mag.LinkManifestToConfig")
 		return
@@ -322,7 +322,7 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 		err = errors.Wrap(err, "failed to LinkManifestToUpstream")
 		return
 	}
-	col, colFound, err := mag.Database.Collection_GetCreate_ByRepoTag(ctx, req.Repo, req.Tag)
+	col, colFound, err := mag.Database.CollectionGetCreateByRepoTag(ctx, req.Repo, req.Tag)
 	if err != nil {
 		err = errors.Wrap(err, "failed to Collection.GetCreateByRepoTag")
 		return
@@ -341,16 +341,16 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 	return
 }
 
-func (mag Magazine) ManifestData_Get_ByID(ctx context.Context, mdID int64) (md types.ManifestData, found bool, err error) {
+func (mag Magazine) ManifestDataGetByID(ctx context.Context, mdID int64) (md types.ManifestData, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNameMD,
-		"func":       "ManifestData_Get_ByID",
+		"func":       "ManifestDataGetByID",
 		"maniDataID": mdID,
 	})
 	defer span.End()
-	md, mdFound, e := mag.Database.ManifestData_Get_ByID(ctx, mdID)
+	md, mdFound, e := mag.Database.ManifestDataGetByID(ctx, mdID)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to ManifestData_Get_ByID")
+		err = utils.ErrorHandler(l, span, e, "failed to ManifestDataGetByID")
 		return
 	}
 	if !mdFound {

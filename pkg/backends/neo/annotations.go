@@ -6,6 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -94,8 +95,16 @@ func (n Neo) GetAnnotationsByManifestDataID(ctx context.Context, msID int64) (as
 }
 
 func (n Neo) GetAnnotationsByManifestID(ctx context.Context, msID int64) (as types.Annotations, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMani,
+		"func":    "neo.GetAnnotationsByManifestID",
+		"mani.ID": msID,
+	})
+	defer span.End()
+	_ = l
 	q := fmt.Sprintf(`MATCH (ms:Manifest)-[:HAS_ANNOTATION]->(a:Annotation) WHERE id(ms) = %d`, msID)
 	q += ` RETURN id(a) AS annotationID, a.key AS annotationKey, a.value AS annotationValue`
+	utils.Debug(l, span, q)
 	res, err := n.Query(q)
 	if err != nil {
 		return
@@ -108,9 +117,11 @@ func (n Neo) GetAnnotationsByManifestID(ctx context.Context, msID int64) (as typ
 			return
 		}
 		for _, v := range aTmp.Data {
+			utils.Debug(l, span, "found annotation: %v", v)
 			as.AddAnnotation(v)
 		}
 	}
+
 	return
 }
 

@@ -58,7 +58,7 @@ func TestExtractRepoName(t *testing.T) {
 	testTag := "20220715-amd64-generic"
 	testProfile := "generic"
 	token := "token"
-	debug := 10
+	debug := 0
 	c, span := tracer.Start(ctx, fnc)
 	defer span.End()
 	_ = c
@@ -89,7 +89,7 @@ func TestParsePagination(t *testing.T) {
 	testTag := "20220715-amd64-generic"
 	testProfile := "generic"
 	token := "token"
-	debug := 10
+	debug := 0
 	c, span := tracer.Start(ctx, fnc)
 	defer span.End()
 	_ = c
@@ -142,7 +142,7 @@ func TestParseProfile(t *testing.T) {
 	fnc := "TestParseProfile"
 	testProfile := "generic"
 	token := "token"
-	debug := 10
+	debug := 0
 	c, span := tracer.Start(ctx, fnc)
 	defer span.End()
 	_ = c
@@ -192,7 +192,7 @@ func TestParseAuth(t *testing.T) {
 	testTag := "20220715-amd64-generic"
 	testProfile := "generic"
 	token := "token"
-	debug := 10
+	debug := 0
 	c, span := tracer.Start(ctx, fnc)
 	defer span.End()
 	_ = c
@@ -240,7 +240,7 @@ func TestParseRange(t *testing.T) {
 	testTag := "20220715-amd64-generic"
 	testProfile := "generic"
 	token := "token"
-	debug := 10
+	debug := 0
 	c, span := tracer.Start(ctx, fnc)
 	defer span.End()
 	_ = c

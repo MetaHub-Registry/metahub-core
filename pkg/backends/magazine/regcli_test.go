@@ -50,11 +50,11 @@ func TestGetManifestByUpstreamTripleByDigest(t *testing.T) {
 			t.Log(l)
 		}
 	}
-	TeardownTest(bs)
+	TeardownTest(bs, br)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer TeardownTest(bs)
+	defer TeardownTest(bs, br)
 	// Test
 	up := upstream.UpstreamTriple{
 		Reg:    "registry:5050",
@@ -98,11 +98,11 @@ func TestGetManifestByUpstreamTripleByTag(t *testing.T) {
 			t.Log(l)
 		}
 	}
-	TeardownTest(bs)
+	TeardownTest(bs, br)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer TeardownTest(bs)
+	defer TeardownTest(bs, br)
 	// Test
 	up := upstream.UpstreamTriple{
 		Reg:    "registry:5050",

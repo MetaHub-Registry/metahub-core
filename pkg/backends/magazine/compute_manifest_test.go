@@ -1,5 +1,15 @@
 package magazine
 
+import (
+	"context"
+	"fmt"
+	"strings"
+	"testing"
+
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
+)
+
 // func TestComputeAllManifestsWithManipulation(t *testing.T) {
 // 	// Replicate the following test:
 // 	/// ./misc/bin/parse-glow.sh ./misc/yaml/collections/qnib/featuretest/arm64.yaml
@@ -50,10 +60,10 @@ package magazine
 // 	}
 // 	if err != nil {
 // 		t.Logf("Error while SetupTest: %v", err)
-// 		TeardownTest(bs)
+// 		TeardownTest(bs, br)
 // 		t.Fatal(err)
 // 	}
-// 	defer TeardownTest(bs)
+// 	defer TeardownTest(bs, br)
 // 	// Connect Collection/Tag
 // 	maniID, err := br.GetInt64("manifest:ft_arm64#id")
 // 	if err != nil {
@@ -74,8 +84,8 @@ package magazine
 // 		t.Fatalf("Failed to LinkCollectionToManifest: %v", e)
 // 	}
 // 	// Eval Rules
-// 	if e := mag.Database.Rule_EvalAll(ctx); e != nil {
-// 		t.Fatalf("Failed to Rule_EvalAll: %v", e)
+// 	if e := mag.Database.RuleEvalAll(ctx); e != nil {
+// 		t.Fatalf("Failed to RuleEvalAll: %v", e)
 // 	}
 // 	// Actual test
 // 	if e := mag.ComputeAllManifests(ctx); e != nil {
@@ -96,15 +106,14 @@ package magazine
 // 		t.Fatalf("Failed to GetInt64: %v", err)
 // 	}
 
-// 	md, found, err := mag.Database.ManifestData_Get_ByID(ctx, mdID)
+// 	md, found, err := mag.Database.ManifestDataGetByID(ctx, mdID)
 // 	if err != nil {
-// 		t.Fatalf("Failed to ManifestData_Get_ByID: %v", err)
+// 		t.Fatalf("Failed to ManifestDataGetByID: %v", err)
 // 	} else if !found {
-// 		t.Fatalf("Failed to ManifestData_Get_ByID: not found")
+// 		t.Fatalf("Failed to ManifestDataGetByID: not found")
 // 	}
 // 	// TODO: The OCI ManifestData has 5 OCI layes and the manipulation layers connected, hence 8 in total
 // 	assert.Equal(t, 8, len(md.Layers))
-
 // }
 
 // func TestComputeAllManifestsWithManipulationArm64(t *testing.T) {
@@ -150,10 +159,10 @@ package magazine
 // 	}
 // 	if err != nil {
 // 		t.Logf("Error while SetupTest: %v", err)
-// 		TeardownTest(bs)
+// 		TeardownTest(bs, br)
 // 		t.Fatal(err)
 // 	}
-// 	defer TeardownTest(bs)
+// 	defer TeardownTest(bs, br)
 // 	// Connect Collection/Tag
 // 	maniID, err := br.GetInt64("manifest:ft_amd64#id")
 // 	if err != nil {
@@ -193,233 +202,131 @@ package magazine
 // 		t.Fatalf("Failed to GetInt64: %v", err)
 // 	}
 
-// 	md, found, err := mag.Database.ManifestData_Get_ByID(ctx, mdID)
+// 	md, found, err := mag.Database.ManifestDataGetByID(ctx, mdID)
 // 	if err != nil {
-// 		t.Fatalf("Failed to ManifestData_Get_ByID: %v", err)
+// 		t.Fatalf("Failed to ManifestDataGetByID: %v", err)
 // 	} else if !found {
-// 		t.Fatalf("Failed to ManifestData_Get_ByID: not found")
+// 		t.Fatalf("Failed to ManifestDataGetByID: not found")
 // 	}
 // 	assert.Equal(t, 2, len(md.Layers))
 
 // }
 
-// func TestComputeManifest(t *testing.T) {
-// 	// Replicate the following test:
-// 	/// ./misc/bin/parse-glow.sh ./misc/yaml/collections/qnib/featuretest/arm64.yaml
-// 	ctx := context.Background()
-// 	_ = ctx
-// 	debug := 0
-// 	bs := utils.NewBootstrap()
-// 	bs.SetYAMLPrefix("../../../misc/yaml")
-// 	bs.AddBootstrap("upstream:glow150arm64")
-// 	bs.AddBootstrap("rules:rules/platform/arch/arm64.yaml")
-// 	bs.AddBootstrap("rules:rules/os/linux.yaml")
-// 	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
-// 	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
-// 	bs.AddBootstrap("rules:rules/os/linux.yaml")
-// 	bs.AddBootstrap("profile:profiles/generic.yaml")
-// 	bs.AddBootstrap("layer:0:glow150arm64_2660")
-// 	bs.AddBootstrap("layer:1:glow150arm64_3571")
-// 	bs.AddBootstrap("layer:2:glow150arm64_d54e")
-// 	bs.AddBootstrap("config:glow150arm64")
-// 	bs.AddBootstrap("manifestdata:glow150arm64")
-// 	bs.AddBootstrap("manipulation:manipulations/layer/glow/1.5.0-arm64.yaml")
-// 	bs.AddBootstrap("profile:profiles/glow/1.5.0-arm64.yaml")
-// 	// ManiData Setup
-// 	bs.AddBootstrap("platforms:arm64")
-// 	bs.AddBootstrap("config:ft_arm64")
-// 	bs.AddBootstrap("upstream:ft_arm64")
-// 	bs.AddBootstrap("manifest:ft_arm64")
-// 	bs.AddBootstrap("layer:0:ft_arm64")
-// 	bs.AddBootstrap("layer:1:ft_arm64")
-// 	bs.AddBootstrap("manifestdata:ft_arm64")
-// 	bs.AddBootstrap("collection:ft_arm64")
-// 	bs.SetEmptyAll()
-// 	if debug > 0 {
-// 		bs.PostTestSleep = debug
-// 	}
-// 	br, err := mag.SetupTest(ctx, bs)
-// 	for _, l := range br.ToLines() {
-// 		if debug > 0 {
-// 			t.Log(l)
-// 		}
-// 	}
-// 	if err != nil {
-// 		t.Logf("Error while SetupTest: %v", err)
-// 		TeardownTest(bs)
-// 		t.Fatal(err)
-// 	}
-// 	defer TeardownTest(bs)
-// 	// Connect Collection/Tag
-// 	maniID, err := br.GetInt64("manifest:ft_arm64#id")
-// 	if err != nil {
-// 		t.Fatalf("Failed to get manifest:ft_arm64#id: %v", err)
-// 	}
-// 	colID, err := br.GetInt64("collection:ft#id")
-// 	if err != nil {
-// 		t.Fatalf("Failed to get collection:ft#id: %v", err)
-// 	}
-// 	tagID, err := br.GetInt64("tag:arm64#id")
-// 	if err != nil {
-// 		t.Fatalf("Failed to get tag:arm64#id: %v", err)
-// 	}
-// 	if e := mag.Database.LinkCollectionTagToManifest(ctx, tagID, maniID); e != nil {
-// 		t.Fatalf("Failed to LinkCollectionTagToManifest: %v", e)
-// 	}
-// 	if e := mag.Database.LinkCollectionToManifest(ctx, colID, maniID); e != nil {
-// 		t.Fatalf("Failed to LinkCollectionToManifest: %v", e)
-// 	}
-// 	// Actual test
-// 	mdID, err := br.GetInt64("manifest:ft_arm64#id")
-// 	if err != nil {
-// 		t.Fatalf("Failed to get manifest:ft_arm64#id: %v", err)
-// 	}
-// 	mani, found, err := mag.Database.Manifest_GetByID(ctx, mdID)
-// 	if err != nil {
-// 		t.Fatalf("Failed to Manifest_GetByID: %v", err)
-// 	} else if !found {
-// 		t.Fatalf("Failed to Manifest_GetByID: not found")
-// 	}
-// 	if e := mag.ComputeManifest(ctx, mani); e != nil {
-// 		t.Fatalf("Failed to ComputeAllManifests: %v", e)
-// 	}
-// 	// Fetch ManifestData with manipulation
-// 	q := `MATCH (oci:ManifestData)-[]->(:Blob) WHERE oci.mediaType = "application/vnd.oci.image.manifest.v1+json"`
-// 	q += ` RETURN DISTINCT id(oci) AS ociID`
-// 	t.Log(q)
-// 	res, found, err := mag.Database.QueryOne(q)
-// 	if err != nil {
-// 		t.Fatalf("Failed to QueryOne: %v", err)
-// 	} else if !found {
-// 		t.Fatalf("Failed to QueryOne: not found")
-// 	}
-// 	mdID, err = res.GetInt64("ociID")
-// 	if err != nil {
-// 		t.Fatalf("Failed to GetInt64: %v", err)
-// 	}
-// 	md, found, err := mag.Database.ManifestData_Get_ByID(ctx, mdID)
-// 	if err != nil {
-// 		t.Fatalf("Failed to ManifestData_Get_ByID: %v", err)
-// 	} else if !found {
-// 		t.Fatalf("Failed to ManifestData_Get_ByID: not found")
-// 	}
-// 	assert.Equal(t, 2, len(md.Layers))
-// }
+func TestComputeManifest(t *testing.T) {
+	// Replicate the following test:
+	/// ./misc/bin/parse-glow.sh ./misc/yaml/collections/qnib/featuretest/arm64.yaml
+	ctx := context.Background()
+	_ = ctx
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("upstream:glow150arm64")
+	bs.AddBootstrap("rules:rules/platform/arch/arm64.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("profile:profiles/generic.yaml")
+	bs.AddBootstrap("layer:0:glow150arm64_2660")
+	bs.AddBootstrap("layer:1:glow150arm64_3571")
+	bs.AddBootstrap("layer:2:glow150arm64_d54e")
+	bs.AddBootstrap("config:glow150arm64")
+	bs.AddBootstrap("manifestdata:glow150arm64")
+	bs.AddBootstrap("manipulation:manipulations/layer/glow/1.5.0-arm64.yaml")
+	bs.AddBootstrap("profile:profiles/glow/1.5.0-arm64.yaml")
+	// ManiData Setup
+	bs.AddBootstrap("platforms:arm64")
+	bs.AddBootstrap("config:ft_arm64")
+	bs.AddBootstrap("upstream:ft_arm64")
+	bs.AddBootstrap("manifest:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_arm64")
+	bs.AddBootstrap("layer:1:ft_arm64")
+	bs.AddBootstrap("manifestdata:ft_arm64")
+	bs.AddBootstrap("collection:ft_arm64")
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := mag.SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	if err != nil {
+		t.Logf("Error while SetupTest: %v", err)
+		TeardownTest(bs, br)
+		t.Fatal(err)
+	}
+	defer TeardownTest(bs, br)
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "TestComputeManifest",
+	})
+	_ = l
+	defer span.End()
+	// Connect Collection/Tag
+	maniID, err := br.GetInt64("manifest:ft_arm64#id")
+	if err != nil {
+		t.Fatalf("Failed to get manifest:ft_arm64#id: %v", err)
+	}
+	colID, err := br.GetInt64("collection:ft#id")
+	if err != nil {
+		t.Fatalf("Failed to get collection:ft#id: %v", err)
+	}
+	tagID, err := br.GetInt64("tag:arm64#id")
+	if err != nil {
+		t.Fatalf("Failed to get tag:arm64#id: %v", err)
+	}
+	if e := mag.Database.LinkCollectionTagToManifest(ctx, tagID, maniID); e != nil {
+		t.Fatalf("Failed to LinkCollectionTagToManifest: %v", e)
+	}
+	if e := mag.Database.LinkCollectionToManifest(ctx, colID, maniID); e != nil {
+		t.Fatalf("Failed to LinkCollectionToManifest: %v", e)
+	}
+	// Actual test
+	mID, err := br.GetInt64("manifest:ft_arm64#id")
+	if err != nil {
+		t.Fatalf("Failed to get manifest:ft_arm64#id: %v", err)
+	}
+	mani, found, err := mag.Database.ManifestGetByID(ctx, mID)
+	if err != nil {
+		t.Fatalf("Failed to ManifestGetByID: %v", err)
+	} else if !found {
+		t.Fatalf("Failed to ManifestGetByID: not found")
+	}
+	if e := mag.ComputeManifest(ctx, mani); e != nil {
+		t.Fatalf("Failed to ComputeAllManifests: %v", e)
+	}
+	mdID, err := br.GetInt64("manifestdata:ft_arm64#id")
+	if err != nil {
+		t.Fatalf("Failed to get manifestdata:ft_arm64#id: %v", err)
+	}
+	// Fetch ManifestData with manipulation
+	q := fmt.Sprintf(`MATCH (oci:ManifestData)-[]->(:Blob) WHERE oci.mediaType IN ["%s"] AND id(oci) = %d`, strings.Join([]string{MediaTypeDockerManifestV2, v1.MediaTypeImageManifest}, `", "`), mdID)
+	q += ` RETURN DISTINCT id(oci) AS ociID`
+	t.Log(q)
+	res, found, err := mag.Database.QueryOne(q)
+	if err != nil {
+		t.Fatalf("Failed to QueryOne: %v", err)
+	} else if !found {
+		t.Fatalf("Failed to QueryOne: not found")
+	}
+	mdID, err = res.GetInt64("ociID")
+	if err != nil {
+		t.Fatalf("Failed to GetInt64: %v", err)
+	}
+	md, found, err := mag.Database.ManifestDataGetByID(ctx, mdID)
+	if err != nil {
+		t.Fatalf("Failed to ManifestDataGetByID: %v", err)
+	} else if !found {
+		t.Fatalf("Failed to ManifestDataGetByID: not found")
+	}
+	expLen := 2
+	if len(md.Layers) != expLen {
+		for _, l := range md.Layers {
+			t.Logf("Layer: %s", l.Digest)
+		}
+		t.Fatalf("Expected %d layers, but got %d", expLen, len(md.Layers))
+	}
 
-// func TestComputeManifestForProfileGlow(t *testing.T) {
-// 	// Replicate the following test:
-// 	/// ./misc/bin/parse-glow.sh ./misc/yaml/collections/qnib/featuretest/arm64.yaml
-// 	ctx := context.Background()
-// 	_ = ctx
-// 	debug := 0
-// 	bs := utils.NewBootstrap()
-// 	bs.SetYAMLPrefix("../../../misc/yaml")
-// 	bs.AddBootstrap("upstream:glow150arm64")
-// 	bs.AddBootstrap("rules:rules/platform/arch/arm64.yaml")
-// 	bs.AddBootstrap("rules:rules/os/linux.yaml")
-// 	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
-// 	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
-// 	bs.AddBootstrap("rules:rules/os/linux.yaml")
-// 	bs.AddBootstrap("profile:profiles/generic.yaml")
-// 	bs.AddBootstrap("layer:0:glow150arm64_2660")
-// 	bs.AddBootstrap("layer:1:glow150arm64_3571")
-// 	bs.AddBootstrap("layer:2:glow150arm64_d54e")
-// 	bs.AddBootstrap("config:glow150arm64")
-// 	bs.AddBootstrap("manifestdata:glow150arm64")
-// 	bs.AddBootstrap("manipulation:manipulations/layer/glow/1.5.0-arm64.yaml")
-// 	bs.AddBootstrap("profile:profiles/glow/1.5.0-arm64.yaml")
-// 	// ManiData Setup
-// 	bs.AddBootstrap("platforms:arm64")
-// 	bs.AddBootstrap("config:ft_arm64")
-// 	bs.AddBootstrap("upstream:ft_arm64")
-// 	bs.AddBootstrap("manifest:ft_arm64")
-// 	bs.AddBootstrap("layer:0:ft_arm64")
-// 	bs.AddBootstrap("layer:1:ft_arm64")
-// 	bs.AddBootstrap("manifestdata:ft_arm64")
-// 	bs.AddBootstrap("collection:ft_arm64")
-// 	bs.SetEmptyAll()
-// 	if debug > 0 {
-// 		bs.PostTestSleep = debug
-// 	}
-// 	br, err := mag.SetupTest(ctx, bs)
-// 	for _, l := range br.ToLines() {
-// 		if debug > 0 {
-// 			t.Log(l)
-// 		}
-// 	}
-// 	if err != nil {
-// 		t.Logf("Error while SetupTest: %v", err)
-// 		TeardownTest(bs)
-// 		t.Fatal(err)
-// 	}
-// 	defer TeardownTest(bs)
-// 	// Connect Collection/Tag
-// 	maniID, err := br.GetInt64("manifest:ft_arm64#id")
-// 	if err != nil {
-// 		t.Fatalf("Failed to get manifest:ft_arm64#id: %v", err)
-// 	}
-// 	colID, err := br.GetInt64("collection:ft#id")
-// 	if err != nil {
-// 		t.Fatalf("Failed to get collection:ft#id: %v", err)
-// 	}
-// 	tagID, err := br.GetInt64("tag:arm64#id")
-// 	if err != nil {
-// 		t.Fatalf("Failed to get tag:arm64#id: %v", err)
-// 	}
-// 	if e := mag.Database.LinkCollectionTagToManifest(ctx, tagID, maniID); e != nil {
-// 		t.Fatalf("Failed to LinkCollectionTagToManifest: %v", e)
-// 	}
-// 	if e := mag.Database.LinkCollectionToManifest(ctx, colID, maniID); e != nil {
-// 		t.Fatalf("Failed to LinkCollectionToManifest: %v", e)
-// 	}
-// 	// Eval RUles
-// 	if e := mag.Database.Rule_EvalAll(ctx); e != nil {
-// 		t.Fatalf("Failed to Rule_EvalAll: %v", e)
-// 	}
-// 	// Actual test
-// 	prfGlowID, err := br.GetInt64("profile:glow:1.5.0-arm64#id")
-// 	if err != nil {
-// 		t.Fatalf("Failed to get profile:glow:1.5.0-arm64#id: %v", err)
-// 	}
-// 	prfGlow, found, err := mag.Database.Profile_Get_ByID(ctx, prfGlowID)
-// 	if err != nil {
-// 		t.Fatalf("Failed to Profile_Get_ByID: %v", err)
-// 	} else if !found {
-// 		t.Fatalf("Failed to Profile_Get_ByID: not found")
-// 	}
-// 	mdID, err := br.GetInt64("manifest:ft_arm64#id")
-// 	if err != nil {
-// 		t.Fatalf("Failed to get manifest:ft_arm64#id: %v", err)
-// 	}
-// 	mani, found, err := mag.Database.Manifest_GetByID(ctx, mdID)
-// 	if err != nil {
-// 		t.Fatalf("Failed to Manifest_GetByID: %v", err)
-// 	} else if !found {
-// 		t.Fatalf("Failed to Manifest_GetByID: not found")
-// 	}
-// 	if e := mag.ComputeManifestForProfile(ctx, mani, prfGlow); e != nil {
-// 		t.Fatalf("Failed to ComputeAllManifests: %v", e)
-// 	}
-// 	// Fetch ManifestData with manipulation
-// 	q := `MATCH (oci:ManifestData)-[]->(:Blob) WHERE oci.mediaType = "application/vnd.oci.image.manifest.v1+json"`
-// 	q += ` RETURN DISTINCT id(oci) AS ociID`
-// 	t.Log(q)
-// 	res, found, err := mag.Database.QueryOne(q)
-// 	if err != nil {
-// 		t.Fatalf("Failed to QueryOne: %v", err)
-// 	} else if !found {
-// 		t.Fatalf("Failed to QueryOne: not found")
-// 	}
-// 	mdID, err = res.GetInt64("ociID")
-// 	if err != nil {
-// 		t.Fatalf("Failed to GetInt64: %v", err)
-// 	}
-// 	md, found, err := mag.Database.ManifestData_Get_ByID(ctx, mdID)
-// 	if err != nil {
-// 		t.Fatalf("Failed to ManifestData_Get_ByID: %v", err)
-// 	} else if !found {
-// 		t.Fatalf("Failed to ManifestData_Get_ByID: not found")
-// 	}
-// 	// TODO: The OCI ManifestData has 5 OCI layes and the manipulation layers connected, hence 8 in total
-// 	assert.Equal(t, 8, len(md.Layers))
-// }
+}

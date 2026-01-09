@@ -23,7 +23,7 @@ func (mag Magazine) getMani(ctx context.Context, br utils.BootstrapResult, label
 	if e != nil {
 		return mani, e
 	}
-	mani, maniFound, err := mag.Database.Manifest_GetByID(ctx, maniID)
+	mani, maniFound, err := mag.Database.ManifestGetByID(ctx, maniID)
 	if err != nil {
 		return mani, err
 	}
@@ -61,7 +61,7 @@ func (mag Magazine) getManiData(ctx context.Context, br utils.BootstrapResult, l
 	if e != nil {
 		return mani, e
 	}
-	mani, maniFound, err := mag.ManifestData_Get_ByID(ctx, mdID)
+	mani, maniFound, err := mag.ManifestDataGetByID(ctx, mdID)
 	if err != nil {
 		return mani, err
 	}

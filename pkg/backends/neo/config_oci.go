@@ -14,14 +14,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func (n Neo) OCIv1Config_GetInsertDescriptor(ctx context.Context, desc v1.Descriptor) (cfg types.Config, found bool, err error) {
+func (n Neo) OCIv1ConfigGetInsertDescriptor(ctx context.Context, desc v1.Descriptor) (cfg types.Config, found bool, err error) {
 	shortDig := utils.ShortenDigest(desc.Digest.String())
 	l := logrus.WithFields(logrus.Fields{
 		"package": "neo/config_oci.go",
-		"func":    "OCIv1Config_GetInsertDescriptor",
+		"func":    "OCIv1ConfigGetInsertDescriptor",
 		"digest":  shortDig,
 	})
-	ctx, span := tracer.Start(ctx, "OCIv1Config_GetInsertDescriptor")
+	ctx, span := tracer.Start(ctx, "OCIv1ConfigGetInsertDescriptor")
 	defer span.End()
 	span.SetAttributes(
 		attribute.Key("digest").String(shortDig),
@@ -36,7 +36,7 @@ func (n Neo) OCIv1Config_GetInsertDescriptor(ctx context.Context, desc v1.Descri
 		return
 	}
 	label := utils.CreateLabelFromDescriptor(desc)
-	q := fmt.Sprintf(`CREATE (c:Blob) SET c.digest = "%s", c.size = %d, c.label ="%s"`, desc.Digest.String(), desc.Size, label)
+	q := fmt.Sprintf(`CREATE (c:Blob) SET c.digest = "%s", c.size = %d, c.label ="%s", c.type = "config", c.MediaType = "%s"`, desc.Digest.String(), desc.Size, label, desc.MediaType)
 	q += ` RETURN id(c) as configID, c.size AS configSize, c.digest AS configDigest`
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
