@@ -16,7 +16,7 @@ type BlobReference struct {
 	Data      []byte `json:"-"`
 	Digest    string `json:"digest"`
 	Label     string `json:"label"`
-	MediaType string `json:"media_type"`
+	MediaType string `json:"mediaType"`
 	Size      int64  `json:"size"`
 }
 

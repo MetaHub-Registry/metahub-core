@@ -165,7 +165,7 @@ func (n Neo) LinkManifestListToManifests(mlID int64, manifests []types.ManifestD
 	return
 }
 
-func (n Neo) ManifestList_Insert(ctx context.Context, ml *types.ManifestList) (err error) {
+func (n Neo) ManifestListInsert(ctx context.Context, ml *types.ManifestList) (err error) {
 	dig := digest.Digest(ml.Digest)
 	mlID, success, err := n.GetManifestList(dig, ml.MediaType, 0)
 	if err != nil {
@@ -286,10 +286,10 @@ func ManifestListFromResult(res types.Result) (ml types.ManifestList, err error)
 	return
 }
 
-func (n Neo) ManifestListExists_ForTagProfile(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
+func (n Neo) ManifestListExistsForTagProfile(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "neo/manifestlist.go",
-		"func":    "ManifestListExists_ForTagProfile",
+		"func":    "ManifestListExistsForTagProfile",
 		"repo":    up.Repo,
 		"tag":     up.Tag,
 		"profile": up.Profile,

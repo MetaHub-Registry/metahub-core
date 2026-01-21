@@ -76,7 +76,18 @@ func TestBlobUploadCreateByOCI(t *testing.T) {
 	// if err := db.BlobUploadUpdateByUUID(ctx, &buGpt); err != nil {
 	// 	t.Fatal(err)
 	// }
-
+	if bu2, found, err := db.BlobUploadGetByLocation(ctx, bu.Location); err != nil {
+		t.Fatal(err)
+	} else if !found {
+		t.Fatal("Did not find created BlobUpload by Location")
+	} else {
+		if bu.ID != bu2.ID {
+			t.Fatalf("BlobUpload ID mismatch: got %d, want %d", bu2.ID, bu.ID)
+		}
+		if bu.UUID != bu2.UUID {
+			t.Fatalf("BlobUpload UUID mismatch: got %s, want %s", bu2.UUID.String(), bu.UUID.String())
+		}
+	}
 	span.End()
 }
 
@@ -231,7 +242,7 @@ func TestBlobChunkCRU(t *testing.T) {
 	}
 	assert.NotNil(t, bc.ID)
 	// / READ
-	bcs, err := db.UploadChunk_Get_ByUUID(ctx, ociBU.ID)
+	bcs, err := db.UploadChunkGetByUUID(ctx, ociBU.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,4 +259,10 @@ func TestBlobChunkCRU(t *testing.T) {
 	} else {
 		assert.Equal(t, ociBU.ID, gotBu.ID)
 	}
+	// UploadChunkGetByDigest
+	bcs2, err := db.UploadChunkGetByDigest(ctx, ociBU.Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, len(bcs2))
 }

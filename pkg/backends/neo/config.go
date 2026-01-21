@@ -243,14 +243,13 @@ func (n Neo) ConfigDeleteByDigest(ctx context.Context, dig string) (err error) {
 }
 
 func (n Neo) ConfigGetInsertByOCIManifest(ctx context.Context, ociMani types.OCIManifest, label string) (cfg types.Config, found bool, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":      pkgNameConfig,
 		"func":         "ConfigGetInsertByOCIManifest",
 		"cfgDigest":    ociMani.Config.Digest.String(),
 		"cfgMediaType": ociMani.Config.MediaType,
 	})
 	shortDig := utils.ShortenDigest(ociMani.Config.Digest.String())
-	ctx, span := tracer.Start(ctx, "ConfigGetInsertByOCIManifest")
 	defer span.End()
 	if ociMani.Config.Digest.String() == "" {
 		err = fmt.Errorf("config digest is emtpy")
@@ -271,6 +270,11 @@ func (n Neo) ConfigGetInsertByOCIManifest(ctx context.Context, ociMani types.OCI
 			attribute.String("log.message", msg),
 		))
 		l.Debug(msg)
+		if cfg.MediaType == "" {
+			cfg.MediaType = ociMani.Config.MediaType
+			n.ConfigUpdate(ctx, cfg.ID, cfg)
+		}
+
 		return
 	}
 	cfg = types.Config{
@@ -420,9 +424,11 @@ func (n Neo) ConfigGetMediaTypeByID(ctx context.Context, cfgID int64) (mt string
 }
 
 func (n Neo) ConfigUpdate(ctx context.Context, cfgID int64, cfg types.Config) (err error) {
-	q := `MATCH (cfg:Blob) WHERE id(cfg) = %d SET cfg.digest = "%s", cfg.size = %d`
-	query := fmt.Sprintf(q, cfgID, cfg.Digest, cfg.Size)
-	_, err = n.Execute(query)
+	q := fmt.Sprintf(`MATCH (cfg:Blob) WHERE id(cfg) = %d SET cfg.digest = "%s", cfg.size = %d`, cfgID, cfg.Digest, cfg.Size)
+	if cfg.MediaType != "" {
+		q += fmt.Sprintf(`, cfg.mediaType = "%s"`, cfg.MediaType)
+	}
+	_, err = n.Execute(q)
 	if err != nil {
 		return
 	}

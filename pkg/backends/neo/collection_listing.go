@@ -99,13 +99,13 @@ func (n Neo) CollectionListing_Get_ByName(ctx context.Context, repoName, colTagN
 	return
 }
 
-func (n Neo) CollectionListing_Get_ByRepoLike(ctx context.Context, repo string) (cols []types.CollectionListing, err error) {
+func (n Neo) CollectionListingGetByRepoLike(ctx context.Context, repo string) (cols []types.CollectionListing, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "neo/collection_listing.go",
-		"func":    "CollectionListing_Get_ByRepoLike",
+		"func":    "CollectionListingGetByRepoLike",
 		"repo":    repo,
 	})
-	ctx, span := tracer.Start(ctx, "CollectionListing_Get_ByRepoLike")
+	ctx, span := tracer.Start(ctx, "CollectionListingGetByRepoLike")
 	defer span.End()
 	span.SetAttributes(
 		attribute.Key("repo").String(repo),

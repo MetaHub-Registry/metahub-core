@@ -126,7 +126,7 @@ func (m Manifest) CreateManifestView() (err error) {
 		platforms.features AS features,
 		configs.digest AS configDigest,
 		configs.id AS configID,
-		configs.media_type AS configMediaType,
+		configs.mediaType AS configMediaType,
 		configs.size AS configSize,
 		profiles.name AS profile
 	FROM
@@ -161,7 +161,7 @@ func (m Manifest) CreateTables() (err error) {
 	s := `CREATE TABLE IF NOT EXISTS %s (
 		    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
         "digest" TEXT,
-		"media_type" TEXT,
+		"mediaType" TEXT,
 		"size" INT,
 		"platform_id" int,
         "upstream_id" int,
@@ -187,7 +187,7 @@ func (m Manifest) CreateTables() (err error) {
 }
 
 func (m Manifest) Insert(i *types.ManifestData) (err error) {
-	q := `INSERT INTO manifests (digest, media_type, size, platform_id, upstream_id, config_id) VALUES (?, ?, ?, ?, ?, ?)`
+	q := `INSERT INTO manifests (digest, mediaType, size, platform_id, upstream_id, config_id) VALUES (?, ?, ?, ?, ?, ?)`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		logrus.Error(err)

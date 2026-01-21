@@ -18,7 +18,7 @@ type Blob struct {
 	SqlID     int64  `json:"sql_id"`
 	Data      []byte `json:"-"`
 	Digest    string `json:"digest"`
-	MediaType string `json:"media_type"`
+	MediaType string `json:"mediaType"`
 	Size      int64  `json:"size"`
 }
 

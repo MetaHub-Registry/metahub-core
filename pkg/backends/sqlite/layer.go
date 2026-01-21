@@ -11,7 +11,7 @@ import (
 type Layer struct {
 	ID        int64  `json:"id"`
 	Digest    string `json:"digest"`
-	MediaType string `json:"media_type"`
+	MediaType string `json:"mediaType"`
 	Size      int    `json:"size"`
 }
 
@@ -30,7 +30,7 @@ func (l Layer) CreateTables() (err error) {
 	s := `CREATE TABLE IF NOT EXISTS %s (
         id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
         "digest" TEXT,
-        "media_type" TEXT,
+        "mediaType" TEXT,
         "size" INT);`
 	stmt := fmt.Sprintf(s, tableName)
 	query, err := db.Prepare(stmt)
@@ -47,7 +47,7 @@ func (l Layer) CreateTables() (err error) {
 
 func (l Layer) LayerGetByDigest(dig string) (layer types.Layer, found bool, err error) {
 	// Already exists?
-	q := fmt.Sprintf(`SELECT digest, media_type, size FROM layers WHERE digest="%s"`, dig)
+	q := fmt.Sprintf(`SELECT digest, mediaType, size FROM layers WHERE digest="%s"`, dig)
 	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Error(err)
@@ -112,7 +112,7 @@ func (l Layer) Upsert(i *types.Layer) (err error) {
 }
 
 func (l Layer) InsertDescriptor(i distribution.Descriptor) (lID int64, err error) {
-	q := `INSERT INTO layers (digest, media_type, size) VALUES (?, ?, ?)`
+	q := `INSERT INTO layers (digest, mediaType, size) VALUES (?, ?, ?)`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		logrus.Error(err)
@@ -128,7 +128,7 @@ func (l Layer) InsertDescriptor(i distribution.Descriptor) (lID int64, err error
 }
 
 func (l Layer) Insert(i *types.Layer) (err error) {
-	q := `INSERT INTO layers (digest, media_type, size) VALUES (?, ?, ?)`
+	q := `INSERT INTO layers (digest, mediaType, size) VALUES (?, ?, ?)`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		logrus.Error(err)

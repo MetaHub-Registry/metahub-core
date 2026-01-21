@@ -131,12 +131,12 @@ func (mag Magazine) CacheLayers(ctx context.Context, mani types.ManifestData) (e
 	return
 }
 
-func (mag Magazine) Layer_PlainInsert(ctx context.Context, layer types.Layer) (layerID int64, err error) {
-	return mag.Database.Layer_PlainInsert(ctx, layer)
+func (mag Magazine) LayerPlainInsert(ctx context.Context, layer types.Layer) (layerID int64, err error) {
+	return mag.Database.LayerPlainInsert(ctx, layer)
 }
 
 func (mag Magazine) NeoInsertLayer(ctx context.Context, layer types.Layer) (layerID int64, err error) {
-	return mag.Layer_PlainInsert(ctx, layer)
+	return mag.LayerPlainInsert(ctx, layer)
 }
 
 func (mag Magazine) StoreLayerUpload(ctx context.Context, bu *types.OCIBlobUpload, buf []byte) (err error) {
@@ -158,7 +158,7 @@ func (mag Magazine) StoreLayerUpload(ctx context.Context, bu *types.OCIBlobUploa
 		Size:      int64(len(buf)),
 	}
 	//err = mag.SQlite.Layer.Upsert(&l)
-	_, e := mag.Database.Layer_PlainInsert(ctx, lyr)
+	_, e := mag.Database.LayerPlainInsert(ctx, lyr)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, "failed to insert layer into graph")
 	}
@@ -169,16 +169,16 @@ func (mag Magazine) StoreLayerUpload(ctx context.Context, bu *types.OCIBlobUploa
 	return nil
 }
 
-func (mag Magazine) Layer_GetPresignedUrlByHTTPRequest(r *http.Request) (psUrl string, err error) {
+func (mag Magazine) LayerGetPresignedUrlByHTTPRequest(r *http.Request) (psUrl string, err error) {
 	ctx := context.Background()
 	req := types.NewRequest(ctx, r)
 	return mag.Minio.BlobGetPreSignedUrl(ctx, req.Digest)
 }
 
-func (mag Magazine) Layer_GetByHTTPRequest(r *http.Request) (layer types.Layer, found bool, err error) {
+func (mag Magazine) LayerGetByHTTPRequest(r *http.Request) (layer types.Layer, found bool, err error) {
 	ctx := context.Background()
 	req := types.NewRequest(ctx, r)
-	//logrus.Debugf("Layer_GetByHTTPRequest: %s", req.String())
+	//logrus.Debugf("LayerGetByHTTPRequest: %s", req.String())
 	// Fetch Layer from SQLite
 	layer, found, err = mag.Database.LayerGetByDigest(ctx, req.Digest)
 	if err != nil {

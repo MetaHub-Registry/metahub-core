@@ -66,4 +66,8 @@ func TestOCIbuWWW(t *testing.T) {
 	assert.Equal(t, "0", w3.Header().Get("Content-Length"))
 	assert.Equal(t, "0-10", w2.Header().Get("Range"))
 
+	// WriteOCIPutResponse416
+	w4 := httptest.NewRecorder()
+	b3.WriteOCIPutResponse416(w4)
+	assert.Equal(t, 416, w4.Code)
 }

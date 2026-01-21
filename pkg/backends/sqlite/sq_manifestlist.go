@@ -6,7 +6,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 )
 
-func (s Sqlite) ManifestList_Insert(ctx context.Context, ml *types.ManifestList) (err error) {
+func (s Sqlite) ManifestListInsert(ctx context.Context, ml *types.ManifestList) (err error) {
 	return s.InsertManifestList(ml)
 }
 

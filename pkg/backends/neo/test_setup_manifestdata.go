@@ -53,7 +53,7 @@ func (n Neo) Setup_ManifestData(ctx context.Context, br *utils.BootstrapResult, 
 		"label": label,
 	})
 	defer span.End()
-	err = n.ManifestData_GetInsert(ctx, &maniData)
+	err = n.ManifestDataGetInsert(ctx, &maniData)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "could not insert ManifestData '%s'", label)
 	}

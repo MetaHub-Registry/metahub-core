@@ -77,10 +77,10 @@ func (n Neo) Manifest_GetInsert_WithDesc(ctx context.Context, up types.Upstream,
 	return
 }
 
-func (n Neo) Manifest_GetInsertWithRequest(ctx context.Context, m types.Manifest, req types.Request) (maniID int64, err error) {
+func (n Neo) ManifestGetInsertWithRequest(ctx context.Context, m types.Manifest, req types.Request) (maniID int64, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameMani,
-		"func":    "Manifest_GetInsertWithRequest",
+		"func":    "ManifestGetInsertWithRequest",
 		"profile": req.Profile,
 		"repo":    req.Repo,
 		"tag":     req.Tag,
@@ -437,10 +437,10 @@ func (n Neo) Manifest_GetByUpstreamDigest(ctx context.Context, upDigest string) 
 	return mani, false, fmt.Errorf("no manifest found")
 }
 
-func (n Neo) Manifest_Get_ByRepoTag(ctx context.Context, repo, tag string) (mani types.Manifest, found bool, err error) {
+func (n Neo) ManifestGetByRepoTag(ctx context.Context, repo, tag string) (mani types.Manifest, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "neo/manifest_data.go",
-		"func":    "Manifest_Get_ByRepoTag",
+		"func":    "ManifestGetByRepoTag",
 		"repo":    repo,
 		"tag":     tag,
 	})
@@ -816,16 +816,16 @@ func ManifestFromRecord(res neo4j.Result) (m types.Manifest, err error) {
 	return
 }
 
-func (n Neo) ManifestExists_ForTagProfile(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
+func (n Neo) ManifestExistsForTagProfile(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMani,
-		"func":    "ManifestExists_ForTagProfile",
+		"func":    "ManifestExistsForTagProfile",
 		"repo":    up.Repo,
 		"tag":     up.Tag,
 		"profile": up.Profile,
 	})
 	defer span.End()
-	mediaType, found, e := n.ManifestListExists_ForTagProfile(ctx, up)
+	mediaType, found, e := n.ManifestListExistsForTagProfile(ctx, up)
 	if e != nil {
 		utils.ErrorHandler(l, span, e, "failed to execute ManifestListExists")
 		return "", false, err

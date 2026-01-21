@@ -10,6 +10,7 @@ import (
 var (
 	ConfigDTGlow150ARM64 = NewDataTuple("data/cfg/26608a4ddd90f25b3854b5d5f2543b158f79c6e6bdb4099b65b63eb0dcf9d45d.json")
 	ConfigDTGlow151ARM64 = NewDataTuple("data/cfg/e351abc952a4c085ea76be6cfd84aa4b88894729747353cd03a5d161cb525f35.json")
+	ConfigDTOCI          = NewDataTuple("data/cfg/oci/cd02565b94728ee66ddd7cbeb400a7d6c6d1fd13a11a0a184ff62e75a1ca7f25.json")
 )
 
 func DataTupeFTConfigArm64() DataTuple {

@@ -52,7 +52,7 @@ func TestBlobGetByHTTPRequest(t *testing.T) {
 	}
 	// HEAD Request
 	utils.Debug(l, span, "Starting HEAD TestBlobGetByHTTPRequest")
-	_, r := utils.CreateNewHTTPTest(http.MethodHead, map[string]string{
+	_, r := utils.CreateNewHTTPTest(ctx, http.MethodHead, map[string]string{
 		"repo":      testRepo,
 		"image":     testImage,
 		"reference": dig,
@@ -222,8 +222,8 @@ func TestBlobChunkCRU(t *testing.T) {
 		t.Fatal(err)
 	}
 	// / READ
-	utils.Debug(l, span, "> UploadChunk_Get_ByUUID")
-	bcs, err := mag.Database.UploadChunk_Get_ByUUID(ctx, ociBU.ID)
+	utils.Debug(l, span, "> UploadChunkGetByUUID")
+	bcs, err := mag.Database.UploadChunkGetByUUID(ctx, ociBU.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

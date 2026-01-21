@@ -749,7 +749,7 @@ func TestManifestDataInsert(t *testing.T) {
 
 	// Actual Tests
 	mdArm64 := types.ManifestDataFeaturetestArm64
-	if e := db.ManifestDataInsert(ctx, &mdArm64); e != nil {
+	if _, e := db.ManifestDataInsert(ctx, &mdArm64); e != nil {
 		t.Fatal(e)
 	}
 	// Test the insert
@@ -782,7 +782,7 @@ func TestManifestDataInsert(t *testing.T) {
 		}
 	}
 	// // Again to trigger found
-	if e := db.ManifestDataInsert(ctx, &mdArm64); e != nil {
+	if _, e := db.ManifestDataInsert(ctx, &mdArm64); e != nil {
 		t.Fatal(e)
 	}
 	span.End()

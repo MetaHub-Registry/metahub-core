@@ -66,7 +66,7 @@ func TestLayerCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.NotNil(t, arm_l0_id)
-	l0_id_got, err := db.Layer_PlainInsert(ctx, arm_l0_got)
+	l0_id_got, err := db.LayerPlainInsert(ctx, arm_l0_got)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestLayerCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	l0_id_got, err = db.Layer_PlainInsert(ctx, arm_l0_got)
+	l0_id_got, err = db.LayerPlainInsert(ctx, arm_l0_got)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,14 +145,14 @@ func TestLayerGetUpstream(t *testing.T) {
 	// Add more layers to trigger multiple results
 	q := `MATCH (l:Blob), (md:ManifestData)`
 	q += fmt.Sprintf(` WHERE id(l) = %d AND id(md) = %d`, lId, md.ID)
-	q += fmt.Sprintf(` MERGE (l)<-[:%s]-(md)`, utils.ShortenMediaType(v1.MediaTypeImageLayerGzip))
+	q += ` MERGE (l)<-[:LayerLink]-(md)`
 	if _, e := db.Execute(q); e != nil {
 		t.Fatal(e)
 	}
 	if mt, err := db.Layer_GetMediaType_ByID(ctx, lId); err != nil {
 		t.Fatal(err)
 	} else {
-		assert.Equal(t, v1.MediaTypeImageLayerGzip, mt)
+		assert.Equal(t, "application/vnd.docker.image.rootfs.diff.tar.gzip", mt)
 	}
 	//TODO: Create second relationship to trigger multiple results
 	//q := `MATCH (l:Blob), (md:ManifestData) `

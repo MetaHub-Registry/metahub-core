@@ -165,7 +165,7 @@ func TestStoreManifestUploadOCIManifest(t *testing.T) {
 		Profile: "cpu#generic",
 		Digest:  inMani.Digest,
 	}
-	m, ociMani, err := mag.storeManifestUpload_OCIManifest(ctx, req, inMani.Data)
+	m, ociMani, err := mag.storeManifestUploadOCIManifest(ctx, req, inMani.Data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -477,7 +477,7 @@ func TestGetManifest(t *testing.T) {
 	testTag := "20220715-amd64-generic"
 	testProfile := "generic"
 	/// via HTTPRequest
-	_, rMDGet := utils.CreateNewHTTPTest(http.MethodGet, map[string]string{
+	_, rMDGet := utils.CreateNewHTTPTest(ctx, http.MethodGet, map[string]string{
 		"repo":      testOrg,
 		"repo2":     testRepo,
 		"image":     testImage,

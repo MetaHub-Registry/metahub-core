@@ -83,7 +83,7 @@ func TestUpstreamManifestInsert(t *testing.T) {
 	if !cfgOrigFound {
 		t.Fatal("config not found")
 	}
-	expEnvOrig := []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
+	expEnvOrig := []string{"ORG_QNIB_SYSTEM_OS_ID=alpine", "ORG_QNIB_SYSTEM_OS_VERSION=3.17.3", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
 	assert.Equal(t, expEnvOrig, cfgOrig.Cfg.Config.Env)
 	/// is blob present: manifest
 	upManiGen := upstream.UpstreamTriple{

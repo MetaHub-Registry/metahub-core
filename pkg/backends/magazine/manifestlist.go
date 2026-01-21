@@ -20,10 +20,10 @@ const (
 	pkgNameML = "magazine/manifestlist.go"
 )
 
-func (mag Magazine) ComputeManifestlist_ForCTTP(ctx context.Context, er *types.ExprRes, ctpp types.CollectionTagProfilePair) (err error) {
+func (mag Magazine) ComputeManifestlistForCTTP(ctx context.Context, er *types.ExprRes, ctpp types.CollectionTagProfilePair) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameML,
-		"func":    "ComputeManifestlist_ForCTTP",
+		"func":    "ComputeManifestlistForCTTP",
 		"cttp":    ctpp.String(),
 	})
 	defer span.End()
@@ -176,7 +176,7 @@ func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
 		return
 	}
 	for _, ctpp := range ctpps {
-		err = mag.ComputeManifestlist_ForCTTP(ctx, er, ctpp)
+		err = mag.ComputeManifestlistForCTTP(ctx, er, ctpp)
 		if err != nil {
 			err = errors.Wrapf(err, "failed to compute manifestlist for cttp: %v", ctpp)
 			span.SetStatus(codes.Error, err.Error())
@@ -252,7 +252,7 @@ func (mag Magazine) ComputeManifestlists_ForManiProfile(ctx context.Context, man
 
 	for _, ctpp := range ctpps {
 		utils.Warn(l, span, "CTTP.ManifestData: %d", len(ctpp.Manifests))
-		err = mag.ComputeManifestlist_ForCTTP(ctx, er, ctpp)
+		err = mag.ComputeManifestlistForCTTP(ctx, er, ctpp)
 		if err != nil {
 			err = errors.Wrapf(err, "failed to compute manifestlist for cttp: %v", ctpp)
 			continue
@@ -262,8 +262,15 @@ func (mag Magazine) ComputeManifestlists_ForManiProfile(ctx context.Context, man
 }
 
 func (mag Magazine) ManifestListGetByRequest(ctx context.Context, req types.Request) (ml types.ManifestList, found bool, err error) {
-	ctx, span := tracer.Start(ctx, "ManifestListGetByRequest")
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameML,
+		"func":    "ManifestListGetByRequest",
+		"repo":    req.Repo,
+		"tag":     req.Tag,
+		"digest":  utils.ShortenDigest(req.Digest),
+	})
 	defer span.End()
+	_ = l
 	// Fetch ML from SQLite
 	ml, found, err = mag.Database.ManifestList_Get_ByRequest(ctx, req)
 	if err != nil {
@@ -277,8 +284,8 @@ func (mag Magazine) ManifestListGetByRequest(ctx context.Context, req types.Requ
 	return
 }
 
-func (mag Magazine) ManifestList_GetByHTTPRequest(ctx context.Context, r *http.Request) (ml types.ManifestList, found bool, err error) {
-	ctx, span := tracer.Start(ctx, "ManifestList_GetByHTTPRequest")
+func (mag Magazine) ManifestListGetByHTTPRequest(ctx context.Context, r *http.Request) (ml types.ManifestList, found bool, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestListGetByHTTPRequest")
 	defer span.End()
 	req := types.NewRequest(ctx, r)
 	msg := fmt.Sprintf("%-5s ManifestListHandler(%s, ", r.Method, req.Repo)
@@ -297,3 +304,17 @@ func (mag Magazine) ManifestList_GetByHTTPRequest(ctx context.Context, r *http.R
 	}
 	return
 }
+
+// func (mag Magazine) ManifestListPutByRequest(ctx context.Context, req types.Request, buf []byte) (ml types.ManifestList, err error) {
+// 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+// 		"package": pkgNameML,
+// 		"func":    "ManifestListPutByRequest",
+// 		"repo":    req.Repo,
+// 		"tag":     req.Tag,
+// 		"digest":  utils.ShortenDigest(req.Digest),
+// 	})
+// 	defer span.End()
+
+// 	err = mag.Database.ManifestListInsert(ctx, req, buf)
+// 	return
+// }

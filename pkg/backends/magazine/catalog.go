@@ -8,7 +8,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 )
 
-func (mag Magazine) Collections_GetCatalog(ctx context.Context, req types.Request) (res types.CatalogResponse, err error) {
+func (mag Magazine) CollectionsGetCatalog(ctx context.Context, req types.Request) (res types.CatalogResponse, err error) {
 	// Fetch Layer from SQLite
 	cols, err := mag.Database.CollectionGetAll(ctx)
 	if err != nil {

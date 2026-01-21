@@ -187,7 +187,7 @@ func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string) (blo
 		}
 		// Insert Layer
 		for idx, layer := range maniData.Layers {
-			lID, e := mag.Database.Layer_PlainInsert(ctx, layer)
+			lID, e := mag.Database.LayerPlainInsert(ctx, layer)
 			if e != nil {
 				return utils.ErrorHandler(l, span, e, "Failed to insert layer")
 			}
@@ -433,7 +433,7 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 		return
 	}
 	// 2 . Get the Blob
-	maniBytes, maniMeta, e := mag.GetManifest_ByUpstreamByDigest(ctx, ups)
+	maniBytes, maniMeta, e := mag.GetManifestByUpstreamByDigest(ctx, ups)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "while getting manifest")
 		return
@@ -505,7 +505,7 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 		return
 	}
 	for idx, layer := range maniData.Layers {
-		lID, e := mag.Database.Layer_PlainInsert(ctx, layer)
+		lID, e := mag.Database.LayerPlainInsert(ctx, layer)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to insert layer #%d w/ digest '%s'", idx, utils.ShortenDigest(layer.Digest))
 			return
@@ -513,7 +513,7 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 		maniData.Layers[idx].ID = lID
 	}
 	// We need the ManifestDataID
-	maniData.ID, e = mag.Database.ManifestData_Insert(ctx, maniData)
+	maniData.ID, e = mag.Database.ManifestDataInsert(ctx, &maniData)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "Failed to insert manifest data")
 		return
@@ -749,7 +749,7 @@ func (mag Magazine) CacheUpstream(ctx context.Context, up types.Upstream) (err e
 		return utils.ErrorHandler(l, span, err, "while caching layers")
 	}
 	// Insert Manifest into Graph
-	if e := mag.Database.ManifestDataInsert(ctx, &maniData); e != nil {
+	if _, e := mag.Database.ManifestDataInsert(ctx, &maniData); e != nil {
 		return utils.ErrorHandler(l, span, e, "failed to ManifestDataInsert")
 	}
 	if e := mag.Database.ManifestDataLinkToConfig(ctx, maniData.ID, maniData.Config); e != nil {

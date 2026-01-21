@@ -30,7 +30,7 @@ type Config struct {
 	Data       []byte      `json:"-"`
 	Digest     string      `json:"digest"`
 	GraphLabel string      `json:"graph_label"`
-	MediaType  string      `json:"media_type"`
+	MediaType  string      `json:"mediaType"`
 	Size       int64       `json:"size"`
 	Cfg        v1.Image    `json:"cfg"`
 	Labels     Annotations `json:"labels"`

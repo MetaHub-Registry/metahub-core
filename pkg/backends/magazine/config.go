@@ -55,13 +55,13 @@ func (mag Magazine) CachImageConfig(ctx context.Context, mani *types.ManifestDat
 		Tag:    mani.Upstream.Tag,
 		Digest: digest.Digest(mani.Config.Digest),
 	}
-	cfg, isCached, e := mag.Minio.GetConfig(ctx, up.Digest.String())
+	cfg, e := mag.Minio.GetConfig(ctx, up.Digest.String())
 	_ = cfg
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to get config from Minio")
 		return
 	}
-	if !isCached {
+	if cfg == nil {
 		l.Warnf("Config not cached: %s\n%s", up.GetLabel(), up.Digest)
 		b, blob, e := mag.GetBlobByUpstreamTriple(ctx, up)
 		if e != nil {
@@ -123,7 +123,7 @@ func (mag Magazine) ConfigBlobGetByHTTPRequest(ctx context.Context, r *http.Requ
 }
 
 // Take in a manifest with a config DIGEST and return the config from Blob Storage
-func (mag Magazine) ConfigGetByManifest(ctx context.Context, req types.Request, oMani types.OCIManifest) (cfg types.Config, v1Img v1.Image, found bool, err error) {
+func (mag Magazine) ConfigGetByManifest(ctx context.Context, req types.Request, oMani types.OCIManifest) (cfg types.Config, v1Desc *v1.Descriptor, v1Img *v1.Image, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameConfig,
 		"func":    "mag.ConfigGetByManifest",
@@ -144,12 +144,20 @@ func (mag Magazine) ConfigGetByManifest(ctx context.Context, req types.Request, 
 	} else {
 		utils.Debug(l, span, "Config '%s' found: %s", utils.ShortenDigest(cfg.Digest), label)
 	}
-	v1Img, v1Found, e := mag.Minio.GetConfig(ctx, cfg.Digest)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to get Config from Minio")
+	switch cfg.MediaType {
+	case
+		v1.MediaTypeImageConfig, v1.MediaTypeImageManifest,
+		"application/vnd.docker.container.image.v1+json":
+		v1Img, e = mag.Minio.GetConfig(ctx, cfg.Digest)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to get Config from Minio")
+			return cfg, nil, nil, err
+		}
+	default:
+		err = utils.NewError(l, span, "unsupported config media type: %s", cfg.MediaType)
 		return
 	}
-	found = v1Found
+
 	return
 }
 
