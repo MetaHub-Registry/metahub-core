@@ -52,20 +52,20 @@ func TestGetConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.True(t, found)
-	_, found, err = min.GetConfig(ctx, featureTestGenericCfgDigest)
-	if err != nil {
+	if cfg, err := min.GetConfig(ctx, featureTestGenericCfgDigest); err != nil {
 		t.Fatal(err)
+	} else {
+		assert.NotNil(t, cfg)
 	}
-	assert.True(t, found)
 	err = min.BlobRemoveObj(ctx, featureTestGenericCfgDigest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, found, err = min.GetConfig(ctx, featureTestGenericCfgDigest)
-	if err != nil {
+	if cfg, err := min.GetConfig(ctx, featureTestGenericCfgDigest); err != nil {
 		t.Fatal(err)
+	} else {
+		assert.Nil(t, cfg)
 	}
-	assert.False(t, found)
 }
 
 func TestBlobRemoveObj(t *testing.T) {

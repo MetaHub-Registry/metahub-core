@@ -310,7 +310,7 @@ func (n Neo) Setup_Layer(ctx context.Context, br *utils.BootstrapResult, ly type
 	})
 	_ = l
 	defer span.End()
-	lyId, err := n.Layer_PlainInsert(ctx, ly)
+	lyId, err := n.LayerPlainInsert(ctx, ly)
 	if err != nil {
 		return err
 	}

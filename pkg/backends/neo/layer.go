@@ -23,12 +23,12 @@ const (
 	FailQueryExec                 = "query execution failed"
 	layerMediaType                = `unknownLayer`
 	pkgNameLyr                    = "neo/layer.go"
-	layerReturn                   = `id(l) AS layerID, l.digest AS layerDigest, TYPE(r) AS layerMediaType, l.size AS layerSize`
+	layerReturn                   = `id(l) AS layerID, l.digest AS layerDigest, l.mediaType AS layerMediaType, l.size AS layerSize`
 	FailGetLayersForManipuLayerID = "failed to get layers for ManipuLayerID"
 	FailLayerGetByID              = "failed to get layer by ID"
 )
 
-func (n Neo) Layer_PlainInsert(ctx context.Context, l types.Layer) (blobID int64, err error) {
+func (n Neo) LayerPlainInsert(ctx context.Context, l types.Layer) (blobID int64, err error) {
 	gotBlob, found, err := n.BlobGetByDigest(ctx, l.Digest)
 	if err != nil {
 		return
@@ -56,7 +56,7 @@ func (n Neo) LayerGetByLayerAndManifestDataID(ctx context.Context, layerID, mdID
 	defer span.End()
 	q := `MATCH (md:ManifestData)-[r]->(n:Blob)`
 	q += fmt.Sprintf(` WHERE id(n) = %d AND id(md) = %d`, layerID, mdID)
-	q += ` RETURN id(n) AS layerID, n.digest AS layerDigest, n.size AS layerSize, TYPE(r) AS layerMediaType`
+	q += ` RETURN id(n) AS layerID, n.digest AS layerDigest, n.size AS layerSize, n.mediaType AS layerMediaType`
 	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
@@ -234,7 +234,7 @@ func (n Neo) GetLayersForManifest(ctx context.Context, m types.ManifestData) (la
 	defer span.End()
 	layers = []types.Layer{}
 	q := fmt.Sprintf(`MATCH (l:Blob)<-[lyRel]-(m:ManifestData) WHERE m.digest = "%s" AND l.type = "layer"`, m.Digest)
-	q += ` RETURN id(l) AS ID, l.digest AS digest, TYPE(lyRel) AS mediaType, l.size AS size`
+	q += ` RETURN id(l) AS ID, l.digest AS digest, l.mediaType AS mediaType, l.size AS size`
 	utils.Debug(l, span, q)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
@@ -321,7 +321,7 @@ func (n Neo) LayerCreateByDescriptor(l distribution.Descriptor) (layerID int64, 
 func (n Neo) GetLayersForManifestDataID(ctx context.Context, maniDataID int64) (layers []types.Layer, err error) {
 	layers = []types.Layer{}
 	q := `MATCH (l:Blob)<-[r]-(m:ManifestData) WHERE id(m) = %d AND l.type = "layer"`
-	q += ` RETURN id(l) AS layerID, l.digest AS layerDigest, TYPE(r) AS layerMediaType, l.size AS layerSize`
+	q += ` RETURN id(l) AS layerID, l.digest AS layerDigest, l.mediaType AS layerMediaType, l.size AS layerSize`
 	q += ` ORDER BY r.order`
 	query := fmt.Sprintf(q, maniDataID)
 	res, err := n.Query(query)
@@ -379,7 +379,7 @@ func (n Neo) Layer_GetMediaType_ByID(ctx context.Context, lyID int64) (mt string
 	defer span.End()
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (l:Blob)<-[layerRel]-(md:ManifestData) WHERE id(l) = %d AND l.type = "layer"`, lyID)
-	q += ` RETURN DISTINCT TYPE(layerRel) AS layerMediaType`
+	q += ` RETURN DISTINCT l.mediaType AS layerMediaType`
 	utils.Debug(l, span, q)
 	res, e := n.Query(q)
 	if e != nil {
@@ -503,7 +503,7 @@ func (n Neo) layerGetUpstreamRegistryMediaTypeTypeByDigest(ctx context.Context, 
 	defer span.End()
 	q := `MATCH (l:Blob)<-[r]-(md:ManifestData)-[]-(u:Upstream) `
 	q += fmt.Sprintf(` WHERE l.digest = "%s" AND l.type = "layer"`, dig)
-	q += " RETURN DISTINCT u.reg AS upstreamRegistry, TYPE(r) AS layerMediaType"
+	q += " RETURN DISTINCT u.reg AS upstreamRegistry, l.mediaType AS layerMediaType"
 	utils.Debug(l, span, q)
 	res, err := n.Query(q)
 	if err != nil {

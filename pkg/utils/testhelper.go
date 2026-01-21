@@ -11,14 +11,14 @@ import (
 	gCtx "github.com/gorilla/context"
 )
 
-func CreateNewHTTPTest(meth string, p, c, h map[string]string, url string, b []byte) (w httptest.ResponseRecorder, r *http.Request) {
+func CreateNewHTTPTest(ctx context.Context, meth string, p, c, h map[string]string, url string, b []byte) (w httptest.ResponseRecorder, r *http.Request) {
 	w = *httptest.NewRecorder()
 	r = httptest.NewRequest(meth, url, bytes.NewReader(b))
 	rctx := chi.NewRouteContext()
 	for k, v := range p {
 		rctx.URLParams.Add(k, v)
 	}
-	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+	r = r.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
 	for k, v := range c {
 		gCtx.Set(r, k, v)
 	}

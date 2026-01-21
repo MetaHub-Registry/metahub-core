@@ -213,7 +213,7 @@ func (n Neo) ManipuLayerLinkToLayer(ctx context.Context, mplID, lyrID int64, med
 	_ = ctx
 	rel := utils.ShortenMediaType(mediaType)
 	q := fmt.Sprintf(`MATCH (mpl:ManipuLayer), (l:Blob) WHERE id(mpl) = %d AND id(l) = %d`, mplID, lyrID)
-	q += fmt.Sprintf(` MERGE (mpl)-[:%s {order: %d}]->(l)`, rel, idx)
+	q += fmt.Sprintf(` MERGE (mpl)-[:LayerLink {mediaType: "%s", order: %d}]->(l)`, rel, idx)
 	utils.Debug(l, span, q)
 	if _, err := n.Execute(q); err != nil {
 		return utils.ErrorHandler(l, span, err, FailNeoExecute)

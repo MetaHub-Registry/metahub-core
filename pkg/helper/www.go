@@ -80,5 +80,4 @@ func WriteResponse(w http.ResponseWriter, statusCode int, b []byte) {
 	w.Header().Add("Content-Length", fmt.Sprint(len(b)))
 	w.Write(b)
 	w.WriteHeader(statusCode)
-
 }

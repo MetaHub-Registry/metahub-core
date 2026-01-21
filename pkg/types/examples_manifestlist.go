@@ -23,6 +23,23 @@ func FT_amd_Manifestlist() ManifestList {
 	}
 }
 
+func FTOCIManifestlist() ManifestList {
+	dat, err := f.ReadFile("data/manifestlists/oci/508f21b8552552157ea35e86da67e4de414a5f36b9873f077e05678a125908d8.json")
+	if err != nil {
+		panic(err)
+	}
+	dig := digest.FromBytes(dat).String()
+	if dig != "sha256:508f21b8552552157ea35e86da67e4de414a5f36b9873f077e05678a125908d8" {
+		panic("digest mismatch")
+	}
+	return ManifestList{
+		SchemaVersion: 2,
+		Digest:        dig,
+		MediaType:     "application/vnd.oci.image.index.v1+json",
+		Manifests:     []ManifestData{},
+	}
+}
+
 func FT_generic_Manifestlist() ManifestList {
 	dat, err := f.ReadFile("data/manifestlists/451af211ab5d4bb4cf956ec8bf50e9cf57c2083c9dbbcd0c8facf4642cb76932.json")
 	if err != nil {

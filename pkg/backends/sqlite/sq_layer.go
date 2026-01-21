@@ -6,7 +6,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 )
 
-func (s Sqlite) Layer_PlainInsert(ctx context.Context, l types.Layer) (layerID int64, err error) {
+func (s Sqlite) LayerPlainInsert(ctx context.Context, l types.Layer) (layerID int64, err error) {
 	return 0, errNotImplemented
 }
 

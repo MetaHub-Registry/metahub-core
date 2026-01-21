@@ -11,7 +11,7 @@ type Config struct {
 	ID        int64  `json:"id"`
 	Digest    string `json:"digest"`
 	Label     string `json:"label"`
-	MediaType string `json:"media_type"`
+	MediaType string `json:"mediaType"`
 	Size      int    `json:"size"`
 }
 
@@ -31,7 +31,7 @@ func (c Config) CreateTables() (err error) {
         id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
         "digest" TEXT,
         "label" TEXT,
-        "media_type" TEXT,
+        "mediaType" TEXT,
         "size" INT);`
 	stmt := fmt.Sprintf(s, tableName)
 	query, err := db.Prepare(stmt)
@@ -75,7 +75,7 @@ func (c Config) Upsert(i *types.Config) (err error) {
 }
 
 func (c Config) Insert(i *types.Config) (err error) {
-	q := `INSERT INTO configs (digest, label, media_type, size) VALUES (?, ?, ?, ?)`
+	q := `INSERT INTO configs (digest, label, mediaType, size) VALUES (?, ?, ?, ?)`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		logrus.Error(err)
@@ -121,7 +121,7 @@ func (c Config) GetCreateByRequest(ociMani types.OCIManifest) (cfg types.Config,
 		return cfg, err
 	}
 	// Create Upstream
-	q := `INSERT INTO main.configs (digest, label, media_type, size) VALUES (?, "", ?, ?);`
+	q := `INSERT INTO main.configs (digest, label, mediaType, size) VALUES (?, "", ?, ?);`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		logrus.Error(err)
@@ -137,7 +137,7 @@ func (c Config) GetCreateByRequest(ociMani types.OCIManifest) (cfg types.Config,
 }
 
 func (c Config) ConfigGetByDigest(dig string) (cfg types.Config, found bool, err error) {
-	q := fmt.Sprintf(`SELECT id, digest, label, media_type, size FROM main.configs WHERE digest="%s";`, dig)
+	q := fmt.Sprintf(`SELECT id, digest, label, mediaType, size FROM main.configs WHERE digest="%s";`, dig)
 	rows, err := db.Query(q)
 	if err != nil {
 		logrus.Error(err)

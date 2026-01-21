@@ -13,5 +13,4 @@ func TestWriteResponse(t *testing.T) {
 	WriteResponse(w, http.StatusOK, []byte("test"))
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "test", w.Body.String())
-
 }

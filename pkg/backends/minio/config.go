@@ -25,7 +25,7 @@ const (
 	keyDownNotExist = "The specified key does not exist."
 )
 
-func (m Minio) GetConfig(ctx context.Context, dig string) (cfg v1.Image, found bool, err error) {
+func (m Minio) GetConfig(ctx context.Context, dig string) (cfg *v1.Image, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameConfig,
 		"func":    "minio.GetConfig",
@@ -44,18 +44,18 @@ func (m Minio) GetConfig(ctx context.Context, dig string) (cfg v1.Image, found b
 		return
 	}
 	// No error - off we go
-	found = true
-	cfg = v1.Image{}
-	e = json.Unmarshal(b, &cfg)
+	var c v1.Image
+	e = json.Unmarshal(b, &c)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to unmarshal v1.Image: %v", err)
-		return
+		err = utils.ErrorHandler(l, span, e, "failed to unmarshal v1.Image")
+		utils.Debug(l, span, "got config obj with len %d: %s", len(b), string(b))
+		return nil, err
 	}
-	if cfg.Config.Labels == nil {
-		cfg.Config.Labels = make(map[string]string)
+	utils.Debug(l, span, "unmarshaled config: %+v", c)
+	if c.Config.Labels == nil {
+		c.Config.Labels = make(map[string]string)
 	}
-	found = true
-	return
+	return &c, nil
 }
 
 func (m Minio) GetConfigByUpTriple(ctx context.Context, up upstream.UpstreamTriple) (res types.Config, isCached bool, err error) {

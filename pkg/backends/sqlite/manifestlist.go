@@ -126,7 +126,7 @@ func (ml ManifestList) createManifestlistTable() (err error) {
 	s := `CREATE TABLE IF NOT EXISTS %s (
 		    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
         "digest" TEXT,
-		"media_type" TEXT,
+		"mediaType" TEXT,
 		"size" INT
 		);`
 	stmt := fmt.Sprintf(s, tableName)
@@ -143,7 +143,7 @@ func (ml ManifestList) createManifestlistTable() (err error) {
 }
 
 func (sq Sqlite) InsertManifestList(i *types.ManifestList) (err error) {
-	q := `INSERT INTO manifestlists (digest, media_type) VALUES (?, ?)`
+	q := `INSERT INTO manifestlists (digest, mediaType) VALUES (?, ?)`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		logrus.Error(err)
@@ -169,7 +169,7 @@ func (sq Sqlite) InsertManifestList(i *types.ManifestList) (err error) {
 
 /*
 func (ml ManifestList) Insert(i *types.ManifestList) (err error) {
-	q := `INSERT INTO manifestlists (digest, media_type) VALUES (?, ?)`
+	q := `INSERT INTO manifestlists (digest, mediaType) VALUES (?, ?)`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		logrus.Error(err)

@@ -53,7 +53,7 @@ func (mag Magazine) cacheManifestByUpstream(ctx context.Context, up types.Upstre
 	if !found {
 		utils.Debug(l, span, "Manifest not cached, yet")
 		// ***** Manifest not already there
-		b, blob, e := mag.GetManifest_ByUpstreamByDigest(ctx, up)
+		b, blob, e := mag.GetManifestByUpstreamByDigest(ctx, up)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to GetManifestByUpstreamTripleByTag")
 			return maniData, err
@@ -148,7 +148,7 @@ func (mag Magazine) ManifestDataUpsertBackends(ctx context.Context, md *types.Ma
 		if _, found, err := mag.Database.LayerGetByDigest(ctx, lyr.Digest); err != nil {
 			return utils.ErrorHandler(l, span, err, "failed to LayerGetByDigest")
 		} else if !found {
-			lyrID, err := mag.Database.Layer_PlainInsert(ctx, lyr)
+			lyrID, err := mag.Database.LayerPlainInsert(ctx, lyr)
 			if err != nil {
 				return utils.ErrorHandler(l, span, err, "failed to LayerInsert")
 			}
@@ -156,8 +156,8 @@ func (mag Magazine) ManifestDataUpsertBackends(ctx context.Context, md *types.Ma
 		}
 		md.Layers[idx] = lyr
 	}
-	if e := mag.Database.ManifestData_GetInsert(ctx, md); e != nil {
-		return utils.ErrorHandler(l, span, e, "failed to ManifestData_GetInsert")
+	if e := mag.Database.ManifestDataGetInsert(ctx, md); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to ManifestDataGetInsert")
 	}
 	// Fetch Platform ID
 	if e := mag.Database.Platform_GetInsert(ctx, &md.Platform); e != nil {
@@ -192,19 +192,19 @@ func (mag Magazine) CachManifest(ctx context.Context, m ycfg.Manifest) (mani typ
 	return mag.cacheManifestByUpstream(ctx, up)
 }
 
-func (mag Magazine) ManifestData_Insert(ctx context.Context, m types.ManifestData) (maniID int64, err error) {
+func (mag Magazine) ManifestDataInsert(ctx context.Context, m *types.ManifestData) (maniID int64, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMD,
-		"func":    "ManifestData_Insert",
+		"func":    "ManifestDataInsert",
 	})
 	defer span.End()
 	if m.Digest == m.Config.Digest {
 		logrus.Fatalf("NeoInsertManifest: Manifest.Digest and Manifest.Config.Digest are equal - something went wrong\n Digest:    %s\n ConfigDig: %s ", m.Digest, m.Config.Digest)
 	}
-	if e := mag.ManifestDataUpsertBackends(ctx, &m); e != nil {
+	if e := mag.ManifestDataUpsertBackends(ctx, m); e != nil {
 		return 0, utils.ErrorHandler(l, span, e, "failed to ManifestDataUpsertBackends")
 	}
-	return mag.Database.ManifestData_Insert(ctx, m)
+	return mag.Database.ManifestDataInsert(ctx, m)
 }
 
 func (mag Magazine) NeoInsertManifestData(ctx context.Context, msID int64, m types.ManifestData, props ...string) (maniID int64, err error) {
@@ -214,9 +214,9 @@ func (mag Magazine) NeoInsertManifestData(ctx context.Context, msID int64, m typ
 		"maniID":  msID,
 	})
 	defer span.End()
-	maniID, e := mag.ManifestData_Insert(ctx, m)
+	maniID, e := mag.ManifestDataInsert(ctx, &m)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to ManifestData_Insert")
+		err = utils.ErrorHandler(l, span, e, "failed to ManifestDataInsert")
 		return
 	}
 	// Link Manifest(Standin) to ManifestData
@@ -226,6 +226,57 @@ func (mag Magazine) NeoInsertManifestData(ctx context.Context, msID int64, m typ
 		return
 	}
 	return
+}
+func (mag Magazine) StoreManifestArtifactUpload(ctx context.Context, req types.Request, ociMani types.OCIManifest) (md types.ManifestData, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMD,
+		"func":    "StoreManifestArtifactUpload",
+		"repo":    req.Repo,
+		"tag":     req.Tag,
+		"digest":  req.Digest,
+		"profile": req.Profile,
+	})
+	defer span.End()
+	var found bool
+	md, found, err = mag.Database.ManifestDataGetByDigest(ctx, req.Digest)
+	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to ManifestDataGetByDigest")
+		return md, err
+	}
+	if !found {
+		utils.Debug(l, span, "Artifact ManifestData not found, creating new one for digest: %s", utils.ShortenDigest(req.Digest))
+	}
+
+	b, err := ociMani.ToBytes()
+	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to OCIManifest.ToBytes")
+		return md, err
+	}
+	fmt.Println(string(b))
+	utils.Debug(l, span, "TODO: 1. Link ManifestData w/ Config Blob: %s", utils.ShortenDigest(ociMani.Config.Digest.String()))
+	if err := mag.Database.ManifestDataLinkToArtifactConfig(ctx, req.Digest, ociMani.Config); err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to ManifestDataLinkToArtifactConfig")
+		return md, err
+	}
+	utils.Debug(l, span, "TODO: 3. Fetch Subject/Reference relationship and update them")
+	// Create ManifestData
+	if ociMani.Subject != nil {
+		utils.Debug(l, span, "Artifact Manifest has Subject: %s", utils.ShortenDigest(ociMani.Subject.Digest.String()))
+		sub := types.ManifestDataFromOciDescriptor(*ociMani.Subject)
+		if subId, err := mag.Database.ManifestDataInsert(ctx, &sub); err != nil {
+			err = utils.ErrorHandler(l, span, err, "failed to insert subject manifest data")
+			return md, err
+		} else {
+			utils.Debug(l, span, "Inserted Subject ManifestData with ID: %d", subId)
+			er := mag.Database.LinkManifestDataToSubject(ctx, req.Digest, subId)
+			if er != nil {
+				err = utils.ErrorHandler(l, span, er, "failed to link manifest data to subject")
+				return md, err
+			}
+		}
+		md.Subject = &sub
+	}
+	return md, nil
 }
 
 func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, buf []byte) (md types.ManifestData, err error) {
@@ -243,9 +294,9 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 	var ociMani types.OCIManifest
 
 	// Put Manifest Blob into Minio
-	m, ociMani, e := mag.storeManifestUpload_OCIManifest(ctx, req, buf)
+	m, ociMani, e := mag.storeManifestUploadOCIManifest(ctx, req, buf)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to mag.storeManifestUpload_OCIManifest")
+		err = utils.ErrorHandler(l, span, e, "failed to mag.storeManifestUploadOCIManifest")
 		return
 	}
 	utils.Debug(l, span, "ociMani.Config.MediaType:%s", ociMani.Config.MediaType)
@@ -255,20 +306,25 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 		return
 	case 1:
 		label := fmt.Sprintf("%s/%s:%s", req.Host, req.Repo, req.Tag)
-		utils.Debug(l, span, "init ManifestData with label '%s' and digest '%s' from first manifest in storeManifestUpload_OCIManifest", label, utils.ShortenDigest(req.Digest))
+		utils.Debug(l, span, "init ManifestData with label '%s' and digest '%s' from first manifest in storeManifestUploadOCIManifest", label, utils.ShortenDigest(req.Digest))
 		md = m.Manifests[0]
 		md.Digest = req.Digest
 		md.Label = label
 	}
+	// Do we have a typical OCI Manifest to run a container or an artifact manifest?
+	if ociMani.IsArtifact() {
+		utils.Info(l, span, "Storing Artifact ManifestData for Digest: %s", utils.ShortenDigest(md.Digest))
+		return mag.StoreManifestArtifactUpload(ctx, req, ociMani)
+	}
+
 	// Fetch Config
-	cfg, v1Img, found, e := mag.ConfigGetByManifest(ctx, req, ociMani)
+	cfg, v1Desc, v1Img, e := mag.ConfigGetByManifest(ctx, req, ociMani)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to mag.ConfigGetByManifest")
 		return
 	}
-
 	cfg.MediaType = ociMani.Config.MediaType
-	if !found {
+	if v1Desc == nil && v1Img == nil {
 		err = utils.NewError(l, span, "failed to find config for manifest")
 		return
 	}

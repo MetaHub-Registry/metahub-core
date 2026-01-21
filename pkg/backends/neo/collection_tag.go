@@ -83,8 +83,8 @@ func (n Neo) CollectionTag_Create(tag string) (ct types.CollectionTag, err error
 	return CollectionTagFromResult(res)
 }
 
-func (n Neo) CollectionTag_GetCreate(ctx context.Context, tag string) (ct types.CollectionTag, err error) {
-	_, span := tracer.Start(ctx, "CollectionTag_GetCreate")
+func (n Neo) CollectionTagGetCreate(ctx context.Context, tag string) (ct types.CollectionTag, err error) {
+	_, span := tracer.Start(ctx, "CollectionTagGetCreate")
 	defer span.End()
 	span.SetAttributes(
 		attribute.Key("tag").String(tag),

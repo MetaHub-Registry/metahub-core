@@ -12,7 +12,7 @@ import (
 
 func TestNewRequest(t *testing.T) {
 	ctx := context.Background()
-	_, r := utils.CreateNewHTTPTest(http.MethodGet, map[string]string{}, map[string]string{
+	_, r := utils.CreateNewHTTPTest(ctx, http.MethodGet, map[string]string{}, map[string]string{
 		"debug": "10",
 	}, map[string]string{}, "/{repo}/{repo2}/{image}/manifests/{reference}", nil)
 	req := NewRequest(ctx, r)
@@ -28,7 +28,7 @@ func Test_ExtractFromRequest(t *testing.T) {
 	testTag := "20220715-amd64-generic"
 	testProfile := "generic"
 	testUser := "user"
-	_, r := utils.CreateNewHTTPTest(http.MethodGet, map[string]string{
+	_, r := utils.CreateNewHTTPTest(ctx, http.MethodGet, map[string]string{
 		"repo":      testOrg,
 		"repo2":     testRepo,
 		"image":     testImage,
@@ -63,7 +63,7 @@ func TestExtractRepoName(t *testing.T) {
 	defer span.End()
 	_ = c
 	req := EmptyRequest(0, 5)
-	_, r := utils.CreateNewHTTPTest(http.MethodHead, map[string]string{
+	_, r := utils.CreateNewHTTPTest(ctx, http.MethodHead, map[string]string{
 		"repo":      testRepo,
 		"image":     testImage,
 		"reference": testTag,
@@ -94,7 +94,7 @@ func TestParsePagination(t *testing.T) {
 	defer span.End()
 	_ = c
 	req := EmptyRequest(0, 5)
-	_, r := utils.CreateNewHTTPTest(http.MethodHead, map[string]string{
+	_, r := utils.CreateNewHTTPTest(ctx, http.MethodHead, map[string]string{
 		"repo":      testRepo,
 		"image":     testImage,
 		"reference": testTag,
@@ -119,7 +119,7 @@ func TestParseProto(t *testing.T) {
 	defer span.End()
 	_ = c
 	req := EmptyRequest(0, 5)
-	_, r := utils.CreateNewHTTPTest(http.MethodHead, map[string]string{}, map[string]string{}, map[string]string{}, "http://localhost/{repo}/{image}/blobs/{reference}?n=100&last=tag123", nil)
+	_, r := utils.CreateNewHTTPTest(ctx, http.MethodHead, map[string]string{}, map[string]string{}, map[string]string{}, "http://localhost/{repo}/{image}/blobs/{reference}?n=100&last=tag123", nil)
 	req.ParseProto(span, r)
 	assert.Equal(t, "http", req.Protocol)
 	r.Proto = "HTTP/1.0"
@@ -147,7 +147,7 @@ func TestParseProfile(t *testing.T) {
 	defer span.End()
 	_ = c
 	req := EmptyRequest(0, 5)
-	_, r := utils.CreateNewHTTPTest(http.MethodGet, map[string]string{}, map[string]string{
+	_, r := utils.CreateNewHTTPTest(ctx, http.MethodGet, map[string]string{}, map[string]string{
 		"accountName": token,
 		"userName":    "qnib/generic",
 		//"profileName": testProfile,
@@ -160,7 +160,7 @@ func TestParseProfile(t *testing.T) {
 	assert.Equal(t, "qnib", usr)
 	assert.Equal(t, testProfile, prf)
 
-	_, r = utils.CreateNewHTTPTest(http.MethodGet, map[string]string{}, map[string]string{
+	_, r = utils.CreateNewHTTPTest(ctx, http.MethodGet, map[string]string{}, map[string]string{
 		"accountName": token,
 		"profileName": testProfile,
 		"debug":       fmt.Sprintf("%d", debug),
@@ -172,7 +172,7 @@ func TestParseProfile(t *testing.T) {
 	assert.Equal(t, testProfile, prf)
 	assert.Equal(t, "", usr)
 	// Fail
-	_, r = utils.CreateNewHTTPTest(http.MethodGet, map[string]string{}, map[string]string{
+	_, r = utils.CreateNewHTTPTest(ctx, http.MethodGet, map[string]string{}, map[string]string{
 		"accountName": token,
 		"debug":       fmt.Sprintf("%d", debug),
 	}, map[string]string{}, "/{repo}/{image}/blobs/{reference}", nil)
@@ -197,7 +197,7 @@ func TestParseAuth(t *testing.T) {
 	defer span.End()
 	_ = c
 	req := EmptyRequest(0, 5)
-	_, r := utils.CreateNewHTTPTest(http.MethodHead, map[string]string{
+	_, r := utils.CreateNewHTTPTest(ctx, http.MethodHead, map[string]string{
 		"repo":      testRepo,
 		"image":     testImage,
 		"reference": testTag,
@@ -214,7 +214,7 @@ func TestParseAuth(t *testing.T) {
 	req.ParseAuth(span, r)
 	assert.Equal(t, "qnib", req.User)
 	assert.Equal(t, "user", req.UserRole)
-	_, r = utils.CreateNewHTTPTest(http.MethodHead, map[string]string{
+	_, r = utils.CreateNewHTTPTest(ctx, http.MethodHead, map[string]string{
 		"repo":      testRepo,
 		"image":     testImage,
 		"reference": testTag,
@@ -245,7 +245,7 @@ func TestParseRange(t *testing.T) {
 	defer span.End()
 	_ = c
 	req := EmptyRequest(0, 5)
-	_, r := utils.CreateNewHTTPTest(http.MethodHead, map[string]string{
+	_, r := utils.CreateNewHTTPTest(ctx, http.MethodHead, map[string]string{
 		"repo":      testRepo,
 		"image":     testImage,
 		"reference": testTag,

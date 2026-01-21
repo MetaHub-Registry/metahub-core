@@ -22,7 +22,7 @@ func TestBasic(t *testing.T) {
 	req := types.Request{
 		Repo: "qnib",
 	}
-	res, err := mag.Collections_GetCatalog(ctx, req)
+	res, err := mag.CollectionsGetCatalog(ctx, req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestCatalogARM64(t *testing.T) {
 	req := types.Request{
 		Repo: "qnib",
 	}
-	res, err := mag.Collections_GetCatalog(req)
+	res, err := mag.CollectionsGetCatalog(req)
 	if err != nil {
 		t.Fatal(err)
 }

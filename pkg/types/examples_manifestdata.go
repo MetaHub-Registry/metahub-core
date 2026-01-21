@@ -29,12 +29,16 @@ var (
 		Layer1Glow151ARM64DT,
 		Layer2Glow151ARM64DT,
 	)
+	ManifestDataOCI = newManifestData(
+		ManifestDataDTOCI(),
+		ConfigDTOCI,
+	)
 )
 
 func ManifestDataDTGlow150Arm64() DataTuple {
 	dt := NewDataTuple("data/manifests/3aabfa0b0457345ef833ca640823da969b0c43e542caf10c497e37a85213df60.json")
 	dt.Upstream = Upstream{
-		Reg:    "registry:5050",
+		Reg:    reg5050,
 		Repo:   "cqnib/metahub-layers/hpc3/glow",
 		Tag:    "1.5.0-arm64",
 		Digest: dt.Digest,
@@ -44,7 +48,7 @@ func ManifestDataDTGlow150Arm64() DataTuple {
 func ManifestDataDTGlow151Arm64() DataTuple {
 	dt := NewDataTuple("data/manifests/7b8f26f6ed712db19b9fd2f8fffff972c22defdf0e5176a09e2842f9a9b01fef.json")
 	dt.Upstream = Upstream{
-		Reg:    "registry:5050",
+		Reg:    reg5050,
 		Repo:   "cqnib/metahub-layers/hpc3/glow",
 		Tag:    "1.5.1-arm64",
 		Digest: dt.Digest,
@@ -196,4 +200,16 @@ func FT_arm_ManifestData() ManifestData {
 		},
 	}
 	return mani
+}
+
+/**** OCI ****/
+func ManifestDataDTOCI() DataTuple {
+	dt := NewDataTuple("data/manifests/oci/d701f04d63badebf6532354e76d8d36fdba8fed2c5f1ab538cb1847baab3de22.json")
+	dt.Upstream = Upstream{
+		Reg:    "registry:5050",
+		Repo:   "qnib/test",
+		Tag:    "1.0.0",
+		Digest: dt.Digest,
+	}
+	return dt
 }

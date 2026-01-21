@@ -45,7 +45,7 @@ func (s Sqlite) Collection_Create_ByYaml(ycol yamlCfg.ManifestCollection) (colID
 	return 0, errNotImplemented
 }
 
-func (s Sqlite) Collection_GetInsert_ByRequest(req types.Request) (col types.Collection, err error) {
+func (s Sqlite) CollectionGetInsertByRequest(req types.Request) (col types.Collection, err error) {
 	return s.GetInsertCollectionByRepoTag(req.Repo, req.Tag)
 }
 
@@ -168,6 +168,6 @@ func (s Sqlite) ComputeManifestlists() (err error) {
 	return errNotImplemented
 }
 
-func (s Sqlite) Collection_GetTagsListByRepo(repo string) (tags types.TagResponse, err error) {
+func (s Sqlite) CollectionGetTagsListByRepo(repo string) (tags types.TagResponse, err error) {
 	return s.Collection.GetTagsListByRepo(repo)
 }

@@ -370,7 +370,7 @@ func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMa
 	return
 }
 
-func (mag Magazine) OCIApplyManipulations(ctx context.Context, mani types.Manifest, origMani *types.ManifestData, prfID, ociManiDataID int64) (v1Cfg v1.Image, ok bool, err error) {
+func (mag Magazine) OCIApplyManipulations(ctx context.Context, mani types.Manifest, origMani *types.ManifestData, prfID, ociManiDataID int64) (v1Cfg *v1.Image, ok bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":     pkgNameOci,
 		"func":        "OCIApplyManipulations",
@@ -413,7 +413,7 @@ func (mag Magazine) OCIApplyManipulations(ctx context.Context, mani types.Manife
 			utils.Info(l, span, "Adding diffID: %s", diffID.String())
 			v1Cfg.RootFS.DiffIDs = append(v1Cfg.RootFS.DiffIDs, diffID)
 		}
-		if e := mag.ApplyManipulationToConfig(ctx, mani.ID, prfID, &v1Cfg, mplCfg); e != nil {
+		if e := mag.ApplyManipulationToConfig(ctx, mani.ID, prfID, v1Cfg, mplCfg); e != nil {
 			return v1Cfg, false, utils.ErrorHandler(l, span, e, "while in ApplyManipulationToConfig")
 		}
 	}
@@ -559,7 +559,7 @@ func (mag Magazine) OCICreateBaseManifest(ctx context.Context, mani types.Manife
 	return
 }
 
-func (mag Magazine) GenerateOCIv1Config(ctx context.Context, maniSI types.Manifest, origMani types.ManifestData) (v1Cfg v1.Image, err error) {
+func (mag Magazine) GenerateOCIv1Config(ctx context.Context, maniSI types.Manifest, origMani types.ManifestData) (v1Cfg *v1.Image, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":                pkgNameOci,
 		"func":                   "mag.GenerateOCIv1Config",
@@ -569,12 +569,12 @@ func (mag Magazine) GenerateOCIv1Config(ctx context.Context, maniSI types.Manife
 	})
 	defer span.End()
 	// Fetch config from Minio
-	v1Cfg, found, err := mag.Minio.GetConfig(ctx, origMani.Config.Digest)
+	v1Cfg, err = mag.Minio.GetConfig(ctx, origMani.Config.Digest)
 	if err != nil {
 		utils.ErrorHandler(l, span, err, "failed to GetConfig")
 		return
 	}
-	if !found {
+	if v1Cfg == nil {
 		err = utils.NewError(l, span, "config with digest '%s' not found in object store", origMani.Config.Digest)
 		return
 	}
@@ -654,7 +654,7 @@ func (mag Magazine) GenerateOCIv1Config(ctx context.Context, maniSI types.Manife
 	return
 }
 
-func (mag Magazine) GenerateOCIv1ConfigDescriptor(ctx context.Context, v1Cfg v1.Image) (dscr v1.Descriptor, err error) {
+func (mag Magazine) GenerateOCIv1ConfigDescriptor(ctx context.Context, v1Cfg *v1.Image) (dscr v1.Descriptor, err error) {
 	cfgBytes, err := json.Marshal(v1Cfg)
 	if err != nil {
 		return

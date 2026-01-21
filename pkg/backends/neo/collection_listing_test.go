@@ -50,17 +50,17 @@ func TestCollectionListingGetByID(t *testing.T) {
 	assert.Equal(t, int64(2), cl.ManifestCount)
 	assert.NotEqual(t, 0, len(cl.Manifests), fmt.Sprintf("Expected manifest to be present: %+v", cl.Manifests))
 		// Like
-	cls, err := db.CollectionListing_Get_ByRepoLike("")
+	cls, err := db.CollectionListingGetByRepoLike("")
 	if err != nil {
 		t.Fatal(err)
 }
 	assert.Equal(t, 2, len(cls))
-	cls, err = db.CollectionListing_Get_ByRepoLike("qnib")
+	cls, err = db.CollectionListingGetByRepoLike("qnib")
 	if err != nil {
 		t.Fatal(err)
 }
 	assert.Equal(t, 2, len(cls))
-	cls, err = db.CollectionListing_Get_ByRepoLike("qnib/nope")
+	cls, err = db.CollectionListingGetByRepoLike("qnib/nope")
 	if err != nil {
 		t.Fatal(err)
 }

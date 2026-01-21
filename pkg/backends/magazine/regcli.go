@@ -307,10 +307,10 @@ func (mag Magazine) getManifestBytesByDigest(ctx context.Context, reg, repo, dig
 	return b, blob, nil
 }
 
-func (mag Magazine) GetManifest_ByUpstreamByDigest(ctx context.Context, up mhTypes.Upstream) (b []byte, blob mhTypes.BlobMeta, err error) {
+func (mag Magazine) GetManifestByUpstreamByDigest(ctx context.Context, up mhTypes.Upstream) (b []byte, blob mhTypes.BlobMeta, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameUp,
-		"func":    "GetManifest_ByUpstreamByDigest",
+		"func":    "GetManifestByUpstreamByDigest",
 		"reg":     up.Reg,
 		"repo":    up.Repo,
 		"tag":     up.Tag,

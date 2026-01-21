@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"testing"
@@ -17,7 +18,7 @@ func TestCreateHTTPTest(t *testing.T) {
 	testTag := "20220715-amd64-generic"
 	testProfile := "generic"
 	testUser := "user"
-	_, r := CreateNewHTTPTest(http.MethodGet, map[string]string{
+	_, r := CreateNewHTTPTest(context.Background(), http.MethodGet, map[string]string{
 		"repo":      testOrg,
 		"repo2":     testRepo,
 		"image":     testImage,

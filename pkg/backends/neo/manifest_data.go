@@ -878,7 +878,7 @@ func (n Neo) ManifestDataLinkToLayer(ctx context.Context, maniID int64, layer ty
 	}
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (m:ManifestData),(l:Blob) WHERE id(m) = %d AND id(l) = %d`, maniID, layer.ID)
-	q += fmt.Sprintf(` MERGE (m)-[:%s {order: %d}]->(l)`, shortMT, idx)
+	q += fmt.Sprintf(` MERGE (m)-[:LayerLink {order: %d, mediaType: "%s"}]->(l)`, idx, layer.MediaType)
 	q += fmt.Sprintf(` SET l.mediaType = "%s", l.type = "layer"`, layer.MediaType)
 	utils.Debug(l, span, q)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
@@ -915,7 +915,7 @@ func (n Neo) ManifestDataRemove(ctx context.Context, req types.Request) (found b
 	return true, nil
 }
 
-func (n Neo) ManifestDataInsert(ctx context.Context, maniData *types.ManifestData) (err error) {
+func (n Neo) ManifestDataInsert(ctx context.Context, maniData *types.ManifestData) (mdId int64, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMD,
 		"func":    "ManifestDataInsert",
@@ -926,20 +926,20 @@ func (n Neo) ManifestDataInsert(ctx context.Context, maniData *types.ManifestDat
 	defer span.End()
 	if fMD, found, err := n.ManifestDataGetByDigest(ctx, maniData.Digest); err != nil {
 		err = utils.ErrorHandler(l, span, err, "ManifestDataGetByDigest failed")
-		return err
+		return 0, err
 	} else if found {
 		utils.Debug(l, span, "manifestData already exists: %s", fMD.Label)
 		// TODO: check if manifestData and FMD are exactly the same
 		maniData = &fMD
-		return nil
+		return fMD.ID, nil
 	}
 	mdID, err := n.createManifestData(ctx, *maniData)
 	if err != nil {
 		err = utils.ErrorHandler(l, span, err, "createManifestData failed")
-		return err
+		return 0, err
 	}
 	maniData.ID = mdID
-	return nil
+	return mdID, nil
 }
 
 func (n Neo) createManifestData(ctx context.Context, mani types.ManifestData) (maniID int64, err error) {
@@ -952,7 +952,11 @@ func (n Neo) createManifestData(ctx context.Context, mani types.ManifestData) (m
 	})
 	defer span.End()
 	label := utils.CreateLabelFromTypeAndDigest(mani.MediaType, mani.Digest)
-	q := fmt.Sprintf(`CREATE (m:ManifestData {digest: "%s", mediaType: "%s", size: %d, label: "%s"})`, mani.Digest, mani.MediaType, mani.Size, label)
+	q := fmt.Sprintf(`CREATE (m:ManifestData {digest: "%s", mediaType: "%s", size: %d, label: "%s"`, mani.Digest, mani.MediaType, mani.Size, label)
+	if mani.ArtifactType != "" {
+		q += fmt.Sprintf(`, artifactType: "%s"`, mani.ArtifactType)
+	}
+	q += `})`
 	q += ` RETURN id(m) AS manifestID`
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
@@ -1651,42 +1655,31 @@ func (n Neo) ManifestData_GetByManifestList(ctx context.Context, mlID int64) (ma
 	return
 }
 
-func (n Neo) ManifestData_GetInsert(ctx context.Context, mani *types.ManifestData) (err error) {
-	ctx, span := tracer.Start(ctx, "ManifestData_GetInsert")
+func (n Neo) ManifestDataGetInsert(ctx context.Context, mani *types.ManifestData) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMD,
+		"func":    "ManifestDataGetInsert",
+		"repo":    mani.Upstream.Repo,
+		"tag":     mani.Upstream.Tag,
+		"digest":  mani.Digest,
+		"profile": mani.Profile,
+	})
 	defer span.End()
+	_ = l
 	m, found, err := n.ManifestDataGetByDigest(ctx, mani.Digest)
 	if err != nil {
-		logrus.Error(err)
-		return
+		return utils.ErrorHandler(l, span, err, "failed to get manifest data by digest")
 	}
 	if found {
+		utils.Debug(l, span, "Found ManifestData %s/%s#%s", mani.Upstream.Repo, mani.Upstream.Tag, mani.Digest)
 		mani.ID = m.ID
 		return
 	}
 	maniID, err := n.createManifestData(ctx, *mani)
 	if err != nil {
-		logrus.Error(err)
-		return
+		return utils.ErrorHandler(l, span, err, "failed to create manifest data")
 	}
 	mani.ID = maniID
-	return
-}
-
-func (n Neo) ManifestData_Insert(ctx context.Context, m types.ManifestData) (maniID int64, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": pkgNameMD,
-		"func":    "ManifestData_Insert",
-	})
-	defer span.End()
-	/******* Which ID are we going to return?
-	1. ManifestID or ManifestDataID
-	=> ManfifestData! The Manifest is just a stand-in that connectes the real ManifestData up to the Collection
-	*/
-	err = n.ManifestData_GetInsert(ctx, &m)
-	if err != nil {
-		return 0, utils.ErrorHandler(l, span, err, "failed to ManifestData_GetInsert")
-	}
-	maniID = m.ID
 	return
 }
 
@@ -1743,8 +1736,8 @@ func (n Neo) LinkManifestDataToProfile(ctx context.Context, mdID, prfID int64, r
 	return nil
 }
 
-func (n Neo) ManifestData_GetPushed_ByProfile(ctx context.Context, up types.Upstream, prf types.Profile) (m types.ManifestData, found bool, err error) {
-	ctx, span := tracer.Start(ctx, "ManifestData_GetPushed_ByProfile")
+func (n Neo) ManifestDataGetPushedByProfile(ctx context.Context, up types.Upstream, prf types.Profile) (m types.ManifestData, found bool, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestDataGetPushedByProfile")
 	_ = ctx
 	defer span.End()
 	// FIXME: We need to filter the MDs based on CREATED and manipulations
@@ -1890,7 +1883,7 @@ func (n Neo) ManifestDataGetPulledByRepoTag(ctx context.Context, repo, tag strin
 	})
 	defer span.End()
 	q := `MATCH (col:Collection)-[:UPSTREAM]->(m:Manifest)<-[:UPSTREAM]-(t:Tag)`
-	q += ` MATCH (m)-[r:PULLED_BY]->(md:ManifestData)`
+	q += ` MATCH (m)-[r]->(md:ManifestData)`
 	q += `MATCH (p:Platform)-[]-(m)-[]-(u:Upstream)`
 	q += fmt.Sprintf(` WHERE col.repo = "%s" AND t.name = "%s"`, repo, tag)
 	q += ` RETURN id(md) AS manifestID, md.digest AS manifestDigest, md.mediaType AS manifestMediaType, md.size AS manifestSize,`
@@ -2016,4 +2009,47 @@ func (n Neo) ManifestDataExists(ctx context.Context, up upstream.UpstreamTriple)
 	}
 	utils.Debug(l, span, "found collection with id %d and manifestData with type '%s'", colID, maniData.MediaType)
 	return maniData.MediaType, true, nil
+}
+
+func (n Neo) ManifestDataLinkToArtifactConfig(ctx context.Context, mdDigest string, cfg v1.Descriptor) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMD,
+		"func":    "ManifestDataLinkToArtifactConfig",
+	})
+	defer span.End()
+	// Find Config Blob
+	b, found, err := n.BlobGetByDigest(ctx, string(cfg.Digest))
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, "failed to get blob by digest")
+	}
+	if !found {
+		return utils.NewError(l, span, "config blob not found")
+	}
+	q := fmt.Sprintf(`MATCH (md:ManifestData),(b:Blob) WHERE md.digest = "%s" AND id(b) = %d`, mdDigest, b.ID)
+	q += ` MERGE (md)-[r:USES]->(b)`
+	q += fmt.Sprintf(` SET r.mediaType = "%s"`, cfg.MediaType)
+	q += fmt.Sprintf(` SET b.mediaType = "%s"`, cfg.MediaType)
+	utils.Debug(l, span, q)
+	if _, err = n.Execute(q); err != nil {
+		err = utils.ErrorHandler(l, span, err, FailQueryExec)
+		return err
+	}
+	return nil
+}
+
+func (n Neo) LinkManifestDataToSubject(ctx context.Context, mdDigest string, subId int64) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMD,
+		"func":    "LinkManifestDataToSubject",
+	})
+	defer span.End()
+	// Find Config Blob
+	q := fmt.Sprintf(`MATCH (md:ManifestData),(s:ManifestData) WHERE md.digest = "%s" AND id(s) = %d`, mdDigest, subId)
+	q += ` MERGE (md)-[:SUBJECT_OF]->(s)`
+	utils.Debug(l, span, q)
+	if _, err = n.Execute(q); err != nil {
+		err = utils.ErrorHandler(l, span, err, FailQueryExec)
+		return err
+	}
+	return nil
 }

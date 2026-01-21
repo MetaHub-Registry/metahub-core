@@ -77,11 +77,12 @@ func TestConfigStoreConfigUpload(t *testing.T) {
 	}
 	assert.False(t, found)
 	// Check if config is NOT in Minio
-	_, found, err = mag.Minio.GetConfig(ctx, bufDig.String())
-	if err != nil {
+	if cfg, err := mag.Minio.GetConfig(ctx, bufDig.String()); err != nil {
 		t.Fatal(err)
+	} else {
+		assert.Nil(t, cfg)
 	}
-	assert.False(t, found)
+
 	// Upload Config
 	err = mag.StoreConfigUpload(ctx, &bu, buf)
 	if err != nil {
@@ -97,12 +98,11 @@ func TestConfigStoreConfigUpload(t *testing.T) {
 	assert.Equal(t, "application/vnd.oci.image.config.v1+json", cfg.MediaType)
 	//assert.Equal(t, 2, len(cfg.Labels.Map))
 	// Check if config is in Minio
-	_, found, err = mag.Minio.GetConfig(ctx, bufDig.String())
-	if err != nil {
+	if cfg, err := mag.Minio.GetConfig(ctx, bufDig.String()); err != nil {
 		t.Fatal(err)
+	} else {
+		assert.NotNil(t, cfg)
 	}
-	assert.True(t, found)
-
 }
 
 func TestConfigBlobGetByHTTPRequest(t *testing.T) {

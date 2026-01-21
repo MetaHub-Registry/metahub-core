@@ -108,6 +108,7 @@ func ShortenMediaType(mediatype string) (res string) {
 	} else {
 		res = mediatype
 	}
+
 	return
 }
 

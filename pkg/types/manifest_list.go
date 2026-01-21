@@ -14,7 +14,7 @@ type ManifestList struct {
 	Size          int            `json:"size"`
 	Digest        string         `json:"digest"`
 	SchemaVersion int            `json:"schema_version"`
-	MediaType     string         `json:"media_type"`
+	MediaType     string         `json:"mediaType"`
 	Manifests     []ManifestData `json:"manifests"`
 }
 
@@ -55,6 +55,7 @@ func (ml ManifestList) WriteWWWHeader(w http.ResponseWriter) {
 	w.Header().Set("Content-Length", fmt.Sprint(size))
 	w.Header().Set("Docker-Content-Digest", ml.Digest)
 	w.Header().Set("Etag", ml.Digest)
+
 }
 
 func (ml ManifestList) WriteWWW(w http.ResponseWriter) {
@@ -65,4 +66,12 @@ func (ml ManifestList) WriteWWW(w http.ResponseWriter) {
 	w.Header().Set("Docker-Content-Digest", ml.Digest)
 	w.Header().Set("Etag", ml.Digest)
 	w.Write(b)
+}
+
+func NewManifestListFromData(b []byte) (ml ManifestList, err error) {
+	err = json.Unmarshal(b, &ml)
+	if err != nil {
+		return
+	}
+	return
 }

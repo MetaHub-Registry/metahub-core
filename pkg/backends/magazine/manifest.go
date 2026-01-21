@@ -219,11 +219,11 @@ func (mag Magazine) ManifestGetByRequest(ctx context.Context, req types.Request)
 	return
 }
 
-// storeManifestUpload_OCIManifest
-func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req types.Request, buf []byte) (mani types.Manifest, ociMani types.OCIManifest, err error) {
+// storeManifestUploadOCIManifest
+func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req types.Request, buf []byte) (mani types.Manifest, ociMani types.OCIManifest, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMani,
-		"func":    "storeManifestUpload_OCIManifest",
+		"func":    "storeManifestUploadOCIManifest",
 		"reg":     req.Host,
 		"repo":    req.Repo,
 		"tag":     req.Tag,
@@ -268,7 +268,7 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 		Manifests: []types.ManifestData{},
 	}
 
-	mID, e := mag.Database.Manifest_GetInsertWithRequest(ctx, mani, req)
+	mID, e := mag.Database.ManifestGetInsertWithRequest(ctx, mani, req)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to get Manifest from Database")
 		return
@@ -284,6 +284,8 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 		err = utils.ErrorHandler(l, span, e, "failed to LinkCollectionTagToManifest")
 		return
 	}
+	// HERE WE GO split Artifact from Container Image
+
 	mani.ID = mID
 	lyrs := []types.Layer{}
 	for idx, lyrDesc := range ociMani.Layers {
@@ -298,7 +300,7 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 			err = utils.ErrorHandler(l, span, e, "failed to create Layer from distribution.Descriptor")
 			return
 		}
-		lyr.ID, e = mag.Database.Layer_PlainInsert(ctx, lyr)
+		lyr.ID, e = mag.Database.LayerPlainInsert(ctx, lyr)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to insert layer")
 			return
@@ -313,7 +315,7 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 		err = utils.NewError(l, span, "profile '%s' not found", prf.Label)
 		return
 	}
-	md, found, e := mag.Database.ManifestData_GetPushed_ByProfile(ctx, up, prf)
+	md, found, e := mag.Database.ManifestDataGetPushedByProfile(ctx, up, prf)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to get ManifestData for profile '%s' from database", prf.Label)
 		return
@@ -341,7 +343,7 @@ func (mag Magazine) storeManifestUpload_OCIManifest(ctx context.Context, req typ
 		Size:      int64(len(buf)),
 		Layers:    lyrs,
 	}
-	e = mag.Database.ManifestData_GetInsert(ctx, &md)
+	e = mag.Database.ManifestDataGetInsert(ctx, &md)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to getInsert ManifestData from Database")
 		return

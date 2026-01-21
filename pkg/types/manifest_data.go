@@ -7,27 +7,39 @@ import (
 
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/manifest/manifestlist"
+	"github.com/minio/minio-go/v7/pkg/set"
 	"github.com/opencontainers/go-digest"
 	imgspecv1 "github.com/opencontainers/image-spec/specs-go/v1"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/pkg/errors"
 
 	"github.com/sirupsen/logrus"
 )
 
+var (
+	containerConfigMediaTypes = set.CreateStringSet(
+		imgspecv1.MediaTypeImageConfig,
+		"application/vnd.docker.container.image.v1+json",
+	)
+)
+
 type ManifestData struct {
-	ID          int64       `json:"-"`
-	Type        string      `json:"-"`
-	Origin      string      `json:"-"`
-	Digest      string      `json:"digest"`
-	Data        []byte      `json:"data,omitempty"`
-	MediaType   string      `json:"media_type"`
-	Size        int64       `json:"size"`
-	Platform    Platform    `json:"platform"`
-	Upstream    Upstream    `json:"upstream"`
-	Config      Config      `json:"config"`
-	Layers      []Layer     `json:"layers"`
-	Label       string      `json:"label"`
-	Profile     string      `json:"profile"`
-	Annotations Annotations `json:"annotations"`
+	ID           int64         `json:"-"`
+	Type         string        `json:"-"`
+	Origin       string        `json:"-"`
+	Digest       string        `json:"digest"`
+	Data         []byte        `json:"data,omitempty"`
+	MediaType    string        `json:"mediaType"`
+	ArtifactType string        `json:"artifactType,omitempty"`
+	Size         int64         `json:"size"`
+	Platform     Platform      `json:"platform"`
+	Upstream     Upstream      `json:"upstream"`
+	Config       Config        `json:"config"`
+	Layers       []Layer       `json:"layers"`
+	Label        string        `json:"label"`
+	Profile      string        `json:"profile"`
+	Annotations  Annotations   `json:"annotations"`
+	Subject      *ManifestData `json:"subject,omitempty"`
 }
 
 func (m ManifestData) ToBytes() (data []byte, err error) {
@@ -51,6 +63,28 @@ func (m ManifestData) ToOCIManifestDescriptor() (md manifestlist.ManifestDescrip
 			Features:     feats,
 		},
 	}
+}
+
+func ManifestDataFromOciDescriptor(md v1.Descriptor) (m ManifestData) {
+	a, err := NewAnnotationsFromMap(md.Annotations)
+	if err != nil {
+		logrus.Errorf("while creating Annotations from map: %v", err)
+	}
+	m = ManifestData{
+		Digest:      md.Digest.String(),
+		MediaType:   md.MediaType,
+		Size:        md.Size,
+		Annotations: a,
+	}
+	if md.Platform != nil {
+		m.Platform = Platform{
+			Arch:    md.Platform.Architecture,
+			OS:      md.Platform.OS,
+			Variant: md.Platform.Variant,
+		}
+	}
+	return
+
 }
 
 func (m ManifestData) ToManifestDescriptor() (md ManifestDescriptor) {
@@ -77,7 +111,15 @@ type OCIManifest struct {
 	Config imgspecv1.Descriptor `json:"config"`
 	// Layers lists descriptors for the layers referenced by the
 	// configuration.
-	Layers []distribution.Descriptor `json:"layers"`
+	Layers      []distribution.Descriptor `json:"layers"`
+	Subject     *imgspecv1.Descriptor     `json:"subject,omitempty"`
+	Annotations map[string]string         `json:"annotations,omitempty"`
+}
+
+func (om OCIManifest) ToBytes() (b []byte, err error) {
+	b, err = json.Marshal(om)
+	err = errors.Wrap(err, "while marshal OCIManifest")
+	return
 }
 
 func (m ManifestData) ToOCIBytes() (b []byte) {
@@ -94,15 +136,19 @@ func (m ManifestData) ToOCIBytes() (b []byte) {
 	return
 }
 
-func (m ManifestData) WriteWWWHeader(w http.ResponseWriter) {
+func (m ManifestData) WriteWWWHeader(w http.ResponseWriter) (err error) {
 	if m.MediaType == "" {
-		logrus.Fatal("Manifest.MediaType is empty")
+		return fmt.Errorf("Manifest.MediaType is empty")
 	}
 	//w.Header().Set("Location", fmt.Sprintf("%s/v2/%s/manifests/%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag))
 	w.Header().Set("Content-Length", "0")
 	w.Header().Set("Content-Type", m.MediaType)
 	w.Header().Set("Docker-Content-Digest", m.Digest)
 	w.Header().Set("Etag", m.Digest)
+	if m.Subject != nil {
+		w.Header().Set("OCI-Subject", m.Subject.Digest)
+	}
+	return
 }
 
 func (m ManifestData) WriteWWW(w http.ResponseWriter) {
@@ -130,3 +176,11 @@ func (m *Manifest) UpdateAnnotations(anno Annotations) (err error) {
 	return
 }
 */
+
+func (m *OCIManifest) IsArtifact() (isArtifact bool) {
+	if !containerConfigMediaTypes.Contains(m.Config.MediaType) {
+		isArtifact = true
+		return
+	}
+	return false
+}

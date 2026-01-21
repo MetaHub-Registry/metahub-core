@@ -289,6 +289,7 @@ func NewRequest(ctx context.Context, r *http.Request) Request {
 	req.Length = cntLen
 	req.UUID = uid
 	req.ContentType = cntType
+
 	return req
 }
 

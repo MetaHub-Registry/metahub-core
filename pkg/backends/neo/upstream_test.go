@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/docker/distribution/manifest/schema2"
 	"github.com/opencontainers/go-digest"
-	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
@@ -193,7 +191,7 @@ func TestUpstreamGetByLayerDigest(t *testing.T) {
 	// Add more layers to trigger multiple results
 	q := `MATCH (l:Blob), (md:ManifestData)`
 	q += fmt.Sprintf(` WHERE id(l) = %d AND id(md) = %d AND l.type = "layer"`, l0.ID, md.ID)
-	q += fmt.Sprintf(` MERGE (l)<-[:%s]-(md)`, utils.ShortenMediaType(schema2.MediaTypeLayer))
+	q += ` MERGE (l)<-[:LayerLink]-(md)`
 	if _, e := db.Execute(q); e != nil {
 		t.Fatal(e)
 	}
@@ -212,7 +210,7 @@ func TestUpstreamGetByLayerDigest(t *testing.T) {
 	assert.Equal(t, 2, len(lrys))
 	q = `MATCH (l:Blob), (md:ManifestData)`
 	q += fmt.Sprintf(` WHERE id(l) = %d AND id(md) = %d`, l0.ID, md.ID)
-	q += fmt.Sprintf(` MERGE (l)<-[:%s]-(md)`, utils.ShortenMediaType(v1.MediaTypeImageLayerGzip))
+	q += ` MERGE (l)<-[:LayerLink]-(md)`
 	if _, e := db.Execute(q); e != nil {
 		t.Fatal(e)
 	}
@@ -221,7 +219,7 @@ func TestUpstreamGetByLayerDigest(t *testing.T) {
 	} else if !found {
 		t.Fatal("Did not find upstream")
 	} else {
-		assert.Equal(t, v1.MediaTypeImageLayerGzip, up.MediaType)
+		assert.Equal(t, "application/vnd.docker.image.rootfs.diff.tar.gzip", up.MediaType)
 		assert.Equal(t, "registry:5050", up.Reg)
 	}
 	up := upstream.UpstreamTriple{

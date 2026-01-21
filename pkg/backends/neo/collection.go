@@ -38,7 +38,7 @@ func (n Neo) Collection_Create_ByYaml(ctx context.Context, ycol yamlCfg.Manifest
 	return n.CreateCollection(ctx, ycol)
 }
 
-func (n Neo) Collection_Get_ByRepoTag_woManifests(ctx context.Context, repo, tag string) (resCol types.Collection, found bool, err error) {
+func (n Neo) CollectionGetByRepoTagWoManifests(ctx context.Context, repo, tag string) (resCol types.Collection, found bool, err error) {
 	q := `MATCH (c:Collection)-[:HAS_TAG]->(t) WHERE c.repo = "%s" AND t.name = "%s" RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
 	query := fmt.Sprintf(q, repo, tag)
 	res, found, err := n.QueryOne(query)
@@ -336,12 +336,12 @@ func (n Neo) CollectionGetCreateByRepoTag(ctx context.Context, repo, tag string)
 		"tag":     tag,
 	})
 	defer span.End()
-	ct, err := n.CollectionTag_GetCreate(ctx, tag)
+	ct, err := n.CollectionTagGetCreate(ctx, tag)
 	if err != nil {
 		err = utils.ErrorHandler(l, span, err, "failed to get collection tag")
 		return
 	}
-	c, found, err = n.Collection_GetCreate_ByRepo(ctx, repo)
+	c, found, err = n.CollectionGetCreateByRepo(ctx, repo)
 	if err != nil {
 		err = utils.ErrorHandler(l, span, err, "failed to get collection")
 		return
@@ -351,11 +351,13 @@ func (n Neo) CollectionGetCreateByRepoTag(ctx context.Context, repo, tag string)
 	q := `MATCH (c:Collection), (t:Tag) WHERE id(c) = %d AND id(t) = %d`
 	q += ` MERGE (c)-[:HAS_TAG]->(t)`
 	query := fmt.Sprintf(q, c.ID, ct.ID)
+	utils.Debug(l, span, query)
 	_, err = n.Execute(query)
 	if err != nil {
 		err = utils.ErrorHandler(l, span, err, "failed to connect collection and tag")
 		return
 	}
+	utils.Debug(l, span, "Found Collection and tag")
 	span.SetStatus(codes.Ok, "Found collection and tag")
 	return
 }
@@ -388,10 +390,10 @@ func (n Neo) Collection_Get_ByRepo(ctx context.Context, repo string) (c types.Co
 	return
 }
 
-func (n Neo) Collection_GetCreate_ByRepo(ctx context.Context, repo string) (c types.Collection, found bool, err error) {
+func (n Neo) CollectionGetCreateByRepo(ctx context.Context, repo string) (c types.Collection, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameCol,
-		"func":    "Collection_GetCreate_ByRepo",
+		"func":    "CollectionGetCreateByRepo",
 		"repo":    repo,
 	})
 	defer span.End()
@@ -648,7 +650,7 @@ func (n Neo) GetCollectionFilterPairs(ctx context.Context) (cfps []types.Collect
 	return n.getCollectionFilterPairs(ctx, q)
 }
 
-func (n Neo) Collection_GetInsert_ByRequest(ctx context.Context, req types.Request) (col types.Collection, err error) {
+func (n Neo) CollectionGetInsertByRequest(ctx context.Context, req types.Request) (col types.Collection, err error) {
 	col, found, err := n.Collection_Get_ByRepoTag(ctx, req.Repo, req.Tag)
 	if err != nil {
 		logrus.Error(err)

@@ -56,10 +56,10 @@ func (mag Magazine) RemoveCollectionByRequest(ctx context.Context, req types.Req
 	return mag.Database.CollectionRemove(ctx, c)
 }
 
-func (mag Magazine) HeadManistNotFound_ForProfile(ctx context.Context, req types.Request) (md string, found bool, err error) {
+func (mag Magazine) HeadManistNotFoundForProfile(ctx context.Context, req types.Request) (md string, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgName,
-		"func":    "mag.HeadManistNotFound_ForProfile",
+		"func":    "mag.HeadManistNotFoundForProfile",
 		"repo":    req.Repo,
 		"tag":     req.Tag,
 		"profile": req.Profile,
@@ -68,7 +68,7 @@ func (mag Magazine) HeadManistNotFound_ForProfile(ctx context.Context, req types
 	_ = l
 	_ = ctx
 	//// 1. Find the PULLED upstream Manifest & ManifestData
-	mani, maniFound, e := mag.Database.Manifest_Get_ByRepoTag(ctx, req.Repo, req.Tag)
+	mani, maniFound, e := mag.Database.ManifestGetByRepoTag(ctx, req.Repo, req.Tag)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, colErrFrmt, "manifest", req.Repo, req.Tag)
 		return
@@ -123,7 +123,7 @@ func (mag Magazine) HeadManifestNotFound(ctx context.Context, req types.Request)
 		"profile": req.Profile,
 	})
 	defer span.End()
-	_, colFound, e := mag.Database.Collection_Get_ByRepoTag_woManifests(ctx, req.Repo, req.Tag)
+	_, colFound, e := mag.Database.CollectionGetByRepoTagWoManifests(ctx, req.Repo, req.Tag)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, colErrFrmt, "collection", req.Repo, req.Tag)
 		return
