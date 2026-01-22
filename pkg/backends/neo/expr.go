@@ -59,12 +59,7 @@ func (n Neo) TraverseExpr(er *types.ExprRes, expr lep.Expression) (bool, error) 
 			if !found {
 				return false, fmt.Errorf("rule with label '%s' not found", rLabel)
 			}
-			// TODO: We need to find the manifestData that matches the rule
-			// TODO: The Result needs to keep track of all matching manifestData ids for all rules
-			/*
-
-			 */
-			mds, err := n.ManifestData_GetByRule(ctx, r)
+			mds, err := n.ManifestDataGetByRule(ctx, r)
 			if err != nil {
 				return false, err
 			}

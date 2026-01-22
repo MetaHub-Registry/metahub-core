@@ -18,7 +18,7 @@ const (
 	pkgNameAnno    = "neo/annotation.go"
 )
 
-func (n Neo) Label_GetInsert(ctx context.Context, a types.Annotation) (aID int64, err error) {
+func (n Neo) LabelGetInsert(ctx context.Context, a types.Annotation) (aID int64, err error) {
 	k := a.Key
 	v := a.Value
 	q := fmt.Sprintf(`MATCH (l:Label {key: '%s', value: '%s'}) RETURN id(l) as ID`, k, v)
@@ -29,10 +29,10 @@ func (n Neo) Label_GetInsert(ctx context.Context, a types.Annotation) (aID int64
 	if found {
 		return res.GetInt64("ID")
 	}
-	return n.Annotation_Create(ctx, LabelType, a)
+	return n.AnnotationCreate(ctx, LabelType, a)
 }
 
-func (n Neo) Annotation_Create(ctx context.Context, typ string, a types.Annotation) (aID int64, err error) {
+func (n Neo) AnnotationCreate(ctx context.Context, typ string, a types.Annotation) (aID int64, err error) {
 	q := fmt.Sprintf(`CREATE (n:%s {key: '%s', value: '%s'}) RETURN id(n) as ID`, typ, a.Key, a.Value)
 	res, err := n.Execute(q)
 	if err != nil {
@@ -43,7 +43,7 @@ func (n Neo) Annotation_Create(ctx context.Context, typ string, a types.Annotati
 		return
 	}
 	if typ == AnnotationType {
-		err = n.Annotation_EvalRule(ctx, a)
+		err = n.AnnotationEvalRule(ctx, a)
 		if err != nil {
 			err = errors.Wrap(err, "failed to eval rule")
 			return
@@ -63,7 +63,7 @@ func (n Neo) AnnotationUpdate(ctx context.Context, a types.Annotation) (err erro
 		"value":   a.Value,
 	})
 	defer span.End()
-	curA, found, e := n.Annotation_GetByID(ctx, a.ID)
+	curA, found, e := n.AnnotationGetByID(ctx, a.ID)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, "error while getting current annotation")
 	}
@@ -82,25 +82,25 @@ func (n Neo) AnnotationUpdate(ctx context.Context, a types.Annotation) (err erro
 	return
 }
 
-func (n Neo) Annotation_GetInsert(ctx context.Context, in types.Annotation) (aID int64, err error) {
+func (n Neo) AnnotationGetInsert(ctx context.Context, in types.Annotation) (aID int64, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"func": "Annotation_GetInsert",
+		"func": "AnnotationGetInsert",
 	})
 	_ = l
 	defer span.End()
-	a, found, err := n.Annotation_GetByKeyValue(ctx, in.Key, in.Value)
+	a, found, err := n.AnnotationGetByKeyValue(ctx, in.Key, in.Value)
 	if err != nil {
 		return
 	}
 	if found {
 		return a.ID, nil
 	}
-	return n.Annotation_Create(ctx, AnnotationType, in)
+	return n.AnnotationCreate(ctx, AnnotationType, in)
 }
 
-func (n Neo) Annotation_EvalRule(ctx context.Context, a types.Annotation) (err error) {
+func (n Neo) AnnotationEvalRule(ctx context.Context, a types.Annotation) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"func":  "Annotation_EvalRule",
+		"func":  "AnnotationEvalRule",
 		"key":   a.Key,
 		"value": a.Value,
 	})
@@ -116,7 +116,7 @@ func (n Neo) Annotation_EvalRule(ctx context.Context, a types.Annotation) (err e
 	if err != nil {
 		return
 	}
-	aGot, found, err := n.Annotation_GetByKeyValue(ctx, a.Key, a.Value)
+	aGot, found, err := n.AnnotationGetByKeyValue(ctx, a.Key, a.Value)
 	if err != nil {
 		err = errors.Wrap(err, "failed to get annotation from graph")
 		return
@@ -138,7 +138,7 @@ func (n Neo) Annotation_EvalRule(ctx context.Context, a types.Annotation) (err e
 				attribute.String("log.severity", "debug"),
 				attribute.String("log.message", msg),
 			))
-			err = n.Rule_Annotation_Success(ctx, r.ID, a.ID)
+			err = n.RuleAnnotationSuccess(ctx, r.ID, a.ID)
 			if err != nil {
 				span.AddEvent("log", trace.WithAttributes(
 					attribute.String("log.severity", "error"),
@@ -151,9 +151,9 @@ func (n Neo) Annotation_EvalRule(ctx context.Context, a types.Annotation) (err e
 	return
 }
 
-func (n Neo) Annotation_GetByKeyValue(ctx context.Context, k, v string) (a types.Annotation, found bool, err error) {
+func (n Neo) AnnotationGetByKeyValue(ctx context.Context, k, v string) (a types.Annotation, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"func":  "Annotation_GetByKeyValue",
+		"func":  "AnnotationGetByKeyValue",
 		"key":   k,
 		"value": v,
 	})
@@ -173,7 +173,7 @@ func (n Neo) Annotation_GetByKeyValue(ctx context.Context, k, v string) (a types
 	return
 }
 
-func (n Neo) Annotation_GetByID(ctx context.Context, annoID int64) (a types.Annotation, found bool, err error) {
+func (n Neo) AnnotationGetByID(ctx context.Context, annoID int64) (a types.Annotation, found bool, err error) {
 	q := fmt.Sprintf(`MATCH (a:Annotation) WHERE id(a) = %d`, annoID)
 	q += ` RETURN id(a) as annotationID, a.key as annotationKey, a.value as annotationValue`
 	res, found, err := n.QueryOne(q)

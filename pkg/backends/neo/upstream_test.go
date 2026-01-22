@@ -109,7 +109,7 @@ func TestUpstreamCRUD(t *testing.T) {
 		Tag:    "2022.12.03",
 		Digest: "sha256:1234567890123456789012345678901234567890123456789012345678901234",
 	}
-	gotUpFooBar, found, err := db.Upstream_GetInsert_ByRequest(ctx, reqFooBar)
+	gotUpFooBar, found, err := db.UpstreamGetInsertByRequest(ctx, reqFooBar)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestUpstreamCRUD(t *testing.T) {
 		Tag:    "2022.12.03",
 		Digest: "sha256:5434567890123456789012345678901234567890123456789012345678901234",
 	}
-	gotUp2, found, err := db.Upstream_GetInsert_ByRequest(ctx, req)
+	gotUp2, found, err := db.UpstreamGetInsertByRequest(ctx, req)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -21,8 +21,8 @@ const (
 	FailUpstreamNotFound   = `upstream not found`
 )
 
-func (n Neo) Upstream_GetInsert(ctx context.Context, up *types.Upstream) (found bool, err error) {
-	ctx, span := tracer.Start(ctx, "Upstream_GetInsert")
+func (n Neo) UpstreamGetInsert(ctx context.Context, up *types.Upstream) (found bool, err error) {
+	ctx, span := tracer.Start(ctx, "UpstreamGetInsert")
 	defer span.End()
 	span.SetAttributes(
 		attribute.Key("upstream").String(up.String()),
@@ -43,28 +43,28 @@ func (n Neo) Upstream_GetInsert(ctx context.Context, up *types.Upstream) (found 
 	return
 }
 
-func (n Neo) Upstream_GetInsert_ByRequest(ctx context.Context, req types.Request) (up types.Upstream, found bool, err error) {
+func (n Neo) UpstreamGetInsertByRequest(ctx context.Context, req types.Request) (up types.Upstream, found bool, err error) {
 	up = types.Upstream{
 		Reg:    req.Host,
 		Repo:   req.Repo,
 		Tag:    req.Tag,
 		Digest: digest.Digest(req.Digest),
 	}
-	found, err = n.Upstream_GetInsert(ctx, &up)
+	found, err = n.UpstreamGetInsert(ctx, &up)
 	return
 }
 
-func (n Neo) Upstream_Get_ByRequest(ctx context.Context, req types.Request) (up types.Upstream, found bool, err error) {
+func (n Neo) UpstreamGetByRequest(ctx context.Context, req types.Request) (up types.Upstream, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameUp,
-		"func":    "Upstream_Get_ByRequest",
+		"func":    "UpstreamGetByRequest",
 		"host":    req.Host,
 		"repo":    req.Repo,
 		"tag":     req.Tag,
 		"digest":  utils.ShortenDigest(req.Digest),
 	})
 	_ = l
-	ctx, span := tracer.Start(ctx, "Upstream_Get_ByRequest")
+	ctx, span := tracer.Start(ctx, "UpstreamGetByRequest")
 	defer span.End()
 	span.SetAttributes(
 		attribute.Key("host").String(req.Host),

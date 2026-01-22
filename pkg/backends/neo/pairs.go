@@ -48,7 +48,7 @@ func (n Neo) CollectionTagProfilePairGetRegexFiltered(ctx context.Context, repoR
 		return
 	}
 	utils.Debug(l, span, "Got %d ctpps from CollectionTagProfilePair_Annotation_GetRegexFiltered", len(ctpps))
-	ctpps2, e := n.CollectionTagProfilePairPlatform_GetRegexFiltered(ctx, repoRegex, tagRegex, prfRegex)
+	ctpps2, e := n.CollectionTagProfilePairPlatformGetRegexFiltered(ctx, repoRegex, tagRegex, prfRegex)
 	if e != nil {
 		err = errors.Wrap(e, "failed to get CollectionTagProfilePairs with platforms")
 		return
@@ -58,7 +58,7 @@ func (n Neo) CollectionTagProfilePairGetRegexFiltered(ctx context.Context, repoR
 	return
 }
 
-func (n Neo) CollectionTagProfilePairPlatform_GetRegexFiltered(ctx context.Context, repoRegex, tagRegex, prfRegex string) (ctpps []types.CollectionTagProfilePair, err error) {
+func (n Neo) CollectionTagProfilePairPlatformGetRegexFiltered(ctx context.Context, repoRegex, tagRegex, prfRegex string) (ctpps []types.CollectionTagProfilePair, err error) {
 	ctx, span := tracer.Start(ctx, "CollectionTagProfilePair_Platform_GetAll")
 	defer span.End()
 	rel := types.RelationSuccess
@@ -211,7 +211,7 @@ func (n Neo) collectionTagProfilePairFromResult(ctx context.Context, res []types
 			return ctpps, err
 		}
 		/// Get Manifests for this Collection/Tag
-		mds, err := n.ManifestData_GetByCollectionTag(ctx, c.ID, t.ID)
+		mds, err := n.ManifestDataGetByCollectionTag(ctx, c.ID, t.ID)
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
 			span.AddEvent("log", trace.WithAttributes(

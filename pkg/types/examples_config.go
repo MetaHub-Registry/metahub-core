@@ -27,7 +27,7 @@ func ConfigByteFtArm64() []byte {
 	return dt.Data
 }
 
-func FT_amd64_ConfigByte() []byte {
+func FTamd64ConfigByte() []byte {
 	// read file and return bytes
 	dat, err := f.ReadFile("data/cfg/fba3e3993bfe856a766b683c73e1ddeb03f2d359d7bd7700095682d94c3fcebf.json")
 	if err != nil {
@@ -36,7 +36,7 @@ func FT_amd64_ConfigByte() []byte {
 	return dat
 }
 
-func FT_amd64_b109_ConfigByte() []byte {
+func FTamd64b109ConfigByte() []byte {
 	// read file and return bytes
 	dat, err := f.ReadFile("data/cfg/b109e1dac65af00234a8a7f817dcb1e18bc18ca97a5b805283995ebf1137e471.json")
 	if err != nil {
@@ -49,7 +49,7 @@ func ConfigByteFtArm64x83f() DataTuple {
 	return NewDataTuple("data/cfg/83fdbde95f56beb69853240df571a7f085c561b4f8d914c5cc5e0f171dcb86df.json")
 }
 
-func FT_zen3_ConfigByte() []byte {
+func FTZen3ConfigByte() []byte {
 	dat, err := f.ReadFile("data/cfg/d33f8ced1dadd99fcf8f210cc846322b69e9065ddf10ceb09ff244b624dcbcc2.json")
 	if err != nil {
 		panic(err)
@@ -70,9 +70,9 @@ func ConfigGlow151ARM64() Config {
 	return cfg
 }
 
-func FT_zen3_Config() Config {
+func FTzen3Config() Config {
 	ctx := context.Background()
-	cfg, _ := NewConfigFromBytes(ctx, FT_zen3_ConfigByte())
+	cfg, _ := NewConfigFromBytes(ctx, FTZen3ConfigByte())
 	cfg.MediaType = MediaTypeImageConfig
 	return cfg
 }
@@ -101,15 +101,15 @@ func newCofigFromDT(dt DataTuple) Config {
 	return cfg
 }
 
-func FT_amd64_Config() Config {
+func FTamd64Config() Config {
 	ctx := context.Background()
-	cfg, _ := NewConfigFromBytes(ctx, FT_amd64_ConfigByte())
+	cfg, _ := NewConfigFromBytes(ctx, FTamd64ConfigByte())
 	cfg.MediaType = MediaTypeImageConfig
 	return cfg
 }
 
-func FT_amd64_OCIManifest() OCIManifest {
-	cfg := FT_amd64_Config()
+func FTamd64OCIManifest() OCIManifest {
+	cfg := FTamd64Config()
 	return OCIManifest{
 		SchemaVersion: 2,
 		MediaType:     "application/vnd.oci.image.manifest.v1+json",
@@ -129,14 +129,14 @@ func FT_amd64_OCIManifest() OCIManifest {
 	}
 }
 
-func FT_arm_Config() Config {
+func FTarmConfig() Config {
 	ctx := context.Background()
 	cfg, _ := NewConfigFromBytes(ctx, ConfigByteFtArm64())
 	cfg.MediaType = MediaTypeImageConfig
 	return cfg
 }
 
-func FT_arm_Upstream_Generic() Upstream {
+func FTarmUpstreamGeneric() Upstream {
 	return Upstream{
 		Reg:    "registry.gitlab.com",
 		Repo:   "qnib-pub-containers/qnib/plain-featuretest",

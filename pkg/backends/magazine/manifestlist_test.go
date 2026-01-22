@@ -194,7 +194,7 @@ func TestManifestlistCompute(t *testing.T) {
 // 		Profile: "glow#1.5.0-arm64",
 // 	}
 
-// 	if ml, found, err := mag.Database.ManifestList_Get_ByRequest(ctx, req); err != nil {
+// 	if ml, found, err := mag.Database.ManifestListGetByRequest(ctx, req); err != nil {
 // 		t.Fatal(err)
 // 	} else if !found {
 // 		t.Fatal("ManifestList not found")

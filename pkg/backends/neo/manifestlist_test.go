@@ -27,7 +27,7 @@ func TestManifestListCRUD(t *testing.T) {
 }
 	defer db.TeardownTest(bs, br)
 	// Actual test
-	ml_arm64 := types.FT_arm_Manifestlist()
+	ml_arm64 := types.FTarmManifestlist()
 	_, found, err := db.GetManifestList(digest.Digest(ml_arm64.Digest), ml_arm64.MediaType, int(ml_arm64.Size))
 	if err != nil {
 		t.Fatal(err)
@@ -56,18 +56,18 @@ func TestManifestListCRUD(t *testing.T) {
 		t.Fatal(err)
 }
 	//// Manifest
-	arm_ml := types.FT_arm_ManifestData()
+	arm_ml := types.FTarmManifestData()
 	arm_ml.ID, err = br.GetInt64("manifest:ft_arm64#id")
 	if err != nil {
 		t.Fatal(err)
 }
-	amd_ml := types.FT_arm_ManifestData()
+	amd_ml := types.FTarmManifestData()
 	amd_ml.ID, err = br.GetInt64("manifest:ft_amd64#id")
 	if err != nil {
 		t.Fatal(err)
 }
 	//// GENERIC ML
-	ml_generic := types.FT_generic_Manifestlist()
+	ml_generic := types.FTgenericManifestlist()
 	ml_generic_id, err := db.CreateManifestList(digest.Digest(ml_generic.Digest), ml_generic.MediaType, int(ml_generic.Size))
 	if err != nil {
 		t.Fatal(err)
@@ -101,7 +101,7 @@ func TestManifestListByRequestSeedNeoSkylake(t *testing.T) {
 		Tag:     "tag1",
 		Profile: "generic",
 	}
-	ml, found, err := db.ManifestList_Get_ByRequest(req)
+	ml, found, err := db.ManifestListGetByRequest(req)
 	if err != nil {
 		t.Fatal(err)
 }
@@ -109,7 +109,7 @@ func TestManifestListByRequestSeedNeoSkylake(t *testing.T) {
 	assert.Equal(t, 2, len(ml.Manifests))
 	//// Skylake
 	req.Profile = "skylake"
-	ml, found, err = db.ManifestList_Get_ByRequest(req)
+	ml, found, err = db.ManifestListGetByRequest(req)
 	if err != nil {
 		t.Fatal(err)
 }

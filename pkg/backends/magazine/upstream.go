@@ -43,9 +43,9 @@ func (mag Magazine) NeoInsertUpstream(ctx context.Context, up types.Upstream) (u
 		Digest: up.Digest.String(),
 	}
 
-	res, _, e := mag.Database.Upstream_GetInsert_ByRequest(ctx, req)
+	res, _, e := mag.Database.UpstreamGetInsertByRequest(ctx, req)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to Upstream_GetInsert_ByRequest")
+		err = utils.ErrorHandler(l, span, e, "failed to UpstreamGetInsertByRequest")
 		return
 
 	}
@@ -164,7 +164,7 @@ func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string) (blo
 		}
 		utils.Debug(l, span, "Config ID: %d", cfgID)
 		utils.Debug(l, span, "Platform: %s/%s", maniData.Platform.OS, maniData.Platform.Arch)
-		e = mag.Database.Platform_GetInsert(ctx, &maniData.Platform)
+		e = mag.Database.PlatformGetInsert(ctx, &maniData.Platform)
 		if e != nil {
 			return utils.ErrorHandler(l, span, e, "Failed to insert platform")
 		}
@@ -275,7 +275,7 @@ func (mag Magazine) upstreamBlobInsertGeneric(ctx context.Context, req types.Req
 	// 6 Link Manifest Data to generic profile
 	//// 6.1 Get 'generic' profile
 
-	prf, prfFound, e := mag.Database.Profile_Get_ByLabel(ctx, prfGenericLabel)
+	prf, prfFound, e := mag.Database.ProfileGetByLabel(ctx, prfGenericLabel)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, "failed to get collection")
 	}
@@ -301,7 +301,7 @@ func (mag Magazine) upstreamBlobInsertGeneric(ctx context.Context, req types.Req
 		return utils.ErrorHandler(l, span, e, FailCreateOCIv1Manifest)
 	}
 
-	e = mag.ComputeManifestlists_ForManiProfile(ctx, ociManiID, prf.ID)
+	e = mag.ComputeManifestlistsForManiProfile(ctx, ociManiID, prf.ID)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, "Failed to compute ManifestList manifest by ID")
 	}
@@ -318,7 +318,7 @@ func (mag Magazine) upstreamBlobInsertProfile(ctx context.Context, req types.Req
 		"digest":  ups.Digest.String(),
 	})
 	defer span.End()
-	prf, prfFound, e := mag.Database.Profile_Get_ByLabel(ctx, req.Profile)
+	prf, prfFound, e := mag.Database.ProfileGetByLabel(ctx, req.Profile)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, "failed to create collection")
 	}
@@ -440,7 +440,7 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 	}
 	utils.Debug(l, span, "Found manifest upstream: %s", utils.ShortenDigest(maniMeta.Digest.String()))
 	// Put Manifest in Minio
-	e = mag.Minio.PutManifest_ByUpstream(ctx, maniBytes, ups)
+	e = mag.Minio.PutManifestByUpstream(ctx, maniBytes, ups)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "Failed to get put manifest in minio")
 		return
@@ -494,7 +494,7 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 	maniData.Config.ID = cfgID
 	utils.Debug(l, span, "Config ID: %d", cfgID)
 	utils.Debug(l, span, "Platform: %s/%s", maniData.Platform.OS, maniData.Platform.Arch)
-	e = mag.Database.Platform_GetInsert(ctx, &maniData.Platform)
+	e = mag.Database.PlatformGetInsert(ctx, &maniData.Platform)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "Failed to insert platform")
 		return

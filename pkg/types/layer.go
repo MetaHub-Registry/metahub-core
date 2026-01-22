@@ -76,12 +76,12 @@ func NewLayerFromBytes(data []byte) (res Layer, err error) {
 	return
 }
 
-func Layer_FromDesc(ctx context.Context, lyrDesc distribution.Descriptor) (lyr Layer, err error) {
-	_, span := tracer.Start(ctx, "Layer_FromDesc")
+func LayerFromDesc(ctx context.Context, lyrDesc distribution.Descriptor) (lyr Layer, err error) {
+	_, span := tracer.Start(ctx, "LayerFromDesc")
 	defer span.End()
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameLayer,
-		"func":    "Layer_FromDesc",
+		"func":    "LayerFromDesc",
 		"digest":  lyrDesc.Digest.String(),
 	})
 	// TODO: Add annotations

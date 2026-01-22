@@ -26,15 +26,15 @@ func (mag Magazine) CreateCollection(ctx context.Context, col yamlCfg.ManifestCo
 		"tag":     col.Tag,
 	})
 	defer span.End()
-	colID, colTagID, success, e := mag.Database.Collection_GetID_ByYaml(ctx, col)
+	colID, colTagID, success, e := mag.Database.CollectionGetIDByYaml(ctx, col)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to Collection_GetID_ByYaml")
+		err = utils.ErrorHandler(l, span, e, "failed to CollectionGetIDByYaml")
 		return
 	}
 	if !success {
-		colID, colTagID, e = mag.Database.Collection_Create_ByYaml(ctx, col)
+		colID, colTagID, e = mag.Database.CollectionCreateByYaml(ctx, col)
 		if e != nil {
-			err = utils.ErrorHandler(l, span, e, "failed to Collection_Create_ByYaml")
+			err = utils.ErrorHandler(l, span, e, "failed to CollectionCreateByYaml")
 			return
 		}
 	}
@@ -89,7 +89,7 @@ func (mag Magazine) HeadManistNotFoundForProfile(ctx context.Context, req types.
 	}
 	utils.Debug(l, span, "found manifestData: %s", utils.ShortenDigest(maniData.Digest))
 	//// 2. Create a new ManifestData for the profile
-	prf, prfFound, e := mag.Database.Profile_Get_ByLabel(ctx, req.Profile)
+	prf, prfFound, e := mag.Database.ProfileGetByLabel(ctx, req.Profile)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "error getting profile '%s'", req.Profile)
 		return md, false, err
@@ -101,7 +101,7 @@ func (mag Magazine) HeadManistNotFoundForProfile(ctx context.Context, req types.
 	_ = prf
 	// TODO: Create OCI ManifestData for profile
 
-	ociManiDataID, _, e := mag.CreateOCIv1_PulledByPrf(ctx, mani, maniData, prf)
+	ociManiDataID, _, e := mag.CreateOCIv1PulledByPrf(ctx, mani, maniData, prf)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "error creating oci manifest for profile '%s'", req.Profile)
 		return md, false, err

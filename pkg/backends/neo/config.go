@@ -21,12 +21,12 @@ var (
 	pkgNameConfig   = "neo/config.go"
 )
 
-func (n Neo) Config_GetID_ByDigest(ctx context.Context, dig string) (cfgID int64, found bool, err error) {
+func (n Neo) ConfigGetIDByDigest(ctx context.Context, dig string) (cfgID int64, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameConfig,
-		"func":    "Config_GetID_ByDigest",
+		"func":    "ConfigGetIDByDigest",
 	})
-	ctx, span := tracer.Start(ctx, "Config_GetID_ByDigest")
+	ctx, span := tracer.Start(ctx, "ConfigGetIDByDigest")
 	_ = ctx
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (c:Blob) WHERE c.digest = "%s" RETURN id(c) as ID`, dig)
@@ -70,15 +70,15 @@ func (n Neo) ConfigGetByManiDataID(ctx context.Context, mdID int64) (cfg types.C
 	return
 }
 
-func (n Neo) Config_Get_ByID(ctx context.Context, cfgID int64) (cfg types.Config, found bool, err error) {
+func (n Neo) ConfigGetByID(ctx context.Context, cfgID int64) (cfg types.Config, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":  pkgNameConfig,
-		"func":     "Config_Get_ByID",
+		"func":     "ConfigGetByID",
 		"configID": cfgID,
 	})
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (n:Blob) WHERE id(n) = %d`, cfgID)
-	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize`
+	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize, n.mediaType AS configMediaType`
 	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
@@ -144,48 +144,6 @@ func (n Neo) ConfigGetByDigest(ctx context.Context, dig string) (cfg types.Confi
 	cfg, err = n.ConfigFromResult(ctx, res)
 	if err != nil {
 		err = utils.ErrorHandler(l, span, err, "failed to create config from DB result")
-		return
-	}
-	return
-}
-
-func (n Neo) ConfigGetByID(ctx context.Context, cfgID int64) (cfg types.Config, found bool, err error) {
-	l := logrus.WithFields(logrus.Fields{
-		"package": pkgNameConfig,
-		"func":    "ConfigGetByID",
-	})
-	ctx, span := tracer.Start(ctx, "ConfigGetByID")
-	_ = ctx
-	defer span.End()
-	span.SetAttributes(
-		attribute.Key("cfgID").Int64(cfgID),
-	)
-	q := fmt.Sprintf(`MATCH (n:Blob) WHERE id(n) = %d`, cfgID)
-	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize, n.mediaType AS configMediaType`
-	l.Debug(q)
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
-	))
-	res, found, err := n.QueryOne(q)
-	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
-		return
-	}
-	if !found {
-		msg := fmt.Sprintf("Config '%d' not found", cfgID)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
-		))
-		l.Debug(msg)
-		return
-	}
-	cfg, err = n.ConfigFromResult(ctx, res)
-	if err != nil {
-		err = errors.Wrap(err, "failed to create config from DB result")
-		l.Error(err)
-		span.RecordError(err)
 		return
 	}
 	return
@@ -347,7 +305,7 @@ func (n Neo) ConfigInsert(ctx context.Context, cfg types.Config) (cfgID int64, e
 	}
 	for k, v := range cfg.Cfg.Config.Labels {
 		a := types.NewAnnotation(k, v)
-		lID, e := n.Label_GetInsert(ctx, a)
+		lID, e := n.LabelGetInsert(ctx, a)
 		if e != nil {
 			err = errors.Wrap(e, "failed to get or insert label")
 			return
@@ -457,7 +415,7 @@ func (n Neo) LinkConfigToAnnotation(ctx context.Context, cfgID, annotationID int
 
 func (n Neo) ConfigAddLabel(ctx context.Context, cfgID int64, a types.Annotation) (err error) {
 	// GetAnnotationID
-	labelID, err := n.Label_GetInsert(ctx, a)
+	labelID, err := n.LabelGetInsert(ctx, a)
 	if err != nil {
 		logrus.Errorf("AddLabel : %v", err)
 		return

@@ -12,12 +12,12 @@ import (
 func (n Neo) Bootstrap_ManifestData(ctx context.Context, bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
 	switch b {
 	case "ft_arm64":
-		err = n.Setup_ManifestData(ctx, br, types.FT_arm_ManifestData(), b)
+		err = n.Setup_ManifestData(ctx, br, types.FTarmManifestData(), b)
 		if err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "ft_amd64":
-		err = n.Setup_ManifestData(ctx, br, types.FT_amd_ManifestData(), b)
+		err = n.Setup_ManifestData(ctx, br, types.FTamdManifestData(), b)
 		if err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
@@ -27,7 +27,7 @@ func (n Neo) Bootstrap_ManifestData(ctx context.Context, bs utils.Bootstrap, br 
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "ft_zen3":
-		err = n.Setup_ManifestData(ctx, br, types.FT_zen3_ManifestData(), b)
+		err = n.Setup_ManifestData(ctx, br, types.FTzen3ManifestData(), b)
 		if err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}

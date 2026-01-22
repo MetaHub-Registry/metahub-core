@@ -76,7 +76,7 @@ func NewDataTuple(p string) DataTuple {
 	}
 }
 
-func Example_Platform_amd64() Platform {
+func ExamplePlatformamd64() Platform {
 	return Platform{
 		Arch:    "amd64",
 		OS:      "linux",
@@ -84,51 +84,51 @@ func Example_Platform_amd64() Platform {
 	}
 }
 
-func CollectionTag_amd64() CollectionTag {
+func CollectionTagamd64() CollectionTag {
 	return CollectionTag{Tag: "amd64"}
 }
 
-func CollectionTag_arm() CollectionTag {
+func CollectionTagarm() CollectionTag {
 	return CollectionTag{Tag: "arm64"}
 }
 
-func CollectionTag_Generic() CollectionTag {
+func CollectionTagGeneric() CollectionTag {
 	return CollectionTag{Tag: "generic"}
 }
 
-func FT_generic_Collection() Collection {
-	ct := CollectionTag_Generic()
+func FTGenericCollection() Collection {
+	ct := CollectionTagGeneric()
 	return Collection{
 		Repo:   "qnib/featuretest",
 		Tag:    ct.Tag,
 		ColTag: ct,
 		ManifestLists: []ManifestList{
-			FT_arm_Manifestlist(),
-			FT_amd_Manifestlist(),
+			FTarmManifestlist(),
+			FTamdManifestlist(),
 		},
 	}
 }
 
-func FT_arm_Collection() Collection {
-	ct := CollectionTag_arm()
+func FTarmCollection() Collection {
+	ct := CollectionTagarm()
 	return Collection{
 		Repo:   "qnib/featuretest",
 		Tag:    ct.Tag,
 		ColTag: ct,
 		ManifestLists: []ManifestList{
-			FT_arm_Manifestlist(),
+			FTarmManifestlist(),
 		},
 	}
 }
 
-func FT_amd64_Collection() Collection {
-	ct := CollectionTag_amd64()
+func FTamd64Collection() Collection {
+	ct := CollectionTagamd64()
 	return Collection{
 		Repo:   "qnib/featuretest",
 		Tag:    ct.Tag,
 		ColTag: ct,
 		ManifestLists: []ManifestList{
-			FT_amd_Manifestlist(),
+			FTamdManifestlist(),
 		},
 	}
 }

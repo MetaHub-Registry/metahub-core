@@ -287,7 +287,7 @@ func (m Manifest) GetInsert(i *types.ManifestData) (err error) {
 	return m.Insert(i)
 }
 
-func (m *Manifest) TypesManifest_GetByManifestListID(mlID int64) (manis []types.ManifestData, err error) {
+func (m *Manifest) TypesManifestGetByManifestListID(mlID int64) (manis []types.ManifestData, err error) {
 	manis = []types.ManifestData{}
 	q := `SELECT maniID,maniDigest,maniListID,os,arch,variant,configDigest,configMediaType,configSize,`
 	q += `upstreamReg,upstreamRepo,upstreamTag FROM main.manifests_view`

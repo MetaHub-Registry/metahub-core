@@ -88,7 +88,7 @@ func TestStoreManifestArtifactUpload(t *testing.T) {
 
 	}
 	defer TeardownTest(bs, br)
-	inMani := types.FT_amd64_OCIManifest()
+	inMani := types.FTamd64OCIManifest()
 	b, err := inMani.ToBytes()
 	if err != nil {
 		t.Fatal(err)

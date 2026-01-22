@@ -31,21 +31,21 @@ func TestRuleGetCreate(t *testing.T) {
 		Key:   "foo0",
 		Value: "bar0",
 	}
-	_, found, err := db.Rule_Get(ctx, r)
+	_, found, err := db.RuleGet(ctx, r)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.False(t, found)
 	// Empty
-	if _, e := db.Rule_Create(ctx, types.Rule{Type: ""}); e == nil {
+	if _, e := db.RuleCreate(ctx, types.Rule{Type: ""}); e == nil {
 		t.Fatal("Should have failed because type is empty")
 	}
 	/// create Rule
-	ruleID, err := db.Rule_Create(ctx, r)
+	ruleID, err := db.RuleCreate(ctx, r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	gotRuleID, found, err := db.Rule_Get(ctx, r)
+	gotRuleID, found, err := db.RuleGet(ctx, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,12 +59,12 @@ func TestRuleGetCreate(t *testing.T) {
 		Key:   "foo1",
 		Value: "bar1",
 	}
-	ruleID, err = db.Rule_GetCreate(ctx, r0)
+	ruleID, err = db.RuleGetCreate(ctx, r0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.NotEqual(t, ruleID, gotRuleID)
-	rls, err := db.Rules_GetAll(ctx)
+	rls, err := db.RulesGetAll(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,12 +99,12 @@ func TestRuleEvalAnnotationRule(t *testing.T) {
 		Key:   "org.supercontainers.hardware.cpu.target",
 		Value: "platform",
 	}
-	rID, err := db.Rule_GetCreate(ctx, r)
+	rID, err := db.RuleGetCreate(ctx, r)
 	if err != nil {
 		t.Fatal(err)
 	}
 	r.ID = rID
-	err = db.Rule_EvalAnnotationRule(ctx, r)
+	err = db.RuleEvalAnnotationRule(ctx, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,12 +148,12 @@ func TestRuleEvalAnnotationRuleNoop(t *testing.T) {
 		Key:   "org.supercontainers.hardware.cpu.*",
 		Value: "",
 	}
-	rID, err := db.Rule_GetCreate(ctx, r)
+	rID, err := db.RuleGetCreate(ctx, r)
 	if err != nil {
 		t.Fatal(err)
 	}
 	r.ID = rID
-	err = db.Rule_EvalAnnotationRule(ctx, r)
+	err = db.RuleEvalAnnotationRule(ctx, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func TestRuleEvalAll(t *testing.T) {
 		t.Fatal("Rule not found")
 	}
 
-	as, err := db.Rule_GetSuccessAnnotations(ctx, fbR)
+	as, err := db.RuleGetSuccessAnnotations(ctx, fbR)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestRuleEvalAll(t *testing.T) {
 		t.Fatal("Rule not found")
 	}
 
-	ps, err := db.Rule_GetSuccessPlatform(ctx, osR)
+	ps, err := db.RuleGetSuccessPlatform(ctx, osR)
 	if err != nil {
 		t.Fatal(err)
 	}

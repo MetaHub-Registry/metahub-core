@@ -37,7 +37,7 @@ func TestBlobCRUD(t *testing.T) {
 		bs.PostTestSleep = debug
 	}
 	// Actual test
-	arm_l0 := types.FT_arm_Layer0Reference()
+	arm_l0 := types.FTarmLayer0Reference()
 	_, found, err := db.BlobGetByDigest(ctx, arm_l0.Digest.String())
 	if err != nil {
 		t.Fatal(err)

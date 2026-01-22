@@ -112,7 +112,7 @@ func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
 	}
 	/// TODO: We need
 	/// 1. Generate ExprRes? (a rule<>mdID mapping)
-	rls, err := mag.Database.Rules_GetAll(ctx)
+	rls, err := mag.Database.RulesGetAll(ctx)
 	if err != nil {
 		err = errors.Wrap(err, "failed to get rules")
 		span.SetStatus(codes.Error, err.Error())
@@ -133,7 +133,7 @@ func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
 			attribute.String("log.message", msg),
 		))
 		l.Debug(msg)
-		mds, e := mag.Database.ManifestData_GetByRule(ctx, rl)
+		mds, e := mag.Database.ManifestDataGetByRule(ctx, rl)
 		if e != nil {
 			err = errors.Wrapf(e, "failed to get manifestdata by rule: %v", err)
 			span.SetStatus(codes.Error, err.Error())
@@ -192,11 +192,11 @@ func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
 	return
 }
 
-// ComputeManifestlists_ForManiProfile computes manifestlists for a given Manifest and Profile
-func (mag Magazine) ComputeManifestlists_ForManiProfile(ctx context.Context, maniID, prfID int64) (err error) {
+// ComputeManifestlistsForManiProfile computes manifestlists for a given Manifest and Profile
+func (mag Magazine) ComputeManifestlistsForManiProfile(ctx context.Context, maniID, prfID int64) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "magazine/manifestlist.go",
-		"func":    "ComputeManifestlists_ForManiProfile",
+		"func":    "ComputeManifestlistsForManiProfile",
 	})
 	defer span.End()
 	l.Info("Compute Manifest Lists")
@@ -214,7 +214,7 @@ func (mag Magazine) ComputeManifestlists_ForManiProfile(ctx context.Context, man
 	}
 	/// TODO: We need
 	/// 1. Generate ExprRes? (a rule<>mdID mapping)
-	rls, err := mag.Database.Rules_GetAll(ctx)
+	rls, err := mag.Database.RulesGetAll(ctx)
 	if err != nil {
 		logrus.Errorf("failed to get rules: %v", err)
 		return
@@ -223,7 +223,7 @@ func (mag Magazine) ComputeManifestlists_ForManiProfile(ctx context.Context, man
 	for _, rl := range rls {
 		label := fmt.Sprintf("%s:%s", rl.Name, rl.Tag)
 		l.Warnf("Rule: %s", label)
-		mds, e := mag.Database.ManifestData_GetByRule(ctx, rl)
+		mds, e := mag.Database.ManifestDataGetByRule(ctx, rl)
 		if e != nil {
 			err = errors.Wrapf(e, "failed to get manifestdata by rule: %v", err)
 			return
@@ -272,7 +272,7 @@ func (mag Magazine) ManifestListGetByRequest(ctx context.Context, req types.Requ
 	defer span.End()
 	_ = l
 	// Fetch ML from SQLite
-	ml, found, err = mag.Database.ManifestList_Get_ByRequest(ctx, req)
+	ml, found, err = mag.Database.ManifestListGetByRequest(ctx, req)
 	if err != nil {
 		logrus.Errorf("Failed to get ManifestList from Database: %v", err)
 		return

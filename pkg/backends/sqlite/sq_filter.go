@@ -1,7 +1,7 @@
 package sqlite
 
 /*
-func (s Sqlite) Filter_Insert(ctx context.Context, f types.Filter) (filterID int64, err error) {
+func (s Sqlite) FilterInsert(ctx context.Context, f types.Filter) (filterID int64, err error) {
 	filterID, success, err := s.Filter.GetFilter(f)
 	if err != nil {
 		return
@@ -16,7 +16,7 @@ func (s Sqlite) Filter_Insert(ctx context.Context, f types.Filter) (filterID int
 	return
 }
 
-func (s Sqlite) Filter_UpdatePlatform(ctx context.Context, plat types.Platform) (err error) {
+func (s Sqlite) FilterUpdatePlatform(ctx context.Context, plat types.Platform) (err error) {
 	return s.UpdatePlatformFilter(plat)
 }
 */

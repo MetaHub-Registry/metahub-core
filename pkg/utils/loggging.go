@@ -60,7 +60,7 @@ func NewErrorPlainWWW(w http.ResponseWriter, l *logrus.Entry, span trace.Span, e
 	return
 }
 
-func ErrorHandler_WithWWW(w http.ResponseWriter, l *logrus.Entry, span trace.Span, repo, action string, e error, eType, frmt string, a ...any) (err error) {
+func ErrorHandlerWithWWW(w http.ResponseWriter, l *logrus.Entry, span trace.Span, repo, action string, e error, eType, frmt string, a ...any) (err error) {
 	var msg string
 	msg = e.Error()
 	err = e

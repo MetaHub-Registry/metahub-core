@@ -74,7 +74,7 @@ func (n Neo) LayerGetByLayerAndManifestDataID(ctx context.Context, layerID, mdID
 	return
 }
 
-func (n Neo) Layer_Get_ByID(ctx context.Context, layerID int64) (l types.Layer, found bool, err error) {
+func (n Neo) LayerGetByID(ctx context.Context, layerID int64) (l types.Layer, found bool, err error) {
 	q := `MATCH (n:Blob) WHERE id(n) = %d`
 	q += ` RETURN id(n) AS ID, n.digest AS digest, n.size AS size`
 	query := fmt.Sprintf(q, layerID)
@@ -355,7 +355,7 @@ func (n Neo) LayerFromResult(ctx context.Context, res types.Result) (ly types.La
 	size, _ := res.GetInt64("layerSize")
 	mt, _ := res.GetStr("layerMediaType")
 	if mt == "" {
-		mt, err = n.Layer_GetMediaType_ByID(ctx, id)
+		mt, err = n.LayerGetMediaTypeByID(ctx, id)
 		if err != nil {
 			return ly, err
 		}
@@ -370,10 +370,10 @@ func (n Neo) LayerFromResult(ctx context.Context, res types.Result) (ly types.La
 	return
 }
 
-func (n Neo) Layer_GetMediaType_ByID(ctx context.Context, lyID int64) (mt string, err error) {
+func (n Neo) LayerGetMediaTypeByID(ctx context.Context, lyID int64) (mt string, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameLyr,
-		"func":    "Layer_GetMediaType_ByID",
+		"func":    "LayerGetMediaTypeByID",
 		"layerID": lyID,
 	})
 	defer span.End()
@@ -420,7 +420,7 @@ func (n Neo) Layer_GetMediaType_ByID(ctx context.Context, lyID int64) (mt string
 	return
 }
 
-func (n Neo) Layer_DescriporGet(ctx context.Context, desc v1.Descriptor) (layerID int64, found bool, err error) {
+func (n Neo) LayerDescriporGet(ctx context.Context, desc v1.Descriptor) (layerID int64, found bool, err error) {
 	q := `MATCH (n:Blob) WHERE n.digest = "%s" AND n.type = "layer" RETURN id(n) AS ID`
 	query := fmt.Sprintf(q, desc.Digest.String())
 	res, found, err := n.QueryOne(query)
@@ -444,7 +444,7 @@ func (n Neo) LayerDescriptorGetInsert(ctx context.Context, desc v1.Descriptor) (
 	})
 	defer span.End()
 	_ = ctx
-	layerID, found, err := n.Layer_DescriporGet(ctx, desc)
+	layerID, found, err := n.LayerDescriporGet(ctx, desc)
 	if err != nil {
 		return 0, err
 	}
@@ -467,8 +467,8 @@ func (n Neo) LayerDescriptorGetInsert(ctx context.Context, desc v1.Descriptor) (
 	return
 }
 
-func (n Neo) Layers_DeleteUnused(ctx context.Context) (err error) {
-	_, span := tracer.Start(ctx, "Layers_DeleteUnused")
+func (n Neo) LayersDeleteUnused(ctx context.Context) (err error) {
+	_, span := tracer.Start(ctx, "LayersDeleteUnused")
 	defer span.End()
 	q := `MATCH (l:Blob) WHERE l.type = "layer" AND NOT (l)<-[]-(:ManifestData) DETACH DELETE l RETURN count(l) AS deletedLayers`
 	span.AddEvent("log", trace.WithAttributes(

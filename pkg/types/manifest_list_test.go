@@ -1,7 +1,7 @@
 package types
 
 // func TestManifestListFromData(t *testing.T) {
-// 	mlBytes := FT_amd_Manifestlist().ToOCIBytes()
+// 	mlBytes := FTamdManifestlist().ToOCIBytes()
 // 	ml, err := NewManifestListFromData(mlBytes)
 // 	if err != nil {
 // 		t.Fatal(err)

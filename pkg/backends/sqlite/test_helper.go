@@ -14,7 +14,7 @@ import (
 )
 
 func Setup_Manifestlist_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
-	ml := types.FT_arm_Manifestlist()
+	ml := types.FTarmManifestlist()
 	err = sq.InsertManifestList(&ml)
 	if err != nil {
 		return
@@ -24,7 +24,7 @@ func Setup_Manifestlist_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error)
 }
 
 func Setup_Manifestlist_FT_generic(sq *Sqlite, br *utils.BootstrapResult) (err error) {
-	ml := types.FT_generic_Manifestlist()
+	ml := types.FTgenericManifestlist()
 	err = sq.InsertManifestList(&ml)
 	if err != nil {
 		return
@@ -34,7 +34,7 @@ func Setup_Manifestlist_FT_generic(sq *Sqlite, br *utils.BootstrapResult) (err e
 }
 
 func Setup_Manifestlist_FTamd64(sq *Sqlite, br *utils.BootstrapResult) (err error) {
-	ml := types.FT_amd_Manifestlist()
+	ml := types.FTamdManifestlist()
 	err = sq.InsertManifestList(&ml)
 	if err != nil {
 		return
@@ -46,7 +46,7 @@ func Setup_Manifestlist_FTamd64(sq *Sqlite, br *utils.BootstrapResult) (err erro
 func Setup_Layers_FT_amd64(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	//logrus.Warn("Setup_Layers_FT_amd64")
 	// Create layers
-	l0 := types.FT_amd_Layer0Reference()
+	l0 := types.FTamdLayer0Reference()
 	l0ID, err := sq.Layer.InsertDescriptor(l0)
 	if err != nil {
 		return
@@ -54,7 +54,7 @@ func Setup_Layers_FT_amd64(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	br.Add("layer:qnib/featuretest:amd64#id0", fmt.Sprint(l0ID))
 	br.Add("layer:qnib/featuretest:amd64#digest0", l0.Digest.String())
 	br.Add("layer:qnib/featuretest:amd64#size0", fmt.Sprint(l0.Size))
-	l1 := types.FT_amd_Layer1Reference()
+	l1 := types.FTamdLayer1Reference()
 	l1ID, err := sq.Layer.InsertDescriptor(l1)
 	if err != nil {
 		return
@@ -68,7 +68,7 @@ func Setup_Layers_FT_amd64(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 func Setup_Layers_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	//logrus.Warn("Setup_Layers_FTarm")
 	// Create layers
-	l0 := types.FT_arm_Layer0Reference()
+	l0 := types.FTarmLayer0Reference()
 	l0ID, err := sq.Layer.InsertDescriptor(l0)
 	if err != nil {
 		return
@@ -76,7 +76,7 @@ func Setup_Layers_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	br.Add("layer:qnib/featuretest:arm64#id0", fmt.Sprint(l0ID))
 	br.Add("layer:qnib/featuretest:arm64#digest0", l0.Digest.String())
 	br.Add("layer:qnib/featuretest:arm64#size0", fmt.Sprint(l0.Size))
-	l1 := types.FT_arm_Layer1Reference()
+	l1 := types.FTarmLayer1Reference()
 	l1ID, err := sq.Layer.InsertDescriptor(l1)
 	if err != nil {
 		return
@@ -142,7 +142,7 @@ func Setup_Platforms(sqObj *Sqlite, br *utils.BootstrapResult) (err error) {
 func Setup_Upstream_FT_amd64(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	//logrus.Warn("Setup_Upstream_FT_amd64")
 	// Create upstream for qnib/featuretest
-	up := types.FT_amd64_Upstream()
+	up := types.FTamd64Upstream()
 	err = sq.Upstream.Insert(&up)
 	if err != nil {
 		return
@@ -154,7 +154,7 @@ func Setup_Upstream_FT_amd64(sq *Sqlite, br *utils.BootstrapResult) (err error) 
 func Setup_Upstream_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	//logrus.Warn("Setup_Upstream_FTarm")
 	// Create upstream for qnib/featuretest
-	up := types.FT_arm64_Upstream()
+	up := types.FTarm64Upstream()
 	err = sq.Upstream.Insert(&up)
 	if err != nil {
 		return
@@ -181,7 +181,7 @@ func Setup_Filter_Generic(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 
 func Setup_Config_FT_amd64(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	//logrus.Warn("Setup_Config_FTarm")
-	cfg := types.FT_amd64_Config()
+	cfg := types.FTamd64Config()
 	err = sq.Config.Insert(&cfg)
 	if err != nil {
 		return
@@ -194,7 +194,7 @@ func Setup_Config_FT_amd64(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 }
 func Setup_Config_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	//logrus.Warn("Setup_Config_FTarm")
-	cfg := types.FT_arm_Config()
+	cfg := types.FTarmConfig()
 	err = sq.Config.Insert(&cfg)
 	if err != nil {
 		return
@@ -208,7 +208,7 @@ func Setup_Config_FTarm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 func Setup_Manifest_QNIB_FeatureTest_amd(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	//logrus.Warn("Setup_Maniest_QNIB_FeatureTest_arm")
 	// Create cmanifest for qnib/featuretest
-	mani := types.FT_amd_ManifestData()
+	mani := types.FTamdManifestData()
 	// Upstream ID
 	upID, err := br.GetInt64("upstream:qnib/featuretest:amd64#id")
 	if err != nil {
@@ -281,7 +281,7 @@ func Setup_Manifest_QNIB_FeatureTest_amd(sq *Sqlite, br *utils.BootstrapResult) 
 func Setup_Manifest_QNIB_FeatureTest_arm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	//logrus.Warn("Setup_Maniest_QNIB_FeatureTest_arm")
 	// Create cmanifest for qnib/featuretest
-	mani := types.FT_arm_ManifestData()
+	mani := types.FTarmManifestData()
 	// Upstream ID
 	upID, err := br.GetInt64("upstream:qnib/featuretest:arm64#id")
 	if err != nil {
@@ -417,14 +417,14 @@ func Setup_Profiles(sqObj *Sqlite, br *utils.BootstrapResult, d string) (err err
 }
 
 func Setup_Collection_QNIB_FeatureTest_Generic(sq *Sqlite, br *utils.BootstrapResult) (err error) {
-	cTag := types.CollectionTag_Generic()
+	cTag := types.CollectionTagGeneric()
 	err = sq.CollectionTag.Insert(&cTag)
 	if err != nil {
 		return
 	}
 	br.Add("collection_tag:generic#id", fmt.Sprint(cTag.ID))
 	// Create collection
-	c := types.FT_generic_Collection()
+	c := types.FTGenericCollection()
 	c.ColTag.ID = cTag.ID
 	err = sq.Collection.Insert(&c)
 	if err != nil {
@@ -447,14 +447,14 @@ func Setup_Collection_QNIB_FeatureTest_Generic(sq *Sqlite, br *utils.BootstrapRe
 /*
 	func Setup_Collection_QNIB_FeatureTestLatest(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 		//logrus.Info("> Setup_Collection_QNIB_FeatureTest")
-		cTag := types.CollectionTag_Latest()
+		cTag := types.CollectionTagLatest()
 		err = sq.CollectionTag.Insert(&cTag)
 		if err != nil {
 			return
 		}
 		br.Add("collection_tag:latest#id", fmt.Sprint(cTag.SqlID))
 		// Create collection
-		c := types.FT_arm_Collection()
+		c := types.FTarmCollection()
 		c.Tag.SqlID = cTag.SqlID
 		err = sq.Collection.Insert(&c)
 		if err != nil {
@@ -477,14 +477,14 @@ func Setup_Collection_QNIB_FeatureTest_Generic(sq *Sqlite, br *utils.BootstrapRe
 
 func Setup_Collection_QNIB_FeatureTest_arm(sq *Sqlite, br *utils.BootstrapResult) (err error) {
 	//logrus.Info("> Setup_Collection_QNIB_FeatureTest")
-	cTag := types.CollectionTag_arm()
+	cTag := types.CollectionTagarm()
 	err = sq.CollectionTag.Insert(&cTag)
 	if err != nil {
 		return
 	}
 	br.Add("collection_tag:arm64#id", fmt.Sprint(cTag.ID))
 	// Create collection
-	c := types.FT_arm_Collection()
+	c := types.FTarmCollection()
 	col, err := sq.GetInsertCollectionByRepoTag(c.Repo, cTag.Tag)
 	if err != nil {
 		return
@@ -504,14 +504,14 @@ func Setup_Collection_QNIB_FeatureTest_arm(sq *Sqlite, br *utils.BootstrapResult
 }
 
 func Setup_Collection_QNIB_FeatureTest_amd64(sq *Sqlite, br *utils.BootstrapResult) (err error) {
-	cTag := types.CollectionTag_amd64()
+	cTag := types.CollectionTagamd64()
 	err = sq.CollectionTag.Insert(&cTag)
 	if err != nil {
 		return
 	}
 	br.Add("collection_tag:amd64#id", fmt.Sprint(cTag.ID))
 	// Create collection
-	c := types.FT_amd64_Collection()
+	c := types.FTamd64Collection()
 	col, err := sq.GetInsertCollectionByRepoTag(c.Repo, cTag.Tag)
 	if err != nil {
 		return

@@ -13,7 +13,7 @@ func TestRunNIL(t *testing.T) {
 	e := fmt.Errorf("test")
 	w := httptest.NewRecorder()
 	ErrorHandler(nil, nil, e, "ErrorHandler")
-	ErrorHandler_WithWWW(w, nil, nil, "repo", "action", e, "DENIED", "ErrorHandler_WithWWW")
+	ErrorHandlerWithWWW(w, nil, nil, "repo", "action", e, "DENIED", "ErrorHandlerWithWWW")
 	NewError(nil, nil, "NewError")
 	Debug(nil, nil, "Debug")
 	DebugOK(nil, nil, "Debug")

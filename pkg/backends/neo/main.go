@@ -194,15 +194,15 @@ func (n Neo) EmptyData(all bool) (err error) {
 	return n.EmptyGraph()
 }
 
-func (n Neo) EmptyData_KeepUpstream() (err error) {
-	logrus.Warn("Neo.EmptyData_KeepUpstream")
+func (n Neo) EmptyDataKeepUpstream() (err error) {
+	logrus.Warn("Neo.EmptyDataKeepUpstream")
 	q := `MATCH (n) WHERE NOT "Upstream" IN LABELS(n) DETACH DELETE n`
 	_, err = n.Execute(q)
 	return
 }
 
 func (n Neo) EmptyDataKeepUpstreamConfigLayer() (err error) {
-	logrus.Warn("Neo.EmptyData_KeepUpstream")
+	logrus.Warn("Neo.EmptyDataKeepUpstream")
 	q := `MATCH (n) WHERE NOT LABELS(n) IN [['Config'],['Upstream'],['Layer']] DETACH DELETE n`
 	_, err = n.Execute(q)
 	return

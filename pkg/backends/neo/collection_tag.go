@@ -73,7 +73,7 @@ func (n Neo) CollectionTagCleanupByID(ctx context.Context, tagID int64) (err err
 	return nil
 }
 
-func (n Neo) CollectionTag_Create(tag string) (ct types.CollectionTag, err error) {
+func (n Neo) CollectionTagCreate(tag string) (ct types.CollectionTag, err error) {
 	q := `CREATE (t:Tag {name: "%s"}) RETURN id(t) AS tagID, t.name AS tagName`
 	query := fmt.Sprintf(q, tag)
 	res, err := n.Execute(query)
@@ -89,14 +89,14 @@ func (n Neo) CollectionTagGetCreate(ctx context.Context, tag string) (ct types.C
 	span.SetAttributes(
 		attribute.Key("tag").String(tag),
 	)
-	ct, found, err := n.CollectionTag_GetByTag(tag)
+	ct, found, err := n.CollectionTagGetByTag(tag)
 	if err != nil {
 		return
 	}
 	if found {
 		return ct, nil
 	}
-	return n.CollectionTag_Create(tag)
+	return n.CollectionTagCreate(tag)
 }
 
 func (n Neo) LinkCollectionTagToManifest(ctx context.Context, colTagID, maniID int64) (err error) {
@@ -119,7 +119,7 @@ func (n Neo) LinkCollectionTagToManifest(ctx context.Context, colTagID, maniID i
 	return
 }
 
-func (n Neo) LinkCollectionTagToManifest_Remove(ctx context.Context, colTagID, maniID int64) (found bool, err error) {
+func (n Neo) LinkCollectionTagToManifestRemove(ctx context.Context, colTagID, maniID int64) (found bool, err error) {
 	q := `MATCH (t:Tag)-[u:UPSTREAM]->(m:Manifest) WHERE id(t) = %d AND id(m) = %d`
 	q += ` DELETE u`
 	query := fmt.Sprintf(q, colTagID, maniID)
@@ -133,7 +133,7 @@ func (n Neo) LinkCollectionTagToManifest_Remove(ctx context.Context, colTagID, m
 	return
 }
 
-func (n Neo) CollectionTag_GetByTag(tag string) (ct types.CollectionTag, found bool, err error) {
+func (n Neo) CollectionTagGetByTag(tag string) (ct types.CollectionTag, found bool, err error) {
 	q := `MATCH (t:Tag {name: "%s"}) RETURN id(t) AS tagID, t.name AS tagName`
 	query := fmt.Sprintf(q, tag)
 	res, err := n.Query(query)
@@ -211,7 +211,7 @@ func CollectionTagFromResult(res types.Result) (ct types.CollectionTag, err erro
 	return
 }
 
-func (n Neo) CollectionTag_CountRelationships(ctID int64) (count int64, err error) {
+func (n Neo) CollectionTagCountRelationships(ctID int64) (count int64, err error) {
 	q := `MATCH (t:Tag)-[r]->() WHERE id(t) = %d RETURN count(r) AS count`
 	query := fmt.Sprintf(q, ctID)
 	res, found, err := n.QueryOne(query)
@@ -231,7 +231,7 @@ func (n Neo) CollectionTag_CountRelationships(ctID int64) (count int64, err erro
 	return
 }
 
-func (n Neo) CollectionTag_DetachFromCollection(cID, ctID int64) (err error) {
+func (n Neo) CollectionTagDetachFromCollection(cID, ctID int64) (err error) {
 	q := `MATCH (c:Collection)-[r:HAS_TAG]->(t:Tag) WHERE id(c) = %d AND id(t) = %d`
 	q += ` DELETE r`
 	query := fmt.Sprintf(q, cID, ctID)
@@ -241,7 +241,7 @@ func (n Neo) CollectionTag_DetachFromCollection(cID, ctID int64) (err error) {
 		return
 	}
 	// Count relationships from Tag
-	count, err := n.CollectionTag_CountRelationships(ctID)
+	count, err := n.CollectionTagCountRelationships(ctID)
 	if count == 0 {
 		// Delete Tag
 		q = `MATCH (t:Tag) WHERE id(t) = %d DELETE t`

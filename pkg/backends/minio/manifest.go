@@ -105,12 +105,12 @@ func (m Minio) GetManifest(ctx context.Context, up upstream.UpstreamTriple) (res
 	return m.GetCachedManifest(ctx, up.Digest)
 }
 
-func (m Minio) PutManifest_ByUpstream(ctx context.Context, b []byte, up types.Upstream) (err error) {
+func (m Minio) PutManifestByUpstream(ctx context.Context, b []byte, up types.Upstream) (err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "backends/minio",
-		"func":    "PutManifest_ByUpstream",
+		"func":    "PutManifestByUpstream",
 	})
-	ctx, span := tracer.Start(ctx, "PutManifest_ByUpstream")
+	ctx, span := tracer.Start(ctx, "PutManifestByUpstream")
 	span.SetAttributes(
 		attribute.Key("reg").String(up.Reg),
 		attribute.Key("repo").String(up.Repo),

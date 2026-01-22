@@ -25,7 +25,7 @@ var (
 	returnStatementProfile = `id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule, prf.label AS profileLabel`
 )
 
-func (n Neo) Profile_GetInsert(ctx context.Context, p *types.Profile) (err error) {
+func (n Neo) ProfileGetInsert(ctx context.Context, p *types.Profile) (err error) {
 	prfID, success, err := n.GetProfile(*p)
 	if err != nil {
 		return
@@ -56,7 +56,7 @@ func (n Neo) Profile_GetInsert(ctx context.Context, p *types.Profile) (err error
 			logrus.Warnf("rule with label '%s' not found", lbl)
 			continue
 		}
-		e := n.Profile_LinkRule(ctx, prfID, r.ID)
+		e := n.ProfileLinkRule(ctx, prfID, r.ID)
 		if e != nil {
 			err = errors.Wrap(e, "failed to link profile to rule")
 			return err
@@ -76,8 +76,8 @@ func (n Neo) Profile_GetInsert(ctx context.Context, p *types.Profile) (err error
 	return
 }
 
-func (n Neo) Profile_Get_ByLabel(ctx context.Context, label string) (p types.Profile, found bool, err error) {
-	_, span := tracer.Start(ctx, "Profile_Get_ByLabel")
+func (n Neo) ProfileGetByLabel(ctx context.Context, label string) (p types.Profile, found bool, err error) {
+	_, span := tracer.Start(ctx, "ProfileGetByLabel")
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (prf:Profile) WHERE prf.label = "%s"`, label)
 	q += fmt.Sprintf(` RETURN %s`, returnStatementProfile)
@@ -92,7 +92,7 @@ func (n Neo) Profile_Get_ByLabel(ctx context.Context, label string) (p types.Pro
 	return
 }
 
-func (n Neo) Profile_Get_ByNameTag(ctx context.Context, name, tag string) (p types.Profile, found bool, err error) {
+func (n Neo) ProfileGetByNameTag(ctx context.Context, name, tag string) (p types.Profile, found bool, err error) {
 	q := fmt.Sprintf(`MATCH (prf:Profile) WHERE prf.name = "%s" AND prf.tag = "%s"`, name, tag)
 	q += fmt.Sprintf(` RETURN %s`, returnStatementProfile)
 	res, found, err := n.QueryOne(q)
@@ -114,8 +114,8 @@ func (n Neo) ProfileGetByID(ctx context.Context, prfID int64) (p types.Profile, 
 	return
 }
 
-func (n Neo) Profiles_Get_ByRegexLabel(ctx context.Context, labelRegex string) (ps []types.Profile, err error) {
-	_, span := tracer.Start(ctx, "Profiles_Get_ByRegexLabel")
+func (n Neo) ProfilesGetByRegexLabel(ctx context.Context, labelRegex string) (ps []types.Profile, err error) {
+	_, span := tracer.Start(ctx, "ProfilesGetByRegexLabel")
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (prf:Profile) WHERE prf.label =~ "%s"`, labelRegex)
 	q += fmt.Sprintf(` RETURN %s`, returnStatementProfile)
@@ -206,7 +206,7 @@ func (n Neo) CreateProfile(prf types.Profile) (prfID int64, err error) {
 	return
 }
 
-func (n Neo) Profile_LinkRule(ctx context.Context, profileID, ruleID int64) (err error) {
+func (n Neo) ProfileLinkRule(ctx context.Context, profileID, ruleID int64) (err error) {
 	q := `MATCH (p:Profile),(r:Rule) WHERE id(p) = %d AND id(r) = %d`
 	q += ` MERGE (p)-[:USES]->(r)`
 	query := fmt.Sprintf(q, profileID, ruleID)
@@ -252,7 +252,7 @@ func (n Neo) ProfileFromResult(res types.Result) (p types.Profile, err error) {
 	}
 	// TODO: Evaluate the rule string and get the rules attached?
 	/*
-		f.Rules, err = n.Rules_GetByFilterID(ctx, id)
+		f.Rules, err = n.RulesGetByFilterID(ctx, id)
 		if err != nil {
 			logrus.Error(err)
 			return
@@ -315,7 +315,7 @@ func (n Neo) ProfileFromManifestIDViaOriginalManifestData(ctx context.Context, m
 	defer span.End()
 	_ = ctx
 	// TODO: Get Original ManifestData (parsed, uploaded or pulled)
-	mds, e := n.ManifestData_GetAllByManifestID(ctx, maniID)
+	mds, e := n.ManifestDataGetAllByManifestID(ctx, maniID)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to get ManifestData for Manifest")
 		return
@@ -476,22 +476,22 @@ func (n Neo) ProfileFromManifestIDViaPlatform(ctx context.Context, maniID int64)
 	return
 }
 
-func (n Neo) Profile_FromManifestDataID(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
+func (n Neo) ProfileFromManifestDataID(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameProfile,
-		"func":    "Profile_FromManifestDataID",
+		"func":    "ProfileFromManifestDataID",
 		"maniID":  mdID,
 	})
 	_ = l
-	ctx, span := tracer.Start(ctx, "Profile_FromManifestDataID")
+	ctx, span := tracer.Start(ctx, "ProfileFromManifestDataID")
 	defer span.End()
-	prfs, e := n.Profile_FromManifestDataID_ViaAnnotations(ctx, mdID)
+	prfs, e := n.ProfileFromManifestDataIDViaAnnotations(ctx, mdID)
 	if e != nil {
 		utils.ErrorHandler(l, span, e, "failed to get profiles via annotations for ManifestData")
 		return
 	}
 	if len(prfs) == 0 {
-		prfs2, e := n.Profile_FromManifestDataID_ViaPlatform(ctx, mdID)
+		prfs2, e := n.ProfileFromManifestDataIDViaPlatform(ctx, mdID)
 		if e != nil {
 			utils.ErrorHandler(l, span, e, "failed to get profiles via platform for ManifestData")
 			return
@@ -504,13 +504,13 @@ func (n Neo) Profile_FromManifestDataID(ctx context.Context, mdID int64) (prfs [
 	return
 }
 
-func (n Neo) Profile_FromManifestDataID_ViaAnnotations(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
+func (n Neo) ProfileFromManifestDataIDViaAnnotations(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameProfile,
-		"func":    "Profile_FromManifestDataID_ViaAnnotations",
+		"func":    "ProfileFromManifestDataIDViaAnnotations",
 		"maniID":  mdID,
 	})
-	_, span := tracer.Start(ctx, "Profile_FromManifestDataID_ViaAnnotations")
+	_, span := tracer.Start(ctx, "ProfileFromManifestDataIDViaAnnotations")
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[:%s]-(a:Annotation)-[]-(md:ManifestData) WHERE id(md) = %d`, types.RelationSuccess, mdID)
 	q += fmt.Sprintf(` RETURN DISTINCT %s`, returnStatementProfile)
@@ -557,13 +557,13 @@ func (n Neo) Profile_FromManifestDataID_ViaAnnotations(ctx context.Context, mdID
 	return
 }
 
-func (n Neo) Profile_FromManifestDataID_ViaPlatform(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
+func (n Neo) ProfileFromManifestDataIDViaPlatform(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameProfile,
-		"func":    "Profile_FromManifestDataID_ViaPlatform",
+		"func":    "ProfileFromManifestDataIDViaPlatform",
 		"maniID":  mdID,
 	})
-	_, span := tracer.Start(ctx, "Profile_FromManifestDataID_ViaPlatform")
+	_, span := tracer.Start(ctx, "ProfileFromManifestDataIDViaPlatform")
 	defer span.End()
 	rel := types.RelationSuccess
 	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[:%s]->(p:Platform)<-[:IS]-(m:Manifest)-[]-(md:ManifestData) WHERE id(md) = %d`, rel, mdID)
@@ -635,7 +635,7 @@ func (n Neo) ProfileAuthorizedPushHandler(ctx context.Context, req types.Request
 	defer span.End()
 
 	// check if profile already has a manifest uploaded
-	prf, found, e := n.Profile_Get_ByLabel(ctx, req.Profile)
+	prf, found, e := n.ProfileGetByLabel(ctx, req.Profile)
 
 	if e != nil {
 		err = errors.Wrapf(e, "failed to get profile '%s'", req.Profile)
@@ -657,13 +657,13 @@ func (n Neo) ProfileAuthorizedPushHandler(ctx context.Context, req types.Request
 	return
 }
 
-func (n Neo) Profile_ManifestType(ctx context.Context, maniID int64) (relType string, found bool, err error) {
+func (n Neo) ProfileManifestType(ctx context.Context, maniID int64) (relType string, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameProfile,
-		"func":    "Profile_ManifestType",
+		"func":    "ProfileManifestType",
 		"maniID":  maniID,
 	})
-	_, span := tracer.Start(ctx, "Profile_ManifestType")
+	_, span := tracer.Start(ctx, "ProfileManifestType")
 	defer span.End()
 	span.SetAttributes(
 		attribute.Key("maniID").Int64(maniID),
@@ -698,10 +698,10 @@ func (n Neo) Profile_ManifestType(ctx context.Context, maniID int64) (relType st
 	return
 }
 
-func (n Neo) Profile_GetUploadedBy_ViaManifestDataID(ctx context.Context, maniID int64) (p types.Profile, found bool, err error) {
+func (n Neo) ProfileGetUploadedByViaManifestDataID(ctx context.Context, maniID int64) (p types.Profile, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameProfile,
-		"func":    "Profile_GetUploadedBy_ViaManifestDataID",
+		"func":    "ProfileGetUploadedByViaManifestDataID",
 		"maniID":  maniID,
 	})
 	_, span := tracer.Start(ctx, "Profile_GetUploadedBy_BiaManifestDataID")
@@ -725,13 +725,13 @@ func (n Neo) Profile_GetUploadedBy_ViaManifestDataID(ctx context.Context, maniID
 	return
 }
 
-func (n Neo) Profile_GetPulledBy_ViaManifestDataID(ctx context.Context, maniID int64) (p types.Profile, found bool, err error) {
+func (n Neo) ProfileGetPulledByViaManifestDataID(ctx context.Context, maniID int64) (p types.Profile, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameProfile,
-		"func":    "Profile_GetPulledBy_ViaManifestDataID",
+		"func":    "ProfileGetPulledByViaManifestDataID",
 		"maniID":  maniID,
 	})
-	_, span := tracer.Start(ctx, "Profile_GetPulledBy_ViaManifestDataID")
+	_, span := tracer.Start(ctx, "ProfileGetPulledByViaManifestDataID")
 	defer span.End()
 	span.SetAttributes(
 		attribute.Key("maniID").Int64(maniID),
@@ -830,12 +830,12 @@ func (n Neo) ProfileUnwindRules(ctx context.Context, prfID, maniDataID int64) (e
 		switch {
 		case r.Type == types.RuleTypeAnnotation && r.Op == "eq":
 			a := types.NewAnnotation(r.Key, r.Value)
-			aID, err := n.Annotation_GetInsert(ctx, a)
+			aID, err := n.AnnotationGetInsert(ctx, a)
 			if err != nil {
 				err = errors.Wrapf(err, "failed to get annotation %s:%s", a.Key, a.Value)
 				return err
 			}
-			e := n.ManifestData_LinkToAnnotation(ctx, maniDataID, aID)
+			e := n.ManifestDataLinkToAnnotation(ctx, maniDataID, aID)
 			if e != nil {
 				err = errors.Wrapf(e, "failed to link manifestData '%d' with  annotation %d", maniDataID, aID)
 				return err

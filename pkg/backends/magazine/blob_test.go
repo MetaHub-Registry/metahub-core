@@ -135,7 +135,7 @@ func TestStoreBlobUpload(t *testing.T) {
 	testImage := "alpine"
 	br.Add("image", testImage)
 	// Upload a Config Blob
-	bu, buff := types.FT_arm_BlobUpload_Config()
+	bu, buff := types.FTarmBlobUploadConfig()
 	utils.Debug(l, span, "Uploading Config Blob")
 	if err := mag.Database.BlobUploadCreateByOCI(ctx, &bu); err != nil {
 		t.Fatal(err)
@@ -197,7 +197,7 @@ func TestBlobChunkCRU(t *testing.T) {
 	defer TeardownTest(bs, br)
 	// Actual test
 	//// CREATE
-	ociBU, buff := types.FT_arm_BlobUpload_Config()
+	ociBU, buff := types.FTarmBlobUploadConfig()
 
 	// ociBU := types.OCIBlobUpload{
 	// 	Repo:          "qnib/featuretest",

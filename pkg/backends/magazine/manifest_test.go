@@ -157,7 +157,7 @@ func TestStoreManifestUploadOCIManifest(t *testing.T) {
 	defer TeardownTest(bs, br)
 	// Tests
 	ctx := context.Background()
-	inMani := types.FT_arm_ManifestData()
+	inMani := types.FTarmManifestData()
 	req := types.Request{
 		Repo:    "qnib/plain-featuretest",
 		Tag:     "20220715-arm64-generic",
@@ -333,7 +333,7 @@ func TestManifestStoreManifestUploadEmbeddedConfigNoLayerwithLabels(t *testing.T
 	}
 	assert.Equal(t, cfgDigest, cfgObj.Digest)
 	// Check Collections
-	manis, err := mag.Database.Manifest_GetAll(ctx)
+	manis, err := mag.Database.ManifestGetAll(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

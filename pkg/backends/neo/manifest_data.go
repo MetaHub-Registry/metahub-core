@@ -23,8 +23,8 @@ const (
 	manifestDataReturn                = `id(md) AS manifestID, md.digest AS manifestDigest, md.mediaType AS manifestMediaType, md.size AS manifestSize, md.label AS manifestLabel`
 	pkgNameMD                         = "neo/manifest_data.go"
 	FailAnnoUp                        = "AnnotationUpdate failed"
-	FailManiLinkAnno                  = "Manifest_LinkToAnnotation failed"
-	FailAnnoCreate                    = "Annotation_Create failed"
+	FailManiLinkAnno                  = "ManifestLinkToAnnotation failed"
+	FailAnnoCreate                    = "AnnotationCreate failed"
 	FailManifestDataLinkToLayer       = "ManifestDataLinkToLayer failed"
 	FailManifestFromResult            = "failed to get manifest from result"
 	FailManifestDataGetByUpstream     = "ManifestDataGetByUpstream failed"
@@ -32,12 +32,13 @@ const (
 	FailManifestDataGetByDigest       = "ManifestDataGetByDigest failed"
 	FailManipuLayerLinkToManifestData = "ManipuLayer_LinkToManifestData failed"
 	FailMediaTypeEmpty                = "mediaType is empty"
+	FailedProfGetByLabel              = "ProfileGetByLabel failed"
 )
 
 func (n Neo) ManifestDataUpdateDesc(ctx context.Context, maniDataID int64, maniDataV1 v1.Descriptor) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNameMD,
-		"func":       "ManifestData_GetAll",
+		"func":       "ManifestDataGetAll",
 		"maniDataID": maniDataID,
 	})
 	defer span.End()
@@ -177,10 +178,10 @@ func (n Neo) ManifestDataGetByProfileMediaType(ctx context.Context, mID, prfID i
 	return
 }
 
-func (n Neo) ManifestData_GetParsedNodeRel_ByMediaType(ctx context.Context, msID int64, mediaType string) (nr types.NodeRel, found bool, err error) {
+func (n Neo) ManifestDataGetParsedNodeRelByMediaType(ctx context.Context, msID int64, mediaType string) (nr types.NodeRel, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":   pkgNameMD,
-		"func":      "ManifestData_GetParsedNodeRel_ByMediaType",
+		"func":      "ManifestDataGetParsedNodeRelByMediaType",
 		"mani.ID":   msID,
 		"mediaType": mediaType,
 	})
@@ -261,11 +262,11 @@ func (n Neo) ManifestDataGetIDByMediaType(ctx context.Context, msID int64, media
 	return
 }
 
-func (n Neo) ManifestData_GetAll(ctx context.Context) (manis []types.ManifestData, err error) {
+func (n Neo) ManifestDataGetAll(ctx context.Context) (manis []types.ManifestData, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 
 		"package": pkgNameMD,
-		"func":    "ManifestData_GetAll",
+		"func":    "ManifestDataGetAll",
 	})
 	defer span.End()
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
@@ -310,7 +311,7 @@ func (n Neo) ManifestData_GetAll(ctx context.Context) (manis []types.ManifestDat
 			err = e
 			return
 		}
-		anno, e := n.Labels_GetByConfigID(ctx, c.ID)
+		anno, e := n.LabelsGetByConfigID(ctx, c.ID)
 		if e != nil {
 			err = e
 			return
@@ -330,10 +331,10 @@ func (n Neo) ManifestData_GetAll(ctx context.Context) (manis []types.ManifestDat
 	return
 }
 
-func (n Neo) ManifestData_GetAllByManifestID(ctx context.Context, msID int64) (manis []types.ManifestData, err error) {
+func (n Neo) ManifestDataGetAllByManifestID(ctx context.Context, msID int64) (manis []types.ManifestData, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMD,
-		"func":    "ManifestData_GetAllByManifestID",
+		"func":    "ManifestDataGetAllByManifestID",
 		"maniID":  msID,
 	})
 	defer span.End()
@@ -366,13 +367,13 @@ func (n Neo) ManifestData_GetAllByManifestID(ctx context.Context, msID int64) (m
 			return
 		}
 		// Get Labels for Config
-		anno, e := n.Labels_GetByConfigID(ctx, c.ID)
+		anno, e := n.LabelsGetByConfigID(ctx, c.ID)
 		if e != nil {
 			err = e
 			return
 		}
 		// Get Labels for Config
-		labels, e := n.Labels_GetByConfigID(ctx, c.ID)
+		labels, e := n.LabelsGetByConfigID(ctx, c.ID)
 		if e != nil {
 			err = e
 			return
@@ -395,10 +396,10 @@ func (n Neo) ManifestData_GetAllByManifestID(ctx context.Context, msID int64) (m
 	return
 }
 
-func (n Neo) ManifestData_GetAllByManifestID_WithProfile(ctx context.Context, msID, prfID int64) (manis []types.ManifestData, err error) {
+func (n Neo) ManifestDataGetAllByManifestIDWithProfile(ctx context.Context, msID, prfID int64) (manis []types.ManifestData, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMD,
-		"func":    "ManifestData_GetAllByManifestID_WithProfile",
+		"func":    "ManifestDataGetAllByManifestIDWithProfile",
 		"maniID":  msID,
 	})
 	defer span.End()
@@ -434,13 +435,13 @@ func (n Neo) ManifestData_GetAllByManifestID_WithProfile(ctx context.Context, ms
 			return
 		}
 		// Get Labels for Config
-		anno, e := n.Labels_GetByConfigID(ctx, c.ID)
+		anno, e := n.LabelsGetByConfigID(ctx, c.ID)
 		if e != nil {
 			err = e
 			return
 		}
 		// Get Labels for Config
-		labels, e := n.Labels_GetByConfigID(ctx, c.ID)
+		labels, e := n.LabelsGetByConfigID(ctx, c.ID)
 		if e != nil {
 			err = e
 			return
@@ -462,10 +463,10 @@ func (n Neo) ManifestData_GetAllByManifestID_WithProfile(ctx context.Context, ms
 	return
 }
 
-func (n Neo) ManifestData_LinkToAnnotation(ctx context.Context, maniID, annotationID int64) (err error) {
+func (n Neo) ManifestDataLinkToAnnotation(ctx context.Context, maniID, annotationID int64) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":      pkgNameMD,
-		"func":         "ManifestData_LinkToAnnotation",
+		"func":         "ManifestDataLinkToAnnotation",
 		"maniID":       maniID,
 		"annotationID": annotationID,
 	})
@@ -487,10 +488,10 @@ func (n Neo) ManifestData_LinkToAnnotation(ctx context.Context, maniID, annotati
 	return
 }
 
-func (n Neo) ManifestData_LinkToOCIv1Config(ctx context.Context, maniID int64, cfg types.Config) (err error) {
+func (n Neo) ManifestDataLinkToOCIv1Config(ctx context.Context, maniID int64, cfg types.Config) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMD,
-		"func":    "ManifestData_LinkToOCIv1Config",
+		"func":    "ManifestDataLinkToOCIv1Config",
 		"maniID":  maniID,
 		"cfgID":   cfg.ID,
 	})
@@ -578,21 +579,21 @@ func (n Neo) ManifestDataLinkToOCIv1Layer(ctx context.Context, maniID int64, ld 
 	return
 }
 
-func (n Neo) ManifestData_AddAnnotations(ctx context.Context, maniID int64, as *types.Annotations) (err error) {
+func (n Neo) ManifestDataAddAnnotations(ctx context.Context, maniID int64, as *types.Annotations) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMD,
-		"func":    "ManifestData_AddAnnotations",
+		"func":    "ManifestDataAddAnnotations",
 		"maniID":  maniID,
 	})
 	defer span.End()
 	for k, a := range as.Data {
 		logrus.Warnf("adding annotation %s=%s", k, a.Value)
-		aID, e := n.Annotation_GetInsert(ctx, a)
+		aID, e := n.AnnotationGetInsert(ctx, a)
 		if e != nil {
 			return utils.ErrorHandler(l, span, e, "failed to add annotation")
 		}
 		a.ID = aID
-		e = n.ManifestData_LinkToAnnotation(ctx, maniID, aID)
+		e = n.ManifestDataLinkToAnnotation(ctx, maniID, aID)
 		if e != nil {
 			return utils.ErrorHandler(l, span, e, "failed to link annotation")
 		}
@@ -650,7 +651,7 @@ func (n Neo) ManifestDataGetTypesByRequest(ctx context.Context, req types.Reques
 	return
 }
 
-func (n Neo) ManifestData_GetID_ByDigest(ctx context.Context, dig string) (maniID int64, found bool, err error) {
+func (n Neo) ManifestDataGetIDByDigest(ctx context.Context, dig string) (maniID int64, found bool, err error) {
 	m, found, err := n.ManifestDataGetByDigest(ctx, dig)
 	if err != nil || !found {
 		return
@@ -659,15 +660,15 @@ func (n Neo) ManifestData_GetID_ByDigest(ctx context.Context, dig string) (maniI
 	return
 }
 
-func (n Neo) ManifestData_GetByRule(ctx context.Context, rule types.Rule) (mds []types.ManifestData, err error) {
-	ctx, span := tracer.Start(ctx, "ManifestData_GetByRule")
+func (n Neo) ManifestDataGetByRule(ctx context.Context, rule types.Rule) (mds []types.ManifestData, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestDataGetByRule")
 	defer span.End()
-	mds, e := n.ManifestData_GetByAnnotationRule(ctx, rule)
+	mds, e := n.ManifestDataGetByAnnotationRule(ctx, rule)
 	if e != nil {
 		err = errors.Wrap(e, "failed to get manifest data by annotation rule")
 		return
 	}
-	pMDs, e := n.ManifestData_GetByPlatformRule(ctx, rule)
+	pMDs, e := n.ManifestDataGetByPlatformRule(ctx, rule)
 	if e != nil {
 		err = errors.Wrap(e, "failed to get manifest data by platform rule")
 		return
@@ -676,8 +677,8 @@ func (n Neo) ManifestData_GetByRule(ctx context.Context, rule types.Rule) (mds [
 	return
 }
 
-func (n Neo) ManifestData_GetByPlatformRule(ctx context.Context, rule types.Rule) (mds []types.ManifestData, err error) {
-	ctx, span := tracer.Start(ctx, "ManifestData_GetByPlatformRule")
+func (n Neo) ManifestDataGetByPlatformRule(ctx context.Context, rule types.Rule) (mds []types.ManifestData, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestDataGetByPlatformRule")
 	defer span.End()
 	rel := types.RelationSuccess
 	q := fmt.Sprintf(`MATCH (r:Rule)-[%s]->(p:Platform)<-[:IS]-(m:Manifest)-[:CREATED]-(md:ManifestData) WHERE id(r) = %d`, rel, rule.ID)
@@ -789,8 +790,8 @@ func (n Neo) ManifestDataCheckProfileAnnotations(ctx context.Context, md types.M
 	return
 }
 
-func (n Neo) ManifestData_GetByAnnotationRule(ctx context.Context, rule types.Rule) (mds []types.ManifestData, err error) {
-	ctx, span := tracer.Start(ctx, "ManifestData_GetByAnnotationRule")
+func (n Neo) ManifestDataGetByAnnotationRule(ctx context.Context, rule types.Rule) (mds []types.ManifestData, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestDataGetByAnnotationRule")
 	defer span.End()
 	rel := types.RelationSuccess
 	q := fmt.Sprintf(`MATCH (u:Upstream)-[]-(m:Manifest)-[:CREATED]-(md:ManifestData)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule) WHERE id(r) = %d`, rel, rule.ID)
@@ -1028,12 +1029,12 @@ func (n Neo) createManifestData(ctx context.Context, mani types.ManifestData) (m
 	return
 }
 
-func (n Neo) ManifestData_GetExactly(ctx context.Context, mani types.ManifestData) (maniID int64, success bool, err error) {
+func (n Neo) ManifestDataGetExactly(ctx context.Context, mani types.ManifestData) (maniID int64, success bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "neo/manifest_data.go",
-		"func":    "ManifestData_GetExactly",
+		"func":    "ManifestDataGetExactly",
 	})
-	ctx, span := tracer.Start(ctx, "ManifestData_GetExactly")
+	ctx, span := tracer.Start(ctx, "ManifestDataGetExactly")
 	_ = ctx
 	defer span.End()
 	q := `MATCH (m:ManifestData) WHERE m.digest = "%s" AND m.mediaType = "%s" AND m.size = %d RETURN id(m) AS maniID`
@@ -1230,9 +1231,9 @@ func (n Neo) ManifestDataGetByUpstream(ctx context.Context, up types.Upstream) (
 		}
 	}
 	if up.Profile != "" {
-		prf, prfFound, e := n.Profile_Get_ByLabel(ctx, up.Profile)
+		prf, prfFound, e := n.ProfileGetByLabel(ctx, up.Profile)
 		if e != nil {
-			err = utils.ErrorHandler(l, span, e, "Profile_Get_ByLabel failed")
+			err = utils.ErrorHandler(l, span, e, FailedProfGetByLabel)
 			return m, false, err
 		}
 		if !prfFound {
@@ -1461,10 +1462,10 @@ func (n Neo) ManifestDataFromResult(ctx context.Context, res types.Result, prfs 
 	return m, true, nil
 }
 
-func (n Neo) ManifestData_GetByCollectionTag(ctx context.Context, colID, colTagID int64) (manis []types.ManifestData, err error) {
+func (n Neo) ManifestDataGetByCollectionTag(ctx context.Context, colID, colTagID int64) (manis []types.ManifestData, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":  pkgNameMD,
-		"func":     "ManifestData_GetByCollectionTag",
+		"func":     "ManifestDataGetByCollectionTag",
 		"colID":    colID,
 		"colTagID": colTagID,
 	})
@@ -1513,7 +1514,7 @@ func (n Neo) ManifestData_GetByCollectionTag(ctx context.Context, colID, colTagI
 			return
 		}
 
-		anno, e := n.Labels_GetByConfigID(ctx, c.ID)
+		anno, e := n.LabelsGetByConfigID(ctx, c.ID)
 		if e != nil {
 			err = e
 			return
@@ -1523,7 +1524,7 @@ func (n Neo) ManifestData_GetByCollectionTag(ctx context.Context, colID, colTagI
 		m.Config = c
 		m.Platform = p
 		m.Upstream = u
-		prfs, e := n.Profile_FromManifestDataID(ctx, m.ID)
+		prfs, e := n.ProfileFromManifestDataID(ctx, m.ID)
 		if e != nil {
 			err = errors.Wrap(e, "failed to get profiles for manifest data")
 			return
@@ -1560,14 +1561,14 @@ func (n Neo) ManifestData_GetByCollectionTag(ctx context.Context, colID, colTagI
 	return
 }
 
-func (n Neo) ManifestData_GetByManifestList(ctx context.Context, mlID int64) (manifests []types.ManifestData, err error) {
+func (n Neo) ManifestDataGetByManifestList(ctx context.Context, mlID int64) (manifests []types.ManifestData, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "magazine/manifest_data.go",
-		"func":    "ManifestData_GetByManifestList",
+		"func":    "ManifestDataGetByManifestList",
 		"mlID":    mlID,
 	})
 	_ = l
-	ctx, span := tracer.Start(ctx, "ManifestData_GetByManifestList")
+	ctx, span := tracer.Start(ctx, "ManifestDataGetByManifestList")
 	defer span.End()
 	// TODO: We'll get different types of ManifestData per Manifest - do we need to filter out the default (OCI manifest)
 	//       - create a map afterwards based on collection name and type
@@ -1905,18 +1906,18 @@ func (n Neo) ManifestDataGetPulledByRepoTag(ctx context.Context, repo, tag strin
 	return maniData, true, nil
 }
 
-func (n Neo) ManifestDataExists_ForTagProfile(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
+func (n Neo) ManifestDataExistsForTagProfile(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMD,
-		"func":    "ManifestDataExists_ForTagProfile",
+		"func":    "ManifestDataExistsForTagProfile",
 		"repo":    up.Repo,
 		"tag":     up.Tag,
 		"profile": up.Profile,
 	})
 	defer span.End()
-	prf, found, e := n.Profile_Get_ByLabel(ctx, up.Profile)
+	prf, found, e := n.ProfileGetByLabel(ctx, up.Profile)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "Profile_Get_ByLabel failed")
+		err = utils.ErrorHandler(l, span, e, FailedProfGetByLabel)
 		return "", false, err
 	}
 	if !found {
@@ -1965,9 +1966,9 @@ func (n Neo) ManifestDataExists(ctx context.Context, up upstream.UpstreamTriple)
 		"digest":  utils.ShortenDigest(up.Digest.String()),
 	})
 	defer span.End()
-	prf, found, e := n.Profile_Get_ByLabel(ctx, up.Profile)
+	prf, found, e := n.ProfileGetByLabel(ctx, up.Profile)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "Profile_Get_ByLabel failed")
+		err = utils.ErrorHandler(l, span, e, FailedProfGetByLabel)
 		return "", false, err
 	}
 	if !found {

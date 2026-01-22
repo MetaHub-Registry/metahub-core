@@ -67,63 +67,63 @@ var (
 
 const ()
 
-func FT_arm64_Layer1() Layer {
-	ref := FT_arm_Layer1Reference()
+func FTarm64Layer1() Layer {
+	ref := FTarmLayer1Reference()
 	return Layer{
 		Digest:    ref.Digest.String(),
 		Size:      ref.Size,
 		MediaType: ref.MediaType,
-		Data:      FT_arm_Layer1Byte(),
+		Data:      FTarmLayer1Byte(),
 	}
 }
 
-func FT_arm64_Layer0() Layer {
-	l0ref := FT_arm_Layer0Reference()
+func FTarm64Layer0() Layer {
+	l0ref := FTarmLayer0Reference()
 	return Layer{
 		Digest:    l0ref.Digest.String(),
 		Size:      l0ref.Size,
 		MediaType: l0ref.MediaType,
-		Data:      FT_arm_Layer0Byte(),
+		Data:      FTarmLayer0Byte(),
 	}
 }
 
-func FT_amd64_Layer0() Layer {
-	ref := FT_amd_Layer0Reference()
+func FTamd64Layer0() Layer {
+	ref := FTamdLayer0Reference()
 	return Layer{
 		Digest:    ref.Digest.String(),
 		Size:      ref.Size,
 		MediaType: ref.MediaType,
-		Data:      FT_amd_Layer0Byte(),
+		Data:      FTamdLayer0Byte(),
 	}
 }
 
-func FT_amd64_Layer1() Layer {
-	ref := FT_amd_Layer1Reference()
+func FTamd64Layer1() Layer {
+	ref := FTamdLayer1Reference()
 	return Layer{
 		Digest:    ref.Digest.String(),
 		Size:      ref.Size,
 		MediaType: ref.MediaType,
-		Data:      FT_amd_Layer1Byte(),
+		Data:      FTamdLayer1Byte(),
 	}
 }
 
-func FT_zen3_Layer0() Layer {
-	ref := FT_zen3_Layer0Reference()
+func FTzen3Layer0() Layer {
+	ref := FTzen3Layer0Reference()
 	return Layer{
 		Digest:    ref.Digest.String(),
 		Size:      ref.Size,
 		MediaType: ref.MediaType,
-		Data:      FT_amd_Layer0Byte(),
+		Data:      FTamdLayer0Byte(),
 	}
 }
 
-func FT_zen3_Layer1() Layer {
-	ref := FT_zen3_Layer1Reference()
+func FTzen3Layer1() Layer {
+	ref := FTzen3Layer1Reference()
 	return Layer{
 		Digest:    ref.Digest.String(),
 		Size:      ref.Size,
 		MediaType: ref.MediaType,
-		Data:      FT_amd_Layer1Byte(),
+		Data:      FTamdLayer1Byte(),
 	}
 }
 
@@ -151,7 +151,7 @@ func LayerFeaturetestL4c85() Layer {
 	return newLayerFromDT(LayerDTFeaturetestL4c85())
 }
 
-func FT_amd_Layer0Reference() distribution.Descriptor {
+func FTamdLayer0Reference() distribution.Descriptor {
 	return distribution.Descriptor{
 		MediaType: MediaTypeLayer,
 		Size:      2796496,
@@ -159,7 +159,7 @@ func FT_amd_Layer0Reference() distribution.Descriptor {
 	}
 }
 
-func FT_zen3_Layer1Reference() distribution.Descriptor {
+func FTzen3Layer1Reference() distribution.Descriptor {
 	return distribution.Descriptor{
 		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
 		Size:      364,
@@ -167,7 +167,7 @@ func FT_zen3_Layer1Reference() distribution.Descriptor {
 	}
 }
 
-func FT_zen3_Layer0Reference() distribution.Descriptor {
+func FTzen3Layer0Reference() distribution.Descriptor {
 	return distribution.Descriptor{
 		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
 		Size:      3374563,
@@ -175,7 +175,7 @@ func FT_zen3_Layer0Reference() distribution.Descriptor {
 	}
 }
 
-func FT_amd_Layer1Reference() distribution.Descriptor {
+func FTamdLayer1Reference() distribution.Descriptor {
 	return distribution.Descriptor{
 		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
 		Size:      304,
@@ -184,7 +184,7 @@ func FT_amd_Layer1Reference() distribution.Descriptor {
 }
 
 // Layer
-func FT_arm_Layer0Reference() distribution.Descriptor {
+func FTarmLayer0Reference() distribution.Descriptor {
 	return distribution.Descriptor{
 		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
 		Size:      2693535,
@@ -192,7 +192,7 @@ func FT_arm_Layer0Reference() distribution.Descriptor {
 	}
 }
 
-func FT_arm_Layer1Reference() distribution.Descriptor {
+func FTarmLayer1Reference() distribution.Descriptor {
 	return distribution.Descriptor{
 		MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip",
 		Size:      304,
@@ -200,7 +200,7 @@ func FT_arm_Layer1Reference() distribution.Descriptor {
 	}
 }
 
-func FT_arm_Layer0Byte() []byte {
+func FTarmLayer0Byte() []byte {
 	// read file and return bytes
 	dat, err := f.ReadFile("data/layer/6ec0f660682c2f5b391af1d81d3b4839da06f050269546177b28e4b51d8d4c30.dat")
 	if err != nil {
@@ -209,7 +209,7 @@ func FT_arm_Layer0Byte() []byte {
 	return dat
 }
 
-func FT_arm_Layer1Byte() []byte {
+func FTarmLayer1Byte() []byte {
 	// read file and return bytes
 	dat, err := f.ReadFile("data/layer/297a529dab3ab8530adef75e34219e97ec0f3cb2fd39efdb13a1cc0a70ece15a.dat")
 	if err != nil {
@@ -218,7 +218,7 @@ func FT_arm_Layer1Byte() []byte {
 	return dat
 }
 
-func FT_amd_Layer0Byte() []byte {
+func FTamdLayer0Byte() []byte {
 	// read file and return bytes
 	dat, err := f.ReadFile("data/layer/88ecf269dec31566a8e6b05147732fe34d32bc608de0d636dffaba659230a515.dat")
 	if err != nil {
@@ -227,7 +227,7 @@ func FT_amd_Layer0Byte() []byte {
 	return dat
 }
 
-func FT_amd_Layer1Byte() []byte {
+func FTamdLayer1Byte() []byte {
 	// read file and return bytes
 	dat, err := f.ReadFile("data/layer/a2f2473b6a7e9b3d17c9873e41d04808b4c0310e0d4f7c13e03fa3f9a3a14bcc.dat")
 	if err != nil {
@@ -236,8 +236,8 @@ func FT_amd_Layer1Byte() []byte {
 	return dat
 }
 
-func FT_arm_BlobUpload_Layer0() (OCIBlobUpload, []byte) {
-	r := FT_arm_Layer0Reference()
+func FTarmBlobUploadLayer0() (OCIBlobUpload, []byte) {
+	r := FTarmLayer0Reference()
 	bu := OCIBlobUpload{
 		UploadUser:    "test",
 		UploadProfile: "generic",
@@ -246,11 +246,11 @@ func FT_arm_BlobUpload_Layer0() (OCIBlobUpload, []byte) {
 		Repo:          "qnib/featuretest",
 		Digest:        r.Digest.String(),
 	}
-	return bu, FT_arm_Layer0Byte()
+	return bu, FTarmLayer0Byte()
 }
 
-func FT_arm_BlobUpload_Config() (OCIBlobUpload, []byte) {
-	cfg := FT_arm_Config()
+func FTarmBlobUploadConfig() (OCIBlobUpload, []byte) {
+	cfg := FTarmConfig()
 	bu := OCIBlobUpload{
 		UploadUser:    "test",
 		UploadProfile: "generic",

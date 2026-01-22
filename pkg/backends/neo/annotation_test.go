@@ -23,19 +23,19 @@ func TestAnnotationCRUD(t *testing.T) {
 	defer db.TeardownTest(bs, br)
 	// Actual test
 	a0 := types.NewAnnotation("foo", "bar")
-	a0_id, err := db.Annotation_GetInsert(ctx, a0)
+	a0_id, err := db.AnnotationGetInsert(ctx, a0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.NotEqual(t, 0, a0_id)
 	a0.ID = a0_id
 	l0 := types.NewAnnotation("foo", "bar")
-	l0_id, err := db.Label_GetInsert(ctx, l0)
+	l0_id, err := db.LabelGetInsert(ctx, l0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.NotEqual(t, 0, l0_id)
-	a, found, err := db.Annotation_GetByID(ctx, a0_id)
+	a, found, err := db.AnnotationGetByID(ctx, a0_id)
 	if err != nil {
 		t.Fatal(err)
 	}

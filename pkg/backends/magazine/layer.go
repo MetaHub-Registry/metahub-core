@@ -233,10 +233,10 @@ func (mag Magazine) GetLayerByOCIManifest(oMani types.OCIManifest) (layers []typ
 	return layers, nil
 }
 
-func (mag Magazine) Layers_CreateOCIv1LayerDescriptors(ctx context.Context, layerIn []types.Layer) (res []types.LayerDesc, err error) {
+func (mag Magazine) LayersCreateOCIv1LayerDescriptors(ctx context.Context, layerIn []types.Layer) (res []types.LayerDesc, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameLayer,
-		"func":    "Layers_CreateOCIv1LayerDescriptors",
+		"func":    "LayersCreateOCIv1LayerDescriptors",
 	})
 	defer span.End()
 	res = []types.LayerDesc{}
@@ -277,10 +277,10 @@ func (mag Magazine) Layers_CreateOCIv1LayerDescriptors(ctx context.Context, laye
 	return
 }
 
-func (mag Magazine) Layers_DeleteUnused(ctx context.Context) (err error) {
-	_, span := tracer.Start(ctx, "Layers_DeleteUnused")
+func (mag Magazine) LayersDeleteUnused(ctx context.Context) (err error) {
+	_, span := tracer.Start(ctx, "LayersDeleteUnused")
 	defer span.End()
-	err = mag.Database.Layers_DeleteUnused(ctx)
+	err = mag.Database.LayersDeleteUnused(ctx)
 	if err != nil {
 		err = errors.Wrapf(err, "failed to delete unused layers")
 		return

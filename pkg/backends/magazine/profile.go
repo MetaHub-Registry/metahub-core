@@ -19,7 +19,7 @@ func (mag Magazine) NeoInsertProfile(ctx context.Context, prf types.Profile) (pr
 		}
 	}
 	*/
-	err = mag.Database.Profile_GetInsert(ctx, &prf)
+	err = mag.Database.ProfileGetInsert(ctx, &prf)
 	if err != nil {
 		logrus.Errorf("Failed to insert profile: %v", err)
 		return
@@ -38,7 +38,7 @@ func (mag Magazine) NeoLinkProfileToFilter(ctx context.Context, prfID, filterID 
 */
 
 func (mag Magazine) SQliteInsertProfile(ctx context.Context, p types.Profile) (profileID int64, err error) {
-	err = mag.Database.Profile_GetInsert(ctx, &p)
+	err = mag.Database.ProfileGetInsert(ctx, &p)
 	if err != nil {
 		return
 	}

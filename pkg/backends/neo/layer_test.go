@@ -27,7 +27,7 @@ func TestLayerCRUD(t *testing.T) {
 	}
 	defer db.TeardownTest(bs, br)
 	// Actual test
-	arm_l0 := types.FT_arm_Layer0Reference()
+	arm_l0 := types.FTarmLayer0Reference()
 	_, found, err := db.LayerGetByDigest(ctx, arm_l0.Digest.String())
 	if err != nil {
 		t.Fatal(err)
@@ -127,13 +127,13 @@ func TestLayerGetUpstream(t *testing.T) {
 	}
 	assert.Equal(t, "registry:5050", up.Reg)
 
-	/// Layer_GetMediaType_ByID
-	if mt, err := db.Layer_GetMediaType_ByID(ctx, lId); err != nil {
+	/// LayerGetMediaTypeByID
+	if mt, err := db.LayerGetMediaTypeByID(ctx, lId); err != nil {
 		t.Fatal(err)
 	} else {
 		assert.Equal(t, "application/vnd.docker.image.rootfs.diff.tar.gzip", mt)
 	}
-	if mt, err := db.Layer_GetMediaType_ByID(ctx, -1); err != nil {
+	if mt, err := db.LayerGetMediaTypeByID(ctx, -1); err != nil {
 		t.Fatal(err)
 	} else {
 		assert.Equal(t, "application/vnd.unknownLayer", mt)
@@ -149,7 +149,7 @@ func TestLayerGetUpstream(t *testing.T) {
 	if _, e := db.Execute(q); e != nil {
 		t.Fatal(e)
 	}
-	if mt, err := db.Layer_GetMediaType_ByID(ctx, lId); err != nil {
+	if mt, err := db.LayerGetMediaTypeByID(ctx, lId); err != nil {
 		t.Fatal(err)
 	} else {
 		assert.Equal(t, "application/vnd.docker.image.rootfs.diff.tar.gzip", mt)

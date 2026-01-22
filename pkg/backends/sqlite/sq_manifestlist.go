@@ -10,6 +10,6 @@ func (s Sqlite) ManifestListInsert(ctx context.Context, ml *types.ManifestList) 
 	return s.InsertManifestList(ml)
 }
 
-func (s Sqlite) ManifestList_Get_ByRequest(req types.Request) (res types.ManifestList, found bool, err error) {
+func (s Sqlite) ManifestListGetByRequest(req types.Request) (res types.ManifestList, found bool, err error) {
 	return s.GetTypesManifestListByRequest(req)
 }

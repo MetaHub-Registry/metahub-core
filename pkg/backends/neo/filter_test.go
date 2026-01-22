@@ -32,7 +32,7 @@ func TestFilterCRUD(t *testing.T) {
 }
 	assert.True(t, found)
 	assert.Equal(t, fGenID, gotFGenID)
-	fGen, found, err = db.Filter_Get_ByID(fGenID)
+	fGen, found, err = db.FilterGetByID(fGenID)
 	if err != nil {
 		t.Fatal(err)
 }
@@ -60,7 +60,7 @@ func TestFilterCRUD(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, fGen2ID, gotFGen2ID)
 	// Check Rules
-	rGen2, err := db.Rules_GetByFilterID(ctx, fGen2ID)
+	rGen2, err := db.RulesGetByFilterID(ctx, fGen2ID)
 	if err != nil {
 		t.Fatal(err)
 }

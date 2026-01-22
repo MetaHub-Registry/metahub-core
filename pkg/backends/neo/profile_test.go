@@ -49,7 +49,7 @@ func TestProfileCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.False(t, found)
-	_, found, err = db.Profile_Get_ByNameTag(ctx, "foo", "tag1")
+	_, found, err = db.ProfileGetByNameTag(ctx, "foo", "tag1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestProfileCRUD(t *testing.T) {
 	}
 	assert.True(t, found)
 	assert.Equal(t, pFooID, gotPrfFooID)
-	gotPrf1, found, err := db.Profile_Get_ByNameTag(ctx, "foo", "tag1")
+	gotPrf1, found, err := db.ProfileGetByNameTag(ctx, "foo", "tag1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,12 +83,12 @@ func TestProfileCRUD(t *testing.T) {
 	}
 	assert.Equal(t, 1, len(prfs))
 	// GetInsert
-	err = db.Profile_GetInsert(ctx, &pFoo)
+	err = db.ProfileGetInsert(ctx, &pFoo)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.Equal(t, pFooID, pFoo.ID)
-	err = db.Profile_GetInsert(ctx, &pGen)
+	err = db.ProfileGetInsert(ctx, &pGen)
 	if err != nil {
 		t.Fatal(err)
 	}

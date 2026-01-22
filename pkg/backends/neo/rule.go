@@ -20,7 +20,7 @@ const (
 	FailRuleGetByLabel          = "failed to get Rule by label"
 )
 
-func (n Neo) Rule_Create(ctx context.Context, r types.Rule) (ruleID int64, err error) {
+func (n Neo) RuleCreate(ctx context.Context, r types.Rule) (ruleID int64, err error) {
 	if r.Type == "" {
 		err = errors.New("rule.Type is empty")
 		return
@@ -39,9 +39,9 @@ func (n Neo) Rule_Create(ctx context.Context, r types.Rule) (ruleID int64, err e
 	return res.GetInt64("ID")
 }
 
-func (n Neo) Rule_Get(ctx context.Context, r types.Rule) (ruleID int64, found bool, err error) {
+func (n Neo) RuleGet(ctx context.Context, r types.Rule) (ruleID int64, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"func": "Rule_Get",
+		"func": "RuleGet",
 	})
 	_ = l
 	defer span.End()
@@ -60,8 +60,8 @@ func (n Neo) Rule_Get(ctx context.Context, r types.Rule) (ruleID int64, found bo
 	return
 }
 
-func (n Neo) Rule_GetCreate(ctx context.Context, r types.Rule) (ruleID int64, err error) {
-	ruleID, found, err := n.Rule_Get(ctx, r)
+func (n Neo) RuleGetCreate(ctx context.Context, r types.Rule) (ruleID int64, err error) {
+	ruleID, found, err := n.RuleGet(ctx, r)
 	if err != nil {
 		logrus.Error(err)
 		return
@@ -69,7 +69,7 @@ func (n Neo) Rule_GetCreate(ctx context.Context, r types.Rule) (ruleID int64, er
 	if found {
 		return
 	}
-	return n.Rule_Create(ctx, r)
+	return n.RuleCreate(ctx, r)
 }
 
 func RuleFromResult(res types.Result) (r types.Rule, err error) {
@@ -99,7 +99,7 @@ func RuleFromResult(res types.Result) (r types.Rule, err error) {
 	return
 }
 
-func (n Neo) Rules_GetByProfileID(ctx context.Context, profileID int64) (rules types.Rules, err error) {
+func (n Neo) RulesGetByProfileID(ctx context.Context, profileID int64) (rules types.Rules, err error) {
 	q := fmt.Sprintf(`MATCH (p:Profile)-[]->(r:Rule) WHERE id(p) = %d`, profileID)
 	q += fmt.Sprintf(` RETURN %s`, ruleReturn)
 	res, err := n.Query(q)
@@ -160,8 +160,8 @@ func (n Neo) RuleGetByLabel(ctx context.Context, label string) (rule types.Rule,
 	return
 }
 
-func (n Neo) Rules_GetAll(ctx context.Context) (rules []types.Rule, err error) {
-	ctx, span := tracer.Start(ctx, "Rules_GetAll")
+func (n Neo) RulesGetAll(ctx context.Context) (rules []types.Rule, err error) {
+	ctx, span := tracer.Start(ctx, "RulesGetAll")
 	_ = ctx
 	defer span.End()
 	q := `MATCH (r:Rule) RETURN ` + ruleReturn
@@ -216,7 +216,7 @@ func (n Neo) RuleEvalAll(ctx context.Context) (err error) {
 	})
 	ctx, span := tracer.Start(ctx, "RuleEvalAll")
 	defer span.End()
-	rls, err := n.Rules_GetAll(ctx)
+	rls, err := n.RulesGetAll(ctx)
 	if err != nil {
 		return
 	}
@@ -229,13 +229,13 @@ func (n Neo) RuleEvalAll(ctx context.Context) (err error) {
 		l.Debug(msg)
 		switch r.Type {
 		case types.RuleTypeAnnotation:
-			err = n.Rule_EvalAnnotationRule(ctx, r)
+			err = n.RuleEvalAnnotationRule(ctx, r)
 			if err != nil {
 				err = errors.Wrap(err, fmt.Sprintf("failed to eval rule: %s:%s", r.Name, r.Tag))
 				return
 			}
 		case types.RuleTypePlatform:
-			err = n.Rule_EvalPlatformRule(ctx, r)
+			err = n.RuleEvalPlatformRule(ctx, r)
 			if err != nil {
 				err = errors.Wrap(err, fmt.Sprintf("failed to eval rule: %s:%s", r.Name, r.Tag))
 				return
@@ -249,7 +249,7 @@ func (n Neo) RuleEvalAll(ctx context.Context) (err error) {
 	return
 }
 
-func (n Neo) Rule_EvalPlatformRule(ctx context.Context, r types.Rule) (err error) {
+func (n Neo) RuleEvalPlatformRule(ctx context.Context, r types.Rule) (err error) {
 	q := fmt.Sprintf(`MATCH (p:Platform) WHERE p.%s = "%s"`, r.Key, r.Value)
 	q += ` RETURN id(p) as platformID, p.os as platformOS, p.arch as platformArch, p.variant as platformVariant`
 	//fmt.Printf("Query: \n%s\n", q)
@@ -263,7 +263,7 @@ func (n Neo) Rule_EvalPlatformRule(ctx context.Context, r types.Rule) (err error
 			return err
 		}
 		if p.EvalRule(r) {
-			err = n.Rule_Platform_Success(ctx, r.ID, p.ID)
+			err = n.RulePlatformSuccess(ctx, r.ID, p.ID)
 			if err != nil {
 				return err
 			}
@@ -272,7 +272,7 @@ func (n Neo) Rule_EvalPlatformRule(ctx context.Context, r types.Rule) (err error
 	return
 }
 
-func (n Neo) Rule_EvalAnnotationRule_NULL(ctx context.Context, r types.Rule) (err error) {
+func (n Neo) RuleEvalAnnotationRuleNULL(ctx context.Context, r types.Rule) (err error) {
 	if r.Op != "null" {
 		err = fmt.Errorf("invalid op for annotation rule: %s", r.Op)
 		return
@@ -289,7 +289,7 @@ func (n Neo) Rule_EvalAnnotationRule_NULL(ctx context.Context, r types.Rule) (er
 		if err != nil {
 			return err
 		}
-		err = n.Rule_Annotation_Failure(ctx, r.ID, a.ID)
+		err = n.RuleAnnotationFailure(ctx, r.ID, a.ID)
 		if err != nil {
 			return err
 		}
@@ -297,11 +297,11 @@ func (n Neo) Rule_EvalAnnotationRule_NULL(ctx context.Context, r types.Rule) (er
 	return
 }
 
-func (n Neo) Rule_EvalAnnotationRule(ctx context.Context, r types.Rule) (err error) {
-	ctx, span := tracer.Start(ctx, "Rule_EvalAnnotationRule")
+func (n Neo) RuleEvalAnnotationRule(ctx context.Context, r types.Rule) (err error) {
+	ctx, span := tracer.Start(ctx, "RuleEvalAnnotationRule")
 	defer span.End()
 	if r.Op == "null" {
-		return n.Rule_EvalAnnotationRule_NULL(ctx, r)
+		return n.RuleEvalAnnotationRuleNULL(ctx, r)
 	}
 	q := `MATCH (a:Annotation) WHERE a.key = "%s"`
 	q += ` RETURN id(a) as annotationID, a.key as annotationKey, a.value as annotationValue`
@@ -316,7 +316,7 @@ func (n Neo) Rule_EvalAnnotationRule(ctx context.Context, r types.Rule) (err err
 			return err
 		}
 		if a.EvalRule(r) {
-			err = n.Rule_Annotation_Success(ctx, r.ID, a.ID)
+			err = n.RuleAnnotationSuccess(ctx, r.ID, a.ID)
 			if err != nil {
 				return err
 			}
@@ -325,7 +325,7 @@ func (n Neo) Rule_EvalAnnotationRule(ctx context.Context, r types.Rule) (err err
 	return
 }
 
-func (n Neo) Rule_GetSuccessAnnotations(ctx context.Context, r types.Rule) (as types.Annotations, err error) {
+func (n Neo) RuleGetSuccessAnnotations(ctx context.Context, r types.Rule) (as types.Annotations, err error) {
 	q := fmt.Sprintf(`MATCH (r:Rule)-[%s]->(a:Annotation) WHERE id(r) = %d`, types.RelationSuccess, r.ID)
 	q += ` RETURN id(a) as annotationID, a.key as annotationKey, a.value as annotationValue`
 	res, err := n.Query(q)
@@ -346,7 +346,7 @@ func (n Neo) Rule_GetSuccessAnnotations(ctx context.Context, r types.Rule) (as t
 	return
 }
 
-func (n Neo) Rule_Annotation_Success(ctx context.Context, ruleID, annotationID int64) (err error) {
+func (n Neo) RuleAnnotationSuccess(ctx context.Context, ruleID, annotationID int64) (err error) {
 	q := `MATCH (r:Rule), (a:Annotation)`
 	q += ` WHERE id(r) = %d AND id(a) = %d`
 	q += ` MERGE (r)-[:%s]->(a)`
@@ -355,7 +355,7 @@ func (n Neo) Rule_Annotation_Success(ctx context.Context, ruleID, annotationID i
 	return
 }
 
-func (n Neo) Rule_Annotation_Failure(ctx context.Context, ruleID, annotationID int64) (err error) {
+func (n Neo) RuleAnnotationFailure(ctx context.Context, ruleID, annotationID int64) (err error) {
 	q := `MATCH (r:Rule), (a:Annotation)`
 	q += ` WHERE id(r) = %d AND id(a) = %d`
 	q += ` MERGE (r)-[:%s]->(a)`
@@ -364,7 +364,7 @@ func (n Neo) Rule_Annotation_Failure(ctx context.Context, ruleID, annotationID i
 	return
 }
 
-func (n Neo) Rule_GetSuccessPlatform(ctx context.Context, r types.Rule) (ps []types.Platform, err error) {
+func (n Neo) RuleGetSuccessPlatform(ctx context.Context, r types.Rule) (ps []types.Platform, err error) {
 	q := fmt.Sprintf(`MATCH (r:Rule)-[%s]->(n:Platform) WHERE id(r) = %d`, types.RelationSuccess, r.ID)
 	q += ` RETURN id(n) AS platformID, n.arch AS platformArch, n.os AS platformOS, n.variant AS platformVariant`
 	res, err := n.Query(q)
@@ -382,7 +382,7 @@ func (n Neo) Rule_GetSuccessPlatform(ctx context.Context, r types.Rule) (ps []ty
 	return
 }
 
-func (n Neo) Rule_Platform_Success(ctx context.Context, ruleID, platformID int64) (err error) {
+func (n Neo) RulePlatformSuccess(ctx context.Context, ruleID, platformID int64) (err error) {
 	q := `MATCH (r:Rule), (p:Platform)`
 	q += ` WHERE id(r) = %d AND id(p) = %d`
 	q += ` MERGE (r)-[:%s]->(p)`
