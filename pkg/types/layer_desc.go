@@ -11,7 +11,7 @@ type LayerDesc struct {
 	Order      int
 }
 
-func NewLayerDesc_FromLayer(l Layer) (ld LayerDesc) {
+func NewLayerDescFromLayer(l Layer) (ld LayerDesc) {
 	ld.LayerID = l.ID
 	ld.Descriptor = v1.Descriptor{
 		MediaType: l.MediaType,

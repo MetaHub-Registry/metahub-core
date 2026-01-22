@@ -14,21 +14,21 @@ func TestFTarmConfigByte(t *testing.T) {
 }
 
 func TestFTarmManifest(t *testing.T) {
-	mani := FT_arm_ManifestData()
+	mani := FTarmManifestData()
 	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mani.Digest)
 	assert.Len(t, mani.Layers, 2)
 }
 
 func TestFTarmLayerReference(t *testing.T) {
-	dat := FT_arm_Layer0Reference()
+	dat := FTarmLayer0Reference()
 	assert.Equal(t, int64(2693535), dat.Size)
-	dat = FT_arm_Layer1Reference()
+	dat = FTarmLayer1Reference()
 	assert.Equal(t, int64(304), dat.Size)
 }
 
 func TestFTarmLayerBytes(t *testing.T) {
-	dat := FT_arm_Layer0Byte()
+	dat := FTarmLayer0Byte()
 	assert.Equal(t, 2693535, len(dat))
-	dat = FT_arm_Layer1Byte()
+	dat = FTarmLayer1Byte()
 	assert.Equal(t, 304, len(dat))
 }

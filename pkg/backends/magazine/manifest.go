@@ -63,7 +63,7 @@ func (mag Magazine) GetManifest(ctx context.Context, m ycfg.Manifest) (mani type
 		Tag:  up.Tag,
 	}
 	// 2023-04-05 check for upstream in graph
-	u, found, e := mag.Database.Upstream_Get_ByRequest(ctx, req)
+	u, found, e := mag.Database.UpstreamGetByRequest(ctx, req)
 	if e != nil {
 		err = errors.Wrap(e, "failed to get upstream")
 		l.Error(err)
@@ -295,7 +295,7 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 			MediaType: lyrDesc.MediaType,
 			Size:      lyrDesc.Size,
 		})
-		lyr, e := types.Layer_FromDesc(ctx, lyrDesc)
+		lyr, e := types.LayerFromDesc(ctx, lyrDesc)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to create Layer from distribution.Descriptor")
 			return
@@ -306,7 +306,7 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 			return
 		}
 	}
-	prf, found, e := mag.Database.Profile_Get_ByLabel(ctx, req.Profile)
+	prf, found, e := mag.Database.ProfileGetByLabel(ctx, req.Profile)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to get profile '%s' from database", prf.Label)
 		return
@@ -360,7 +360,7 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 		return
 	}
 	// Remove orhpaned layers
-	// e = mag.Layers_DeleteUnused(ctx)
+	// e = mag.LayersDeleteUnused(ctx)
 	// if e != nil {
 	// 	err = utils.ErrorHandler(l, span, e, "failed to delete unused layers")
 	// 	return
@@ -395,7 +395,7 @@ func (mag Magazine) RemoveManifestByRequest(ctx context.Context, req types.Reque
 
 	found, err = mag.Database.ManifestDataRemove(ctx, req)
 	if err != nil {
-		err = utils.ErrorHandler(l, span, err, "failed to Database.Manifest_Remove")
+		err = utils.ErrorHandler(l, span, err, "failed to Database.ManifestRemove")
 		return
 	}
 	if found {

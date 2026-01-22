@@ -13,7 +13,7 @@ import (
 
 func (n Neo) ConfigAddLabels(ctx context.Context, cfgID int64, as *types.Annotations) (err error) {
 	for _, a := range as.Data {
-		aID, e := n.Label_GetInsert(ctx, a)
+		aID, e := n.LabelGetInsert(ctx, a)
 		if e != nil {
 			err = errors.Wrap(e, "failed to add annotation")
 			return
@@ -45,7 +45,7 @@ func (n Neo) LabelsGetByConfigDigest(ctx context.Context, cfgDig string) (as typ
 	}
 	return
 }
-func (n Neo) Labels_GetByConfigID(ctx context.Context, cfgID int64) (as types.Annotations, err error) {
+func (n Neo) LabelsGetByConfigID(ctx context.Context, cfgID int64) (as types.Annotations, err error) {
 	q := fmt.Sprintf(`MATCH (cfg:Blob)-[:HAS_LABEL]->(l:Label) WHERE id(cfg) = %d`, cfgID)
 	q += ` RETURN id(l) AS labelID, l.key AS labelKey, l.value AS labelValue`
 	res, err := n.Query(q)

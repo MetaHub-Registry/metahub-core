@@ -39,7 +39,7 @@ func TestCollectionListingGetByID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 }
-	cl, err := db.CollectionListing_Get_ByID(colID, colTagID)
+	cl, err := db.CollectionListingGetByID(colID, colTagID)
 	if err != nil {
 		t.Fatal(err)
 }

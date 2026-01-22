@@ -39,8 +39,8 @@ func TestManifestDataCRUD(t *testing.T) {
 	}
 	defer db.TeardownTest(bs, br)
 	// Actual test
-	arm_mani := types.FT_arm_ManifestData()
-	_, found, err := db.ManifestData_GetExactly(ctx, arm_mani)
+	arm_mani := types.FTarmManifestData()
+	_, found, err := db.ManifestDataGetExactly(ctx, arm_mani)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestManifestDataCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	arm_mani_id_got1, found, err := db.ManifestData_GetExactly(ctx, arm_mani)
+	arm_mani_id_got1, found, err := db.ManifestDataGetExactly(ctx, arm_mani)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestManifestDataCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Manifest_Get_ByDigest
+	// ManifestGet_ByDigest
 	arm_mani_got3, found, err := db.ManifestDataGetByDigest(ctx, arm_mani.Digest)
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +72,7 @@ func TestManifestDataCRUD(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, arm_mani_id, arm_mani_got3.ID)
 
-	// Manifest_Remove
+	// ManifestRemove
 	reqGot3 := types.Request{
 		Repo:   arm_mani_got3.Upstream.Repo,
 		Tag:    arm_mani_got3.Upstream.Tag,
@@ -126,12 +126,12 @@ func TestManifestDataLinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.Manifest_LinkToAnnotation(ctx, maniID, aPlatGenID)
+	err = db.ManifestLinkToAnnotation(ctx, maniID, aPlatGenID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Actual test
-	arm_mani := types.FT_arm_ManifestData()
+	arm_mani := types.FTarmManifestData()
 	arm_mani_id, err := db.createManifestData(ctx, arm_mani)
 	if err != nil {
 		t.Fatal(err)
@@ -159,7 +159,7 @@ func TestManifestDataLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Query all links?
-	manis, err := db.ManifestData_GetAll(ctx)
+	manis, err := db.ManifestDataGetAll(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestManifestDataLinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	arm_layer0, found, err := db.Layer_Get_ByID(ctx, arm_layer0_id)
+	arm_layer0, found, err := db.LayerGetByID(ctx, arm_layer0_id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestManifestDataLinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	arm_layer1, found, err := db.Layer_Get_ByID(ctx, arm_layer1_id)
+	arm_layer1, found, err := db.LayerGetByID(ctx, arm_layer1_id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,12 +234,12 @@ func TestManifestDataRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.Manifest_LinkToAnnotation(ctx, maniID, aPlatGenID)
+	err = db.ManifestLinkToAnnotation(ctx, maniID, aPlatGenID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Actual test
-	arm_mani := types.FT_arm_ManifestData()
+	arm_mani := types.FTarmManifestData()
 	arm_mani_id, err := db.createManifestData(ctx, arm_mani)
 	if err != nil {
 		t.Fatal(err)
@@ -267,7 +267,7 @@ func TestManifestDataRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Query all links?
-	manis, err := db.ManifestData_GetAll(ctx)
+	manis, err := db.ManifestDataGetAll(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +277,7 @@ func TestManifestDataRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	arm_layer0, found, err := db.Layer_Get_ByID(ctx, arm_layer0_id)
+	arm_layer0, found, err := db.LayerGetByID(ctx, arm_layer0_id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func TestManifestDataRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	arm_layer1, found, err := db.Layer_Get_ByID(ctx, arm_layer1_id)
+	arm_layer1, found, err := db.LayerGetByID(ctx, arm_layer1_id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +305,7 @@ func TestManifestDataRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.ManifestData_LinkToAnnotation(ctx, arm_mani_id, aPlatGenID)
+	err = db.ManifestDataLinkToAnnotation(ctx, arm_mani_id, aPlatGenID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,13 +384,13 @@ func TestManifestDataGetAllByManifestID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manis, err := db.ManifestData_GetAllByManifestID_WithProfile(ctx, maniArm64ID, prfID)
+	manis, err := db.ManifestDataGetAllByManifestIDWithProfile(ctx, maniArm64ID, prfID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.Equal(t, 1, len(manis))
-	// ManifestData_GetAllByManifestID
-	manis, err = db.ManifestData_GetAllByManifestID(ctx, maniArm64ID)
+	// ManifestDataGetAllByManifestID
+	manis, err = db.ManifestDataGetAllByManifestID(ctx, maniArm64ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -445,13 +445,13 @@ func TestManifestDataGetAllByManifestID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manisAmd64, err := db.ManifestData_GetAllByManifestID_WithProfile(ctx, maniAmd64ID, prfID)
+	manisAmd64, err := db.ManifestDataGetAllByManifestIDWithProfile(ctx, maniAmd64ID, prfID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.Equal(t, 1, len(manisAmd64))
-	// ManifestData_GetAllByManifestID
-	manis, err = db.ManifestData_GetAllByManifestID(ctx, maniAmd64ID)
+	// ManifestDataGetAllByManifestID
+	manis, err = db.ManifestDataGetAllByManifestID(ctx, maniAmd64ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -642,7 +642,7 @@ func TestManifestDataLinkToOCIv1Layer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ld0 := types.NewLayerDesc_FromLayer(l0)
+	ld0 := types.NewLayerDescFromLayer(l0)
 	err = db.ManifestDataLinkToOCIv1Layer(ctx, mdID, ld0)
 	if err != nil {
 		t.Fatal(err)
@@ -708,7 +708,7 @@ func TestManifestDataLinkToOCIv1Config(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.ManifestData_LinkToOCIv1Config(ctx, mdID, cfg)
+	err = db.ManifestDataLinkToOCIv1Config(ctx, mdID, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -947,7 +947,7 @@ func TestManifestDataIsLinkedWithProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	// ManifestDataIsLinkedWIthProfile
-	if prf, found, err := db.Profile_Get_ByLabel(ctx, "cpu#generic"); err != nil || !found {
+	if prf, found, err := db.ProfileGetByLabel(ctx, "cpu#generic"); err != nil || !found {
 		t.Fatalf("Profile not found or through an error: %v", err)
 	} else {
 		maniDataID, err := br.GetInt64("manifestdata:ft_amd64#id")
@@ -1261,7 +1261,7 @@ func TestManifestDataUpdateDesc(t *testing.T) {
 	if err = db.ManifestDataUpdateDesc(ctx, maniDataID, maniDesc); err != nil {
 		t.Fatal(err)
 	}
-	if _, found, err := db.ManifestData_GetID_ByDigest(ctx, maniDesc.Digest.String()); err != nil {
+	if _, found, err := db.ManifestDataGetIDByDigest(ctx, maniDesc.Digest.String()); err != nil {
 		t.Fatal(err)
 	} else {
 		assert.True(t, found, "should be updated")

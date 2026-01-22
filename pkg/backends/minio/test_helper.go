@@ -187,7 +187,7 @@ func SetupConfig(min *Minio, br *utils.BootstrapResult, dt types.DataTuple) (err
 
 func Setup_Config_FT_amd64_b109(min *Minio, br *utils.BootstrapResult) (err error) {
 	ctx := context.Background()
-	cfgByte := types.FT_amd64_b109_ConfigByte()
+	cfgByte := types.FTamd64b109ConfigByte()
 	cfgDig := digest.FromBytes(cfgByte)
 	err = min.BlobPutObj(ctx, cfgDig.String(), cfgByte)
 	return
@@ -195,7 +195,7 @@ func Setup_Config_FT_amd64_b109(min *Minio, br *utils.BootstrapResult) (err erro
 
 func Setup_Config_FT_amd64(min *Minio, br *utils.BootstrapResult) (err error) {
 	ctx := context.Background()
-	cfgByte := types.FT_amd64_ConfigByte()
+	cfgByte := types.FTamd64ConfigByte()
 	cfgDig := digest.FromBytes(cfgByte)
 	err = min.BlobPutObj(ctx, cfgDig.String(), cfgByte)
 	return
@@ -257,7 +257,7 @@ func (m Minio) BootstrapLayer(ctx context.Context, bs utils.Bootstrap, br *utils
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "0:ft_arm64":
-		if err = m.SetupLayer(ctx, br, types.FT_arm64_Layer0(), b); err != nil {
+		if err = m.SetupLayer(ctx, br, types.FTarm64Layer0(), b); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "1:ft_zen_4c85":
@@ -269,15 +269,15 @@ func (m Minio) BootstrapLayer(ctx context.Context, bs utils.Bootstrap, br *utils
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "1:ft_amd64":
-		if err = m.SetupLayer(ctx, br, types.FT_amd64_Layer1(), b); err != nil {
+		if err = m.SetupLayer(ctx, br, types.FTamd64Layer1(), b); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "0:ft_amd64":
-		if err = m.SetupLayer(ctx, br, types.FT_amd64_Layer0(), b); err != nil {
+		if err = m.SetupLayer(ctx, br, types.FTamd64Layer0(), b); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "1:ft_arm64":
-		if err = m.SetupLayer(ctx, br, types.FT_arm64_Layer1(), b); err != nil {
+		if err = m.SetupLayer(ctx, br, types.FTarm64Layer1(), b); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	default:

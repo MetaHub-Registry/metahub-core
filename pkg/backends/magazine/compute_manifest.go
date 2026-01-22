@@ -22,7 +22,7 @@ func (mag Magazine) ComputeAllManifests(ctx context.Context) (err error) {
 		return
 	}
 	// 	1. Get all manifest(standins)
-	manis, e := mag.Database.Manifest_GetAll(ctx)
+	manis, e := mag.Database.ManifestGetAll(ctx)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "while getting all manifests")
 		return

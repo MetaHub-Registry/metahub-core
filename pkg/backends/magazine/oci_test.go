@@ -67,7 +67,7 @@ func TestCreateOCIv1PulledByPrf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ociManiDataID, _, e := mag.CreateOCIv1_PulledByPrf(ctx, mani, maniData, prf)
+	ociManiDataID, _, e := mag.CreateOCIv1PulledByPrf(ctx, mani, maniData, prf)
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -65,7 +65,7 @@ func (n Neo) Setup_Manifest_FT_amd64(ctx context.Context, br *utils.BootstrapRes
 		return utils.ErrorHandler(l, span, err, "failed to get platform id from BR")
 	}
 	utils.Debug(l, span, "Get Platform w/ ID: %d", plaID)
-	plat, found, err := n.Platform_GetByID(plaID)
+	plat, found, err := n.PlatformGetByID(plaID)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to get platform by id")
 	}
@@ -140,7 +140,7 @@ func (n Neo) Setup_Manifest_FT_arm64(br *utils.BootstrapResult) (err error) {
 	if err != nil {
 		return err
 	}
-	plat, found, err := n.Platform_GetByID(plaID)
+	plat, found, err := n.PlatformGetByID(plaID)
 	if err != nil {
 		return err
 	}
@@ -212,7 +212,7 @@ func (n Neo) SetupManifestFTZen(br *utils.BootstrapResult) (err error) {
 	if err != nil {
 		return err
 	}
-	plat, found, err := n.Platform_GetByID(plaID)
+	plat, found, err := n.PlatformGetByID(plaID)
 	if err != nil {
 		return err
 	}
@@ -285,7 +285,7 @@ func (n Neo) Setup_Manifest_FT_zen3(br *utils.BootstrapResult) (err error) {
 	if err != nil {
 		return err
 	}
-	plat, found, err := n.Platform_GetByID(plaID)
+	plat, found, err := n.PlatformGetByID(plaID)
 	if err != nil {
 		return err
 	}

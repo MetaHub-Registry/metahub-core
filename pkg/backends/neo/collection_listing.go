@@ -11,14 +11,18 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func (n Neo) CollectionListing_Get_ByID(ctx context.Context, colID, colTagID int64) (col types.CollectionListing, err error) {
+const (
+	exeErrMD = "while executing ManifestDataGetByCollectionTag"
+)
+
+func (n Neo) CollectionListingGetByID(ctx context.Context, colID, colTagID int64) (col types.CollectionListing, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package":  "neo/collection_listing.go",
-		"func":     "CollectionListing_Get_ByID",
+		"func":     "CollectionListingGetByID",
 		"colID":    colID,
 		"colTagID": colTagID,
 	})
-	ctx, span := tracer.Start(ctx, "CollectionListing_Get_ByID")
+	ctx, span := tracer.Start(ctx, "CollectionListingGetByID")
 	defer span.End()
 	_ = ctx
 	_ = l
@@ -43,9 +47,9 @@ func (n Neo) CollectionListing_Get_ByID(ctx context.Context, colID, colTagID int
 		return
 	}
 	// Fill Manifests
-	manis, err := n.ManifestData_GetByCollectionTag(ctx, col.ID, col.ColTag.ID)
+	manis, err := n.ManifestDataGetByCollectionTag(ctx, col.ID, col.ColTag.ID)
 	if err != nil {
-		utils.ErrorHandler(l, span, err, "while executing ManifestData_GetByCollectionTag")
+		utils.ErrorHandler(l, span, err, exeErrMD)
 		return
 	}
 	for _, m := range manis {
@@ -57,14 +61,14 @@ func (n Neo) CollectionListing_Get_ByID(ctx context.Context, colID, colTagID int
 	return
 }
 
-func (n Neo) CollectionListing_Get_ByName(ctx context.Context, repoName, colTagName string) (col types.CollectionListing, err error) {
+func (n Neo) CollectionListingGetByName(ctx context.Context, repoName, colTagName string) (col types.CollectionListing, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": "neo/collection_listing.go",
-		"func":    "CollectionListing_Get_ByName",
+		"func":    "CollectionListingGetByName",
 		"repo":    repoName,
 		"tag":     colTagName,
 	})
-	ctx, span := tracer.Start(ctx, "CollectionListing_Get_ByName")
+	ctx, span := tracer.Start(ctx, "CollectionListingGetByName")
 	defer span.End()
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (c:Collection)-[:HAS_TAG]->(t) WHERE c.repo = "%s" AND t.name = "%s"`, repoName, colTagName)
@@ -85,9 +89,9 @@ func (n Neo) CollectionListing_Get_ByName(ctx context.Context, repoName, colTagN
 	msg := fmt.Sprintf("CL > %d / %d", col.ID, col.ColTag.ID)
 	utils.Debug(l, span, msg)
 	// Fill Manifests
-	manis, err := n.ManifestData_GetByCollectionTag(ctx, col.ID, col.ColTag.ID)
+	manis, err := n.ManifestDataGetByCollectionTag(ctx, col.ID, col.ColTag.ID)
 	if err != nil {
-		utils.ErrorHandler(l, span, err, "while executing ManifestData_GetByCollectionTag")
+		utils.ErrorHandler(l, span, err, exeErrMD)
 		return
 	}
 	for _, m := range manis {
@@ -126,9 +130,9 @@ func (n Neo) CollectionListingGetByRepoLike(ctx context.Context, repo string) (c
 			return cols, err
 		}
 		// Fill Manifests
-		manis, e := n.ManifestData_GetByCollectionTag(ctx, col.ID, col.ColTag.ID)
+		manis, e := n.ManifestDataGetByCollectionTag(ctx, col.ID, col.ColTag.ID)
 		if e != nil {
-			utils.ErrorHandler(l, span, err, "while executing ManifestData_GetByCollectionTag")
+			utils.ErrorHandler(l, span, err, exeErrMD)
 			return cols, e
 		}
 		for _, m := range manis {

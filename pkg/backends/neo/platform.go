@@ -9,8 +9,8 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 )
 
-func (n Neo) Platform_GetInsert(ctx context.Context, p *types.Platform) (err error) {
-	ctx, span := tracer.Start(ctx, "Platform_GetInsert")
+func (n Neo) PlatformGetInsert(ctx context.Context, p *types.Platform) (err error) {
+	ctx, span := tracer.Start(ctx, "PlatformGetInsert")
 	defer span.End()
 	platID, success, err := n.GetPlatform(ctx, *p)
 	if err != nil {
@@ -26,7 +26,7 @@ func (n Neo) Platform_GetInsert(ctx context.Context, p *types.Platform) (err err
 	return
 }
 
-func (n Neo) Platform_GetByID(platID int64) (plat types.Platform, found bool, err error) {
+func (n Neo) PlatformGetByID(platID int64) (plat types.Platform, found bool, err error) {
 	q := `MATCH (n:Platform) WHERE id(n) = %d`
 	q += ` RETURN id(n) AS platformID, n.arch AS platformArch, n.os AS platformOS, n.variant AS platformVariant`
 	query := fmt.Sprintf(q, platID)

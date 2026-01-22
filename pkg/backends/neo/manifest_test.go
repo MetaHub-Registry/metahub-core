@@ -2,9 +2,7 @@ package neo
 
 import (
 	"context"
-	"fmt"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/types"
@@ -53,60 +51,6 @@ func TestManifest_Create_WithLabel(t *testing.T) {
 	assert.Greater(t, mani2ID, maniID)
 
 }
-func TestManifestGetByLabel(t *testing.T) {
-	ctx := context.Background()
-	_ = ctx
-	debug := 0
-	bs := utils.NewBootstrap()
-	bs.SetYAMLPrefix("../../../misc/yaml")
-	bs.AddBootstrap("platforms:amd64")
-	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
-	bs.AddBootstrap("rules:rules/os/linux.yaml")
-	bs.AddBootstrap("profile:profiles/generic.yaml")
-	bs.AddBootstrap("upstream:ft_amd64")
-	bs.AddBootstrap("upstream:ft_arm64")
-	bs.AddBootstrap("config:ft_amd64")
-	bs.AddBootstrap("manifest:ft_amd64")
-	bs.SetEmptyAll()
-	if debug > 0 {
-		bs.PostTestSleep = debug
-	}
-	br, err := SetupTest(ctx, bs)
-	for _, l := range br.ToLines() {
-		if debug > 0 {
-			t.Log(l)
-		}
-	}
-	if err != nil {
-		db.TeardownTest(bs, br)
-		t.Fatal(err)
-	}
-	defer db.TeardownTest(bs, br)
-	// Actual test
-	expLabel := "registry:5050/qnib-pub-containers/qnib/plain-featuretest:20220715-amd64-generic"
-	m, found, err := db.ManifestGetByLabel(ctx, expLabel)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.True(t, found)
-	assert.Equal(t, expLabel, m.Label)
-	// found
-	upID, err := br.GetInt64("upstream:ft_amd64#id")
-	if err != nil {
-		t.Fatal(err)
-	}
-	maniID, err := db.manifestCreateViaUpstream(ctx, expLabel, upID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, m.ID, maniID)
-	// Fail to link
-	newLabel := fmt.Sprintf("registry:5050/qnib-pub-containers/qnib/plain-featuretest:NEWLABEL-%s", time.Now().GoString())
-	_, err = db.manifestCreateViaUpstream(ctx, newLabel, upID)
-	if err != nil {
-		t.Fatal(err)
-	}
-}
 
 func TestManifestCR(t *testing.T) {
 	ctx := context.Background()
@@ -148,7 +92,7 @@ func TestManifestCR(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, found, err := db.Manifest_Get(ctx, upID)
+	_, found, err := db.ManifestGet(ctx, upID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +103,7 @@ func TestManifestCR(t *testing.T) {
 		t.Fatal(err)
 	}
 	/// get Manifest
-	gotManiID, found, err := db.Manifest_Get(ctx, upID)
+	gotManiID, found, err := db.ManifestGet(ctx, upID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +156,7 @@ func TestManifestGetInsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, found, err := db.Manifest_Get(ctx, upID)
+	_, found, err := db.ManifestGet(ctx, upID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +175,7 @@ func TestManifestGetInsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	/// get Manifest
-	gotManiID, found, err := db.Manifest_Get(ctx, upID)
+	gotManiID, found, err := db.ManifestGet(ctx, upID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +276,7 @@ func TestManifestUpsertOS(t *testing.T) {
 	}
 }
 
-func TestManifest_GetByLabel(t *testing.T) {
+func TestManifestGetByLabel(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	debug := 0

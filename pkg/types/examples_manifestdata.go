@@ -111,12 +111,12 @@ func ManifestDataByteZen3() DataTuple {
 	return NewDataTuple("data/manifests/5e0d3e9bb9adff191e78f13dc6e79626bf29000648f0fa94ec5a028462ae5e89.json")
 }
 
-func FT_amd_ManifestData() ManifestData {
+func FTamdManifestData() ManifestData {
 	dt := ManifestDataAmd64Byte()
-	cfg := FT_amd64_Config()
-	l0 := FT_amd_Layer0Reference()
-	l1 := FT_amd_Layer1Reference()
-	up := FT_amd64_Upstream()
+	cfg := FTamd64Config()
+	l0 := FTamdLayer0Reference()
+	l1 := FTamdLayer1Reference()
+	up := FTamd64Upstream()
 	mani := ManifestData{
 		Digest:    string(digest.FromBytes(dt.Data)),
 		Size:      735,
@@ -131,14 +131,14 @@ func FT_amd_ManifestData() ManifestData {
 			Variant: cfg.Cfg.Variant,
 		},
 		Layers: []Layer{
-			{Digest: l0.Digest.String(), Size: l0.Size, MediaType: l0.MediaType, Data: FT_amd_Layer0Byte()},
-			{Digest: l1.Digest.String(), Size: l1.Size, MediaType: l1.MediaType, Data: FT_amd_Layer1Byte()},
+			{Digest: l0.Digest.String(), Size: l0.Size, MediaType: l0.MediaType, Data: FTamdLayer0Byte()},
+			{Digest: l1.Digest.String(), Size: l1.Size, MediaType: l1.MediaType, Data: FTamdLayer1Byte()},
 		},
 	}
 	return mani
 }
 
-func FT_zen3_ManifestData() ManifestData {
+func FTzen3ManifestData() ManifestData {
 	dat, err := f.ReadFile("data/manifests/5e0d3e9bb9adff191e78f13dc6e79626bf29000648f0fa94ec5a028462ae5e89.json")
 	if err != nil {
 		panic(err)
@@ -146,10 +146,10 @@ func FT_zen3_ManifestData() ManifestData {
 	as := NewAnnotations()
 	z3 := NewAnnotation("org.supercontainers.hardware.cpu.target.microarch", "zen3")
 	as.AddAnnotation(z3)
-	cfg := FT_zen3_Config()
-	l0 := FT_zen3_Layer0Reference()
-	l1 := FT_zen3_Layer1Reference()
-	up := FT_zen3_Upstream()
+	cfg := FTzen3Config()
+	l0 := FTzen3Layer0Reference()
+	l1 := FTzen3Layer1Reference()
+	up := FTzen3Upstream()
 	mani := ManifestData{
 		Digest:    string(digest.FromBytes(dat)),
 		Size:      735,
@@ -164,22 +164,22 @@ func FT_zen3_ManifestData() ManifestData {
 		},
 		Annotations: as,
 		Layers: []Layer{
-			{Digest: l0.Digest.String(), Size: l0.Size, MediaType: l0.MediaType, Data: FT_amd_Layer0Byte()},
-			{Digest: l1.Digest.String(), Size: l1.Size, MediaType: l1.MediaType, Data: FT_amd_Layer1Byte()},
+			{Digest: l0.Digest.String(), Size: l0.Size, MediaType: l0.MediaType, Data: FTamdLayer0Byte()},
+			{Digest: l1.Digest.String(), Size: l1.Size, MediaType: l1.MediaType, Data: FTamdLayer1Byte()},
 		},
 	}
 	return mani
 }
 
-func FT_arm_ManifestData() ManifestData {
+func FTarmManifestData() ManifestData {
 	dat, err := f.ReadFile("data/manifests/ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5.json")
 	if err != nil {
 		panic(err)
 	}
-	cfg := FT_arm_Config()
-	l0 := FT_arm_Layer0Reference()
-	l1 := FT_arm_Layer1Reference()
-	up := FT_arm64_Upstream()
+	cfg := FTarmConfig()
+	l0 := FTarmLayer0Reference()
+	l1 := FTarmLayer1Reference()
+	up := FTarm64Upstream()
 	mani := ManifestData{
 		Digest:    string(digest.FromBytes(dat)),
 		Size:      735,
@@ -195,8 +195,8 @@ func FT_arm_ManifestData() ManifestData {
 		},
 
 		Layers: []Layer{
-			{Digest: l0.Digest.String(), Size: l0.Size, MediaType: l0.MediaType, Data: FT_arm_Layer0Byte()},
-			{Digest: l1.Digest.String(), Size: l1.Size, MediaType: l1.MediaType, Data: FT_arm_Layer1Byte()},
+			{Digest: l0.Digest.String(), Size: l0.Size, MediaType: l0.MediaType, Data: FTarmLayer0Byte()},
+			{Digest: l1.Digest.String(), Size: l1.Size, MediaType: l1.MediaType, Data: FTarmLayer1Byte()},
 		},
 	}
 	return mani

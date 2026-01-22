@@ -37,11 +37,11 @@ func (s Sqlite) CollectionGetAll() (typeCols []types.Collection, err error) {
 	return
 }
 
-func (s Sqlite) Collection_GetID_ByYaml(ycol yamlCfg.ManifestCollection) (colID int64, found bool, err error) {
+func (s Sqlite) CollectionGetIDByYaml(ycol yamlCfg.ManifestCollection) (colID int64, found bool, err error) {
 	return 0, false, errNotImplemented
 }
 
-func (s Sqlite) Collection_Create_ByYaml(ycol yamlCfg.ManifestCollection) (colID int64, err error) {
+func (s Sqlite) CollectionCreateByYaml(ycol yamlCfg.ManifestCollection) (colID int64, err error) {
 	return 0, errNotImplemented
 }
 
@@ -49,11 +49,11 @@ func (s Sqlite) CollectionGetInsertByRequest(req types.Request) (col types.Colle
 	return s.GetInsertCollectionByRepoTag(req.Repo, req.Tag)
 }
 
-func (s Sqlite) Collection_InsertXTable(sqlID, colTagID, mlID int64) (err error) {
+func (s Sqlite) CollectionInsertXTable(sqlID, colTagID, mlID int64) (err error) {
 	return s.Collection.InsertXTable(sqlID, colTagID, mlID)
 }
 
-func (s Sqlite) CollectionManifest_ByRequest(req types.Request, mani types.ManifestData) (err error) {
+func (s Sqlite) CollectionManifestByRequest(req types.Request, mani types.ManifestData) (err error) {
 	// Tag && Collection & ManifestList
 	/*
 		tag, err := mag.SQlite.CollectionTag.GetCreateByRequest(req)
@@ -149,7 +149,7 @@ func (s Sqlite) AddMLtoCollection(col *types.Collection) (err error) {
 			Manifests:     []types.ManifestData{},
 		}
 		/// Add manifests to manifestlist
-		manis, err := s.Manifest.TypesManifest_GetByManifestListID(ml.ID)
+		manis, err := s.Manifest.TypesManifestGetByManifestListID(ml.ID)
 		if err != nil {
 			logrus.Error(err)
 			continue
@@ -160,7 +160,7 @@ func (s Sqlite) AddMLtoCollection(col *types.Collection) (err error) {
 	return
 }
 
-func (s Sqlite) Collection_Scrub_ByManifestListID(mlID int64) (err error) {
+func (s Sqlite) CollectionScrubByManifestListID(mlID int64) (err error) {
 	return s.Collection.ScrubCollectionsByManifestListID(mlID)
 }
 

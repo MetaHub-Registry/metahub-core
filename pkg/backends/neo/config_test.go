@@ -34,7 +34,7 @@ func TestConfigCRUD(t *testing.T) {
 		}
 	}
 	// Actual test
-	arm_cfg := types.FT_arm_Config()
+	arm_cfg := types.FTarmConfig()
 
 	_, found, err := db.ConfigGetByDigest(ctx, arm_cfg.Digest)
 	if err != nil {
@@ -52,8 +52,8 @@ func TestConfigCRUD(t *testing.T) {
 	}
 	assert.NotNil(t, arm_cfg_id)
 	// AMD
-	amd64_ocimani := types.FT_amd64_OCIManifest()
-	amd64_up := types.FT_amd64_Upstream()
+	amd64_ocimani := types.FTamd64OCIManifest()
+	amd64_up := types.FTamd64Upstream()
 	amd64_label := fmt.Sprintf("%s/%s:%s", amd64_up.Reg, amd64_up.Repo, amd64_up.Tag)
 	amd64_cfg_got, found, err := db.ConfigGetInsertByOCIManifest(ctx, amd64_ocimani, amd64_label)
 	assert.NoError(t, err)

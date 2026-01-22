@@ -42,13 +42,13 @@ func TestPlatformCRUD(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, platAmd64ID, gotPlatAmd64ID)
 	// GetInsert
-	err = db.Platform_GetInsert(ctx, &platform_amd64)
+	err = db.PlatformGetInsert(ctx, &platform_amd64)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.Equal(t, platAmd64ID, platform_amd64.ID)
 	// ARM64
-	err = db.Platform_GetInsert(ctx, &platform_arm64)
+	err = db.PlatformGetInsert(ctx, &platform_arm64)
 	if err != nil {
 		t.Fatal(err)
 	}

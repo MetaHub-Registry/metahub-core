@@ -199,8 +199,8 @@ func (n Neo) InsertManifestList(dig digest.Digest, mt string, size int) (mlID in
 	return
 }
 
-func (n Neo) ManifestList_Get_ByRequest(ctx context.Context, req types.Request) (ml types.ManifestList, found bool, err error) {
-	ctx, span := tracer.Start(ctx, "ManifestList_Get_ByRequest")
+func (n Neo) ManifestListGetByRequest(ctx context.Context, req types.Request) (ml types.ManifestList, found bool, err error) {
+	ctx, span := tracer.Start(ctx, "ManifestListGetByRequest")
 	defer span.End()
 	span.SetAttributes(
 		attribute.Key("req.Digest").String(req.Digest),
@@ -209,8 +209,6 @@ func (n Neo) ManifestList_Get_ByRequest(ctx context.Context, req types.Request) 
 		attribute.Key("req.Tag").String(req.Tag),
 		attribute.Key("req.Profile").String(req.Profile),
 	)
-	/* TODO: Need to implement ManifestList_Get_ByRequest */
-	// TODO: Do we have a tag or just a digest?
 	logrus.Infof("Query for ML of name '%s' and tag '%s' / dig:'%s'", req.Repo, req.Tag, utils.ShortenDigest(req.Digest))
 	q := fmt.Sprintf(`MATCH (c:Collection)-[:REF]->(ml)<-[:REF]-(t:Tag) WHERE c.repo = "%s"`, req.Repo)
 	if req.Tag != "" {

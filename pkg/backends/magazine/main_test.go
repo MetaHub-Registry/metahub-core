@@ -224,7 +224,7 @@ func TeardownTest(bs utils.Bootstrap, br utils.BootstrapResult) {
 }
 
 func Setup_FTarm_Config() {
-	bu, b := types.FT_arm_BlobUpload_Config()
+	bu, b := types.FTarmBlobUploadConfig()
 	err := mag.StoreBlobUpload(ctx, &bu, b)
 	if err != nil {
 		logrus.Fatal(err)

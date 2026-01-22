@@ -18,6 +18,6 @@ func (s Sqlite) LayerDeleteByDigest(dig string) error {
 	return errNotImplemented
 }
 
-func (s Sqlite) Layer_Insert(ctx context.Context, l types.Layer, up types.Upstream) (lID int64, err error) {
+func (s Sqlite) LayerInsert(ctx context.Context, l types.Layer, up types.Upstream) (lID int64, err error) {
 	return 0, errNotImplemented
 }

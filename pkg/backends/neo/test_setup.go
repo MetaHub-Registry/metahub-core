@@ -92,7 +92,7 @@ func SetupNeo4j(ctx context.Context, neoPorts string) (*Neo4jContainer, error) {
 			if err != nil {
 				return err
 			}
-			fID, err := n.Filter_Insert(context.Background(), f)
+			fID, err := n.FilterInsert(context.Background(), f)
 			if err != nil {
 				return err
 			}
@@ -115,7 +115,7 @@ func SetupNeo4j(ctx context.Context, neoPorts string) (*Neo4jContainer, error) {
 			if err != nil {
 				return err
 			}
-			fID, err := n.Filter_Insert(context.Background(), f)
+			fID, err := n.FilterInsert(context.Background(), f)
 			if err != nil {
 				return err
 			}
@@ -133,7 +133,7 @@ func (n Neo) Setup_Annotation(ctx context.Context, bs utils.Bootstrap, br *utils
 	_ = l
 	defer span.End()
 	a := types.NewAnnotation(k, v)
-	aID, err := n.Annotation_GetInsert(ctx, a)
+	aID, err := n.AnnotationGetInsert(ctx, a)
 	if err != nil {
 		return err
 	}
@@ -196,7 +196,7 @@ func (n Neo) Setup_Profiles(ctx context.Context, bs utils.Bootstrap, br *utils.B
 	}
 	for _, cPrf := range cPrfs {
 		p, _ := n.ProfileFromYAML(ctx, cPrf)
-		err = n.Profile_GetInsert(ctx, &p)
+		err = n.ProfileGetInsert(ctx, &p)
 		if err != nil {
 			return err
 		}
@@ -229,7 +229,7 @@ func (n Neo) Setup_Rules(ctx context.Context, bs utils.Bootstrap, br *utils.Boot
 	}
 	for _, rl := range rls {
 		r := rl.ToTypesRule()
-		rID, err := n.Rule_GetCreate(ctx, r)
+		rID, err := n.RuleGetCreate(ctx, r)
 		if err != nil {
 			return err
 		}
@@ -250,7 +250,7 @@ func (n Neo) Setup_Platforms(br *utils.BootstrapResult, plts []types.Platform) (
 	ctx := context.Background()
 	// Create platforms
 	for _, p := range plts {
-		err := n.Platform_GetInsert(ctx, &p)
+		err := n.PlatformGetInsert(ctx, &p)
 		if err != nil {
 			return err
 		}
@@ -355,7 +355,7 @@ func (n Neo) Setup_Manifest_FT_mpich_amd64(br *utils.BootstrapResult) (err error
 	if err != nil {
 		return err
 	}
-	plat, found, err := n.Platform_GetByID(plaID)
+	plat, found, err := n.PlatformGetByID(plaID)
 	if err != nil {
 		return err
 	}
@@ -420,7 +420,7 @@ func (n Neo) Setup_Collection_FT_amd64(ctx context.Context, br *utils.BootstrapR
 	_ = l
 	defer span.End()
 	// Add Collection
-	yamlCol := config.FT_yamlCollection_amd64()
+	yamlCol := config.FTyamlCollectionamd64()
 	colID, colTagID, err := n.CreateCollection(ctx, yamlCol)
 	if err != nil {
 		return err
@@ -452,7 +452,7 @@ func (n Neo) Setup_Collection_FT_arm64(ctx context.Context, br *utils.BootstrapR
 	_ = l
 	defer span.End()
 	// Add Collection
-	yamlCol := config.FT_yamlCollection_arm64()
+	yamlCol := config.FTyamlCollectionArm64()
 	colID, colTagID, err := n.CreateCollection(ctx, yamlCol)
 	if err != nil {
 		return err
@@ -484,7 +484,7 @@ func (n Neo) Setup_Collection_FT_generic(ctx context.Context, br *utils.Bootstra
 	_ = l
 	defer span.End()
 	// Add Collection
-	yamlCol := config.FT_yamlCollection_generic()
+	yamlCol := config.FTyamlCollectionGeneric()
 	colID, colTagID, err := n.CreateCollection(ctx, yamlCol)
 	if err != nil {
 		return err
@@ -516,7 +516,7 @@ func (n Neo) Setup_Collection_FT_zen3(ctx context.Context, br *utils.BootstrapRe
 	_ = l
 	defer span.End()
 	// Add Collection
-	yamlCol := config.FT_yamlCollection_zen3()
+	yamlCol := config.FTyamlCollectionZen3()
 	colID, colTagID, err := n.CreateCollection(ctx, yamlCol)
 	if err != nil {
 		return err
@@ -544,18 +544,18 @@ func (n Neo) Setup_Collection_FT_zen3(ctx context.Context, br *utils.BootstrapRe
 
 func (n Neo) Setup_ManifestList_FT_generic(br *utils.BootstrapResult) (err error) {
 	// // Manifest
-	arm_ml := types.FT_arm_ManifestData()
+	arm_ml := types.FTarmManifestData()
 	arm_ml.ID, err = br.GetInt64("manifestdata:ft_arm64#id")
 	if err != nil {
 		return err
 	}
-	amd_ml := types.FT_arm_ManifestData()
+	amd_ml := types.FTarmManifestData()
 	amd_ml.ID, err = br.GetInt64("manifestdata:ft_amd64#id")
 	if err != nil {
 		return err
 	}
 	// // GENERIC ML
-	ml_generic := types.FT_generic_Manifestlist()
+	ml_generic := types.FTgenericManifestlist()
 	ml_generic_id, err := n.CreateManifestList(digest.Digest(ml_generic.Digest), ml_generic.MediaType, int(ml_generic.Size))
 	if err != nil {
 		return err
@@ -934,13 +934,13 @@ func (n Neo) Bootstrap_Config(ctx context.Context, bs utils.Bootstrap, br *utils
 	defer span.End()
 	switch b {
 	case "ft_arm64":
-		err = n.Setup_Config(ctx, br, types.FT_arm_Config(), b)
+		err = n.Setup_Config(ctx, br, types.FTarmConfig(), b)
 		if err != nil {
 			err = errors.Wrapf(err, whileFmrt, b)
 			return
 		}
 	case "ft_amd64":
-		err = n.Setup_Config(ctx, br, types.FT_amd64_Config(), b)
+		err = n.Setup_Config(ctx, br, types.FTamd64Config(), b)
 		if err != nil {
 			err = errors.Wrapf(err, whileFmrt, b)
 			return
@@ -952,7 +952,7 @@ func (n Neo) Bootstrap_Config(ctx context.Context, bs utils.Bootstrap, br *utils
 			return
 		}
 	case "ft_zen3":
-		err = n.Setup_Config(ctx, br, types.FT_zen3_Config(), b)
+		err = n.Setup_Config(ctx, br, types.FTzen3Config(), b)
 		if err != nil {
 			err = errors.Wrapf(err, whileFmrt, b)
 			return
@@ -1017,19 +1017,19 @@ func (n Neo) Bootstrap_Collection(ctx context.Context, bs utils.Bootstrap, br *u
 func (n Neo) Bootstrap_Upstream(ctx context.Context, bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
 	switch b {
 	case "ft_arm64":
-		err = n.Setup_Upstream(br, types.FT_arm64_Upstream(), b)
+		err = n.Setup_Upstream(br, types.FTarm64Upstream(), b)
 		if err != nil {
 			err = errors.Wrapf(err, whileFmrt, b)
 			return
 		}
 	case "ft_amd64":
-		err = n.Setup_Upstream(br, types.FT_amd64_Upstream(), b)
+		err = n.Setup_Upstream(br, types.FTamd64Upstream(), b)
 		if err != nil {
 			err = errors.Wrapf(err, whileFmrt, b)
 			return
 		}
 	case "ft_zen3":
-		err = n.Setup_Upstream(br, types.FT_zen3_Upstream(), b)
+		err = n.Setup_Upstream(br, types.FTzen3Upstream(), b)
 		if err != nil {
 			err = errors.Wrapf(err, whileFmrt, b)
 			return
@@ -1073,22 +1073,22 @@ func (n Neo) Bootstrap_Layer(ctx context.Context, bs utils.Bootstrap, br *utils.
 	defer span.End()
 	switch b {
 	case "0:ft_arm64":
-		err = n.Setup_Layer(ctx, br, types.FT_arm64_Layer0(), b)
+		err = n.Setup_Layer(ctx, br, types.FTarm64Layer0(), b)
 		if err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "1:ft_arm64":
-		err = n.Setup_Layer(ctx, br, types.FT_arm64_Layer1(), b)
+		err = n.Setup_Layer(ctx, br, types.FTarm64Layer1(), b)
 		if err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "0:ft_amd64":
-		err = n.Setup_Layer(ctx, br, types.FT_amd64_Layer0(), b)
+		err = n.Setup_Layer(ctx, br, types.FTamd64Layer0(), b)
 		if err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "1:ft_amd64":
-		err = n.Setup_Layer(ctx, br, types.FT_amd64_Layer1(), b)
+		err = n.Setup_Layer(ctx, br, types.FTamd64Layer1(), b)
 		if err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
@@ -1103,12 +1103,12 @@ func (n Neo) Bootstrap_Layer(ctx context.Context, bs utils.Bootstrap, br *utils.
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "0:ft_zen3":
-		err = n.Setup_Layer(ctx, br, types.FT_zen3_Layer0(), b)
+		err = n.Setup_Layer(ctx, br, types.FTzen3Layer0(), b)
 		if err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	case "1:ft_zen3":
-		err = n.Setup_Layer(ctx, br, types.FT_zen3_Layer1(), b)
+		err = n.Setup_Layer(ctx, br, types.FTzen3Layer1(), b)
 		if err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}

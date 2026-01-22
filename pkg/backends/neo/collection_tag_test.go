@@ -21,7 +21,7 @@ func TestCollectionTagCRUD(t *testing.T) {
 	}
 	defer db.TeardownTest(bs, br)
 	// Actual test
-	_, found, err := db.CollectionTag_GetByTag("test")
+	_, found, err := db.CollectionTagGetByTag("test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestCollectionTagLinkCollection(t *testing.T) {
 	}
 	defer db.TeardownTest(bs, br)
 	// Actual test
-	_, found, err := db.CollectionTag_GetByTag("test")
+	_, found, err := db.CollectionTagGetByTag("test")
 	if err != nil {
 		t.Fatal(err)
 	}

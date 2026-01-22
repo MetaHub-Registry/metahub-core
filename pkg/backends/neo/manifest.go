@@ -24,7 +24,7 @@ const (
 	AnnoOSId      = "org.qnib.system.os.id"
 )
 
-func (n Neo) Manifest_LinkToAnnotation(ctx context.Context, maniID, annotationID int64) (err error) {
+func (n Neo) ManifestLinkToAnnotation(ctx context.Context, maniID, annotationID int64) (err error) {
 	q := `MATCH (m:Manifest), (a:Annotation) WHERE id(m) = %d AND id(a) = %d MERGE (m)-[:HAS_ANNOTATION]->(a)`
 	query := fmt.Sprintf(q, maniID, annotationID)
 	_, err = n.Execute(query)
@@ -44,14 +44,14 @@ func (n Neo) ManifestUnlinkAnnotation(ctx context.Context, maniID, annotationID 
 	return
 }
 
-func (n Neo) Manifest_GetInsert_WithDesc(ctx context.Context, up types.Upstream, maniIn manifestlist.ManifestDescriptor) (maniID int64, err error) {
+func (n Neo) ManifestGetInsertWithDesc(ctx context.Context, up types.Upstream, maniIn manifestlist.ManifestDescriptor) (maniID int64, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameMani,
-		"func":    "Manifest_GetInsert_WithDesc",
+		"func":    "ManifestGetInsertWithDesc",
 		"repo":    up.Repo,
 		"tag":     up.Tag,
 	})
-	ctx, span := tracer.Start(ctx, "Manifest_GetInsert_WithDesc")
+	ctx, span := tracer.Start(ctx, "ManifestGetInsertWithDesc")
 	defer span.End()
 	// If Manifest between collection and upstream does not exists
 	label := fmt.Sprintf("%s/%s:%s-%s", up.Reg, up.Repo, up.Tag, maniIn.Platform.Architecture)
@@ -60,7 +60,7 @@ func (n Neo) Manifest_GetInsert_WithDesc(ctx context.Context, up types.Upstream,
 	}
 	mani, found, err := n.ManifestGetByLabel(ctx, label)
 	if err != nil {
-		err = utils.ErrorHandler(l, span, err, "while executing Manifest_GetByLabel")
+		err = utils.ErrorHandler(l, span, err, "while executing ManifestGetByLabel")
 		return
 	}
 	if found {
@@ -92,7 +92,7 @@ func (n Neo) ManifestGetInsertWithRequest(ctx context.Context, m types.Manifest,
 	   (c. Annotation?)
 	*/
 	up := m.Upstream
-	_, err = n.Upstream_GetInsert(ctx, &up)
+	_, err = n.UpstreamGetInsert(ctx, &up)
 	if err != nil {
 		l.Error(err)
 		return
@@ -103,12 +103,12 @@ func (n Neo) ManifestGetInsertWithRequest(ctx context.Context, m types.Manifest,
 		return
 	}
 	for _, a := range m.Annotations.Data {
-		aID, e := n.Annotation_GetInsert(ctx, a)
+		aID, e := n.AnnotationGetInsert(ctx, a)
 		if e != nil {
 			err = errors.Wrap(e, fmt.Sprintf("failed to get/insert annotation: %s", a.Key))
 			return
 		}
-		e = n.Manifest_LinkToAnnotation(ctx, maniID, aID)
+		e = n.ManifestLinkToAnnotation(ctx, maniID, aID)
 		if e != nil {
 			err = errors.Wrap(e, fmt.Sprintf("failed to link manifest to annotation: %s", a.Key))
 			return
@@ -118,7 +118,7 @@ func (n Neo) ManifestGetInsertWithRequest(ctx context.Context, m types.Manifest,
 	/**** Do we need this still ****/
 	/// OK! We got the ManifestStandin, Collection and Upstream
 	// Check if Manifest exists
-	//maniID, found, err = n.ManifestData_Get(msID, m.Digest)
+	//maniID, found, err = n.ManifestDataGet(msID, m.Digest)
 	return
 }
 
@@ -136,13 +136,13 @@ func (n Neo) ManifestGetInsert(ctx context.Context, up types.Upstream, as ...typ
 	   b. Collection
 	   (c. Annotation?)
 	*/
-	_, err = n.Upstream_GetInsert(ctx, &up)
+	_, err = n.UpstreamGetInsert(ctx, &up)
 	if err != nil {
 		l.Error(err)
 		return
 	}
 	// If Manifest between collection and upstream does not exists
-	maniID, found, err := n.Manifest_Get(ctx, up.ID)
+	maniID, found, err := n.ManifestGet(ctx, up.ID)
 	if err != nil {
 		logrus.Error(err)
 		return
@@ -159,12 +159,12 @@ func (n Neo) ManifestGetInsert(ctx context.Context, up types.Upstream, as ...typ
 		l.Debugf("Manifest created: %d", maniID)
 	}
 	for _, a := range as {
-		aID, e := n.Annotation_GetInsert(ctx, a)
+		aID, e := n.AnnotationGetInsert(ctx, a)
 		if e != nil {
 			err = errors.Wrap(e, fmt.Sprintf("failed to get/insert annotation: %s", a.Key))
 			return
 		}
-		e = n.Manifest_LinkToAnnotation(ctx, maniID, aID)
+		e = n.ManifestLinkToAnnotation(ctx, maniID, aID)
 		if e != nil {
 			err = errors.Wrap(e, fmt.Sprintf("failed to link manifest to annotation: %s", a.Key))
 			return
@@ -174,7 +174,7 @@ func (n Neo) ManifestGetInsert(ctx context.Context, up types.Upstream, as ...typ
 	/**** Do we need this still ****/
 	/// OK! We got the ManifestStandin, Collection and Upstream
 	// Check if Manifest exists
-	//maniID, found, err = n.ManifestData_Get(msID, m.Digest)
+	//maniID, found, err = n.ManifestDataGet(msID, m.Digest)
 	return
 }
 
@@ -257,7 +257,7 @@ func (n Neo) ManifestCreate(ctx context.Context, upID int64) (msID int64, err er
 	return n.manifestCreateViaUpstream(ctx, label, upID)
 }
 
-func (n Neo) Manifest_Get_CreateWithProfile(ctx context.Context, upID int64, prfName string) (mani types.Manifest, err error) {
+func (n Neo) ManifestGetCreateWithProfile(ctx context.Context, upID int64, prfName string) (mani types.Manifest, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameMani,
 		"func":    "Manifest_CreateWithProfile",
@@ -327,33 +327,33 @@ func (n Neo) LinkManifestToPlatform(ctx context.Context, maniID, platID int64) (
 	return
 }
 
-func (n Neo) Manifest_AddAnnotation(ctx context.Context, maniID int64, a *types.Annotation) (err error) {
-	aID, err := n.Annotation_GetInsert(ctx, *a)
+func (n Neo) ManifestAddAnnotation(ctx context.Context, maniID int64, a *types.Annotation) (err error) {
+	aID, err := n.AnnotationGetInsert(ctx, *a)
 	if err != nil {
 		return
 	}
 	a.ID = aID
-	err = n.Manifest_LinkToAnnotation(ctx, maniID, aID)
+	err = n.ManifestLinkToAnnotation(ctx, maniID, aID)
 	return
 }
 
-func (n Neo) Manifest_AddAnnotations(ctx context.Context, maniID int64, as *types.Annotations) (err error) {
+func (n Neo) ManifestAddAnnotations(ctx context.Context, maniID int64, as *types.Annotations) (err error) {
 	for _, a := range as.Data {
-		aID, e := n.Annotation_GetInsert(ctx, a)
+		aID, e := n.AnnotationGetInsert(ctx, a)
 		if e != nil {
 			err = errors.Wrap(e, "failed to add annotation")
 			return
 		}
 		a.ID = aID
-		err = n.Manifest_LinkToAnnotation(ctx, maniID, aID)
+		err = n.ManifestLinkToAnnotation(ctx, maniID, aID)
 	}
 	return
 }
 
-func (n Neo) Manifest_Get(ctx context.Context, upID int64, suffix ...string) (msID int64, found bool, err error) {
+func (n Neo) ManifestGet(ctx context.Context, upID int64, suffix ...string) (msID int64, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMani,
-		"func":    "Manifest_Get",
+		"func":    "ManifestGet",
 		"suffix":  strings.Join(suffix, ","),
 	})
 	_ = ctx
@@ -406,12 +406,12 @@ func (n Neo) LinkManifestToManifestData(ctx context.Context, maniID, maniDataID 
 	return
 }
 
-func (n Neo) Manifest_GetByUpstreamDigest(ctx context.Context, upDigest string) (mani types.Manifest, found bool, err error) {
+func (n Neo) ManifestGetByUpstreamDigest(ctx context.Context, upDigest string) (mani types.Manifest, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameMani,
-		"func":    "Manifest_GetByUpstreamDigest",
+		"func":    "ManifestGetByUpstreamDigest",
 	})
-	_, span := tracer.Start(ctx, "Manifest_GetByUpstreamDigest")
+	_, span := tracer.Start(ctx, "ManifestGetByUpstreamDigest")
 	defer span.End()
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
@@ -599,7 +599,7 @@ func (n Neo) ManifestGetByIDWithProfile(ctx context.Context, maniID, prfID int64
 		return
 	}
 	for result.Next() {
-		mani, err = n.ManiFromRec_WithProfile(ctx, result, prfID)
+		mani, err = n.ManiFromRecWithProfile(ctx, result, prfID)
 		return mani, true, err
 	}
 	return mani, false, fmt.Errorf("no manifest found")
@@ -633,12 +633,12 @@ func (n Neo) ManifestGetByLabel(ctx context.Context, maniLabel string) (mani typ
 	return
 }
 
-func (n Neo) Manifest_GetAll(ctx context.Context) (manis []types.Manifest, err error) {
+func (n Neo) ManifestGetAll(ctx context.Context) (manis []types.Manifest, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameMani,
-		"func":    "Manifest_GetAll",
+		"func":    "ManifestGetAll",
 	})
-	ctx, span := tracer.Start(ctx, "Manifest_GetAll")
+	ctx, span := tracer.Start(ctx, "ManifestGetAll")
 	defer span.End()
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
@@ -704,7 +704,7 @@ func (n Neo) ManiFromResult(ctx context.Context, res types.Result) (m types.Mani
 		return
 	}
 	m.Annotations = anno
-	mds, e := n.ManifestData_GetAllByManifestID(ctx, m.ID)
+	mds, e := n.ManifestDataGetAllByManifestID(ctx, m.ID)
 	if e != nil {
 		err = e
 		return
@@ -739,7 +739,7 @@ func (n Neo) ManiFromRec(ctx context.Context, res neo4j.Result) (m types.Manifes
 	m.Annotations = anno
 	m.Platform = p
 	m.Upstream = u
-	mds, e := n.ManifestData_GetAllByManifestID(ctx, m.ID)
+	mds, e := n.ManifestDataGetAllByManifestID(ctx, m.ID)
 	if e != nil {
 		err = e
 		return
@@ -748,8 +748,8 @@ func (n Neo) ManiFromRec(ctx context.Context, res neo4j.Result) (m types.Manifes
 	return
 }
 
-func (n Neo) ManiFromRec_WithProfile(ctx context.Context, res neo4j.Result, prfID int64) (m types.Manifest, err error) {
-	ctx, span := tracer.Start(ctx, "ManiFromRec_WithProfile")
+func (n Neo) ManiFromRecWithProfile(ctx context.Context, res neo4j.Result, prfID int64) (m types.Manifest, err error) {
+	ctx, span := tracer.Start(ctx, "ManiFromRecWithProfile")
 	defer span.End()
 	p, e := PlatformFromRecord(res)
 	if e != nil {
@@ -774,9 +774,9 @@ func (n Neo) ManiFromRec_WithProfile(ctx context.Context, res neo4j.Result, prfI
 	m.Annotations = anno
 	m.Platform = p
 	m.Upstream = u
-	//mds, e := n.ManifestData_GetAllByManifestID_WithProfile(ctx, m.ID, prfID)
+	//mds, e := n.ManifestDataGetAllByManifestIDWithProfile(ctx, m.ID, prfID)
 
-	mds, e := n.ManifestData_GetAllByManifestID_WithProfile(ctx, m.ID, prfID)
+	mds, e := n.ManifestDataGetAllByManifestIDWithProfile(ctx, m.ID, prfID)
 	if e != nil {
 		err = e
 		return
@@ -836,7 +836,7 @@ func (n Neo) ManifestExistsForTagProfile(ctx context.Context, up upstream.Upstre
 	}
 	utils.Debug(l, span, "could not find ManifestList for tag profile '%s' w/ media type: %s", up.Profile, mediaType)
 	/* TODO: we do not need to check for a ManifestData object as it would have been addressed with digest
-	mediaType, found, e = n.ManifestDataExists_ForTagProfile(ctx, up)
+	mediaType, found, e = n.ManifestDataExistsForTagProfile(ctx, up)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to execute ManifestDataExists")
 		return "", false, err
@@ -890,12 +890,12 @@ func (n Neo) ManifestUpsertOSVersion(ctx context.Context, maniID int64, ver stri
 	})
 	defer span.End()
 	a := types.NewAnnotation(AnnoOSVersion, ver)
-	aID, e := n.Annotation_GetInsert(ctx, a)
+	aID, e := n.AnnotationGetInsert(ctx, a)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, FailAnnoCreate)
 		return err
 	}
-	e = n.Manifest_LinkToAnnotation(ctx, maniID, aID)
+	e = n.ManifestLinkToAnnotation(ctx, maniID, aID)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, FailManiLinkAnno)
 		return err
@@ -911,12 +911,12 @@ func (n Neo) ManifestUpsertOSID(ctx context.Context, maniID int64, id string) (e
 	})
 	defer span.End()
 	a := types.NewAnnotation(AnnoOSId, id)
-	aID, e := n.Annotation_GetInsert(ctx, a)
+	aID, e := n.AnnotationGetInsert(ctx, a)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, FailAnnoCreate)
 		return err
 	}
-	e = n.Manifest_LinkToAnnotation(ctx, maniID, aID)
+	e = n.ManifestLinkToAnnotation(ctx, maniID, aID)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, FailManiLinkAnno)
 		return err
@@ -976,24 +976,24 @@ func (n Neo) ManifestUpsertOS(ctx context.Context, maniID int64, os types.OS) (e
 		switch t {
 		case AnnoOSId:
 			a := types.NewAnnotation(AnnoOSId, string(os.ID))
-			aID, e := n.Annotation_GetInsert(ctx, a)
+			aID, e := n.AnnotationGetInsert(ctx, a)
 			if e != nil {
 				err = utils.ErrorHandler(l, span, e, FailAnnoCreate)
 				return err
 			}
-			e = n.Manifest_LinkToAnnotation(ctx, maniID, aID)
+			e = n.ManifestLinkToAnnotation(ctx, maniID, aID)
 			if e != nil {
 				err = utils.ErrorHandler(l, span, e, FailManiLinkAnno)
 				return err
 			}
 		case AnnoOSVersion:
 			a := types.NewAnnotation(AnnoOSVersion, os.GetVersion())
-			aID, e := n.Annotation_GetInsert(ctx, a)
+			aID, e := n.AnnotationGetInsert(ctx, a)
 			if e != nil {
 				err = utils.ErrorHandler(l, span, e, FailAnnoCreate)
 				return err
 			}
-			e = n.Manifest_LinkToAnnotation(ctx, maniID, aID)
+			e = n.ManifestLinkToAnnotation(ctx, maniID, aID)
 			if e != nil {
 				err = utils.ErrorHandler(l, span, e, FailManiLinkAnno)
 				return err

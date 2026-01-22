@@ -95,7 +95,7 @@ func (mag Magazine) cacheManifestByUpstream(ctx context.Context, up types.Upstre
 		}
 		up.Digest = digest.Digest(maniData.Digest)
 		up.Size = blob.Size
-		e = mag.Minio.PutManifest_ByUpstream(ctx, b, up)
+		e = mag.Minio.PutManifestByUpstream(ctx, b, up)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to PutManifest")
 			return maniData, err
@@ -160,8 +160,8 @@ func (mag Magazine) ManifestDataUpsertBackends(ctx context.Context, md *types.Ma
 		return utils.ErrorHandler(l, span, e, "failed to ManifestDataGetInsert")
 	}
 	// Fetch Platform ID
-	if e := mag.Database.Platform_GetInsert(ctx, &md.Platform); e != nil {
-		return utils.ErrorHandler(l, span, e, "failed to Platform_GetInsert")
+	if e := mag.Database.PlatformGetInsert(ctx, &md.Platform); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to PlatformGetInsert")
 	}
 	return nil
 }
@@ -347,9 +347,9 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 		OS:      v1Img.OS,
 		Variant: v1Img.Variant,
 	}
-	err = mag.Database.Platform_GetInsert(ctx, &plat)
+	err = mag.Database.PlatformGetInsert(ctx, &plat)
 	if err != nil {
-		err = errors.Wrap(err, "failed to Database.Platform_GetInsert")
+		err = errors.Wrap(err, "failed to Database.PlatformGetInsert")
 		return
 	}
 	err = mag.Database.LinkManifestToPlatform(ctx, m.ID, plat.ID)
@@ -358,7 +358,7 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 		return
 	}
 	md.Platform = plat
-	/*err = mag.Database.Filter_UpdatePlatform(ctx, plat)
+	/*err = mag.Database.FilterUpdatePlatform(ctx, plat)
 	if err != nil {
 		err = errors.Wrap(err, "failed to SQlite.UpdatePlatformFilter")
 		return
@@ -366,7 +366,7 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 	*/
 	req.Platform = plat.GetTag()
 	// Fetch/Create Upstream
-	up, _, err := mag.Database.Upstream_GetInsert_ByRequest(ctx, req)
+	up, _, err := mag.Database.UpstreamGetInsertByRequest(ctx, req)
 	if err != nil {
 		err = errors.Wrap(err, "failed to Upstream.GetCreateByRequest")
 		return

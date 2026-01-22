@@ -27,7 +27,7 @@ var UpstreamGlow150AMD64 = Upstream{
 	Digest: "sha256:e390c871ff920a63eab82556c14f250f64667d186af3fc8ac976e02da61f069d",
 }
 
-func FT_zen3_Upstream() Upstream {
+func FTzen3Upstream() Upstream {
 	return Upstream{
 		Reg:    reg5050,
 		Repo:   "qnib-pub-containers/qnib/plain-featuretest",
@@ -36,7 +36,7 @@ func FT_zen3_Upstream() Upstream {
 	}
 }
 
-func FT_amd64_Upstream() Upstream {
+func FTamd64Upstream() Upstream {
 	return Upstream{
 		Reg:    reg5050,
 		Repo:   "qnib-pub-containers/qnib/plain-featuretest",
@@ -45,7 +45,7 @@ func FT_amd64_Upstream() Upstream {
 	}
 }
 
-func FT_arm64_Upstream() Upstream {
+func FTarm64Upstream() Upstream {
 	dt := NewDataTuple("data/manifests/ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5.json")
 	return Upstream{
 		Reg:    reg5050,

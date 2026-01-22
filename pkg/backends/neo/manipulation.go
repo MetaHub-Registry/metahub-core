@@ -271,7 +271,7 @@ func (n Neo) ManinpulationCheckRules(ctx context.Context, prfID, maniID int64) (
 	if e != nil {
 		return ok, utils.ErrorHandler(l, span, e, FailRulesGetByManifestID)
 	}
-	prfRls, err := n.Rules_GetByProfileID(ctx, prfID)
+	prfRls, err := n.RulesGetByProfileID(ctx, prfID)
 	if !prfRls.SatisfiedBy(ctx, maniRls) {
 		utils.Warn(l, span, "Profile rules '%s' are not satisfied by manifest", prfRls.ToString())
 		return false, nil

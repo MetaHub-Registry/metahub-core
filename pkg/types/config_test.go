@@ -25,7 +25,7 @@ func TestNewConfigFromBytes(t *testing.T) {
 	}
 	_, err = NewConfigFromBytes(ctx, []byte(`{`))
 	assert.Error(t, err)
-	_, err = NewConfigFromBytes(ctx, ManifestReferenceByte_FT_arm())
+	_, err = NewConfigFromBytes(ctx, ManifestReferenceByteFTarm())
 	assert.Error(t, err)
 }
 

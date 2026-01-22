@@ -2,7 +2,7 @@ package types
 
 var ()
 
-func ManifestReferenceByte_FT_arm() []byte {
+func ManifestReferenceByteFTarm() []byte {
 	return []byte(`{
 		"reg": "registry.gitlab.com",
 		"repo": "qnib-pub-containers/qnib/plain-featuretest",
