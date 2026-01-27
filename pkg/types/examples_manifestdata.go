@@ -81,7 +81,7 @@ func newManifestData(md, cDT DataTuple, lyrs ...DataTuple) ManifestData {
 
 // OLD
 func ManifestDataDTFeaturetestZen() DataTuple {
-	dt := NewDataTuple("data/manifests/5c99f60c23dfdb5a01cd2268406a8f5616187121655bf66dbad552fbc8530847.json")
+	dt := NewDataTuple("data/manifests/de7c0dc6914e6554f14857f7b0229d25f4ce12495eec7ecb9ece7a9f4e11b8e8.json")
 	dt.Upstream = Upstream{
 		Reg:    "registry.gitlab.com",
 		Repo:   "qnib-pub-containers/qnib/plain-featuretest",
@@ -138,8 +138,15 @@ func FTamdManifestData() ManifestData {
 	return mani
 }
 
+// func FTzen3ManifestDataWithAnno() ManifestData {
+// 	dat, err := f.ReadFile("data/manifests/2c3ac7b0420735df507e072b0b1e93640a8ae7396218637e846074e6409da579.json")
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// }
+
 func FTzen3ManifestData() ManifestData {
-	dat, err := f.ReadFile("data/manifests/5e0d3e9bb9adff191e78f13dc6e79626bf29000648f0fa94ec5a028462ae5e89.json")
+	dat, err := f.ReadFile("data/manifests/de7c0dc6914e6554f14857f7b0229d25f4ce12495eec7ecb9ece7a9f4e11b8e8.json")
 	if err != nil {
 		panic(err)
 	}

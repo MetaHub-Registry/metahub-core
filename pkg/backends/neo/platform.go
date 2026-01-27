@@ -7,6 +7,11 @@ import (
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
+)
+
+const (
+	pkgNamePlatform = "backends/neo/platform.go"
 )
 
 func (n Neo) PlatformGetInsert(ctx context.Context, p *types.Platform) (err error) {
@@ -39,10 +44,17 @@ func (n Neo) PlatformGetByID(platID int64) (plat types.Platform, found bool, err
 	return
 }
 
-func (n Neo) PlatformGetByManifestID(ctx context.Context, maniID int64) (plat types.Platform, found bool, err error) {
-	q := fmt.Sprintf(`MATCH (n:Platform)<-[:IS]-(m:Manifest) WHERE id(m) = %d`, maniID)
+func (n Neo) PlatformGetByManifestDataID(ctx context.Context, maniDataID int64) (plat types.Platform, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":    pkgNamePlatform,
+		"func":       "PlatformGetByManifestDataID",
+		"maniDataID": maniDataID,
+	})
+	defer span.End()
+
+	q := fmt.Sprintf(`MATCH (n:Platform)<-[:IS]-(md:ManifestData) WHERE id(md) = %d`, maniDataID)
 	q += ` RETURN id(n) AS platformID, n.arch AS platformArch, n.os AS platformOS, n.variant AS platformVariant`
-	//fmt.Printf("Query: \n%s\n", query)
+	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)
 	if err != nil || !found {
 		return

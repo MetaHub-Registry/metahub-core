@@ -217,7 +217,8 @@ func (n Neo) FilterFromResult(res types.Result) (f types.Filter, err error) {
 func (n Neo) ProfileManifestDataPairGet() (fmdps types.ProfileManifestDataPairs, err error) {
 	q := `MATCH (md:ManifestData)-[:HAS_ANNOTATION]->(Annotation)<-[:TRUE]-(Rule)<-[:HAS_RULE]->(p:Profile)`
 	q += ` RETURN DISTINCT`
-	q += ` id(md) AS manifestID, md.digest AS manifestDigest, md.mediaType AS manifestMediaType,`
+	logrus.Fatal("Check manifestData return values!")
+	q += ` ` + manifestDataReturn + `,`
 	q += ` md.size AS manifestSize,md.label AS manifestLabel,`
 	q += ` id(p) AS profileID, p.name AS profileName, p.tag AS profileTag`
 	res, err := n.Query(q)

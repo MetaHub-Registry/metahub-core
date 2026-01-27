@@ -19,7 +19,10 @@ const (
 )
 
 func (n Neo) BlobUploadCreateByOCI(ctx context.Context, i *types.OCIBlobUpload) (err error) {
-	_, span := tracer.Start(ctx, "BlobUploadCreateByOCI")
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameBlobUpload,
+		"func":    "BlobUploadCreateByOCI",
+	})
 	defer span.End()
 	i.UUID = uuid.New()
 	span.SetAttributes(
@@ -28,18 +31,15 @@ func (n Neo) BlobUploadCreateByOCI(ctx context.Context, i *types.OCIBlobUpload) 
 	i.Location = fmt.Sprintf("/v2/%s/blobs/uploads/%s", i.Repo, i.UUID.String())
 	q := fmt.Sprintf(`CREATE (bu:BlobUpload {upload_user: "%s", upload_profile:"%s", digest: "%s", repo: "%s", uuid: "%s", location:"%s", created_at: TIMESTAMP()})`, i.UploadUser, i.UploadProfile, i.Digest, i.Repo, i.UUID.String(), i.Location)
 	q += ` RETURN ID(bu) AS blobuploadID`
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("query", q),
-	))
+	utils.Debug(l, span, q)
 	res, err := n.Execute(q)
 	if err != nil {
 		span.RecordError(err)
-		return
+		err = utils.ErrorHandler(l, span, err, FailOCIBlobFromResult)
+		return err
 	}
 	i.ID, err = res.GetInt64("blobuploadID")
-	span.AddEvent("blobuploadID", trace.WithAttributes(
-		attribute.Int64("id", i.ID),
-	))
+	utils.Debug(l, span, "Created BlobUpload with ID '%d'", i.ID)
 	return
 }
 
@@ -148,13 +148,17 @@ func (n Neo) BlobUploadGetByLocation(ctx context.Context, location string) (bu t
 
 // // CHUNKS
 func (n Neo) UploadChunkCreate(ctx context.Context, bu *types.OCIBlobUpload, startByte, lenBytes int64) (bc types.BlobChunk, err error) {
-	_, span := tracer.Start(ctx, "UploadChunkCreate")
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":   pkgNameBlobUpload,
+		"func":      "UploadChunkCreate",
+		"repo":      bu.Repo,
+		"digest":    utils.ShortenDigest(bu.Digest),
+		"id":        bu.ID,
+		"UUID":      bu.UUID.String(),
+		"startByte": startByte,
+		"lenBytes":  lenBytes,
+	})
 	defer span.End()
-	span.SetAttributes(
-		attribute.Key("id").Int64(bu.ID),
-		attribute.Key("startByte").Int64(startByte),
-		attribute.Key("lenBytes").Int64(lenBytes),
-	)
 	bc = types.BlobChunk{
 		BlobUploadID: bu.ID,
 		CreatedAt:    time.Now(),
@@ -166,9 +170,7 @@ func (n Neo) UploadChunkCreate(ctx context.Context, bu *types.OCIBlobUpload, sta
 	q += ` MERGE (bu)-[:CHUNK]->(bc)`
 	q += ` RETURN ID(bc) AS blobchunkID`
 	query := fmt.Sprintf(q, bu.ID, startByte, lenBytes, fmt.Sprintf("%d-%d", startByte, startByte+lenBytes), bu.Digest)
-	span.AddEvent("query", trace.WithAttributes(
-		attribute.String("query", query),
-	))
+	utils.Debug(l, span, query)
 	res, err := n.Execute(query)
 	if err != nil {
 		return

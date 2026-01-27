@@ -722,7 +722,7 @@ func (n Neo) CollectionRemove(ctx context.Context, col types.Collection) (found 
 func (n Neo) CollectionGetCreateUpstreamTriple(ctx context.Context, ups types.Upstream, maniIn manifestlist.ManifestDescriptor) (upID, maniID int64, prf types.Profile, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameCol,
-		"func":    "CollectionGetCreate_UpstreamTriple",
+		"func":    "CollectionGetCreateUpstreamTriple",
 		"repo":    ups.Repo,
 		"tag":     ups.Tag,
 		"profile": ups.Profile,

@@ -50,6 +50,25 @@ func NewUpstreamByName(n string) (up Upstream, err error) {
 	}, nil
 }
 
+func NewUpstreamFromRequest(req Request) (up Upstream, err error) {
+	up = Upstream{
+		Reg:       req.Host,
+		Repo:      req.Repo,
+		Tag:       req.Tag,
+		Profile:   req.Profile,
+		MediaType: req.ContentType,
+		Size:      int64(req.Length),
+	}
+	if req.Digest != "" {
+		dig, err := digest.Parse(req.Digest)
+		if err != nil {
+			return up, fmt.Errorf("failed to parse digest '%s': %s", req.Digest, err)
+		}
+		up.Digest = dig
+	}
+	return up, nil
+}
+
 func (up Upstream) GetBlobUrl(dig ...string) string {
 	base := fmt.Sprintf("https://%s/v2/%s/blobs", up.Reg, up.Repo)
 	if len(dig) == 0 {

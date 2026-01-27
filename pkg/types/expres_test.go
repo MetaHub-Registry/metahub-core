@@ -13,6 +13,7 @@ var (
 
 func TestExpResSimple(t *testing.T) {
 	er := NewExprRes()
+	assert.True(t, er.IsEmpty())
 	er.Add("foo", md1)
 	mds := er.GetManifestdataForRules("foo")
 	assert.Equal(t, 1, len(mds))
@@ -31,6 +32,7 @@ func TestExpResSimple(t *testing.T) {
 	assert.Equal(t, 2, len(mds))
 	mds1 := er.GetManifestdataForRules("foo")
 	assert.Equal(t, 2, len(mds1))
+	assert.False(t, er.IsEmpty())
 }
 
 func TestExpResMulti(t *testing.T) {

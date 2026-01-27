@@ -104,6 +104,7 @@ func TestManifestlistCompute(t *testing.T) {
 // 	bs := utils.NewBootstrap()
 // 	bs.SetYAMLPrefix("../../../misc/yaml")
 // 	bs.AddBootstrap("empty:all")
+// 	bs.AddBootstrap("platforms:generic")
 // 	bs.AddBootstrap("upstream:glow150arm64")
 // 	bs.AddBootstrap("rules:rules/platform/arch/arm64.yaml")
 // 	bs.AddBootstrap("rules:rules/os/linux.yaml")
@@ -119,7 +120,6 @@ func TestManifestlistCompute(t *testing.T) {
 // 	//bs.AddBootstrap("manipulayer:registry:5050/cqnib/metahub-layers/hpc3/glow:1.5.0-arm64#glow150arm64_.*")
 // 	bs.AddBootstrap("profile:profiles/glow/1.5.0-arm64.yaml")
 // 	// Collection
-// 	bs.AddBootstrap("platforms:generic")
 // 	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
 // 	bs.AddBootstrap("rules:rules/os/linux.yaml")
 // 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
@@ -141,6 +141,10 @@ func TestManifestlistCompute(t *testing.T) {
 // 	if debug > 0 {
 // 		bs.PostTestSleep = debug
 // 	}
+// 	_, ctx, span := utils.InitLogging(context.Background(), tracer, map[string]any{
+// 		"func": "TestManifestlistComputeWithManipulation.Setup",
+// 	})
+// 	defer span.End()
 
 // 	br, err := mag.SetupTest(ctx, bs)
 // 	for _, l := range br.ToLines() {
@@ -150,42 +154,57 @@ func TestManifestlistCompute(t *testing.T) {
 // 	}
 // 	if err != nil {
 // 		TeardownTest(bs, br)
+// 		span.End()
 // 		t.Fatal(err)
 // 	}
+// 	span.End()
 // 	defer TeardownTest(bs, br)
 // 	// Actual Test
+// 	_, ctx, span = utils.InitLogging(context.Background(), tracer, map[string]any{
+// 		"func": "TestManifestlistComputeWithManipulation.Run",
+// 	})
+// 	defer span.End()
 // 	err = mag.Database.RuleEvalAll(ctx)
 // 	if err != nil {
+// 		span.End()
 // 		t.Fatal(err)
 // 	}
 // 	maniID, err := br.GetInt64("manifest:ft_arm64#id")
 // 	if err != nil {
+// 		span.End()
 // 		t.Fatal(err)
 // 	}
 // 	prfID, err := br.GetInt64("profile:glow:1.5.0-arm64#id")
 // 	if err != nil {
+// 		span.End()
 // 		t.Fatal(err)
 // 	}
 // 	prf, found, err := mag.Database.ProfileGetByID(ctx, prfID)
 // 	if err != nil {
+// 		span.End()
 // 		t.Fatal(err)
 // 	} else if !found {
+// 		span.End()
 // 		t.Fatal("Profile not found")
 // 	}
 // 	t.Logf("Profile ID: %d // ManiID: %d", prfID, maniID)
 // 	mani, found, err := mag.Database.ManifestGetByID(ctx, maniID)
 // 	if err != nil {
+// 		span.End()
 // 		t.Fatal(err)
 // 	}
 // 	if !found {
+// 		span.End()
 // 		t.Fatal("Manifest not found")
 // 	}
 // 	// Actual test
 // 	err = mag.ComputeManifestForProfile(ctx, mani, prf)
 // 	if err != nil {
+// 		span.End()
 // 		t.Fatal(err)
 // 	}
 // 	if e := mag.ComputeManifestlists(ctx); e != nil {
+// 		span.End()
 // 		t.Fatal(e)
 // 	}
 // 	req := types.Request{
@@ -195,8 +214,10 @@ func TestManifestlistCompute(t *testing.T) {
 // 	}
 
 // 	if ml, found, err := mag.Database.ManifestListGetByRequest(ctx, req); err != nil {
+// 		span.End()
 // 		t.Fatal(err)
 // 	} else if !found {
+// 		span.End()
 // 		t.Fatal("ManifestList not found")
 // 	} else {
 // 		assert.Equal(t, 1, len(ml.Manifests))

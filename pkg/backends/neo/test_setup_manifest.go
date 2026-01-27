@@ -76,7 +76,6 @@ func (n Neo) Setup_Manifest_FT_amd64(ctx context.Context, br *utils.BootstrapRes
 	as := types.NewAnnotations()
 	m := types.Manifest{
 		Upstream:    up,
-		Platform:    plat,
 		Annotations: as,
 	}
 	maniID, err := n.ManifestGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
@@ -89,12 +88,8 @@ func (n Neo) Setup_Manifest_FT_amd64(ctx context.Context, br *utils.BootstrapRes
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to link manifest to upstream")
 	}
-	err = n.LinkManifestToPlatform(ctx, maniID, plaID)
-	if err != nil {
-		return utils.ErrorHandler(l, span, err, "failed to link manifest to platform")
-	}
 	// Link Config
-	config_id, err := br.GetInt64(fmt.Sprintf("config:ft_%s#id", m.Platform.Arch))
+	config_id, err := br.GetInt64("config:ft_amd64#id")
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to get config id from BR")
 	}
@@ -106,7 +101,7 @@ func (n Neo) Setup_Manifest_FT_amd64(ctx context.Context, br *utils.BootstrapRes
 		err = fmt.Errorf("config not found")
 		return
 	}
-	config.MediaType, err = br.Get(fmt.Sprintf("config:ft_%s#mediaType", m.Platform.Arch))
+	config.MediaType, err = br.Get("config:ft_amd64#mediaType")
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to get config mediaType from BR")
 	}
@@ -119,6 +114,10 @@ func (n Neo) Setup_Manifest_FT_amd64(ctx context.Context, br *utils.BootstrapRes
 		if err != nil {
 			return utils.ErrorHandler(l, span, err, "failed to link manifest to config")
 		}
+	}
+	err = n.LinkManifestDataToPlatform(ctx, maniDataID, plaID)
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, "failed to link manifestData to platform")
 	}
 	return
 }
@@ -135,21 +134,8 @@ func (n Neo) Setup_Manifest_FT_arm64(br *utils.BootstrapResult) (err error) {
 	if err != nil {
 		return err
 	}
-	/// Get Platform
-	plaID, err := br.GetInt64("platform:linux/arm64#id")
-	if err != nil {
-		return err
-	}
-	plat, found, err := n.PlatformGetByID(plaID)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("platform not found")
-	}
 	m := types.Manifest{
 		Upstream: up,
-		Platform: plat,
 	}
 	maniID, err := n.ManifestGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
 	br.Add("manifest:ft_arm64#id", fmt.Sprint(maniID))
@@ -161,11 +147,6 @@ func (n Neo) Setup_Manifest_FT_arm64(br *utils.BootstrapResult) (err error) {
 		return err
 	}
 	// Link Platform
-	err = n.LinkManifestToPlatform(ctx, maniID, plaID)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
 	/*
 		// Link Config
 		arm_config_id, err := br.GetInt64(fmt.Sprintf("config:ft_%s#id", m.Platform.Arch))
@@ -207,25 +188,12 @@ func (n Neo) SetupManifestFTZen(br *utils.BootstrapResult) (err error) {
 	if err != nil {
 		return err
 	}
-	/// Get Platform
-	plaID, err := br.GetInt64("platform:linux/amd64#id")
-	if err != nil {
-		return err
-	}
-	plat, found, err := n.PlatformGetByID(plaID)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("platform not found")
-	}
 	// Annotations
 	as := types.NewAnnotations()
 	z3 := types.NewAnnotation("org.supercontainers.hardware.cpu.target.microarch", "zen")
 	as.AddAnnotation(z3)
 	m := types.Manifest{
 		Upstream:    up,
-		Platform:    plat,
 		Annotations: as,
 	}
 	// Manifest
@@ -235,11 +203,6 @@ func (n Neo) SetupManifestFTZen(br *utils.BootstrapResult) (err error) {
 		return err
 	}
 	// Link Platform
-	err = n.LinkManifestToPlatform(ctx, maniID, plaID)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
 	// Link Config
 	config_id, err := br.GetInt64("config:ft_zen#id")
 	if err != nil {
@@ -280,25 +243,18 @@ func (n Neo) Setup_Manifest_FT_zen3(br *utils.BootstrapResult) (err error) {
 	if err != nil {
 		return err
 	}
-	/// Get Platform
-	plaID, err := br.GetInt64("platform:linux/amd64#id")
-	if err != nil {
-		return err
-	}
-	plat, found, err := n.PlatformGetByID(plaID)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("platform not found")
-	}
+	// /// Get Platform
+	// plaID, err := br.GetInt64("platform:linux/amd64#id")
+	// if err != nil {
+	// 	return err
+	// }
 	// Annotations
 	as := types.NewAnnotations()
 	z3 := types.NewAnnotation("org.supercontainers.hardware.cpu.target.microarch", "zen3")
 	as.AddAnnotation(z3)
 	m := types.Manifest{
-		Upstream:    up,
-		Platform:    plat,
+		Upstream: up,
+
 		Annotations: as,
 	}
 	// Manifest
@@ -309,12 +265,6 @@ func (n Neo) Setup_Manifest_FT_zen3(br *utils.BootstrapResult) (err error) {
 	}
 	err = n.ManifestLinkToUpstream(ctx, maniID, upID)
 	if err != nil {
-		return err
-	}
-	// Link Platform
-	err = n.LinkManifestToPlatform(ctx, maniID, plaID)
-	if err != nil {
-		logrus.Error(err)
 		return err
 	}
 	// Link Config

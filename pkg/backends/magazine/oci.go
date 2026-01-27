@@ -256,7 +256,7 @@ func (mag Magazine) CreateOCIv1ForProfile(ctx context.Context, mani types.Manife
 	defer span.End()
 	utils.Warn(l, span, "Creating OCIv1 manifest for Manifest.ID: %d // ManifestData.type: '%s'", mani.ID, origMani.Type)
 	switch origMani.Type {
-	case "UPLOADED_BY":
+	case "UPLOADED_BY", "MANIFEST_DERIVED_FROM":
 		mdID, success, e := mag.CreateOCIv1UploadedByPrf(ctx, mani, origMani, prf)
 		if e != nil {
 			err = errors.Wrapf(e, "failed to create OCIv1 manifest for uploaded Manifest.ID: %d", mani.ID)
@@ -345,7 +345,7 @@ func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMa
 			maniDataID = mdID
 			return
 		}
-	case "UPLOADED_BY":
+	case "UPLOADED_BY", "MANIFEST_DERIVED_FROM":
 		mdID, success, e := mag.CreateOCIv1UploadedBy(ctx, mani, origMani)
 		if e != nil {
 			err = errors.Wrapf(e, "failed to create OCIv1 manifest for uploaded Manifest.ID: %d", mani.ID)

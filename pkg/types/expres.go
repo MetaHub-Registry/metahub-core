@@ -1,11 +1,14 @@
 package types
 
 import (
+	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/minio/minio-go/v7/pkg/set"
 	"github.com/sirupsen/logrus"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
 type ExprRes struct {
@@ -22,6 +25,10 @@ func NewExprRes() *ExprRes {
 		ManiMap:     make(map[int64]ManifestData),
 		RuleManiMap: make(map[string]set.StringSet),
 	}
+}
+
+func (r *ExprRes) IsEmpty() bool {
+	return len(r.Expr) == 0
 }
 
 func (r *ExprRes) Add(rule string, md ManifestData) {
@@ -92,25 +99,45 @@ func (er *ExprRes) GetManifestdataForRules(rules ...string) []ManifestData {
 	return mds
 }
 
-func (er ExprRes) FilterByCTPP(ctpp CollectionTagProfilePair) (mds []ManifestData) {
+func (er ExprRes) FilterByCTPP(ctx context.Context, ctpp CollectionTagProfilePair) (mds []ManifestData) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "types/expres.go",
+		"func":    "FilterByCTPP",
+		"ctpp":    ctpp.String(),
+	})
+	defer span.End()
 	res := set.NewStringSet()
 	for _, rule := range ctpp.Rules.ToSlice() {
+		utils.Debug(l, span, "Checking rule: %s", rule)
 		if er.Expr.Contains(rule) {
+			utils.Debug(l, span, "  Rule matched, adding manifestdata")
 			for mdID := range er.RuleManiMap[rule] {
+				utils.Debug(l, span, "    Adding manifestdata id: %s which matched rule '%s'", mdID, rule)
 				res.Add(mdID)
 			}
 		}
 	}
 	mds = make([]ManifestData, 0)
 	for _, mdID := range res.ToSlice() {
+		utils.Debug(l, span, "Processing manifestdata id: %s", mdID)
+		time.Sleep(5 * time.Millisecond)
 		id, err := strconv.ParseInt(mdID, 10, 64)
 		if err != nil {
-			logrus.Errorf("error parsing manifest data id: %v", err)
+			utils.ErrorHandler(l, span, err, "error parsing manifest data id: %s", mdID)
 			continue
 		}
-		if md, ok := er.ManiMap[id]; ok && ctpp.ManifestIDs.Contains(mdID) {
-			mds = append(mds, md)
+		utils.Debug(l, span, "  Parsed manifestdata id: %d", id)
+		if md, ok := er.ManiMap[id]; ok {
+			if ctpp.ManifestIDs.Contains(mdID) {
+				utils.Debug(l, span, "  Adding manifestdata: %s", md.Label)
+				mds = append(mds, md)
+			} else {
+				utils.Debug(l, span, "  Skipping manifestdata: %s not in CTTP manifestIDs", md.Label)
+			}
+		} else {
+			utils.Debug(l, span, "  Manifestdata id: %d not found in ManiMap", id)
 		}
 	}
-	return
+	utils.Info(l, span, "Filtered manifestdata count: %d", len(mds))
+	return mds
 }

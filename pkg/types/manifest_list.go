@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/docker/distribution/manifest/manifestlist"
+	"github.com/opencontainers/go-digest"
 )
 
 type ManifestList struct {
@@ -73,5 +74,15 @@ func NewManifestListFromData(b []byte) (ml ManifestList, err error) {
 	if err != nil {
 		return
 	}
+	ml.Digest = digest.FromBytes(b).String()
 	return
+}
+
+func (ml ManifestList) String() (out string) {
+	b, err := json.MarshalIndent(ml, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("Error marshaling ManifestList: %v", err)
+	}
+	out = string(b)
+	return out
 }

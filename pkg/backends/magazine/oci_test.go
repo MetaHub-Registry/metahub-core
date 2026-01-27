@@ -149,6 +149,7 @@ func TestOCICreateBaseManifestForGlow(t *testing.T) {
 	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("upstream:glow151arm64")
 	bs.AddBootstrap("rules:rules/platform/arch/arm64.yaml")
 	bs.AddBootstrap("rules:rules/os/linux.yaml")
@@ -163,7 +164,6 @@ func TestOCICreateBaseManifestForGlow(t *testing.T) {
 	bs.AddBootstrap("manipulation:manipulations/layer/glow/1.5.1-arm64.yaml")
 	bs.AddBootstrap("profile:profiles/glow/1.5.1-arm64.yaml")
 	// ManiData Setup
-	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("config:ft_arm64")
 	bs.AddBootstrap("upstream:ft_arm64")
 	bs.AddBootstrap("manifest:ft_arm64")

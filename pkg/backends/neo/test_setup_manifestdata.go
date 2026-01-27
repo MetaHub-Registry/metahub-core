@@ -85,5 +85,18 @@ func (n Neo) Setup_ManifestData(ctx context.Context, br *utils.BootstrapResult, 
 	} else {
 		return utils.ErrorHandler(l, span, e, "could not find upstream with digest '%s'", maniData.Upstream.Digest.String())
 	}
+	k := fmt.Sprintf("%s/%s", maniData.Config.Cfg.OS, maniData.Config.Cfg.Architecture)
+	if maniData.Config.Cfg.Variant != "" {
+		k = fmt.Sprintf("%s/%s", k, maniData.Config.Cfg.Variant)
+	}
+	platId := fmt.Sprintf("platform:%s#id", k)
+	platID, e := br.GetInt64(platId)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, "could not find platform id for key '%s'", platId)
+	}
+	e = n.LinkManifestDataToPlatform(ctx, maniData.ID, platID)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, "could not link manifestdata to platform")
+	}
 	return
 }

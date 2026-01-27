@@ -18,7 +18,7 @@ const (
 	failInsMani                     = "failed to insert manifest"
 	failInsManiData                 = "failed to insert manifestData"
 	failGetMani                     = "Failed to get manifest"
-	FailLinkManifestToPlatform      = "Failed to link manifest to platform"
+	FailLinkManifestDataToPlatform  = "Failed to link manifestData to platform"
 	FailLinkCollectionToPlatform    = "failed to link collection to manifest"
 	FailLinkCollectionTagToPlatform = "failed to link collection tag to manifest"
 	FailLinkProfileToManifestData   = "failed to link profile and manifestdata"
@@ -251,11 +251,6 @@ func (mag Magazine) upstreamBlobInsertGeneric(ctx context.Context, req types.Req
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, failInsMani)
 	}
-	// 2. Link Manifest to Platform
-	e = mag.NeoLinkManifestToPlatform(ctx, maniID, maniData.Platform.ID)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, FailLinkManifestToPlatform)
-	}
 	// 3. Link Collection to Manifest
 	e = mag.Database.LinkCollectionToManifest(ctx, col.ID, maniID)
 	if e != nil {
@@ -272,6 +267,12 @@ func (mag Magazine) upstreamBlobInsertGeneric(ctx context.Context, req types.Req
 		return utils.ErrorHandler(l, span, e, failInsManiData)
 	}
 	l.Warnf("ManifestData ID: %d", maniDataID)
+	// 2. Link ManifestData to Platform
+	e = mag.NeoLinkManifestDataToPlatform(ctx, maniDataID, maniData.Platform.ID)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, FailLinkManifestDataToPlatform)
+	}
+
 	// 6 Link Manifest Data to generic profile
 	//// 6.1 Get 'generic' profile
 
@@ -311,7 +312,7 @@ func (mag Magazine) upstreamBlobInsertGeneric(ctx context.Context, req types.Req
 func (mag Magazine) upstreamBlobInsertProfile(ctx context.Context, req types.Request, col types.Collection, ups types.Upstream, maniData types.ManifestData) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameUp,
-		"func":    "upstreamBlob_InsertProfile",
+		"func":    "upstreamBlobInsertProfile",
 		"repo":    req.Repo,
 		"tag":     req.Tag,
 		"profile": req.Profile,
@@ -329,11 +330,6 @@ func (mag Magazine) upstreamBlobInsertProfile(ctx context.Context, req types.Req
 	maniID, e := mag.Database.ManifestGetInsert(ctx, ups)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, failInsMani)
-	}
-	// 2. Link Manifest to Platform
-	e = mag.NeoLinkManifestToPlatform(ctx, maniID, maniData.Platform.ID)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, FailLinkManifestToPlatform)
 	}
 	// 3. Link Collection to Manifest
 	e = mag.Database.LinkCollectionToManifest(ctx, col.ID, maniID)
@@ -354,6 +350,12 @@ func (mag Magazine) upstreamBlobInsertProfile(ctx context.Context, req types.Req
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, FailLinkProfileToManifestData)
 	}
+	// 2. Link Manifest to Platform
+	e = mag.NeoLinkManifestDataToPlatform(ctx, maniDataID, maniData.Platform.ID)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, FailLinkManifestDataToPlatform)
+	}
+
 	// TODO: Unwind Profile
 	/*
 		e = mag.Database.ProfileUnwindRules(ctx, prf.ID, maniDataID)
@@ -367,6 +369,7 @@ func (mag Magazine) upstreamBlobInsertProfile(ctx context.Context, req types.Req
 	// Create OCI Manifest
 	mani, _, e := mag.Database.ManifestGetByIDWithProfile(ctx, maniID, prf.ID)
 	if e != nil {
+		// here!
 		return utils.ErrorHandler(l, span, e, failGetMani)
 	}
 
@@ -499,7 +502,7 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 		err = utils.ErrorHandler(l, span, e, "Failed to insert platform")
 		return
 	}
-	e = mag.NeoLinkManifestToPlatform(ctx, maniID, maniData.Platform.ID)
+	e = mag.NeoLinkManifestDataToPlatform(ctx, maniData.ID, maniData.Platform.ID)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "Failed to link manifest to platform")
 		return
@@ -633,12 +636,13 @@ func (mag Magazine) upstreamBlobInsert(ctx context.Context, req types.Request, d
 func (mag Magazine) UpstreamBlobInsertManifest(ctx context.Context, req types.Request, blob types.BlobMeta) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameUp,
-		"func":    "UpstreamBlob_InsertManifest",
+		"func":    "UpstreamBlobInsertManifest",
 		"repo":    req.Repo,
 		"tag":     req.Tag,
 		"profile": req.Profile,
 	})
 	defer span.End()
+	utils.Debug(l, span, "MediaType: '%s'", blob.MediaType)
 	switch blob.MediaType {
 	case "application/vnd.docker.distribution.manifest.v2+json":
 		e := mag.upstreamBlobInsert(ctx, req, blob.Digest)
