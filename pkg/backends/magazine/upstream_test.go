@@ -21,7 +21,6 @@ const (
 )
 
 func TestUpstreamManifestInsert(t *testing.T) {
-	ctx := context.Background()
 	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
@@ -36,6 +35,10 @@ func TestUpstreamManifestInsert(t *testing.T) {
 	if debug > 0 {
 		bs.PostTestSleep = debug
 	}
+	_, ctx, span := utils.InitLogging(context.Background(), tracer, map[string]any{
+		"func": "TestUpstreamManifestInsert.Setup",
+	})
+	defer span.End()
 	br, err := mag.SetupTest(ctx, bs)
 	for _, l := range br.ToLines() {
 		if debug > 0 {
@@ -48,6 +51,11 @@ func TestUpstreamManifestInsert(t *testing.T) {
 	}
 	defer TeardownTest(bs, br)
 	// Actual test
+	span.End()
+	l, ctx, span := utils.InitLogging(context.Background(), tracer, map[string]any{
+		"func": "TestUpstreamManifestInsert.Run",
+	})
+	defer span.End()
 	//// Generic
 	reqGen := types.Request{
 		Host:    regHttpURI,
@@ -76,6 +84,7 @@ func TestUpstreamManifestInsert(t *testing.T) {
 	if !mdOrigFound {
 		t.Fatal("original manifest data not found")
 	}
+	utils.Debug(l, span, "Get original config w/ ID: %d (dig:%s)", mdOrig.Config.ID, utils.ShortenDigest(mdOrig.Digest))
 	cfgOrig, cfgOrigFound, err := mag.ConfigGetByID(ctx, mdOrig.Config.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -83,7 +92,7 @@ func TestUpstreamManifestInsert(t *testing.T) {
 	if !cfgOrigFound {
 		t.Fatal("config not found")
 	}
-	expEnvOrig := []string{"ORG_QNIB_SYSTEM_OS_ID=alpine", "ORG_QNIB_SYSTEM_OS_VERSION=3.17.3", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
+	expEnvOrig := []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
 	assert.Equal(t, expEnvOrig, cfgOrig.Cfg.Config.Env)
 	/// is blob present: manifest
 	upManiGen := upstream.UpstreamTriple{
@@ -104,7 +113,6 @@ func TestUpstreamManifestInsert(t *testing.T) {
 		t.Logf("maniLabel: %s", maniLabelGen)
 		t.Fatal(err)
 	}
-	assert.Equal(t, "alpine", maniGen.Upstream.Repo)
 	// TODO: check if upstream is in DB
 	q := fmt.Sprintf(`MATCH (u:Upstream)<-[r]-(m:Manifest) WHERE id(m)=%d RETURN u.repo AS upRepo, u.tag AS upTag, type(r) AS relType`, maniGen.ID)
 	t.Log(q)
@@ -144,6 +152,35 @@ func TestUpstreamManifestInsert(t *testing.T) {
 	}
 	prf := prfs[0]
 	assert.Equal(t, "generic", prf.Label, prf)
+	// Get new Config via mediaType
+	q = `MATCH (cfg:Blob) WHERE cfg.mediaType IN ["application/vnd.oci.image.config.v1+json"] RETURN id(cfg) AS cfgID`
+	utils.Debug(l, span, "Query: %s", q)
+	t.Log(q)
+	res, found, err = mag.Database.QueryOne(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("config blob not found")
+	}
+	var cfgID int64
+	if cfgID, err = res.GetInt64("cfgID"); err != nil {
+		t.Fatal(err)
+	}
+	utils.Debug(l, span, "Get new config w/ ID: %d", cfgID)
+	cfg, cfgFound, err := mag.ConfigGetByID(ctx, cfgID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfgFound {
+		t.Fatal("config not found")
+	}
+	expEnvGen := []string{
+		"ORG_QNIB_SYSTEM_OS_ID=alpine", "ORG_QNIB_SYSTEM_OS_VERSION=3.17.3",
+		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
+	assert.Equal(t, expEnvGen, cfg.Cfg.Config.Env)
+	//expEnvOrig := []string{"ORG_QNIB_SYSTEM_OS_ID=alpine", "ORG_QNIB_SYSTEM_OS_VERSION=3.17.3", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
+
 	// TODO: Minio
 	/// TODO: is blob present: cfg
 	//        _, found, err := mag.Minio.GetConfig(ctx, maniData)

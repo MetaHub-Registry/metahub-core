@@ -14,6 +14,12 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+const (
+	pkgNameML          = "neo/manifestlist.go"
+	manifestListReturn = "id(ml) as manifestlistID, ml.digest as manifestlistDigest, ml.mediaType as manifestlistMediaType, ml.size as manifestlistSize"
+	// res.CheckKeys("manifestlistID", "manifestlistDigest", "manifestlistMediaType", "manifestlistSize")
+)
+
 func (n Neo) GetManifestList(dig digest.Digest, mt string, size int) (mlID int64, success bool, err error) {
 	q := `MATCH (n:ManifestList) WHERE n.digest = "%s" AND n.mediaType = "%s" AND n.size = %d RETURN id(n) AS ID`
 	query := fmt.Sprintf(q, dig, mt, size)
@@ -85,10 +91,22 @@ func (n Neo) LinkManifestListToCollection(mlID, colID int64) (err error) {
 	return
 }
 
-func (n Neo) LinkManifestListToManifestData(mlID, mdID int64) (err error) {
+func (n Neo) LinkManifestListToManifestData(ctx context.Context, mlID, mdID int64) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameML,
+		"func":    "LinkManifestListToManifestData",
+		"mlID":    mlID,
+		"mdID":    mdID,
+	})
+	defer span.End()
+	if mlID == 0 || mdID == 0 {
+		err = utils.NewError(l, span, "LinkManifestListToManifestData: invalid IDs mlID:%d mdID:%d", mlID, mdID)
+		return
+	}
 	q := `MATCH (ml:ManifestList), (md:ManifestData) WHERE id(ml) = %d AND id(md) = %d`
 	q += ` MERGE (ml)-[:INCLUDES]-(md)`
 	query := fmt.Sprintf(q, mlID, mdID)
+	utils.Debug(l, span, query)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	_, err = session.Run(query, map[string]interface{}{})
@@ -185,7 +203,16 @@ func (n Neo) ManifestListInsert(ctx context.Context, ml *types.ManifestList) (er
 	return
 }
 
-func (n Neo) InsertManifestList(dig digest.Digest, mt string, size int) (mlID int64, err error) {
+func (n Neo) InsertManifestList(ctx context.Context, dig digest.Digest, mt string, size int) (mlID int64, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":   pkgNameML,
+		"func":      "InsertManifestList",
+		"digest":    utils.ShortenDigest(dig.String()),
+		"mediaType": mt,
+		"size":      size,
+	})
+	defer span.End()
+	_ = l
 	mlID, success, err := n.GetManifestList(dig, mt, size)
 	if err != nil {
 		return
@@ -197,6 +224,35 @@ func (n Neo) InsertManifestList(dig digest.Digest, mt string, size int) (mlID in
 		}
 	}
 	return
+}
+
+func (n Neo) ManifestListGetByDigest(ctx context.Context, dig string) (ml *types.ManifestList, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameML,
+		"func":    "ManifestListGetByDigest",
+		"digest":  utils.ShortenDigest(dig),
+	})
+	defer span.End()
+	q := fmt.Sprintf(`MATCH (ml:ManifestList) WHERE ml.digest = "%s"`, dig)
+	utils.Debug(l, span, q+` RETURN *`)
+	q += fmt.Sprintf(` RETURN %s`, manifestListReturn)
+
+	utils.Debug(l, span, q)
+	res, found, err := n.QueryOne(q)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	if found {
+		mlRes, err := ManifestListFromResult(res)
+		if err != nil {
+			logrus.Error(err)
+			return nil, err
+		}
+		ml = &mlRes
+		return ml, nil
+	}
+	return nil, nil
 }
 
 func (n Neo) ManifestListGetByRequest(ctx context.Context, req types.Request) (ml types.ManifestList, found bool, err error) {
@@ -240,8 +296,7 @@ func (n Neo) ManifestListGetByRequest(ctx context.Context, req types.Request) (m
 	// TODO: Fetch all INCLUDES for ManifestList
 	q = fmt.Sprintf(`MATCH (prf:Profile)-[:REF]->(ml:ManifestList)-[:INCLUDES]->(md:ManifestData) WHERE id(ml) = %d AND prf.label = "%s"`, ml.ID, req.Profile)
 	q += ` MATCH (md)<-[]-(m:Manifest)-[:IS]->(p:Platform)`
-	q += ` RETURN id(md) as manifestID, md.digest as manifestDigest, md.mediaType as manifestMediaType,`
-	q += ` md.size as manifestSize,`
+	q += ` RETURN ` + manifestDataReturn + `,`
 	q += ` id(p) as platformID, p.os as platformOS, p.arch as platformArch, p.variant as platformVariant`
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),

@@ -350,25 +350,12 @@ func (n Neo) Setup_Manifest_FT_mpich_amd64(br *utils.BootstrapResult) (err error
 	if err != nil {
 		return err
 	}
-	/// Get Platform
-	plaID, err := br.GetInt64("platform:linux/amd64#id")
-	if err != nil {
-		return err
-	}
-	plat, found, err := n.PlatformGetByID(plaID)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("platformID '%d' not found", plaID)
-	}
 	as := types.NewAnnotations()
 	if err = as.AddNewAnnotation("org.supercontainers.mpi.implementation", "mpich"); err != nil {
 		return err
 	}
 	m := types.Manifest{
 		Upstream:    up,
-		Platform:    plat,
 		Annotations: as,
 	}
 	maniID, err := n.ManifestGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
@@ -380,13 +367,26 @@ func (n Neo) Setup_Manifest_FT_mpich_amd64(br *utils.BootstrapResult) (err error
 	if err != nil {
 		return err
 	}
-	err = n.LinkManifestToPlatform(ctx, maniID, plaID)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
+	// /// Get Platform
+	// plaID, err := br.GetInt64("platform:linux/amd64#id")
+	// if err != nil {
+	// 	return err
+	// }
+	// plat, found, err := n.PlatformGetByID(plaID)
+	// if err != nil {
+	// 	return err
+	// }
+	// if !found {
+	// 	return fmt.Errorf("platformID '%d' not found", plaID)
+	// }
+
+	// err = n.LinkManifestToPlatform(ctx, maniID, plaID)
+	// if err != nil {
+	// 	logrus.Error(err)
+	// 	return err
+	// }
 	// Link Config
-	config_id, err := br.GetInt64(fmt.Sprintf("config:ft_%s#id", m.Platform.Arch))
+	config_id, err := br.GetInt64(fmt.Sprintf("config:ft_%s#id", m.Upstream.Platform.Architecture))
 	if err != nil {
 		logrus.Error(err)
 		return err
@@ -400,7 +400,7 @@ func (n Neo) Setup_Manifest_FT_mpich_amd64(br *utils.BootstrapResult) (err error
 		err = fmt.Errorf("config not found")
 		return
 	}
-	config.MediaType, err = br.Get(fmt.Sprintf("config:ft_%s#mediaType", m.Platform.Arch))
+	config.MediaType, err = br.Get(fmt.Sprintf("config:ft_%s#mediaType", m.Upstream.Platform.Architecture))
 	if err != nil {
 		logrus.Error(err)
 		return err

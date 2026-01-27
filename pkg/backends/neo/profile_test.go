@@ -131,17 +131,31 @@ func TestProfileFromManifestID(t *testing.T) {
 	if debug > 0 {
 		bs.PostTestSleep = debug
 	}
+	_, ctx, span := utils.InitLogging(context.Background(), tracer, map[string]any{
+		"func": "TestProfileFromManifestID.Setup",
+	})
+	defer span.End()
 	br, err := SetupTest(ctx, bs)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, l := range br.ToLines() {
 		if debug > 0 {
 			t.Log(l)
 		}
 	}
-	if err != nil {
-		t.Fatal(err)
-	}
 	defer db.TeardownTest(bs, br)
+	// Compute Manifest
+	if e := db.RuleEvalAll(ctx); e != nil {
+		t.Fatal(e)
+	}
+	span.End()
 	// Actual test
+	l, ctx, span := utils.InitLogging(context.Background(), tracer, map[string]any{
+		"func": "TestProfileFromManifestID.Run",
+	})
+	defer span.End()
+	_ = l
 	maniID, err := br.GetInt64("manifest:ft_arm64#id")
 	if err != nil {
 		t.Fatal(err)
@@ -187,6 +201,7 @@ func TestProfileFromManifestID(t *testing.T) {
 	} else {
 		assert.Equal(t, 0, len(rls))
 	}
+	span.End()
 }
 
 func TestProfileFromManifestIDZen3(t *testing.T) {
@@ -244,6 +259,7 @@ func TestProfileFromManifestIDZen3(t *testing.T) {
 	if err = db.ProfileUnwindRules(ctx, prfZen3.ID, maniID_zen3); err != nil {
 		t.Fatal(err)
 	}
+
 }
 
 func TestFilterReadFilterConfig(t *testing.T) {
@@ -284,6 +300,7 @@ func TestProfileFromManifestIDManipulations(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("upstream:glow150arm64")
+	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("rules:rules/platform/arch/arm64.yaml")
 	bs.AddBootstrap("rules:rules/os/linux.yaml")
 	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
@@ -318,17 +335,26 @@ func TestProfileFromManifestIDManipulations(t *testing.T) {
 	if debug > 0 {
 		bs.PostTestSleep = debug
 	}
+	_, ctx, span := utils.InitLogging(context.Background(), tracer, map[string]any{
+		"func": "TestRuleGetCreate.Setup",
+	})
+	defer span.End()
 	br, err := SetupTest(ctx, bs)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, l := range br.ToLines() {
 		if debug > 0 {
 			t.Log(l)
 		}
 	}
-	if err != nil {
-		t.Fatal(err)
-	}
+	span.End()
 	defer db.TeardownTest(bs, br)
 	// Connect Collection/Tag
+	_, ctx, span = utils.InitLogging(context.Background(), tracer, map[string]any{
+		"func": "TestRuleGetCreate.Run",
+	})
+	defer span.End()
 	maniAmd64ID, err := br.GetInt64("manifest:ft_amd64#id")
 	if err != nil {
 		t.Fatalf("Failed to get manifest:ft_amd64#id: %v", err)
@@ -396,5 +422,5 @@ func TestProfileFromManifestIDManipulations(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Actual Test
-
+	span.End()
 }

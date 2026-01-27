@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/docker/distribution/manifest/manifestlist"
 	"github.com/minio/minio-go/pkg/set"
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
 	"github.com/pkg/errors"
+	goSet "github.com/scylladb/go-set/i64set"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
@@ -76,50 +78,16 @@ func (n Neo) ManifestGetInsertWithDesc(ctx context.Context, up types.Upstream, m
 	}
 	return
 }
-
-func (n Neo) ManifestGetInsertWithRequest(ctx context.Context, m types.Manifest, req types.Request) (maniID int64, err error) {
+func (n Neo) ManifestGetInsertWithUpstream(ctx context.Context, up types.Upstream) (maniID int64, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameMani,
-		"func":    "ManifestGetInsertWithRequest",
-		"profile": req.Profile,
-		"repo":    req.Repo,
-		"tag":     req.Tag,
+		"func":    "ManifestGetInsertWithUpstream",
+		"profile": up.Profile,
+		"repo":    up.Repo,
+		"tag":     up.Tag,
 	})
-	/*** TODO:
-	1. Check if Manifest exists as a connection between
-	   a. Upstream
-	   b. Collection
-	   (c. Annotation?)
-	*/
-	up := m.Upstream
-	_, err = n.UpstreamGetInsert(ctx, &up)
-	if err != nil {
-		l.Error(err)
-		return
-	}
-	maniID, err = n.ManifestGetInsert(ctx, up)
-	if err != nil {
-		logrus.Error(err)
-		return
-	}
-	for _, a := range m.Annotations.Data {
-		aID, e := n.AnnotationGetInsert(ctx, a)
-		if e != nil {
-			err = errors.Wrap(e, fmt.Sprintf("failed to get/insert annotation: %s", a.Key))
-			return
-		}
-		e = n.ManifestLinkToAnnotation(ctx, maniID, aID)
-		if e != nil {
-			err = errors.Wrap(e, fmt.Sprintf("failed to link manifest to annotation: %s", a.Key))
-			return
-		}
-		// Check if Annotation exists
-	}
-	/**** Do we need this still ****/
-	/// OK! We got the ManifestStandin, Collection and Upstream
-	// Check if Manifest exists
-	//maniID, found, err = n.ManifestDataGet(msID, m.Digest)
-	return
+	_ = l
+	return maniID, nil
 }
 
 func (n Neo) ManifestGetInsert(ctx context.Context, up types.Upstream, as ...types.Annotation) (maniID int64, err error) {
@@ -136,37 +104,39 @@ func (n Neo) ManifestGetInsert(ctx context.Context, up types.Upstream, as ...typ
 	   b. Collection
 	   (c. Annotation?)
 	*/
+	utils.Debug(l, span, "UpstreamGetInsert kicked off")
 	_, err = n.UpstreamGetInsert(ctx, &up)
 	if err != nil {
-		l.Error(err)
+		err = utils.ErrorHandler(l, span, err, "failed to get/insert upstream")
 		return
 	}
+	time.Sleep(500 * time.Millisecond) // let the db catch up
+	utils.Debug(l, span, "GetInserted Upstream with ID %d", up.ID)
 	// If Manifest between collection and upstream does not exists
-	maniID, found, err := n.ManifestGet(ctx, up.ID)
+	mani, found, err := n.ManifestGetByLabel(ctx, up.GetLabel())
 	if err != nil {
-		logrus.Error(err)
+		err = utils.ErrorHandler(l, span, err, "failed to get manifest")
 		return
 	}
-	if found {
-		utils.Debug(l, span, "Manifest found: %d", maniID)
-	} else {
-		// Create ManifestStandin
-		maniID, err = n.ManifestCreate(ctx, up.ID)
+	if !found {
+		maniID, err = n.manifestCreateViaUpstream(ctx, up.GetLabel(), up.ID)
 		if err != nil {
-			logrus.Error(err)
+			err = utils.ErrorHandler(l, span, err, "failed to create manifest via upstream")
 			return
 		}
-		l.Debugf("Manifest created: %d", maniID)
+	} else {
+		maniID = mani.ID
 	}
+	utils.Debug(l, span, "Manifest has %d annotations", len(as))
 	for _, a := range as {
 		aID, e := n.AnnotationGetInsert(ctx, a)
 		if e != nil {
-			err = errors.Wrap(e, fmt.Sprintf("failed to get/insert annotation: %s", a.Key))
+			err = utils.ErrorHandler(l, span, err, "failed to get/insert annotation: %s", a.Key)
 			return
 		}
 		e = n.ManifestLinkToAnnotation(ctx, maniID, aID)
 		if e != nil {
-			err = errors.Wrap(e, fmt.Sprintf("failed to link manifest to annotation: %s", a.Key))
+			err = utils.ErrorHandler(l, span, err, "failed to link manifest to annotation: %s", a.Key)
 			return
 		}
 		// Check if Annotation exists
@@ -217,10 +187,12 @@ func (n Neo) ManifestGetIDByManifestData(ctx context.Context, maniDataID int64) 
 	defer span.End()
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (md:ManifestData)<-[]-(m:Manifest) WHERE id(md) = %d RETURN id(m) AS maniID`, maniDataID)
+	utils.Debug(l, span, q)
 	if res, err := n.Query(q); err != nil {
 		err = utils.ErrorHandler(l, span, err, FailNeoExecute)
 		return maniID, false, err
 	} else {
+		utils.Debug(l, span, "%d results found", len(res))
 		switch len(res) {
 		case 0:
 			return maniID, false, nil
@@ -229,13 +201,14 @@ func (n Neo) ManifestGetIDByManifestData(ctx context.Context, maniDataID int64) 
 				err = utils.ErrorHandler(l, span, err, "while getting maniID")
 				return maniID, false, err
 			} else {
+				utils.Debug(l, span, "Manifest found. ID:%d", maniID)
 				return maniID, true, nil
 			}
 		default:
-			utils.NewError(l, span, "more than one manifest found")
+			err = utils.NewError(l, span, "more than one manifest found")
+			return maniID, false, err
 		}
 	}
-	return maniID, false, err
 }
 
 // ManifestCreate creates just a manifest with a label
@@ -284,7 +257,7 @@ func (n Neo) ManifestGetCreateWithProfile(ctx context.Context, upID int64, prfNa
 	q := fmt.Sprintf(`MATCH (u:Upstream) WHERE id(u) = %d`, upID)
 	q += fmt.Sprintf(` MERGE (m:Manifest {label: "%s"})-[:UPSTREAM]->(u)`, label)
 	q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
-	q += ` id(m) AS manifestID,`
+	q += ` id(m) AS manifestID, m.label AS manifestLabel,`
 	q += ` ` + UpstreamReturn
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
@@ -302,14 +275,14 @@ func (n Neo) ManifestGetCreateWithProfile(ctx context.Context, upID int64, prfNa
 	return
 }
 
-func (n Neo) LinkManifestToPlatform(ctx context.Context, maniID, platID int64) (err error) {
-	_, span := tracer.Start(ctx, "LinkManifestToPlatform")
+func (n Neo) LinkManifestDataToPlatform(ctx context.Context, maniDataID, platID int64) (err error) {
+	_, span := tracer.Start(ctx, "LinkManifestDataToPlatform")
 	defer span.End()
 	span.SetAttributes(
-		attribute.Key("maniID").Int64(maniID),
+		attribute.Key("maniDataID").Int64(maniDataID),
 		attribute.Key("platID").Int64(platID),
 	)
-	q := fmt.Sprintf(`MATCH (m:Manifest),(p:Platform) WHERE id(m) = %d AND id(p) = %d`, maniID, platID)
+	q := fmt.Sprintf(`MATCH (m:ManifestData),(p:Platform) WHERE id(m) = %d AND id(p) = %d`, maniDataID, platID)
 	q += ` MERGE (m)-[:IS]->(p)`
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
@@ -319,7 +292,7 @@ func (n Neo) LinkManifestToPlatform(ctx context.Context, maniID, platID int64) (
 	defer session.Close()
 	_, err = session.Run(q, map[string]interface{}{})
 	if err != nil {
-		logrus.Errorf("failed to create link (m:Manifest)-[:IS]->(p:Platform): %v", err)
+		logrus.Errorf("failed to create link (m:ManifestData)-[:IS]->(p:Platform): %v", err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		return
@@ -371,13 +344,41 @@ func (n Neo) ManifestGet(ctx context.Context, upID int64, suffix ...string) (msI
 		return
 	}
 	if !found {
-		// Not found, return
+		utils.Warn(l, span, "manifest not found")
 		return
 	}
 	msID, err = res.GetInt64("ID")
-	// error will be nil if found
-	return
+	utils.Debug(l, span, "Manfest found. ID:%d", msID)
+	return msID, true, nil
 
+}
+
+func (n Neo) GetManifestLinksManifestDataByID(ctx context.Context, maniID int64) (maniDataIDs *goSet.Set, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMani,
+		"func":    "GetManifestLinksManifestDataByID",
+		"maniID":  maniID,
+	})
+	_ = ctx
+	defer span.End()
+	q := `MATCH (m:Manifest)-[]->(md:ManifestData)`
+	q += fmt.Sprintf(` WHERE id(m) = %d`, maniID)
+	q += ` RETURN id(md) AS maniDataID`
+	utils.Debug(l, span, q)
+	res, err := n.Query(q)
+	if err != nil {
+		return maniDataIDs, utils.ErrorHandler(l, span, err, FailNeoExecute)
+	}
+	maniDataIDs = goSet.New()
+	for _, r := range res {
+		maniDataID, e := r.GetInt64("maniDataID")
+		if e != nil {
+			return maniDataIDs, utils.ErrorHandler(l, span, e, "while getting maniDataID")
+
+		}
+		maniDataIDs.Add(maniDataID)
+	}
+	return maniDataIDs, nil
 }
 
 func (n Neo) LinkManifestToManifestData(ctx context.Context, maniID, maniDataID int64, props ...string) (err error) {
@@ -389,6 +390,26 @@ func (n Neo) LinkManifestToManifestData(ctx context.Context, maniID, maniDataID 
 	})
 	_ = ctx
 	defer span.End()
+	// Is the Manifest already linked to a different ManifestData?
+	mds, err := n.GetManifestLinksManifestDataByID(ctx, maniID)
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, "while getting manifest linked manifestdata")
+	}
+	if len(mds.List()) > 0 {
+		if mds.Has(maniDataID) {
+			utils.Debug(l, span, "Manifest ID '%d' is already linked to ManifestData ID '%d'", maniID, maniDataID)
+			return nil
+		} else {
+			for _, mid := range mds.List() {
+				q := fmt.Sprintf(`MATCH (m:Manifest)-[r]->(md:ManifestData) WHERE id(m) = %d AND id(md) = %d DELETE r`, maniID, mid)
+				_, e := n.Execute(q)
+				if e != nil {
+					return utils.ErrorHandler(l, span, e, "while unlinking existing manifestdata")
+				}
+				utils.Debug(l, span, "Unlinked existing ManifestData ID '%d' from Manifest ID '%d'", mid, maniID)
+			}
+		}
+	}
 	q := `MATCH (m:Manifest), (md:ManifestData) WHERE id(m) = %d AND id(md) = %d`
 	rel := "PARSED"
 	if len(props) > 1 {
@@ -415,10 +436,10 @@ func (n Neo) ManifestGetByUpstreamDigest(ctx context.Context, upDigest string) (
 	defer span.End()
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
-	q := `MATCH (p:Platform)-[]-(m:Manifest)-[]-(u:Upstream)`
+	q := `MATCH (p:Platform)-[]-(md:ManifestData)-[]-(u:Upstream)`
 	q += fmt.Sprintf(` WHERE u.digest = "%s"`, upDigest)
 	q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
-	q += ` id(m) AS manifestID,`
+	q += ` id(m) AS manifestID, m.label AS manifestLabel,`
 	q += ` ` + UpstreamReturn
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
@@ -448,10 +469,8 @@ func (n Neo) ManifestGetByRepoTag(ctx context.Context, repo, tag string) (mani t
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	q := `MATCH (col:Collection)-[:UPSTREAM]->(m:Manifest)<-[:UPSTREAM]-(t:Tag)`
-	q += `MATCH (p:Platform)-[]-(m)-[]-(u:Upstream)`
 	q += fmt.Sprintf(` WHERE col.repo = "%s" AND t.name = "%s"`, repo, tag)
-	q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
-	q += ` id(m) AS manifestID,`
+	q += ` RETURN id(m) AS manifestID, m.label AS manifestLabel,`
 	q += ` ` + UpstreamReturn
 	utils.Debug(l, span, q)
 	input := map[string]interface{}{}
@@ -544,24 +563,19 @@ func (n Neo) ManifestGetIDByManifestDataID(ctx context.Context, maniDataID int64
 }
 
 func (n Neo) ManifestGetByID(ctx context.Context, maniID int64) (mani types.Manifest, found bool, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMani,
 		"func":    "ManifestGetByID",
+		"maniID":  maniID,
 	})
-	ctx, span := tracer.Start(ctx, "ManifestGetByID")
 	defer span.End()
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
-	q := `MATCH (p:Platform)-[]-(m:Manifest)-[]-(u:Upstream)`
+	q := `MATCH (m:Manifest)`
 	q += fmt.Sprintf(` WHERE id(m) = %d`, maniID)
-	q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
-	q += ` id(m) AS manifestID,`
-	q += ` ` + UpstreamReturn
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
-	))
-	l.Debug(q)
+	q += ` RETURN id(m) AS manifestID, m.label AS manifestLabel`
+	//q += ` ,` + UpstreamReturn
+	utils.Debug(l, span, q)
 	input := map[string]interface{}{}
 	result, err := session.Run(q, input)
 	if err != nil {
@@ -575,19 +589,20 @@ func (n Neo) ManifestGetByID(ctx context.Context, maniID int64) (mani types.Mani
 }
 
 func (n Neo) ManifestGetByIDWithProfile(ctx context.Context, maniID, prfID int64) (mani types.Manifest, found bool, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMani,
 		"func":    "ManifestGetByIDWithProfile",
+		"maniID":  maniID,
+		"prfID":   prfID,
 	})
-	ctx, span := tracer.Start(ctx, "ManifestGetByIDWithProfile")
 	defer span.End()
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
-	q := `MATCH (p:Platform)-[]-(m:Manifest)-[]-(u:Upstream)`
+	q := `MATCH (p:Platform)-[]-(md:ManifestData)-[]-(m:Manifest)-[]-(u:Upstream)`
 	q += fmt.Sprintf(` WHERE id(m) = %d`, maniID)
 	q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
-	q += ` id(m) AS manifestID,`
-	q += ` ` + UpstreamReturn
+	q += ` id(m) AS manifestID, m.label AS manifestLabel`
+	q += ` ,` + UpstreamReturn
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),
 		attribute.String("log.query", q),
@@ -612,10 +627,10 @@ func (n Neo) ManifestGetByLabel(ctx context.Context, maniLabel string) (mani typ
 	})
 	defer span.End()
 	// Manifest MUST be connected to upstream, optional to platform (later)
-	q := `MATCH (m:Manifest)-[]-(u:Upstream)`
+	q := `MATCH (m:Manifest)`
 	q += fmt.Sprintf(` WHERE m.label = "%s"`, maniLabel)
-	q += ` RETURN id(m) AS manifestID, m.label AS manifestLabel,`
-	q += ` ` + UpstreamReturn
+	q += ` RETURN id(m) AS manifestID, m.label AS manifestLabel`
+	//q += ` ,` + UpstreamReturn
 	utils.Debug(l, span, q)
 	res, found, e := n.QueryOne(q)
 	if e != nil {
@@ -634,29 +649,25 @@ func (n Neo) ManifestGetByLabel(ctx context.Context, maniLabel string) (mani typ
 }
 
 func (n Neo) ManifestGetAll(ctx context.Context) (manis []types.Manifest, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMani,
 		"func":    "ManifestGetAll",
 	})
-	ctx, span := tracer.Start(ctx, "ManifestGetAll")
 	defer span.End()
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
-	q := `MATCH (p:Platform)-[]-(m:Manifest)-[]-(u:Upstream)`
-	q += ` RETURN id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
-	q += ` id(m) AS manifestID,`
-	q += ` ` + UpstreamReturn
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
-	))
+	q := `MATCH (m:Manifest)`
+	q += ` RETURN id(m) AS manifestID, m.label AS manifestLabel`
+	utils.Debug(l, span, q)
 	input := map[string]interface{}{}
 	result, err := session.Run(q, input)
 	if err != nil {
 		return
 	}
 	manis = make([]types.Manifest, 0)
+
 	for result.Next() {
+		utils.Debug(l, span, "processing manifest record")
 		if m, err := n.ManiFromRec(ctx, result); err != nil {
 			return manis, utils.ErrorHandler(l, span, err, types.FailManiFromRecord)
 		} else {
@@ -672,29 +683,25 @@ func (n Neo) ManiFromResult(ctx context.Context, res types.Result) (m types.Mani
 		"func":    "ManiFromResult",
 	})
 	defer span.End()
+	_ = l
 	err = res.CheckKeys("manifestID", "manifestLabel")
 	if err != nil {
 		return
 	}
 	id, _ := res.GetInt64("manifestID")
 	label, _ := res.GetStr("manifestLabel")
-	up, err := UpstreamFromResult(res)
-	if err != nil {
-		return
+	var up types.Upstream
+	if e := res.CheckKeys("upstreamID"); e == nil {
+		up, e = UpstreamFromResult(res)
+		if e != nil {
+			return
+		}
 	}
-	plat, found, e := n.PlatformGetByManifestID(ctx, id)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, types.FailPlatformGetByManifestID)
-		return
-	}
-	if !found {
-		plat = types.Platform{}
-	}
+
 	m = types.Manifest{
 		ID:          id,
 		Label:       label,
 		Upstream:    up,
-		Platform:    plat,
 		Annotations: types.NewAnnotations(),
 		Manifests:   []types.ManifestData{},
 	}
@@ -714,17 +721,16 @@ func (n Neo) ManiFromResult(ctx context.Context, res types.Result) (m types.Mani
 }
 
 func (n Neo) ManiFromRec(ctx context.Context, res neo4j.Result) (m types.Manifest, err error) {
-	ctx, span := tracer.Start(ctx, "ManiFromRec")
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMani,
+		"func":    "ManiFromRec",
+	})
+
 	defer span.End()
-	p, e := PlatformFromRecord(res)
-	if e != nil {
-		err = e
-		return
-	}
+	var u types.Upstream
 	u, e := UpstreamFromRecord(res)
 	if e != nil {
-		err = e
-		return
+		utils.Warn(l, span, "No Upstream for Manifest - which is OK, since ManifestData MUST be connected, Manifest not necessarily")
 	}
 	m, e = ManifestFromRecord(res)
 	if e != nil {
@@ -737,7 +743,6 @@ func (n Neo) ManiFromRec(ctx context.Context, res neo4j.Result) (m types.Manifes
 		return
 	}
 	m.Annotations = anno
-	m.Platform = p
 	m.Upstream = u
 	mds, e := n.ManifestDataGetAllByManifestID(ctx, m.ID)
 	if e != nil {
@@ -751,11 +756,6 @@ func (n Neo) ManiFromRec(ctx context.Context, res neo4j.Result) (m types.Manifes
 func (n Neo) ManiFromRecWithProfile(ctx context.Context, res neo4j.Result, prfID int64) (m types.Manifest, err error) {
 	ctx, span := tracer.Start(ctx, "ManiFromRecWithProfile")
 	defer span.End()
-	p, e := PlatformFromRecord(res)
-	if e != nil {
-		err = e
-		return
-	}
 	u, e := UpstreamFromRecord(res)
 	if e != nil {
 		err = e
@@ -772,7 +772,6 @@ func (n Neo) ManiFromRecWithProfile(ctx context.Context, res neo4j.Result, prfID
 		return
 	}
 	m.Annotations = anno
-	m.Platform = p
 	m.Upstream = u
 	//mds, e := n.ManifestDataGetAllByManifestIDWithProfile(ctx, m.ID, prfID)
 
@@ -785,6 +784,34 @@ func (n Neo) ManiFromRecWithProfile(ctx context.Context, res neo4j.Result, prfID
 	return
 }
 
+func (n Neo) GetManifestLinksUpstreamByID(ctx context.Context, maniID int64) (UpstreamIDs *goSet.Set, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMani,
+		"func":    "GetManifestLinksUpstreamByID",
+		"maniID":  maniID,
+	})
+	_ = ctx
+	defer span.End()
+	q := `MATCH (m:Manifest)-[]->(up:Upstream)`
+	q += fmt.Sprintf(` WHERE id(m) = %d`, maniID)
+	q += ` RETURN id(up) AS upID`
+	utils.Debug(l, span, q)
+	res, err := n.Query(q)
+	if err != nil {
+		return UpstreamIDs, utils.ErrorHandler(l, span, err, FailNeoExecute)
+	}
+	UpstreamIDs = goSet.New()
+	for _, r := range res {
+		upID, e := r.GetInt64("upID")
+		if e != nil {
+			return UpstreamIDs, utils.ErrorHandler(l, span, e, "while getting upID")
+
+		}
+		UpstreamIDs.Add(upID)
+	}
+	return UpstreamIDs, nil
+}
+
 func (n Neo) ManifestLinkToUpstream(ctx context.Context, maniID, upID int64) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMani,
@@ -794,6 +821,26 @@ func (n Neo) ManifestLinkToUpstream(ctx context.Context, maniID, upID int64) (er
 	})
 	defer span.End()
 	_ = ctx
+	// Get Links from Manifest to Upstream
+	ups, err := n.GetManifestLinksUpstreamByID(ctx, maniID)
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, "while getting manifest linked upstreams")
+	}
+	if len(ups.List()) > 0 {
+		if ups.Has(upID) {
+			utils.Debug(l, span, "Manifest ID '%d' is already linked to Upstream ID '%d'", maniID, upID)
+			return nil
+		} else {
+			for _, uid := range ups.List() {
+				q := fmt.Sprintf(`MATCH (m:Manifest)-[r]->(u:Upstream) WHERE id(m) = %d AND id(u) = %d DELETE r`, maniID, uid)
+				_, e := n.Execute(q)
+				if e != nil {
+					return utils.ErrorHandler(l, span, e, "while unlinking existing upstream")
+				}
+				utils.Debug(l, span, "Unlinked existing Upstream ID '%d' from Manifest ID '%d'", uid, maniID)
+			}
+		}
+	}
 	q := fmt.Sprintf(`MATCH (m:Manifest),(u:Upstream) WHERE id(m) = %d AND id(u) = %d`, maniID, upID)
 	q += ` MERGE (m)-[:UPSTREAM]->(u)`
 	utils.Debug(l, span, q)
@@ -813,6 +860,12 @@ func ManifestFromRecord(res neo4j.Result) (m types.Manifest, err error) {
 		return
 	}
 	m.ID = v.(int64)
+	v, ok = r.Get("manifestLabel")
+	if !ok {
+		err = fmt.Errorf("no manifestLabel found in record: %v", r)
+		return
+	}
+	m.Label = v.(string)
 	return
 }
 

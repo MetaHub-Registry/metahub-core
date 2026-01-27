@@ -8,8 +8,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -161,9 +159,13 @@ func (n Neo) RuleGetByLabel(ctx context.Context, label string) (rule types.Rule,
 }
 
 func (n Neo) RulesGetAll(ctx context.Context) (rules []types.Rule, err error) {
-	ctx, span := tracer.Start(ctx, "RulesGetAll")
-	_ = ctx
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameRule,
+		"func":    "RulesGetAll",
+	})
 	defer span.End()
+	_ = ctx
+	_ = l
 	q := `MATCH (r:Rule) RETURN ` + ruleReturn
 	res, err := n.Query(q)
 	if err != nil {
@@ -185,11 +187,12 @@ func (n Neo) RulesGetByManifestID(ctx context.Context, maniID int64) (rules type
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameRule,
 		"func":    "RulesGetByManifestID",
+		"maniID":  maniID,
 	})
 	defer span.End()
 	_ = ctx
 	// Platform rules
-	q := `MATCH (m:Manifest)-[:IS]->(plat:Platform)<-[:TRUE]-(r:Rule)`
+	q := `MATCH (m:Manifest)-[]-(md:ManifestData)-[:IS]->(plat:Platform)<-[:TRUE]-(r:Rule)`
 	q += fmt.Sprintf(`WHERE id(m) = %d RETURN %s`, maniID, ruleReturn)
 	utils.Debug(l, span, q)
 	res, err := n.Query(q)
@@ -210,49 +213,45 @@ func (n Neo) RulesGetByManifestID(ctx context.Context, maniID int64) (rules type
 }
 
 func (n Neo) RuleEvalAll(ctx context.Context) (err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "neo/rule.go",
 		"func":    "RuleEvalAll",
 	})
-	ctx, span := tracer.Start(ctx, "RuleEvalAll")
 	defer span.End()
 	rls, err := n.RulesGetAll(ctx)
 	if err != nil {
 		return
 	}
 	for _, r := range rls {
-		msg := fmt.Sprintf("Eval rule: %s:%s [%s]", r.Name, r.Tag, r.Type)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
-		))
-		l.Debug(msg)
+		utils.Debug(l, span, "Eval rule: %s:%s [%s]", r.Name, r.Tag, r.Type)
 		switch r.Type {
 		case types.RuleTypeAnnotation:
 			err = n.RuleEvalAnnotationRule(ctx, r)
 			if err != nil {
-				err = errors.Wrap(err, fmt.Sprintf("failed to eval rule: %s:%s", r.Name, r.Tag))
-				return
+				return utils.ErrorHandler(l, span, err, "failed to eval rule: %s:%s", r.Name, r.Tag)
 			}
 		case types.RuleTypePlatform:
 			err = n.RuleEvalPlatformRule(ctx, r)
 			if err != nil {
-				err = errors.Wrap(err, fmt.Sprintf("failed to eval rule: %s:%s", r.Name, r.Tag))
-				return
+				return utils.ErrorHandler(l, span, err, "failed to eval rule: %s:%s", r.Name, r.Tag)
 			}
 		default:
-			err = fmt.Errorf("unknown rule type: %s", r.Type)
-			return
+			return utils.NewError(l, span, "unknown rule type: %s", r.Type)
 		}
-
 	}
 	return
 }
 
 func (n Neo) RuleEvalPlatformRule(ctx context.Context, r types.Rule) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "neo/rule.go",
+		"func":    "RuleEvalPlatformRule",
+	})
+	defer span.End()
+
 	q := fmt.Sprintf(`MATCH (p:Platform) WHERE p.%s = "%s"`, r.Key, r.Value)
 	q += ` RETURN id(p) as platformID, p.os as platformOS, p.arch as platformArch, p.variant as platformVariant`
-	//fmt.Printf("Query: \n%s\n", q)
+	utils.Debug(l, span, q)
 	res, err := n.Query(q)
 	if err != nil {
 		return
@@ -262,6 +261,7 @@ func (n Neo) RuleEvalPlatformRule(ctx context.Context, r types.Rule) (err error)
 		if err != nil {
 			return err
 		}
+		utils.Debug(l, span, "Within platform evel %s", p.GetLabel())
 		if p.EvalRule(r) {
 			err = n.RulePlatformSuccess(ctx, r.ID, p.ID)
 			if err != nil {
@@ -273,6 +273,11 @@ func (n Neo) RuleEvalPlatformRule(ctx context.Context, r types.Rule) (err error)
 }
 
 func (n Neo) RuleEvalAnnotationRuleNULL(ctx context.Context, r types.Rule) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "neo/rule.go",
+		"func":    "RuleEvalAnnotationRuleNULL",
+	})
+	defer span.End()
 	if r.Op != "null" {
 		err = fmt.Errorf("invalid op for annotation rule: %s", r.Op)
 		return
@@ -280,6 +285,7 @@ func (n Neo) RuleEvalAnnotationRuleNULL(ctx context.Context, r types.Rule) (err 
 	q := `MATCH (a:Annotation) WHERE a.key =~ "%s"`
 	q += ` RETURN id(a) as annotationID, a.key as annotationKey, a.value as annotationValue`
 	query := fmt.Sprintf(q, r.Key)
+	utils.Debug(l, span, query)
 	res, err := n.Query(query)
 	if err != nil {
 		return
@@ -383,10 +389,16 @@ func (n Neo) RuleGetSuccessPlatform(ctx context.Context, r types.Rule) (ps []typ
 }
 
 func (n Neo) RulePlatformSuccess(ctx context.Context, ruleID, platformID int64) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "neo/rule.go",
+		"func":    "RulePlatformSuccess",
+	})
+	defer span.End()
 	q := `MATCH (r:Rule), (p:Platform)`
 	q += ` WHERE id(r) = %d AND id(p) = %d`
 	q += ` MERGE (r)-[:%s]->(p)`
 	query := fmt.Sprintf(q, ruleID, platformID, types.RelationSuccess)
+	utils.Debug(l, span, query)
 	_, err = n.Execute(query)
 	return
 }

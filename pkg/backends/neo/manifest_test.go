@@ -77,14 +77,14 @@ func TestManifestCR(t *testing.T) {
 		bs.PostTestSleep = debug
 	}
 	br, err := SetupTest(ctx, bs)
+	if err != nil {
+		db.TeardownTest(bs, br)
+		t.Fatal(err)
+	}
 	for _, l := range br.ToLines() {
 		if debug > 0 {
 			t.Log(l)
 		}
-	}
-	if err != nil {
-		db.TeardownTest(bs, br)
-		t.Fatal(err)
 	}
 	defer db.TeardownTest(bs, br)
 	/// Get Upstream
@@ -131,19 +131,35 @@ func TestManifestCR(t *testing.T) {
 	} else if gotFound {
 		t.Fatal("ManifestData IS found")
 	}
-
+	// Link ManifestData to Manifest
+	err = db.LinkManifestToManifestData(ctx, maniID, maniDataZen3ID, "TEST_LINK")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mds, err := db.GetManifestLinksManifestDataByID(ctx, maniID); err != nil {
+		t.Fatal(err)
+	} else {
+		assert.Equal(t, 1, len(mds.List()))
+	}
+	if ups, err := db.GetManifestLinksUpstreamByID(ctx, maniID); err != nil {
+		t.Fatal(err)
+	} else {
+		assert.Equal(t, 1, len(ups.List()))
+	}
 }
 
 func TestManifestGetInsert(t *testing.T) {
 	ctx := context.Background()
-	_ = ctx
+	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
 	bs.AddBootstrap("upstream:ft_arm64")
 	bs.SetEmptyAll()
-	//bs.PostTestSleep = 120
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
 	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
@@ -151,6 +167,12 @@ func TestManifestGetInsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.TeardownTest(bs, br)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+
 	// Actual test
 	upID, err := br.GetInt64("upstream:ft_arm64#id")
 	if err != nil {

@@ -35,8 +35,8 @@ func (mag Magazine) NeoLinkManifestToLayer(ctx context.Context, maniID int64, l 
 	return mag.Database.ManifestDataLinkToLayer(ctx, maniID, l, idx)
 }
 
-func (mag Magazine) NeoLinkManifestToPlatform(ctx context.Context, maniID, platID int64) (err error) {
-	return mag.Database.LinkManifestToPlatform(ctx, maniID, platID)
+func (mag Magazine) NeoLinkManifestDataToPlatform(ctx context.Context, maniID, platID int64) (err error) {
+	return mag.Database.LinkManifestDataToPlatform(ctx, maniID, platID)
 }
 
 func (mag Magazine) GetManifest(ctx context.Context, m ycfg.Manifest) (mani types.ManifestData, err error) {
@@ -263,30 +263,38 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 		Tag:    req.Tag,
 		Digest: dig,
 	}
-	mani = types.Manifest{
-		Upstream:  up,
-		Manifests: []types.ManifestData{},
-	}
-
-	mID, e := mag.Database.ManifestGetInsertWithRequest(ctx, mani, req)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to get Manifest from Database")
+	as := []types.Annotation{}
+	utils.Debug(l, span, "Inserting ManifestGetInsert for Upstream: %s", up.GetLabel())
+	maniId, err := mag.Database.ManifestGetInsert(ctx, up, as...)
+	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to ManifestGetInsert")
 		return
 	}
+	utils.Debug(l, span, "Inserted Manifest w/ ID %d", maniId)
+	var found bool
+	mani, found, err = mag.Database.ManifestGetByID(ctx, maniId)
+	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to ManifestGetByID")
+		return
+	}
+	if !found {
+		err = utils.NewError(l, span, "manifest with ID %d not found after insert", maniId)
+		return
+	}
+	mani.ID = maniId
 	// Link Manifest to Collection
-	e = mag.Database.LinkCollectionToManifest(ctx, col.ID, mID)
+	e = mag.Database.LinkCollectionToManifest(ctx, col.ID, maniId)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to LinkCollectionToManifest")
 		return
 	}
-	e = mag.Database.LinkCollectionTagToManifest(ctx, col.ColTag.ID, mID)
+	e = mag.Database.LinkCollectionTagToManifest(ctx, col.ColTag.ID, maniId)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to LinkCollectionTagToManifest")
 		return
 	}
 	// HERE WE GO split Artifact from Container Image
 
-	mani.ID = mID
 	lyrs := []types.Layer{}
 	for idx, lyrDesc := range ociMani.Layers {
 		utils.Debug(l, span, "Layer %d: %s", idx, utils.ShortenDigest(lyrDesc.Digest.String()))
@@ -342,20 +350,24 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 		Data:      buf,
 		Size:      int64(len(buf)),
 		Layers:    lyrs,
+		Upstream:  up,
 	}
 	e = mag.Database.ManifestDataGetInsert(ctx, &md)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to getInsert ManifestData from Database")
 		return
 	}
-	mani.Manifests = append(mani.Manifests, md)
-	e = mag.LinkManifestToManifestData(ctx, mID, md.ID, "UPLOADED_BY")
+	mani.Manifests = []types.ManifestData{md}
+	e = mag.LinkManifestToManifestData(ctx, maniId, md.ID, "Manifest_Derived_From")
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to mag.LinkManifestToManifestData")
 		return
 	}
-	e = mag.Database.LinkManifestDataToProfile(ctx, md.ID, prf.ID, "UPLOADED_BY")
-	if e != nil {
+	if e = mag.Database.LinkManifestDataToProfile(ctx, md.ID, prf.ID, "UPLOADED_BY"); e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to mag.LinkManifestToManifestData")
+		return
+	}
+	if e = mag.Database.ManifestLinkToUpstream(ctx, maniId, up.ID); e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to mag.LinkManifestToManifestData")
 		return
 	}

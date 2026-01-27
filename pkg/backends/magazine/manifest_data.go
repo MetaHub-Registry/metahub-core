@@ -291,6 +291,7 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 	defer span.End()
 	dig := digest.FromBytes(buf)
 	req.Digest = dig.String()
+
 	var ociMani types.OCIManifest
 
 	// Put Manifest Blob into Minio
@@ -300,8 +301,10 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 		return
 	}
 	utils.Debug(l, span, "ociMani.Config.MediaType:%s", ociMani.Config.MediaType)
+	// Init ManifestData from first Manifest in list
 	switch len(m.Manifests) {
 	default:
+		utils.Debug(l, span, "len(m.Manifests):%d", len(m.Manifests))
 		err = utils.NewError(l, span, "expect to have to store Manifest")
 		return
 	case 1:
@@ -352,9 +355,9 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 		err = errors.Wrap(err, "failed to Database.PlatformGetInsert")
 		return
 	}
-	err = mag.Database.LinkManifestToPlatform(ctx, m.ID, plat.ID)
+	err = mag.Database.LinkManifestDataToPlatform(ctx, md.ID, plat.ID)
 	if err != nil {
-		err = errors.Wrap(err, "failed to Database.LinkManifestToPlatform")
+		err = errors.Wrap(err, "failed to Database.LinkManifestDataToPlatform")
 		return
 	}
 	md.Platform = plat
@@ -373,7 +376,7 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 	}
 	m.Upstream = up
 	md.Upstream = up
-	err = mag.Database.ManifestLinkToUpstream(ctx, m.ID, up.ID)
+	err = mag.Database.ManifestLinkToUpstream(ctx, md.ID, up.ID)
 	if err != nil {
 		err = errors.Wrap(err, "failed to LinkManifestToUpstream")
 		return

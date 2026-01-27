@@ -8,8 +8,11 @@ tasks:
     cmds:
       - git commit -{{.GCMD}} "{{.CLI_ARGS}}"
       - git push
-  test:
+  rmCnt:
     cmds:
+      - for x in $(docker ps -aq);do docker rm -f $x;done
+  test:
+    cmds: 
       - ./test.sh
   sonar:
     cmds:

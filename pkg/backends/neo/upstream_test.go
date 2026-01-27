@@ -153,14 +153,14 @@ func TestUpstreamGetByLayerDigest(t *testing.T) {
 		bs.PostTestSleep = debug
 	}
 	br, err := SetupTest(ctx, bs)
+	if err != nil {
+		db.TeardownTest(bs, br)
+		t.Fatal(err)
+	}
 	for _, l := range br.ToLines() {
 		if debug > 0 {
 			t.Log(l)
 		}
-	}
-	if err != nil {
-		db.TeardownTest(bs, br)
-		t.Fatal(err)
 	}
 	defer db.TeardownTest(bs, br)
 	// Actual test

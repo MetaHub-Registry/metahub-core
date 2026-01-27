@@ -97,6 +97,7 @@ func TestUpstreamGetByManipuLayerID(t *testing.T) {
 	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("rules:rules/platform/arch/arm64.yaml")
 	bs.AddBootstrap("rules:rules/os/linux.yaml")
 	bs.AddBootstrap("upstream:glow150arm64")
@@ -109,7 +110,6 @@ func TestUpstreamGetByManipuLayerID(t *testing.T) {
 	//bs.AddBootstrap("manipulayer:registry:5050/cqnib/metahub-layers/hpc3/glow:1.5.0-arm64#glow150arm64_.*")
 	bs.AddBootstrap("profile:profiles/glow/1.5.0-arm64.yaml")
 	// ManiData Setup
-	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
 	bs.AddBootstrap("config:ft_arm64")
@@ -128,6 +128,10 @@ func TestUpstreamGetByManipuLayerID(t *testing.T) {
 	if debug > 0 {
 		bs.PostTestSleep = debug
 	}
+	_, ctx, span := utils.InitLogging(context.Background(), tracer, map[string]any{
+		"func": "TestUpstreamGetByManipuLayerID.Setup",
+	})
+	defer span.End()
 	br, err := SetupTest(ctx, bs)
 	for _, l := range br.ToLines() {
 		if debug > 0 {
@@ -143,19 +147,27 @@ func TestUpstreamGetByManipuLayerID(t *testing.T) {
 	if err := db.RuleEvalAll(ctx); err != nil {
 		t.Fatal(err)
 	}
+	span.End()
 	// Actual tests
+	_, ctx, span = utils.InitLogging(context.Background(), tracer, map[string]any{
+		"func": "TestUpstreamGetByManipuLayerID.Run",
+	})
+	defer span.End()
 	mplArm64ID, err := br.GetInt64("manipulayer:registry:5050/cqnib/metahub-layers/hpc3/glow:1.5.0-arm64#id")
 	if err != nil {
 		t.Fatalf("Failed to get ManipuLayer ID: %v", err)
 	}
 	if up, upFound, err := db.UpstreamGetByManipuLayerID(ctx, mplArm64ID); err != nil {
+		span.End()
 		t.Fatal(err)
 	} else if !upFound {
+		span.End()
 		t.Fatal("Upstream should be found")
 	} else {
 		assert.Equal(t, "cqnib/metahub-layers/hpc3/glow", up.Repo)
 	}
 	if rls, err := db.RulesGetByManipuLayerID(ctx, mplArm64ID); err != nil {
+		span.End()
 		t.Fatal(err)
 	} else {
 		assert.Equal(t, 1, len(rls.Rules), "ManipuLayer should have 1 rules")
@@ -163,14 +175,17 @@ func TestUpstreamGetByManipuLayerID(t *testing.T) {
 	// Test ManinpulationCheckRules
 	prfId, err := br.GetInt64("profile:glow:1.5.0-arm64#id")
 	if err != nil {
+		span.End()
 		t.Fatal(err)
 	}
 	/// ARM64
 	maniArm64ID, err := br.GetInt64("manifest:ft_arm64#id")
 	if err != nil {
+		span.End()
 		t.Fatal(err)
 	}
 	if ok, err := db.ManinpulationCheckRules(ctx, prfId, maniArm64ID); err != nil {
+		span.End()
 		t.Fatal(err)
 	} else {
 		assert.True(t, ok, "Arm64 manifest should ge through")
@@ -178,13 +193,16 @@ func TestUpstreamGetByManipuLayerID(t *testing.T) {
 	/// ARM64
 	maniAmd64ID, err := br.GetInt64("manifest:ft_amd64#id")
 	if err != nil {
+		span.End()
 		t.Fatal(err)
 	}
 	if ok, err := db.ManinpulationCheckRules(ctx, prfId, maniAmd64ID); err != nil {
+		span.End()
 		t.Fatal(err)
 	} else {
 		assert.False(t, ok, "AMD64 manifest should NOT go through")
 	}
+	span.End()
 }
 
 func TestManipulationFromConfigManipulation(t *testing.T) {
@@ -193,6 +211,7 @@ func TestManipulationFromConfigManipulation(t *testing.T) {
 	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("rules:rules/platform/arch/arm64.yaml")
 	bs.AddBootstrap("rules:rules/os/linux.yaml")
 	bs.AddBootstrap("upstream:glow150arm64")
@@ -238,6 +257,7 @@ func TestManipulationFromYAML(t *testing.T) {
 	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("rules:rules/platform/arch/arm64.yaml")
 	bs.AddBootstrap("rules:rules/os/linux.yaml")
 	bs.AddBootstrap("upstream:glow150arm64")

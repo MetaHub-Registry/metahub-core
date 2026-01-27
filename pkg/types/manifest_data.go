@@ -136,12 +136,28 @@ func (m ManifestData) ToOCIBytes() (b []byte) {
 	return
 }
 
+func (m ManifestData) WriteWWWHead(w http.ResponseWriter) (err error) {
+	if m.MediaType == "" {
+		return fmt.Errorf("Manifest.MediaType is empty")
+	}
+	dataLen := len(m.Data)
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataLen))
+	w.Header().Set("Content-Type", m.MediaType)
+	w.Header().Set("Docker-Content-Digest", m.Digest)
+	w.Header().Set("Etag", m.Digest)
+	if m.Subject != nil {
+		w.Header().Set("OCI-Subject", m.Subject.Digest)
+	}
+	return
+}
 func (m ManifestData) WriteWWWHeader(w http.ResponseWriter) (err error) {
 	if m.MediaType == "" {
 		return fmt.Errorf("Manifest.MediaType is empty")
 	}
 	//w.Header().Set("Location", fmt.Sprintf("%s/v2/%s/manifests/%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag))
-	w.Header().Set("Content-Length", "0")
+	//dataLen := len(m.Data)
+	dataLen := 0
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataLen))
 	w.Header().Set("Content-Type", m.MediaType)
 	w.Header().Set("Docker-Content-Digest", m.Digest)
 	w.Header().Set("Etag", m.Digest)

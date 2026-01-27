@@ -262,14 +262,13 @@ func (n Neo) ProfileFromResult(res types.Result) (p types.Profile, err error) {
 }
 
 func (n Neo) ProfileFromManifestID(ctx context.Context, maniID int64) (prfs []types.Profile, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameProfile,
 		"func":    "ProfileFromManifestID",
 		"maniID":  maniID,
 	})
 	prfLabels := set.NewStringSet()
 	_ = l
-	ctx, span := tracer.Start(ctx, "ProfileFromManifestID")
 	defer span.End()
 	prfs, e := n.ProfileFromManifestIDViaAnnotations(ctx, maniID)
 	if e != nil {
@@ -350,7 +349,7 @@ func (n Neo) ProfileFromManifestDataIDViaOrig(ctx context.Context, maniDataID in
 	})
 	defer span.End()
 	_ = ctx
-	q := fmt.Sprintf(`MATCH (prf:Profile)<-[r]-(md:ManifestData) WHERE id(md) = %d`, maniDataID)
+	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(:Rule)-[:TRUE]->(p:Platform)<-[r]-(md:ManifestData) WHERE id(md) = %d`, maniDataID)
 	q += fmt.Sprintf(` RETURN DISTINCT %s`, returnStatementProfile)
 	utils.Debug(l, span, q)
 	res, e := n.Query(q)

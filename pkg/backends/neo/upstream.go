@@ -10,7 +10,6 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -18,32 +17,45 @@ const (
 	UpstreamReturn         = `id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag, u.digest AS upstreamDigest`
 	FailUpstreamFromResult = `failed to get upstream from result`
 	FailUpstreamGet        = `failed to get upstream by oject (reg/repo/tag)`
+	FailUpstreamCreate     = `failed to create upstream`
 	FailUpstreamNotFound   = `upstream not found`
 )
 
 func (n Neo) UpstreamGetInsert(ctx context.Context, up *types.Upstream) (found bool, err error) {
-	ctx, span := tracer.Start(ctx, "UpstreamGetInsert")
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":  pkgNameUp,
+		"func":     "UpstreamGetInsert",
+		"upstream": up.String(),
+	})
+	_ = ctx
 	defer span.End()
-	span.SetAttributes(
-		attribute.Key("upstream").String(up.String()),
-	)
+	utils.Debug(l, span, "Getting Upstream: %s", up.String())
 	upID, found, err := n.UpstreamGet(ctx, *up)
 	if err != nil {
-		logrus.Error(err)
+		err = utils.ErrorHandler(l, span, err, FailUpstreamGet)
 		return
 	}
 	if !found {
+		utils.Debug(l, span, "upstream not found")
 		upID, err = n.CreateUpstream(ctx, *up)
 		if err != nil {
-			logrus.Error(err)
+			err = utils.ErrorHandler(l, span, err, FailUpstreamCreate)
 			return
 		}
 	}
 	up.ID = upID
+	utils.Debug(l, span, "Upstream ID: %d", up.ID)
 	return
 }
 
 func (n Neo) UpstreamGetInsertByRequest(ctx context.Context, req types.Request) (up types.Upstream, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":  pkgNameUp,
+		"func":     "UpstreamGetInsertByRequest",
+		"upstream": up.String(),
+	})
+	_ = l
+	defer span.End()
 	up = types.Upstream{
 		Reg:    req.Host,
 		Repo:   req.Repo,
@@ -280,20 +292,22 @@ func (n Neo) UpstreamGet(ctx context.Context, up types.Upstream) (upID int64, su
 			return upID, false, utils.ErrorHandler(l, span, e, types.FailBrGet, "ID")
 		}
 	}
+	utils.Debug(l, span, "found upstream w/ ID %d", upID)
 	return upID, true, nil
 }
 
 func (n Neo) CreateUpstream(ctx context.Context, up types.Upstream) (upID int64, err error) {
 	label := fmt.Sprintf("%s/%s:%s", up.Reg, up.Repo, up.Tag)
-	l := logrus.WithFields(logrus.Fields{
-		"package":  pkgNameUp,
-		"func":     "CreateUpstream",
-		"upstream": label,
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameUp,
+		"func":    "CreateUpstream",
+		"repo":    up.Repo,
+		"tag":     up.Tag,
+		"digest":  utils.ShortenDigest(up.Digest.String()),
 	})
-	_, span := tracer.Start(ctx, "CreateUpstream")
 	defer span.End()
 	if up.Digest.String() == "" {
-		err = fmt.Errorf("CreateUpstream: digest is empty")
+		err = utils.ErrorHandler(l, span, err, "CreateUpstream: digest is empty")
 		return
 	}
 	q := fmt.Sprintf(`CREATE (u:Upstream {reg: "%s", repo: "%s", tag: "%s", label: "%s"`, up.Reg, up.Repo, up.Tag, label)
@@ -301,21 +315,18 @@ func (n Neo) CreateUpstream(ctx context.Context, up types.Upstream) (upID int64,
 		q += fmt.Sprintf(`,digest: "%s"`, up.Digest.String())
 	}
 	q += `}) RETURN id(u) AS ID`
-	l.Debug(q)
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
-	))
+	utils.Debug(l, span, q)
 	res, err := n.Execute(q)
 	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
+		err = utils.ErrorHandler(l, span, err, "Failed to run query")
 		return
 	}
 	upID, err = res.GetInt64("ID")
 	if err != nil {
-		logrus.Errorf("CreateUpstream: failed to get ID: %s", err)
+		err = utils.ErrorHandler(l, span, err, "CreateUpstream: failed to get ID")
 		return
 	}
+	utils.Debug(l, span, "upstreamID: %d", upID)
 	return
 }
 

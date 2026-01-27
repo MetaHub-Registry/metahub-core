@@ -1,12 +1,22 @@
 package neo
 
-/*
+import (
+	"context"
+	"testing"
+
+	"github.com/opencontainers/go-digest"
+	"github.com/stretchr/testify/assert"
+	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
+)
+
 func TestManifestListCRUD(t *testing.T) {
 	ctx := context.Background()
-	_ = ctx
+	debug := 60
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("rules:rules/generic/linux.yaml")
 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
 	bs.AddBootstrap("config:ft_arm64")
 	bs.AddBootstrap("config:ft_amd64")
@@ -19,66 +29,90 @@ func TestManifestListCRUD(t *testing.T) {
 	bs.AddBootstrap("manifest:ft_arm64")
 	bs.AddBootstrap("manifest:ft_amd64")
 	bs.SetEmptyAll()
-	//bs.PostTestSleep = 120
-	br, err := SetupTest(bs)
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	_, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "TestManifestListCRUD.Setup",
+	})
+	defer span.End()
+	br, err := SetupTest(ctx, bs)
 	_ = br
 	if err != nil {
 		t.Fatal(err)
-}
+	}
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
 	defer db.TeardownTest(bs, br)
+	span.End()
 	// Actual test
+	_, ctx, span = utils.InitLogging(context.Background(), tracer, map[string]any{
+		"func": "TestManifestListCRUD.Run",
+	})
+	defer span.End()
 	ml_arm64 := types.FTarmManifestlist()
 	_, found, err := db.GetManifestList(digest.Digest(ml_arm64.Digest), ml_arm64.MediaType, int(ml_arm64.Size))
 	if err != nil {
+		span.End()
 		t.Fatal(err)
-}
+	}
 	assert.False(t, found)
 	// Add ManifestList
 	ml_arm64_id, err := db.CreateManifestList(digest.Digest(ml_arm64.Digest), ml_arm64.MediaType, int(ml_arm64.Size))
 	if err != nil {
+		span.End()
 		t.Fatal(err)
-}
+	}
 	assert.NotNil(t, ml_arm64_id)
 	ml_arm64_id_got, found, err := db.GetManifestList(digest.Digest(ml_arm64.Digest), ml_arm64.MediaType, int(ml_arm64.Size))
 	if err != nil {
+		span.End()
 		t.Fatal(err)
-}
+	}
 	assert.True(t, found)
 	assert.Equal(t, ml_arm64_id, ml_arm64_id_got)
 	// LINKS
-	//// Filter
-	flt_arm64_id, err := br.GetInt64("filter:generic#id")
-	if err != nil {
-		t.Fatal(err)
-}
-	err = db.LinkManifestListToFilter(ml_arm64_id, flt_arm64_id)
-	if err != nil {
-		t.Fatal(err)
-}
 	//// Manifest
 	arm_ml := types.FTarmManifestData()
 	arm_ml.ID, err = br.GetInt64("manifest:ft_arm64#id")
 	if err != nil {
+		span.End()
 		t.Fatal(err)
-}
+	}
 	amd_ml := types.FTarmManifestData()
 	amd_ml.ID, err = br.GetInt64("manifest:ft_amd64#id")
 	if err != nil {
+		span.End()
 		t.Fatal(err)
-}
+	}
 	//// GENERIC ML
 	ml_generic := types.FTgenericManifestlist()
 	ml_generic_id, err := db.CreateManifestList(digest.Digest(ml_generic.Digest), ml_generic.MediaType, int(ml_generic.Size))
 	if err != nil {
+		span.End()
 		t.Fatal(err)
-}
+	}
 	assert.NotNil(t, ml_generic_id)
 	err = db.LinkManifestListToManifests(ml_generic_id, []types.ManifestData{arm_ml, amd_ml})
 	if err != nil {
+		span.End()
 		t.Fatal(err)
-}
+	}
+	// Fetch ManifestList by Digest
+	mlDig := digest.Digest(ml_arm64.Digest)
+	ml_got, err := db.ManifestListGetByDigest(ctx, mlDig.String())
+	if err != nil {
+		span.End()
+		t.Fatal(err)
+	}
+	assert.NotNil(t, ml_got)
+	span.End()
 }
 
+/*
 func TestManifestListByRequestSeedNeoSkylake(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx

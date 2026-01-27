@@ -36,7 +36,7 @@ func (n Neo) OCIv1ConfigGetInsertDescriptor(ctx context.Context, desc v1.Descrip
 		return
 	}
 	label := utils.CreateLabelFromDescriptor(desc)
-	q := fmt.Sprintf(`CREATE (c:Blob) SET c.digest = "%s", c.size = %d, c.label ="%s", c.type = "config", c.MediaType = "%s"`, desc.Digest.String(), desc.Size, label, desc.MediaType)
+	q := fmt.Sprintf(`CREATE (c:Blob) SET c.digest = "%s", c.size = %d, c.label ="%s", c.type = "config", c.mediaType = "%s"`, desc.Digest.String(), desc.Size, label, desc.MediaType)
 	q += ` RETURN id(c) as configID, c.size AS configSize, c.digest AS configDigest`
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String("log.severity", "debug"),

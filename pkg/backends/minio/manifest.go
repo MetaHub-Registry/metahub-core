@@ -283,6 +283,14 @@ func (m Minio) ManifestsStatObj(ctx context.Context, object string) (obj minio.O
 }
 
 func (m Minio) ManifestsPutObj(ctx context.Context, object string, data []byte) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameMani,
+		"func":    "ManifestsPutObj",
+		"object":  object,
+		"len":     len(data),
+	})
+	defer span.End()
+	utils.Debug(l, span, "Putting manifest object %s with len %d", object, len(data))
 	cli := m.BucketConfig[manifestsBucketKey].Client
 	_, err = cli.PutObject(ctx, m.GetManifestsBucketName(), object, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{})
 	return

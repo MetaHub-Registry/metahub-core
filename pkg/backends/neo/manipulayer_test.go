@@ -18,6 +18,7 @@ func TestManipuLayerCheckLinks(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("upstream:glow150arm64")
+	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("rules:rules/platform/arch/arm64.yaml")
 	bs.AddBootstrap("rules:rules/os/linux.yaml")
 	bs.AddBootstrap("layer:0:glow150arm64_2660")
@@ -92,6 +93,7 @@ func TestManipuLayerFromConfigYAML(t *testing.T) {
 	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("rules:rules/platform/arch/arm64.yaml")
 	bs.AddBootstrap("rules:rules/os/linux.yaml")
 	bs.AddBootstrap("upstream:glow150arm64")

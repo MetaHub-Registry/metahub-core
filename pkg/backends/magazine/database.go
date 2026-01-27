@@ -74,8 +74,8 @@ type Database interface {
 	ManifestGetAll(ctx context.Context) (manis []types.Manifest, err error)
 	ManifestGetByLabel(ctx context.Context, colName string) (mani types.Manifest, found bool, err error)
 	ManifestGetByUpstreamDigest(ctx context.Context, dig string) (mani types.Manifest, found bool, err error)
-	ManifestGetInsertWithRequest(ctx context.Context, m types.Manifest, req types.Request) (maniID int64, err error)
 	ManifestGetInsertWithDesc(ctx context.Context, up types.Upstream, maniIn manifestlist.ManifestDescriptor) (maniID int64, err error)
+	ManifestGetInsertWithUpstream(ctx context.Context, up types.Upstream) (maniID int64, err error)
 	ManifestGetCreateWithProfile(ctx context.Context, upID int64, prfName string) (man types.Manifest, err error)
 	ManifestGetByRepoTag(ctx context.Context, repo, tag string) (mani types.Manifest, found bool, err error)
 	ManifestGetByID(ctx context.Context, maniID int64) (mani types.Manifest, found bool, err error)
@@ -117,7 +117,8 @@ type Database interface {
 	/********* ManifestList **********/
 	ManifestListInsert(ctx context.Context, ml *types.ManifestList) (err error)
 	ManifestListGetByRequest(ctx context.Context, req types.Request) (ml types.ManifestList, found bool, err error)
-	InsertManifestList(dig digest.Digest, mt string, size int) (mlID int64, err error)
+	ManifestListGetByDigest(ctx context.Context, dig string) (ml *types.ManifestList, err error)
+	InsertManifestList(ctx context.Context, dig digest.Digest, mt string, size int) (mlID int64, err error)
 	/********* Collection **********/
 	CollectionGetAll(ctx context.Context) (colls []types.Collection, err error)
 	CollectionGetIDByYaml(ctx context.Context, ycol yamlCfg.ManifestCollection) (colID, colTagID int64, found bool, err error)
@@ -136,17 +137,17 @@ type Database interface {
 	CollectionGetTagsListByRepo(ctx context.Context, repo string) (tags types.TagResponse, err error)
 
 	/********* Links **********/
-	LinkCollectionTagToManifest(ctx context.Context, colTagID, maniID int64) error      // Connects a collection tag to a manifest to indicate it is servered by that collection
-	LinkCollectionToManifest(ctx context.Context, colID, maniID int64) error            // Connects a collection to a manifest to indicate it is servered by that collection
-	ManifestLinkToUpstream(ctx context.Context, maniID, upID int64) error               // Connects a manifest to an upstream
-	ManifestDataLinkToConfig(ctx context.Context, maniID int64, cfg types.Config) error //
-	LinkManifestToPlatform(ctx context.Context, maniID, platID int64) error             //
+	LinkCollectionTagToManifest(ctx context.Context, colTagID, maniID int64) error // Connects a collection tag to a manifest to indicate it is servered by that collection
+	LinkCollectionToManifest(ctx context.Context, colID, maniID int64) error       // Connects a collection to a manifest to indicate it is servered by that collection
+	ManifestLinkToUpstream(ctx context.Context, maniID, upID int64) error          // Connects a manifest to an upstream
+	ManifestDataLinkToConfig(ctx context.Context, maniID int64, cfg types.Config) error
 	LinkManifestListToCollection(mlID, colID int64) (err error)
 	LinkManifestListToCollectionTag(mlID, colTagID int64) (err error)
 	LinkManifestListToProfile(mlID, prfID int64) (err error)
-	LinkManifestListToManifestData(mlID, mdID int64) (err error)
-	ManifestDataLinkToLayer(ctx context.Context, maniDataID int64, layer types.Layer, idx int) error //
-	ManifestDataLinkToProfile(ctx context.Context, maniDataID, profileID int64) error                //
+	LinkManifestListToManifestData(ctx context.Context, mlID, mdID int64) (err error)
+	ManifestDataLinkToLayer(ctx context.Context, maniDataID int64, layer types.Layer, idx int) error
+	ManifestDataLinkToProfile(ctx context.Context, maniDataID, profileID int64) error
+	LinkManifestDataToPlatform(ctx context.Context, maniDataID, platID int64) error
 	LinkManifestToManifestData(ctx context.Context, maniID, maniDataID int64, props ...string) error
 	LinkManifestDataToProfile(ctx context.Context, mdID, prfID int64, relation string) error
 	/****** BlobUpload ******/
