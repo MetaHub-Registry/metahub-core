@@ -183,6 +183,47 @@ func (n Neo) LinkManifestListToManifests(mlID int64, manifests []types.ManifestD
 	return
 }
 
+func (n Neo) ManifestListAddAnnotation(ctx context.Context, mlID int64, a *types.Annotation) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameML,
+		"func":    "ManifestListAddAnnotation",
+		"mlID":    mlID,
+	})
+	defer span.End()
+	logrus.Warnf("adding annotation %s=%s", a.Key, a.Value)
+	aID, e := n.AnnotationGetInsert(ctx, *a)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to add annotation")
+	}
+	a.ID = aID
+	e = n.ManifestListLinkToAnnotation(ctx, mlID, aID)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to link annotation")
+	}
+
+	return nil
+}
+
+func (n Neo) ManifestListLinkToAnnotation(ctx context.Context, mlID, annotationID int64) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":      pkgNameML,
+		"func":         "ManifestListLinkToAnnotation",
+		"mlID":         mlID,
+		"annotationID": annotationID,
+	})
+	defer span.End()
+	_ = ctx
+	q := fmt.Sprintf(`MATCH (ml:ManifestList), (a:Annotation) WHERE id(ml) = %d AND id(a) = %d`, mlID, annotationID)
+	q += ` MERGE (ml)-[:HAS_ANNOTATION]->(a)`
+	utils.Debug(l, span, q)
+	_, err = n.Execute(q)
+	if err != nil {
+		return
+	}
+	// TODO: Check if annotation is linked to a rule which has all filters rules satisfied
+	return
+}
+
 func (n Neo) ManifestListInsert(ctx context.Context, ml *types.ManifestList) (err error) {
 	dig := digest.Digest(ml.Digest)
 	mlID, success, err := n.GetManifestList(dig, ml.MediaType, 0)
@@ -212,17 +253,19 @@ func (n Neo) InsertManifestList(ctx context.Context, dig digest.Digest, mt strin
 		"size":      size,
 	})
 	defer span.End()
-	_ = l
+
 	mlID, success, err := n.GetManifestList(dig, mt, size)
 	if err != nil {
 		return
 	}
+	utils.Debug(l, span, "Inserted ManifestList w/ ID '%d' and success %t", mlID, success)
 	if !success {
 		mlID, err = n.CreateManifestList(dig, mt, size)
 		if err != nil {
 			return
 		}
 	}
+	utils.Debug(l, span, "Inserted ManifestList w/ ID '%d'", mlID)
 	return
 }
 
@@ -244,7 +287,7 @@ func (n Neo) ManifestListGetByDigest(ctx context.Context, dig string) (ml *types
 		return
 	}
 	if found {
-		mlRes, err := ManifestListFromResult(res)
+		mlRes, err := n.ManifestListFromResult(ctx, res)
 		if err != nil {
 			logrus.Error(err)
 			return nil, err
@@ -253,6 +296,70 @@ func (n Neo) ManifestListGetByDigest(ctx context.Context, dig string) (ml *types
 		return ml, nil
 	}
 	return nil, nil
+}
+
+func (n Neo) ManifestListFromResult(ctx context.Context, res types.Result) (ml types.ManifestList, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameML,
+		"func":    "ManifestListFromResult",
+	})
+	defer span.End()
+	err = res.CheckKeys("manifestlistID", "manifestlistDigest", "manifestlistMediaType", "manifestlistSize")
+	if err != nil {
+		return
+	}
+	_ = l
+	id, _ := res.GetInt64("manifestlistID")
+	size, _ := res.GetInt("manifestlistSize")
+	manifestlistDigest, _ := res.GetStr("manifestlistDigest")
+	manifestlistMediaType, _ := res.GetStr("manifestlistMediaType")
+	ml = types.ManifestList{
+		ID:            id,
+		SchemaVersion: 2,
+		Digest:        manifestlistDigest,
+		MediaType:     manifestlistMediaType,
+		Size:          size,
+		Annotations:   map[string]string{},
+	}
+	as, err := n.GetAnnotationsByManifestListID(ctx, ml.ID)
+	if err != nil {
+		return
+	}
+	for _, a := range as.Data {
+		ml.Annotations[a.Key] = a.Value
+	}
+	utils.Debug(l, span, "found %d annotations", len(ml.Annotations))
+	return
+}
+
+func (n Neo) GetAnnotationsByManifestListID(ctx context.Context, mlID int64) (as types.Annotations, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameML,
+		"func":    "GetAnnotationsByManifestListID",
+		"mlID":    mlID,
+	})
+	defer span.End()
+	q := fmt.Sprintf(`MATCH (ml:ManifestList)-[:HAS_ANNOTATION]->(a:Annotation) WHERE id(ml) = %d`, mlID)
+	q += ` RETURN id(a) AS annotationID, a.key AS annotationKey, a.value AS annotationValue`
+	utils.Debug(l, span, q)
+	res, err := n.Query(q)
+	if err != nil {
+		return
+	}
+
+	as = types.NewAnnotations()
+	for _, r := range res {
+		aTmp, e := AnnotationsFromResult(r)
+		if e != nil {
+			err = e
+			return
+		}
+		for _, v := range aTmp.Data {
+			as.AddAnnotation(v)
+		}
+	}
+	utils.Debug(l, span, "found %d annotations", as.Len())
+	return
 }
 
 func (n Neo) ManifestListGetByRequest(ctx context.Context, req types.Request) (ml types.ManifestList, found bool, err error) {
@@ -288,7 +395,7 @@ func (n Neo) ManifestListGetByRequest(ctx context.Context, req types.Request) (m
 		fmt.Printf(" >>> \n%s\n", q)
 		return
 	}
-	ml, err = ManifestListFromResult(res)
+	ml, err = n.ManifestListFromResult(ctx, res)
 	if err != nil {
 		logrus.Error(err)
 		return
@@ -316,25 +423,6 @@ func (n Neo) ManifestListGetByRequest(ctx context.Context, req types.Request) (m
 		}
 		m.Platform = p
 		ml.Manifests = append(ml.Manifests, m)
-	}
-	return
-}
-
-func ManifestListFromResult(res types.Result) (ml types.ManifestList, err error) {
-	err = res.CheckKeys("manifestlistID", "manifestlistDigest", "manifestlistMediaType", "manifestlistSize")
-	if err != nil {
-		return
-	}
-	id, _ := res.GetInt64("manifestlistID")
-	size, _ := res.GetInt("manifestlistSize")
-	manifestlistDigest, _ := res.GetStr("manifestlistDigest")
-	manifestlistMediaType, _ := res.GetStr("manifestlistMediaType")
-	ml = types.ManifestList{
-		ID:            id,
-		SchemaVersion: 2,
-		Digest:        manifestlistDigest,
-		MediaType:     manifestlistMediaType,
-		Size:          size,
 	}
 	return
 }

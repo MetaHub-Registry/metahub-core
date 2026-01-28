@@ -10,6 +10,7 @@ import (
 
 func TestTagList(t *testing.T) {
 	bs := utils.NewBootstrap()
+	debug := 0
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.AddBootstrap("platforms:generic")
 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
@@ -27,13 +28,19 @@ func TestTagList(t *testing.T) {
 	bs.AddBootstrap("collection:ft_generic")
 	bs.AddBootstrap("collection:ft_arm64")
 	bs.SetEmptyAll()
-	//bs.PostTestSleep = 300
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
 	br, err := mag.SetupTest(ctx, bs)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer TeardownTest(bs, br)
-	_ = br
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
 	// Test
 
 	req := types.Request{

@@ -118,6 +118,8 @@ type Database interface {
 	ManifestListInsert(ctx context.Context, ml *types.ManifestList) (err error)
 	ManifestListGetByRequest(ctx context.Context, req types.Request) (ml types.ManifestList, found bool, err error)
 	ManifestListGetByDigest(ctx context.Context, dig string) (ml *types.ManifestList, err error)
+	ManifestListAddAnnotation(ctx context.Context, mlID int64, a *types.Annotation) (err error)
+	ManifestListLinkToAnnotation(ctx context.Context, mlID, annotationID int64) (err error)
 	InsertManifestList(ctx context.Context, dig digest.Digest, mt string, size int) (mlID int64, err error)
 	/********* Collection **********/
 	CollectionGetAll(ctx context.Context) (colls []types.Collection, err error)
@@ -207,4 +209,6 @@ type Database interface {
 	/**** Artefact ********/
 	ManifestDataLinkToArtifactConfig(ctx context.Context, mdDigest string, cfg v1.Descriptor) (err error)
 	LinkManifestDataToSubject(ctx context.Context, mdDigest string, subId int64) (err error)
+	LinkSubjectByDigestMediaType(ctx context.Context, refID int64, subDigest, subMediaType string) (err error)
+	ReferrersGetBySubjectDigest(ctx context.Context, dig string) (refs types.ReferrersResponse, err error)
 }

@@ -164,7 +164,7 @@ func (n Neo) CollectionUpdate(ctx context.Context, col *types.Collection) (found
 		return false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 	} else {
 		for _, r := range res {
-			if ml, e := ManifestListFromResult(r); e != nil {
+			if ml, e := n.ManifestListFromResult(ctx, r); e != nil {
 				return false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 			} else {
 				ml.Manifests, e = n.ManifestDataGetByManifestList(ctx, ml.ID)

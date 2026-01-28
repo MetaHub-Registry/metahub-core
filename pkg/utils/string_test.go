@@ -144,3 +144,17 @@ func TestDecodeEncode(t *testing.T) {
 	de := Base64Decode(en)
 	assert.Equal(t, str, de)
 }
+
+func TestSortTags(t *testing.T) {
+	tags := []string{
+		"tagtest0", "TEST0", "test0",
+		"TEST1", "test1",
+		"TEST2", "test2",
+		"TEST3", "test3",
+	}
+	exp := []string{"tagtest0", "TEST0", "test0", "TEST1", "test1", "TEST2", "test2", "TEST3", "test3"}
+	got := SortTags(tags)
+	assert.Equal(t, exp, got)
+	got2 := SortTags([]string{"generic", "arm64"})
+	assert.Equal(t, []string{"arm64", "generic"}, got2)
+}

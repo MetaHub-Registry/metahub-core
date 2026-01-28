@@ -344,13 +344,18 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 	}
 
 	// Store ManifestData (the actual Manifest with digest and all)
+	annos := types.NewAnnotations()
+	for k, v := range ociMani.Annotations {
+		annos.AddNewAnnotation(k, v)
+	}
 	md = types.ManifestData{
-		Digest:    dig.String(),
-		MediaType: ociMani.MediaType,
-		Data:      buf,
-		Size:      int64(len(buf)),
-		Layers:    lyrs,
-		Upstream:  up,
+		Digest:      dig.String(),
+		MediaType:   ociMani.MediaType,
+		Data:        buf,
+		Size:        int64(len(buf)),
+		Layers:      lyrs,
+		Upstream:    up,
+		Annotations: annos,
 	}
 	e = mag.Database.ManifestDataGetInsert(ctx, &md)
 	if e != nil {
@@ -369,6 +374,11 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 	}
 	if e = mag.Database.ManifestLinkToUpstream(ctx, maniId, up.ID); e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to mag.LinkManifestToManifestData")
+		return
+	}
+
+	if e = mag.Database.ManifestDataAddAnnotations(ctx, md.ID, &md.Annotations); e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to add annotations to ManifestData")
 		return
 	}
 	// Remove orhpaned layers

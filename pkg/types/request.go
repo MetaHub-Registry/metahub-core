@@ -92,7 +92,11 @@ func (req *Request) ParsePagination(span trace.Span, r *http.Request) (err error
 		}
 		req.Number = n
 	}
-	req.Last = r.FormValue("last")
+	last := r.FormValue("last")
+	if last == "" {
+		last = r.URL.Query().Get("last")
+	}
+	req.Last = last
 	return nil
 }
 

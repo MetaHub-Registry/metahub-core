@@ -61,6 +61,8 @@ func (n Neo) Setup_ManifestData(ctx context.Context, br *utils.BootstrapResult, 
 	utils.Debug(l, span, "ManifestData '%s#digest' inserted: %s", label, maniData.Digest)
 	br.Add(fmt.Sprintf("manifestdata:%s#id", label), fmt.Sprint(maniData.ID))
 	utils.Debug(l, span, "ManifestData '%s#id' inserted: %d", label, maniData.ID)
+	br.Add(fmt.Sprintf("manifestdata:%s#mediaType", label), maniData.MediaType)
+	utils.Debug(l, span, "ManifestData '%s#mediaType' inserted: %s", label, maniData.MediaType)
 	// Check if manifest with the same label is already in DB
 	key := fmt.Sprintf("manifest:%s#id", label)
 	mID, e := br.GetInt64(key)

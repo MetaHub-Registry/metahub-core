@@ -14,3 +14,4 @@ sonar-scanner \
   -Dsonar.sources=. \
   -Dsonar.host.url=${SONAR_QUBE_URL} \
   -Dsonar.login=${SONAR_QUBE_TOKEN}
+  #-Dsonar.analysis.buildTimestamp=2026-01-28T07:00Z

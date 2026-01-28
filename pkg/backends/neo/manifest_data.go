@@ -586,6 +586,7 @@ func (n Neo) ManifestDataAddAnnotations(ctx context.Context, maniID int64, as *t
 		"maniID":  maniID,
 	})
 	defer span.End()
+	utils.Debug(l, span, "Adding %d annotations to manifestDataID %d", len(as.Data), maniID)
 	for k, a := range as.Data {
 		logrus.Warnf("adding annotation %s=%s", k, a.Value)
 		aID, e := n.AnnotationGetInsert(ctx, a)

@@ -296,7 +296,8 @@ func (mag Magazine) ManifestListGetByHTTPRequest(ctx context.Context, r *http.Re
 //		err = mag.Database.ManifestListInsert(ctx, req, buf)
 //		return
 //	}
-func (mag Magazine) StoreManifestListUpload(ctx context.Context, req types.Request, ml types.ManifestList) (mlId int64, err error) {
+
+func (mag Magazine) StoreManifestListUpload(ctx context.Context, req types.Request, ml *types.ManifestList) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameML,
 		"func":    "StoreManifestListUpload",
@@ -305,44 +306,64 @@ func (mag Magazine) StoreManifestListUpload(ctx context.Context, req types.Reque
 		"digest":  utils.ShortenDigest(req.Digest),
 	})
 	defer span.End()
-	utils.Debug(l, span, "%s", ml.String())
+	utils.Debug(l, span, "%s", ml.ToOCIBytes())
 	// Check if ManifestList already exists
 	existingML, err := mag.Database.ManifestListGetByDigest(ctx, ml.Digest)
 	if err != nil {
-		return 0, utils.ErrorHandler(l, span, err, "while checking existing ManifestList by digest")
+		return utils.ErrorHandler(l, span, err, "while checking existing ManifestList by digest")
 	}
 	if existingML != nil {
 		utils.Info(l, span, "ManifestList with Digest %s already exists, skipping insert", ml.Digest)
-		return existingML.ID, nil
+		ml.ID = existingML.ID
+		return nil
 	}
 	utils.Debug(l, span, "No ManifestList found")
 	// Store ManifestList Blob in Minio
 	mlBlob := ml.ToOCIBytes()
-	mlDigest := digest.FromBytes(mlBlob)
+	mlDigest, err := digest.Parse(ml.Digest)
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, "failed to parse manifestlist digest")
+	}
 	err = mag.Minio.ManifestsPutObj(ctx, mlDigest.String(), mlBlob)
 	if err != nil {
-		return 0, utils.ErrorHandler(l, span, err, "failed ManifestsPutObj")
+		return utils.ErrorHandler(l, span, err, "failed ManifestsPutObj")
 	}
 	// Insert ManifestList in Database
-	mlId, err = mag.Database.InsertManifestList(ctx, mlDigest, ml.MediaType, len(mlBlob))
+	ml.ID, err = mag.Database.InsertManifestList(ctx, mlDigest, ml.MediaType, len(mlBlob))
 	if err != nil {
-		return 0, utils.ErrorHandler(l, span, err, "failed InsertManifestList")
+		return utils.ErrorHandler(l, span, err, "failed InsertManifestList")
+	}
+	utils.Debug(l, span, "Adding %d annotations to ManifestList", len(ml.Annotations))
+	// Add Annotations to ManifestList
+	for key, value := range ml.Annotations {
+		utils.Debug(l, span, " Adding annotation '%s':'%s' to ManifestList", key, value)
+		a := types.NewAnnotation(key, value)
+		err = mag.Database.ManifestListAddAnnotation(ctx, ml.ID, &a)
+		if err != nil {
+			return utils.ErrorHandler(l, span, err, "failed to add annotation to ManifestList")
+		}
+	}
+	if ml.Subject != nil {
+		utils.Debug(l, span, "Has a subject: %s", utils.ShortenDigest(string(ml.Subject.Digest)))
+		if err = mag.Database.LinkSubjectByDigestMediaType(ctx, ml.ID, ml.Subject.Digest.String(), ml.Subject.MediaType); err != nil {
+			return utils.ErrorHandler(l, span, err, "while linking Descriptor to Descriptor")
+		}
 	}
 	// Link ManifestList to ManifestData
 	for _, md := range ml.Manifests {
 		utils.Debug(l, span, " ManifestList contains ManifestData: %s", md.Platform.Arch)
 		utils.Debug(l, span, " Linking ManifestData ID:%d to ManifestList", md.ID)
 		if mdID, found, err := mag.Database.ManifestDataGetByDigest(ctx, md.Digest); err != nil {
-			return mlId, utils.ErrorHandler(l, span, err, "failed ManifestDataGetByDigest")
+			return utils.ErrorHandler(l, span, err, "failed ManifestDataGetByDigest")
 		} else if !found {
-			return mlId, utils.NewError(l, span, "ManifestData not found by digest: %s", md.Digest)
+			return utils.NewError(l, span, "ManifestData not found by digest: %s", md.Digest)
 		} else {
 			md.ID = mdID.ID
 		}
-		err = mag.Database.LinkManifestListToManifestData(ctx, mlId, md.ID)
+		err = mag.Database.LinkManifestListToManifestData(ctx, ml.ID, md.ID)
 		if err != nil {
-			return 0, utils.ErrorHandler(l, span, err, "while linking ManifestList to ManifestData")
+			return utils.ErrorHandler(l, span, err, "while linking ManifestList to ManifestData")
 		}
 	}
-	return mlId, nil
+	return nil
 }

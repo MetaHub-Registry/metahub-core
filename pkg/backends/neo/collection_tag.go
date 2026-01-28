@@ -184,13 +184,16 @@ func (n Neo) CollectionGetTagsListByRepo(ctx context.Context, repo string) (tags
 		return tags, utils.ErrorHandler(l, span, err, types.FailNeoExecute)
 	} else {
 		for _, r := range res {
-			utils.Debug(l, span, "found tag")
 			var ct types.CollectionTag
 			ct, e := CollectionTagFromResult(r)
 			if e != nil {
 				err = utils.ErrorHandler(l, span, e, types.FailCollectionTagFromResult)
 				return tags, err
 			}
+			if ct.Tag == "" {
+				continue
+			}
+			utils.Debug(l, span, "found tag '%s'", ct.Tag)
 			tags.Tags = append(tags.Tags, ct.Tag)
 		}
 	}

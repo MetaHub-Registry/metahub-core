@@ -31,14 +31,14 @@ type ManifestData struct {
 	Data         []byte        `json:"data,omitempty"`
 	MediaType    string        `json:"mediaType"`
 	ArtifactType string        `json:"artifactType,omitempty"`
-	Size         int64         `json:"size"`
-	Platform     Platform      `json:"platform"`
-	Upstream     Upstream      `json:"upstream"`
-	Config       Config        `json:"config"`
-	Layers       []Layer       `json:"layers"`
-	Label        string        `json:"label"`
-	Profile      string        `json:"profile"`
-	Annotations  Annotations   `json:"annotations"`
+	Size         int64         `json:"size,omitempty"`
+	Platform     Platform      `json:"platform,omitempty"`
+	Upstream     Upstream      `json:"upstream,omitempty"`
+	Config       Config        `json:"config,omitempty"`
+	Layers       []Layer       `json:"layers,omitempty"`
+	Label        string        `json:"label,omitempty"`
+	Profile      string        `json:"profile,omitempty"`
+	Annotations  Annotations   `json:"annotations,omitempty"`
 	Subject      *ManifestData `json:"subject,omitempty"`
 }
 
@@ -84,7 +84,23 @@ func ManifestDataFromOciDescriptor(md v1.Descriptor) (m ManifestData) {
 		}
 	}
 	return
+}
 
+func (md ManifestData) ToOCIDescriptor() (mdes imgspecv1.Descriptor) {
+	mdes = imgspecv1.Descriptor{
+		Digest:      digest.Digest(md.Digest),
+		MediaType:   md.MediaType,
+		Size:        md.Size,
+		Annotations: md.Annotations.ToMap(),
+	}
+	if md.Platform.Arch != "" || md.Platform.OS != "" || md.Platform.Variant != "" {
+		mdes.Platform = &imgspecv1.Platform{
+			Architecture: md.Platform.Arch,
+			OS:           md.Platform.OS,
+			Variant:      md.Platform.Variant,
+		}
+	}
+	return mdes
 }
 
 func (m ManifestData) ToManifestDescriptor() (md ManifestDescriptor) {
