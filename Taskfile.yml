@@ -6,7 +6,7 @@ tasks:
     vars:
       GCMD: '{{index .MATCH 0}}' 
     cmds:
-      - git commit -{{.GCMD}} "{{.CLI_ARGS}}"
+      - git commit -{{.GCMD}} {{.CLI_ARGS}}
       - git push
   rmCnt:
     cmds:

@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
+	"unicode"
 
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"golang.org/x/crypto/bcrypt"
@@ -183,4 +185,34 @@ func UpLabelKey(key string) string {
 	res := strings.ToUpper(key)
 	res = strings.ReplaceAll(res, ".", "_")
 	return res
+}
+
+func isAllUpper(s string) bool {
+	hasLetter := false
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			hasLetter = true
+			if !unicode.IsUpper(r) {
+				return false
+			}
+		}
+	}
+	return hasLetter
+}
+
+func SortTags(in []string) []string {
+	out := append([]string(nil), in...) // copy; don't mutate caller
+
+	sort.Slice(out, func(i, j int) bool {
+		li := strings.ToLower(out[i])
+		lj := strings.ToLower(out[j])
+
+		if li != lj {
+			return li < lj
+		}
+		// tie-breaker: keep deterministic; ASCII puts upper before lower
+		return out[i] < out[j]
+	})
+
+	return out
 }

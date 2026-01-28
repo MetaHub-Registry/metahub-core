@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/sirupsen/logrus"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
 type TagResponse struct {
@@ -24,4 +25,9 @@ func (t TagResponse) WriteWWW(w http.ResponseWriter) {
 
 func (t TagResponse) ToBytes() (data []byte, err error) {
 	return json.Marshal(t)
+}
+
+func (t *TagResponse) Sort() (err error) {
+	t.Tags = utils.SortTags(t.Tags)
+	return nil
 }

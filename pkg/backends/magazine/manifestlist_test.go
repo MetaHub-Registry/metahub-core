@@ -96,6 +96,24 @@ func TestManifestlistCompute(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.True(t, found)
+	reqUp := types.Request{
+		Repo: "qnib/featuretest",
+		Tag:  "tag",
+	}
+	ml := types.FTOCIManifestlist()
+	if err := mag.StoreManifestListUpload(ctx, reqUp, &ml); err != nil {
+		t.Fatal(err)
+	}
+	if err := mag.StoreManifestListUpload(ctx, reqUp, &ml); err != nil {
+		t.Fatal(err)
+	}
+	// if ml, found, err := mag.Database.ManifestListGetByRequest(ctx, reqUp); err != nil {
+	// 	t.Fatal(err)
+	// } else if !found {
+	// 	t.Fatal("ManifestList not found")
+	// } else {
+	// 	assert.Equal(t, 2, len(ml.Manifests))
+	// }
 }
 
 // func TestManifestlistComputeWithManipulation(t *testing.T) {
