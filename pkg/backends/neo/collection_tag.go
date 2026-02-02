@@ -100,15 +100,18 @@ func (n Neo) CollectionTagGetCreate(ctx context.Context, tag string) (ct types.C
 }
 
 func (n Neo) LinkCollectionTagToManifest(ctx context.Context, colTagID, maniID int64) (err error) {
-	_, span := tracer.Start(ctx, "LinkCollectionTagToManifest")
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":  pkgNameColTag,
+		"func":     "LinkCollectionTagToManifest",
+		"colTagID": colTagID,
+		"maniID":   maniID,
+	})
+	_ = ctx
 	defer span.End()
-	span.SetAttributes(
-		attribute.Key("colTagID").Int64(colTagID),
-		attribute.Key("maniID").Int64(maniID),
-	)
 	q := `MATCH (t:Tag), (m:Manifest) WHERE id(t) = %d AND id(m) = %d`
 	q += ` MERGE (t)-[:UPSTREAM]->(m)`
 	query := fmt.Sprintf(q, colTagID, maniID)
+	utils.Debug(l, span, query)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	_, err = session.Run(query, map[string]interface{}{})
@@ -120,9 +123,18 @@ func (n Neo) LinkCollectionTagToManifest(ctx context.Context, colTagID, maniID i
 }
 
 func (n Neo) LinkCollectionTagToManifestRemove(ctx context.Context, colTagID, maniID int64) (found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":  pkgNameColTag,
+		"func":     "LinkCollectionTagToManifestRemove",
+		"colTagID": colTagID,
+		"maniID":   maniID,
+	})
+	_ = ctx
+	defer span.End()
 	q := `MATCH (t:Tag)-[u:UPSTREAM]->(m:Manifest) WHERE id(t) = %d AND id(m) = %d`
 	q += ` DELETE u`
 	query := fmt.Sprintf(q, colTagID, maniID)
+	utils.Debug(l, span, query)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	_, err = session.Run(query, map[string]interface{}{})

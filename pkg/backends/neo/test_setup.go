@@ -433,11 +433,11 @@ func (n Neo) Setup_Collection_FT_amd64(ctx context.Context, br *utils.BootstrapR
 		if err != nil {
 			return err
 		}
-		err = n.LinkCollectionToManifest(ctx, maniID, colID)
+		err = n.LinkCollectionToManifest(ctx, colID, maniID)
 		if err != nil {
 			return err
 		}
-		err = n.LinkCollectionTagToManifest(ctx, maniID, colTagID)
+		err = n.LinkCollectionTagToManifest(ctx, colTagID, maniID)
 		if err != nil {
 			return err
 		}
@@ -465,11 +465,11 @@ func (n Neo) Setup_Collection_FT_arm64(ctx context.Context, br *utils.BootstrapR
 		if err != nil {
 			return err
 		}
-		err = n.LinkCollectionToManifest(ctx, maniID, colID)
+		err = n.LinkCollectionToManifest(ctx, colID, maniID)
 		if err != nil {
 			return err
 		}
-		err = n.LinkCollectionTagToManifest(ctx, maniID, colTagID)
+		err = n.LinkCollectionTagToManifest(ctx, colTagID, maniID)
 		if err != nil {
 			return err
 		}
@@ -817,6 +817,11 @@ func (n Neo) BootstrapTestWithBR(ctx context.Context, b string, bs utils.Bootstr
 		return
 	case "manifest":
 		if err = n.Bootstrap_Manifest(ctx, bs, br, rest); err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
+		return
+	case "scenario":
+		if err = n.Bootstrap_Scenario(ctx, bs, br, rest); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 		return

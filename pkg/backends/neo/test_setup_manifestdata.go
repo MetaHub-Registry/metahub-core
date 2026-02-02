@@ -73,7 +73,7 @@ func (n Neo) Setup_ManifestData(ctx context.Context, br *utils.BootstrapResult, 
 		// Link ManifestData to Manifest
 		e := n.LinkManifestToManifestData(ctx, mID, maniData.ID, maniData.Type)
 		if e != nil {
-			return utils.ErrorHandler(l, span, e, "LinkManifestToManifestData failed - even though we found a manifest (%d). :/", mID)
+			utils.Warn(l, span, "LinkManifestToManifestData failed - even though we found a manifest (%d). :/", mID)
 		}
 	}
 	// Link from ManifestData to Upstream

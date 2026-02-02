@@ -374,7 +374,6 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 		err = errors.Wrap(err, "failed to Upstream.GetCreateByRequest")
 		return
 	}
-	m.Upstream = up
 	md.Upstream = up
 	err = mag.Database.ManifestLinkToUpstream(ctx, md.ID, up.ID)
 	if err != nil {

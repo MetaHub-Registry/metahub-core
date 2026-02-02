@@ -395,22 +395,20 @@ func (n Neo) LinkManifestToManifestData(ctx context.Context, maniID, maniDataID 
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "while getting manifest linked manifestdata")
 	}
-	if len(mds.List()) > 0 {
-		if mds.Has(maniDataID) {
-			utils.Debug(l, span, "Manifest ID '%d' is already linked to ManifestData ID '%d'", maniID, maniDataID)
-			return nil
-		} else {
-			for _, mid := range mds.List() {
-				q := fmt.Sprintf(`MATCH (m:Manifest)-[r]->(md:ManifestData) WHERE id(m) = %d AND id(md) = %d DELETE r`, maniID, mid)
-				_, e := n.Execute(q)
-				if e != nil {
-					return utils.ErrorHandler(l, span, e, "while unlinking existing manifestdata")
-				}
-				utils.Debug(l, span, "Unlinked existing ManifestData ID '%d' from Manifest ID '%d'", mid, maniID)
+	if mds.Has(maniDataID) {
+		utils.Debug(l, span, "Manifest ID '%d' is already linked to ManifestData ID '%d'", maniID, maniDataID)
+		return nil
+	} else {
+		for _, mid := range mds.List() {
+			q := fmt.Sprintf(`MATCH (m:Manifest)-[r]->(md:ManifestData) WHERE id(m) = %d AND id(md) = %d DELETE r`, maniID, mid)
+			_, e := n.Execute(q)
+			if e != nil {
+				return utils.ErrorHandler(l, span, e, "while unlinking existing manifestdata")
 			}
+			utils.Debug(l, span, "Unlinked existing ManifestData ID '%d' from Manifest ID '%d'", mid, maniID)
 		}
 	}
-	q := `MATCH (m:Manifest), (md:ManifestData) WHERE id(m) = %d AND id(md) = %d`
+	q := fmt.Sprintf(`MATCH (m:Manifest), (md:ManifestData) WHERE id(m) = %d AND id(md) = %d`, maniID, maniDataID)
 	rel := "PARSED"
 	if len(props) > 1 {
 		return utils.NewError(l, span, "relationship type has %d entries, should be at max 1", len(props))
@@ -420,8 +418,7 @@ func (n Neo) LinkManifestToManifestData(ctx context.Context, maniID, maniDataID 
 	}
 	q += fmt.Sprintf(` MERGE (m)-[:%s]->(md)`, rel)
 	utils.Debug(l, span, q)
-	query := fmt.Sprintf(q, maniID, maniDataID)
-	if _, e := n.Execute(query); e != nil {
+	if _, e := n.Execute(q); e != nil {
 		return utils.ErrorHandler(l, span, e, FailNeoExecute)
 	}
 	return

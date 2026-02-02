@@ -15,7 +15,9 @@ import (
 
 func ErrorHandler(l *logrus.Entry, span trace.Span, e error, frmt string, a ...any) (err error) {
 	msg := fmt.Sprintf(frmt, a...)
-	err = errors.Wrap(e, msg)
+	if frmt != "" {
+		err = errors.Wrap(e, msg)
+	}
 	if l != nil {
 		l.Error(err.Error())
 	}

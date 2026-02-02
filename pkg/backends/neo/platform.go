@@ -64,24 +64,32 @@ func (n Neo) PlatformGetByManifestDataID(ctx context.Context, maniDataID int64) 
 }
 
 func (n Neo) GetPlatform(ctx context.Context, plat types.Platform) (platID int64, success bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":  pkgNamePlatform,
+		"func":     "GetPlatform",
+		"platform": fmt.Sprintf("%s/%s/%s", plat.OS, plat.Arch, plat.Variant),
+	})
+	defer span.End()
 	q := `MATCH (n:Platform) WHERE n.arch = "%s" AND n.os = "%s" AND n.variant = "%s" RETURN id(n) AS ID`
 	query := fmt.Sprintf(q, plat.Arch, plat.OS, plat.Variant)
+	utils.Debug(l, span, query)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	result, err := session.Run(query, map[string]interface{}{})
 	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
+		utils.ErrorHandler(l, span, err, "Failed to run query")
 		return
 	}
 	if result.Next() {
 		v, ok := result.Record().Get("ID")
 		if !ok {
-			err = fmt.Errorf("GetPlatform: failed to get ID")
+			err = utils.NewError(l, span, "GetPlatform: failed to get ID")
 			return
 		}
 		platID = v.(int64)
 		success = true
 	}
+	utils.Debug(l, span, "GetPlatform found '%d': %v", platID, success)
 	return
 }
 

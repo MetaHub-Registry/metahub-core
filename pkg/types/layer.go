@@ -25,20 +25,23 @@ const (
 )
 
 type Layer struct {
-	ID        int64  `json:"id"`
-	NeoID     int64  `json:"neo_id"`
-	SqlID     int64  `json:"sql_id"`
-	Data      []byte `json:"-"`
-	Digest    string `json:"digest"`
-	MediaType string `json:"mediaType"`
-	Size      int64  `json:"size"`
+	ID          int64             `json:"id"`
+	NeoID       int64             `json:"neo_id"`
+	SqlID       int64             `json:"sql_id"`
+	Data        []byte            `json:"-"`
+	Digest      string            `json:"digest"`
+	MediaType   string            `json:"mediaType"`
+	Size        int64             `json:"size"`
+	Annotations map[string]string `json:"annotations,omitempty"`
+	Platform    *Platform         `json:"platform,omitempty"`
 }
 
 func (l Layer) ToDescriptor() distribution.Descriptor {
 	return distribution.Descriptor{
-		Digest:    digest.Digest(l.Digest),
-		MediaType: l.MediaType,
-		Size:      l.Size,
+		Digest:      digest.Digest(l.Digest),
+		MediaType:   l.MediaType,
+		Size:        l.Size,
+		Annotations: l.Annotations,
 	}
 }
 
@@ -77,18 +80,17 @@ func NewLayerFromBytes(data []byte) (res Layer, err error) {
 }
 
 func LayerFromDesc(ctx context.Context, lyrDesc distribution.Descriptor) (lyr Layer, err error) {
-	_, span := tracer.Start(ctx, "LayerFromDesc")
-	defer span.End()
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameLayer,
 		"func":    "LayerFromDesc",
 		"digest":  lyrDesc.Digest.String(),
 	})
-	// TODO: Add annotations
-	_ = l
+	defer span.End()
 	lyr.Digest = lyrDesc.Digest.String()
 	lyr.MediaType = lyrDesc.MediaType
 	lyr.Size = lyrDesc.Size
+	lyr.Annotations = lyrDesc.Annotations
+	utils.Debug(l, span, "Layer has %d annotations", len(lyr.Annotations))
 	return
 }
 

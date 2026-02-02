@@ -19,6 +19,7 @@ const (
 	FailUpstreamGet        = `failed to get upstream by oject (reg/repo/tag)`
 	FailUpstreamCreate     = `failed to create upstream`
 	FailUpstreamNotFound   = `upstream not found`
+	FailFoundUpstream      = "found upstream w/ ID %d"
 )
 
 func (n Neo) UpstreamGetInsert(ctx context.Context, up *types.Upstream) (found bool, err error) {
@@ -148,7 +149,35 @@ func (n Neo) UpstreamGetIDByManifestID(ctx context.Context, maniID int64) (upID 
 		if upID, e = res.GetInt64("ID"); e != nil {
 			return upID, false, utils.ErrorHandler(l, span, e, types.FailBrGet, "ID")
 		} else {
-			utils.Debug(l, span, "found upstream w/ ID %d", upID)
+			utils.Debug(l, span, FailFoundUpstream, upID)
+
+			return upID, true, nil
+		}
+	}
+}
+
+func (n Neo) UpstreamGetIDByManifestDataID(ctx context.Context, maniDataID int64) (upID int64, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":    pkgNameUp,
+		"func":       "UpstreamGetIDByManifestDataID",
+		"maniDataID": maniDataID,
+	})
+	_ = ctx
+	defer span.End()
+	q := fmt.Sprintf(`MATCH (md:ManifestData)-[]->(up:Upstream) WHERE id(md) = %d`, maniDataID)
+	q += ` RETURN id(up) AS ID`
+	utils.Debug(l, span, q)
+	if res, found, e := n.QueryOne(q); e != nil {
+		return upID, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	} else {
+		if !found {
+			utils.Debug(l, span, "did not found upstream connected to maniDataID %d", maniDataID)
+			return upID, false, nil
+		}
+		if upID, e = res.GetInt64("ID"); e != nil {
+			return upID, false, utils.ErrorHandler(l, span, e, types.FailBrGet, "ID")
+		} else {
+			utils.Debug(l, span, FailFoundUpstream, upID)
 
 			return upID, true, nil
 		}
@@ -176,7 +205,7 @@ func (n Neo) UpstreamGetIDByDigest(ctx context.Context, dig string) (upID int64,
 		if upID, e = res.GetInt64("ID"); e != nil {
 			return upID, false, utils.ErrorHandler(l, span, e, types.FailBrGet, "ID")
 		} else {
-			utils.Debug(l, span, "found upstream w/ ID %d", upID)
+			utils.Debug(l, span, FailFoundUpstream, upID)
 
 			return upID, true, nil
 		}
@@ -292,7 +321,7 @@ func (n Neo) UpstreamGet(ctx context.Context, up types.Upstream) (upID int64, su
 			return upID, false, utils.ErrorHandler(l, span, e, types.FailBrGet, "ID")
 		}
 	}
-	utils.Debug(l, span, "found upstream w/ ID %d", upID)
+	utils.Debug(l, span, FailFoundUpstream, upID)
 	return upID, true, nil
 }
 

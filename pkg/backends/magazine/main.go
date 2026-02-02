@@ -87,7 +87,7 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 	cfg.CORS = cors
 	cfg.AuthURL = au
 	cfg.RedirectDoc = fr
-	if e := initOauth(cmd, &cfg); e != nil {
+	if e := initOauth(&cfg); e != nil {
 		err = errors.Wrapf(e, "failed to init oauth")
 		logrus.Fatal(err)
 	}
@@ -129,6 +129,11 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 }
 
 func (mag Magazine) setupBootStrap(ctx context.Context, bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "setupBootStrap",
+	})
+	_ = l
+	defer span.End()
 	switch b {
 	// Users/Profile/Platforms
 	case "users":
@@ -205,7 +210,7 @@ func parseFlags(cmd *cobra.Command, regList []string) (cfg MagConfig) {
 	}
 }
 
-func initOauth(cmd *cobra.Command, cfg *MagConfig) (err error) {
+func initOauth(cfg *MagConfig) (err error) {
 	cfg.OAuth = OAuthCfg{
 		Enabled: false,
 	}

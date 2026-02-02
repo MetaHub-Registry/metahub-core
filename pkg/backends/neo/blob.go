@@ -19,7 +19,12 @@ const (
 )
 
 func (n Neo) CreateBlobFromChunk(ctx context.Context, bu *types.OCIBlobUpload, chunk types.BlobChunk) (err error) {
-	_, span := tracer.Start(ctx, "CreateBlobFromChunk")
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameBlob,
+		"func":    "CreateBlobFromChunk",
+		"repo":    bu.Repo,
+		"digest":  utils.ShortenDigest(bu.Digest),
+	})
 	defer span.End()
 	// Create Blob node with same digest as chunk
 	dig := chunk.Digest
@@ -28,9 +33,7 @@ func (n Neo) CreateBlobFromChunk(ctx context.Context, bu *types.OCIBlobUpload, c
 	}
 	q := fmt.Sprintf(`CREATE (b:Blob {digest: "%s", label: "%s", created_at: TIMESTAMP(), size: %d})`, dig, utils.ShortenDigest(dig), chunk.Bytes)
 	q = q + ` RETURN ID(b) AS blobID`
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("query", q),
-	))
+	utils.Debug(l, span, q)
 	res, err := n.Execute(q)
 	if err != nil {
 		span.RecordError(err)
@@ -53,7 +56,7 @@ func (n Neo) CreateBlobFromChunk(ctx context.Context, bu *types.OCIBlobUpload, c
 		span.RecordError(err)
 		return
 	}
-	return
+	return nil
 }
 
 func (n Neo) BlobExists(ctx context.Context, up upstream.UpstreamTriple) (found bool, err error) {

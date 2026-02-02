@@ -293,16 +293,10 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 		err = utils.ErrorHandler(l, span, e, "failed to LinkCollectionTagToManifest")
 		return
 	}
-	// HERE WE GO split Artifact from Container Image
-
 	lyrs := []types.Layer{}
 	for idx, lyrDesc := range ociMani.Layers {
 		utils.Debug(l, span, "Layer %d: %s", idx, utils.ShortenDigest(lyrDesc.Digest.String()))
-		lyrs = append(lyrs, types.Layer{
-			Digest:    lyrDesc.Digest.String(),
-			MediaType: lyrDesc.MediaType,
-			Size:      lyrDesc.Size,
-		})
+
 		lyr, e := types.LayerFromDesc(ctx, lyrDesc)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to create Layer from distribution.Descriptor")
@@ -313,6 +307,7 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 			err = utils.ErrorHandler(l, span, e, "failed to insert layer")
 			return
 		}
+		lyrs = append(lyrs, lyr)
 	}
 	prf, found, e := mag.Database.ProfileGetByLabel(ctx, req.Profile)
 	if e != nil {
@@ -349,13 +344,14 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 		annos.AddNewAnnotation(k, v)
 	}
 	md = types.ManifestData{
-		Digest:      dig.String(),
-		MediaType:   ociMani.MediaType,
-		Data:        buf,
-		Size:        int64(len(buf)),
-		Layers:      lyrs,
-		Upstream:    up,
-		Annotations: annos,
+		Digest:       dig.String(),
+		MediaType:    ociMani.MediaType,
+		ArtifactType: ociMani.ArtifactType,
+		Data:         buf,
+		Size:         int64(len(buf)),
+		Layers:       lyrs,
+		Upstream:     up,
+		Annotations:  annos,
 	}
 	e = mag.Database.ManifestDataGetInsert(ctx, &md)
 	if e != nil {

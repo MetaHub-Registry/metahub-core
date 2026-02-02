@@ -116,8 +116,6 @@ func (mag Magazine) ComputeManifestlists(ctx context.Context) (err error) {
 		err = utils.ErrorHandler(l, span, err, "while evaluating all rules")
 		return
 	}
-	/// TODO: We need
-	/// 1. Generate ExprRes? (a rule<>mdID mapping)
 	rls, err := mag.Database.RulesGetAll(ctx)
 	if err != nil {
 		err = utils.ErrorHandler(l, span, err, "failed to get rules")

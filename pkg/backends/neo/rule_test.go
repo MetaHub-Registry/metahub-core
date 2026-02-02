@@ -186,8 +186,72 @@ func TestRuleEvalAnnotationRuleNoop(t *testing.T) {
 	assert.Equal(t, r, gotR)
 }
 
+func TestRuleEvalAllNew(t *testing.T) {
+	ctx := context.Background()
+	debug := 60
+	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("scenario:manifest_ft_amd64")
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := SetupTest(ctx, bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs, br)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	// Actual Test
+	rlId, err := br.GetInt64("rule:cpu:noop#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rl, found, err := db.RuleGetByID(ctx, rlId)
+	if err != nil {
+		t.Fatal(err)
+	} else if !found {
+		t.Fatal("Rule not found")
+	}
+	if e := db.RuleEvalAnnotationRule(ctx, rl); e != nil {
+		t.Fatal(e)
+	}
+	//
+	prfID, err := br.GetInt64("profile:cpu:generic#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prf, found, err := db.ProfileGetByID(ctx, prfID)
+	if err != nil {
+		t.Fatal(err)
+	} else if !found {
+		t.Fatal("Profile not found")
+	}
+	maniDataID, err := br.GetInt64("manifestdata:ft_amd64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	md, found, err := db.ManifestDataGetByID(ctx, maniDataID)
+	if err != nil {
+		t.Fatal(err)
+	} else if !found {
+		t.Fatal("ManifestData not found")
+	}
+	if ok, err := db.ManifestDataMatchesProfile(ctx, md, prf); err != nil {
+		t.Fatal(err)
+	} else if !ok {
+		t.Fatal("ManifestData does not match Profile but should")
+	}
+
+}
+
 func TestRuleEvalAll(t *testing.T) {
 	ctx := context.Background()
+	debug := 0
 	bs := utils.NewBootstrap()
 	bs.SetEmptyAll()
 	bs.SetYAMLPrefix("../../../misc/yaml")
@@ -195,13 +259,19 @@ func TestRuleEvalAll(t *testing.T) {
 	bs.AddBootstrap("annotation:foo:bar")
 	bs.AddBootstrap("rules:rules/foo/bar.yaml")
 	bs.AddBootstrap("rules:rules/platform/os/linux.yaml")
-	//bs.PostTestSleep = 120
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
 	br, err := SetupTest(ctx, bs)
-	_ = br
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.TeardownTest(bs, br)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
 	// Actual Test
 	err = db.RuleEvalAll(ctx)
 	if err != nil {

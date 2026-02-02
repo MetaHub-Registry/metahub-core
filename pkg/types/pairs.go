@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/minio/minio-go/v7/pkg/set"
 	"github.com/pkg/errors"
@@ -58,5 +59,5 @@ func (pmdps *CollectionTagProfilePair) AddManifest(md ManifestData) error {
 }
 
 func (ctpp CollectionTagProfilePair) String() string {
-	return fmt.Sprintf("[%d]%s:%s[%d] [%s:%s]", ctpp.Collection.ID, ctpp.Collection.Repo, ctpp.Tag.Tag, ctpp.Tag.ID, ctpp.Profile.Name, ctpp.Profile.Tag)
+	return fmt.Sprintf("[%d]%s:%s[%d] [%s:%s] (manifests:'%s')", ctpp.Collection.ID, ctpp.Collection.Repo, ctpp.Tag.Tag, ctpp.Tag.ID, ctpp.Profile.Name, ctpp.Profile.Tag, strings.Join(ctpp.ManifestIDs.ToSlice(), "', '"))
 }

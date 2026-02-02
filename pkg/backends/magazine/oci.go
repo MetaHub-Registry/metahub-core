@@ -214,10 +214,9 @@ func (mag Magazine) CreateOCIv1ParsedManifest(ctx context.Context, mani types.Ma
 		"prfID":   prfID,
 	})
 	defer span.End()
-	// TODO: Is the manifest in question uploaded or parsed?
 	// -> If not parsed - skip!
 	if origMani.Type != "PARSED" && origMani.Type != "ORIGINAL" {
-		utils.Warn(l, span, "Manifest.ID: %d is not parsed (%s), skipping", mani.ID, origMani.Type)
+		utils.Warn(l, span, "Manifest.ID: %d is not parsed NOR original (%s), skipping", mani.ID, origMani.Type)
 		return
 	}
 
@@ -427,15 +426,33 @@ func (mag Magazine) OCIApplyManipulations(ctx context.Context, mani types.Manife
 // TODO: When no manipulation are applied, no update is needed
 func (mag Magazine) OCICreateBaseManifest(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prfID int64) (ociManiDataID int64, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": pkgNameOci,
-		"func":    "OCICreateBaseManifest",
-		"mani.ID": mani.ID,
-		"prfID":   prfID,
+		"package":     pkgNameOci,
+		"func":        "OCICreateBaseManifest",
+		"mani.ID":     mani.ID,
+		"origMani.ID": origMani.ID,
+		"prfID":       prfID,
 	})
 	defer span.End()
 	digStr := fmt.Sprintf("%s#%s-%d", origMani.Upstream.GetLabel(), origMani.Digest, prfID)
 	tempDigest := digest.FromString(digStr)
+	utils.Debug(l, span, "Original Manifest Config Digest: %s", origMani.Config.Digest)
 	// Empty Manifest
+	plat := &v1.Platform{}
+	if origCfg, found, err := mag.Database.ConfigGetByManiDataID(ctx, origMani.ID); err != nil {
+		return 0, utils.ErrorHandler(l, span, err, "failed to get original config for manifestdata id %d", origMani.ID)
+	} else if !found {
+		return 0, utils.NewError(l, span, "failed to find original config for manifestdata id %d", origMani.ID)
+	} else {
+		cfg, err := mag.Minio.GetConfig(ctx, origCfg.Digest)
+		if err != nil {
+			return 0, utils.ErrorHandler(l, span, err, "failed to get original config from minio for digest %s", origCfg.Digest)
+		}
+		utils.Debug(l, span, "Original Manifest Config ID: %d > %s/%s/%s", origCfg.ID, cfg.OS, cfg.Architecture, cfg.Variant)
+		plat.Architecture = cfg.Architecture
+		plat.OS = cfg.OS
+		plat.Variant = cfg.Variant
+	}
+
 	m := v1.Manifest{
 		Versioned: specs.Versioned{
 			SchemaVersion: 2,
@@ -443,6 +460,7 @@ func (mag Magazine) OCICreateBaseManifest(ctx context.Context, mani types.Manife
 		Config: v1.Descriptor{
 			MediaType: v1.MediaTypeImageConfig,
 			Digest:    tempDigest,
+			Platform:  plat,
 		},
 		MediaType: v1.MediaTypeImageManifest,
 	}
@@ -507,12 +525,14 @@ func (mag Magazine) OCICreateBaseManifest(ctx context.Context, mani types.Manife
 		a := types.NewAnnotation(k, v)
 		err = mag.Database.ConfigAddLabel(ctx, cfg.ID, a)
 		if err != nil {
+			err = utils.ErrorHandler(l, span, err, "while in ConfigAddLabel")
 			return
 		}
 	}
 	// Generate Layers: Create OCI layer media-types:  application/vnd.oci.image.layer.v1.tar[+gzip]
 	layerMap, err := mag.LayersCreateOCIv1LayerDescriptors(ctx, origMani.Layers)
 	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to CreateOCIv1LayerDescriptors")
 		return
 	}
 	for _, l := range layerMap {
@@ -526,13 +546,18 @@ func (mag Magazine) OCICreateBaseManifest(ctx context.Context, mani types.Manife
 	// Put Manifest into Graph and Minio
 	maniBytes, err := json.Marshal(m)
 	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to marshal manifest")
 		return
 	}
 	maniDesc, err = ManifestV1ToDescriptor(m)
 	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to create manifest descriptor")
 		return
 	}
-	mag.Minio.ManifestsPutObj(ctx, maniDesc.Digest.String(), maniBytes)
+	if e := mag.Minio.ManifestsPutObj(ctx, maniDesc.Digest.String(), maniBytes); e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to Put Manifest object to Minio")
+		return
+	}
 	// Graph
 	err = mag.Database.ManifestDataUpdateDesc(ctx, ociManiDataID, maniDesc)
 	if err != nil {
@@ -541,21 +566,24 @@ func (mag Magazine) OCICreateBaseManifest(ctx context.Context, mani types.Manife
 	// Link ManifestData to Annotations
 	err = mag.Database.ManifestDataAddAnnotations(ctx, ociManiDataID, &mani.Annotations)
 	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to add ManifestData annotations")
 		return
 	}
 	// //// Link ManifestData to Config
 	err = mag.Database.ManifestDataLinkToOCIv1Config(ctx, ociManiDataID, cfg)
 	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to link ManifestData to OCIv1 Config")
 		return
 	}
 	// //// Link ManifestData to Layers
 	for _, ld := range layerMap {
 		err = mag.Database.ManifestDataLinkToOCIv1Layer(ctx, ociManiDataID, ld)
 		if err != nil {
-			l.Error(err)
+			err = utils.ErrorHandler(l, span, err, "failed to link ManifestData to OCIv1 Layer")
 			return
 		}
 	}
+	utils.Info(l, span, "Created OCIv1 ManifestData.ID: %d for Manifest.ID: %d", ociManiDataID, mani.ID)
 	return
 }
 
@@ -682,6 +710,7 @@ func ManifestV1ToDescriptor(m v1.Manifest) (dscr v1.Descriptor, err error) {
 		Size:        int64(len(b)),
 		Digest:      digest.FromBytes(b),
 		Annotations: m.Annotations,
+		Platform:    m.Config.Platform,
 	}
 	return
 }

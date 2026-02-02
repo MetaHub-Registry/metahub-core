@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
@@ -131,16 +130,25 @@ func (mag Magazine) BlobExists(ctx context.Context, up upstream.UpstreamTriple) 
 }
 
 func (mag Magazine) ComposeFromChunks(ctx context.Context, bu *types.OCIBlobUpload, chunks []types.BlobChunk) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "magazine/blob.go",
+		"func":    "ComposeFromChunks",
+	})
+	defer span.End()
 	switch len(chunks) {
 	case 0:
 		return fmt.Errorf("why did we upload a blob with no chunks?")
 	case 1:
-		logrus.Infof("single chunk upload, finalizing")
-		mag.Database.CreateBlobFromChunk(ctx, bu, chunks[0])
+		utils.Debug(l, span, "single chunk upload, finalizing")
+		chunk := chunks[0]
+		e := mag.Database.CreateBlobFromChunk(ctx, bu, chunk)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, "failed to create blob from chunk")
+		}
 	default:
 		// multiple chunks uploaded, need to assemble
 		for _, c := range chunks {
-			logrus.Infof("chunk: ID:%d Start:%d Bytes:%d > %s", c.ID, c.StartByte, c.Bytes, utils.ShortenDigest(c.Digest))
+			utils.NewError(l, span, "chunk: ID:%d Start:%d Bytes:%d > %s", c.ID, c.StartByte, c.Bytes, utils.ShortenDigest(c.Digest))
 		}
 
 	}

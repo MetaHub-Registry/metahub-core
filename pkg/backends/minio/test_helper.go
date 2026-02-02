@@ -155,16 +155,57 @@ func NewBucketConfig(bucket, url, console string) BucketConfig {
 	return bc
 }
 
+func (m Minio) Bootstrap_Scenario(ctx context.Context, bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "Bootstrap_Scenario",
+		"boot": b,
+	})
+	_ = l
+	defer span.End()
+	switch {
+	case strings.HasPrefix(b, "manifest_"):
+		// Config
+		_, b, _ = strings.Cut(b, "manifest_")
+		var md types.DataTuple
+		switch b {
+		case "ft_arm64":
+			if e := m.Setup_Config_FT_arm64(br); e != nil {
+				return errors.Wrapf(e, whileFmrt, `config:`+b)
+			}
+			md = types.ManifestDataDTFeaturetestArm64()
+		case "ft_amd64":
+			if e := m.Setup_Config_FT_amd64(br); e != nil {
+				return errors.Wrapf(e, whileFmrt, `config:`+b)
+			}
+			md = types.ManifestDataAmd64Byte()
+		}
+		// ManifestData
+		err = m.ManifestsPutObj(ctx, md.Digest.String(), md.Data)
+		if err != nil {
+			err = errors.Wrapf(err, whileFmrt, `manifestData:`+b)
+			return
+		}
+		// Layers
+		if e := m.BootstrapLayer(ctx, bs, br, `0:`+b); e != nil {
+			return errors.Wrapf(e, whileFmrt, `layer:0`+b)
+		}
+		if e := m.BootstrapLayer(ctx, bs, br, `1:`+b); e != nil {
+			return errors.Wrapf(e, whileFmrt, `layer:1`+b)
+		}
+	}
+	return nil
+}
+
 func Setup_Config(min *Minio, br *utils.BootstrapResult, dt types.DataTuple) (err error) {
 	ctx := context.Background()
 	return min.BlobPutObj(ctx, dt.Digest.String(), dt.Data)
 }
-func Setup_Config_FT_arm64(min *Minio, br *utils.BootstrapResult) (err error) {
+
+func (m Minio) Setup_Config_FT_arm64(br *utils.BootstrapResult) (err error) {
 	ctx := context.Background()
 	cfgByte := types.ConfigByteFtArm64()
 	cfgDig := digest.FromBytes(cfgByte)
-	logrus.Infof("Setup_Config_FT_arm64: %s", cfgDig.String())
-	err = min.BlobPutObj(ctx, cfgDig.String(), cfgByte)
+	err = m.BlobPutObj(ctx, cfgDig.String(), cfgByte)
 	return
 }
 
@@ -190,6 +231,14 @@ func Setup_Config_FT_amd64_b109(min *Minio, br *utils.BootstrapResult) (err erro
 	cfgByte := types.FTamd64b109ConfigByte()
 	cfgDig := digest.FromBytes(cfgByte)
 	err = min.BlobPutObj(ctx, cfgDig.String(), cfgByte)
+	return
+}
+
+func (m Minio) Setup_Config_FT_amd64(br *utils.BootstrapResult) (err error) {
+	ctx := context.Background()
+	cfgByte := types.FTamd64ConfigByte()
+	cfgDig := digest.FromBytes(cfgByte)
+	err = m.BlobPutObj(ctx, cfgDig.String(), cfgByte)
 	return
 }
 
@@ -287,6 +336,12 @@ func (m Minio) BootstrapLayer(ctx context.Context, bs utils.Bootstrap, br *utils
 }
 
 func (m Minio) BootstrapTestWithBR(ctx context.Context, bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "BootstrapTestWithBR",
+		"boot": b,
+	})
+	_ = l
+	defer span.End()
 	bsType, bsName, found := strings.Cut(b, ":")
 	if !found {
 		return errors.Errorf("invalid bootstrap %s", b)
@@ -296,7 +351,10 @@ func (m Minio) BootstrapTestWithBR(ctx context.Context, bs utils.Bootstrap, br *
 		if err = m.BootstrapLayer(ctx, bs, br, bsName); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
-
+	case "scenario":
+		if err = m.Bootstrap_Scenario(ctx, bs, br, bsName); err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
 	default:
 		switch b {
 		case "config:glow150arm64":
@@ -312,7 +370,7 @@ func (m Minio) BootstrapTestWithBR(ctx context.Context, bs utils.Bootstrap, br *
 				return
 			}
 		case "config:ft_arm64":
-			err = Setup_Config_FT_arm64(&m, br)
+			err = m.Setup_Config_FT_arm64(br)
 			if err != nil {
 				err = errors.Wrapf(err, whileFmrt, b)
 				return

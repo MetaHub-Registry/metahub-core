@@ -35,3 +35,8 @@ func NewReferrersResponse() ReferrersResponse {
 		Manifests:     []imgspecv1.Descriptor{},
 	}
 }
+
+func RefferrersResponseFromBytes(data []byte) (r ReferrersResponse, err error) {
+	err = json.Unmarshal(data, &r)
+	return
+}
