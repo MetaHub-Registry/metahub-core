@@ -144,6 +144,20 @@ func (n Neo) RulesGetByManipuLayerID(ctx context.Context, mplID int64) (rules ty
 	return
 }
 
+func (n Neo) RuleGetByID(ctx context.Context, id int64) (rule types.Rule, found bool, err error) {
+	q := fmt.Sprintf(`MATCH (r:Rule) WHERE id(r) = %d RETURN %s`, id, ruleReturn)
+	res, found, err := n.QueryOne(q)
+	if err != nil || !found {
+		return
+	}
+	rule, e := RuleFromResult(res)
+	if e != nil {
+		err = e
+		return
+	}
+	return
+}
+
 func (n Neo) RuleGetByLabel(ctx context.Context, label string) (rule types.Rule, found bool, err error) {
 	q := fmt.Sprintf(`MATCH (r:Rule) WHERE r.label = "%s" RETURN %s`, label, ruleReturn)
 	res, found, err := n.QueryOne(q)
@@ -282,6 +296,7 @@ func (n Neo) RuleEvalAnnotationRuleNULL(ctx context.Context, r types.Rule) (err 
 		err = fmt.Errorf("invalid op for annotation rule: %s", r.Op)
 		return
 	}
+	// Find all annotations matching the key pattern
 	q := `MATCH (a:Annotation) WHERE a.key =~ "%s"`
 	q += ` RETURN id(a) as annotationID, a.key as annotationKey, a.value as annotationValue`
 	query := fmt.Sprintf(q, r.Key)
@@ -296,6 +311,25 @@ func (n Neo) RuleEvalAnnotationRuleNULL(ctx context.Context, r types.Rule) (err 
 			return err
 		}
 		err = n.RuleAnnotationFailure(ctx, r.ID, a.ID)
+		if err != nil {
+			return err
+		}
+	}
+	// Check out all ManifestData without an annotation matching the key pattern
+	q = `MATCH (md:ManifestData) WHERE NOT (md)-[:HAS]->(:Annotation {key: "%s"})`
+	q += ` RETURN id(md) AS manifestDataID`
+	query = fmt.Sprintf(q, r.Key)
+	utils.Debug(l, span, query)
+	res, err = n.Query(query)
+	if err != nil {
+		return
+	}
+	for _, ele := range res {
+		mdID, err := ele.GetInt64("manifestDataID")
+		if err != nil {
+			return err
+		}
+		err = n.RuleManifestDataSuccess(ctx, r.ID, mdID)
 		if err != nil {
 			return err
 		}
@@ -398,6 +432,21 @@ func (n Neo) RulePlatformSuccess(ctx context.Context, ruleID, platformID int64) 
 	q += ` WHERE id(r) = %d AND id(p) = %d`
 	q += ` MERGE (r)-[:%s]->(p)`
 	query := fmt.Sprintf(q, ruleID, platformID, types.RelationSuccess)
+	utils.Debug(l, span, query)
+	_, err = n.Execute(query)
+	return
+}
+
+func (n Neo) RuleManifestDataSuccess(ctx context.Context, ruleID, mdID int64) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": "neo/rule.go",
+		"func":    "RuleManifestDataSuccess",
+	})
+	defer span.End()
+	q := `MATCH (r:Rule), (md:ManifestData)`
+	q += ` WHERE id(r) = %d AND id(md) = %d`
+	q += ` MERGE (r)-[:%s]->(md)`
+	query := fmt.Sprintf(q, ruleID, mdID, types.RelationSuccess)
 	utils.Debug(l, span, query)
 	_, err = n.Execute(query)
 	return

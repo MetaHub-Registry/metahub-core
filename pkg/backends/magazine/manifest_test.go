@@ -460,19 +460,23 @@ func TestManifestComputeManifestForProfileARM(t *testing.T) {
 // 		bs.PostTestSleep = debug
 // 	}
 // 	br, err := mag.SetupTest(ctx, bs)
-// 	for _, l := range br.ToLines() {
-// 		if debug > 0 {
-// 			t.Log(l)
-// 		}
-// 	}
 // 	if err != nil {
 // 		t.Logf("Error while SetupTest: %v", err)
 // 		TeardownTest(bs, br)
 // 		t.Fatal(err)
 
 // 	}
+// 	for _, l := range br.ToLines() {
+// 		if debug > 0 {
+// 			t.Log(l)
+// 		}
+// 	}
+
 // 	defer TeardownTest(bs, br)
 // 	// Actual test
+// 	if e := mag.Database.RuleEvalAll(ctx); e != nil {
+// 		t.Fatal(e)
+// 	}
 // 	token, err := br.Get("user:test#bearer")
 // 	if err != nil {
 // 		t.Fatal(err)

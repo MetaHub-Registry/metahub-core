@@ -61,6 +61,7 @@ func (n Neo) getProfile(ctx context.Context, br utils.BootstrapResult, label str
 	})
 	defer span.End()
 	_ = l
+	_ = br
 	prf, prfFound, err := n.ProfileGetByLabel(ctx, label)
 	if err != nil {
 		return prf, err

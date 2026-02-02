@@ -40,6 +40,7 @@ func (mag Magazine) getProfile(ctx context.Context, br utils.BootstrapResult, la
 	})
 	defer span.End()
 	_ = l
+	_ = br
 	prf, prfFound, err := mag.Database.ProfileGetByLabel(ctx, label)
 	if err != nil {
 		return prf, err

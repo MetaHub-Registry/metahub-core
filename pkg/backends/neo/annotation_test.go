@@ -53,7 +53,7 @@ func TestAnnotationCRUD(t *testing.T) {
 	}
 	a1 := types.NewAnnotation("foz", "bar")
 	a1.ID = a0_id
-	err = db.AnnotationUpdate(ctx, a0)
+	err = db.AnnotationUpdate(ctx, a1)
 	if err == nil {
 		t.Fatal("expect ID error")
 	}

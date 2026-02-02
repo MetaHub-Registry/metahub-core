@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/docker/distribution/manifest/schema2"
 	"github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
@@ -90,252 +91,256 @@ func TestManifestDataCRUD(t *testing.T) {
 	assert.False(t, found)
 }
 
-// func TestManifestDataLinks(t *testing.T) {
-// 	ctx := context.Background()
-// 	debug := 0
-// 	bs := utils.NewBootstrap()
-// 	bs.AddBootstrap("platforms:generic")
-// 	bs.AddBootstrap("upstream:ft_arm64")
-// 	bs.AddBootstrap("config:ft_arm64")
-// 	bs.AddBootstrap("layer:0:ft_arm64")
-// 	bs.AddBootstrap("layer:1:ft_arm64")
-// 	bs.AddBootstrap("manifest:ft_arm64")
-// 	bs.AddBootstrap("annotation:platform:generic")
-// 	bs.SetEmptyAll()
-// 	if debug > 0 {
-// 		bs.PostTestSleep = debug
-// 	}
-// 	br, err := SetupTest(ctx, bs)
-// 	for _, l := range br.ToLines() {
-// 		if debug > 0 {
-// 			t.Log(l)
-// 		}
-// 	}
-// 	if err != nil {
-// 		db.TeardownTest(bs, br)
-// 		t.Fatal(err)
-// 	}
-// 	defer db.TeardownTest(bs, br)
-// 	// Actual Test
-// 	maniID, err := br.GetInt64("manifest:ft_arm64#id")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	aPlatGenID, err := br.GetInt64("annotation:platform:generic#id")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	err = db.ManifestLinkToAnnotation(ctx, maniID, aPlatGenID)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	// Actual test
-// 	arm_mani := types.FTarmManifestData()
-// 	arm_mani_id, err := db.createManifestData(ctx, arm_mani)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	assert.NotNil(t, arm_mani_id)
-// 	// Manifest Link To ManifestData
-// 	err = db.LinkManifestToManifestData(ctx, maniID, arm_mani_id)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	// Link Config
-// 	arm_config_id, err := br.GetInt64("config:ft_arm64#id")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	arm_config, found, err := db.ConfigGetByID(ctx, arm_config_id)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	if !found {
-// 		t.Fatal("Config not found")
-// 	}
-// 	err = db.ManifestDataLinkToConfig(ctx, arm_mani_id, arm_config)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	// Query all links?
-// 	manis, err := db.ManifestDataGetAll(ctx)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	assert.Equal(t, 1, len(manis))
-// 	// Add Layers
-// 	arm_layer0_id, err := br.GetInt64("layer:0:ft_arm64#id")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	arm_layer0, found, err := db.LayerGetByID(ctx, arm_layer0_id)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	if !found {
-// 		t.Fatal("Layer not found")
-// 	}
-// 	// Layer by themselfe do not know what mediaType they are,
-// 	// it's only defined in relation to a manifestData
-// 	// (the sha256 does not change whether it is an DOcker or OCI Image - it's just a tarball)
-// 	arm_layer0.MediaType = schema2.MediaTypeLayer
-// 	err = db.ManifestDataLinkToLayer(ctx, arm_mani_id, arm_layer0, 0)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	arm_layer1_id, err := br.GetInt64("layer:1:ft_arm64#id")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	arm_layer1, found, err := db.LayerGetByID(ctx, arm_layer1_id)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	if !found {
-// 		t.Fatal("Layer not found")
-// 	}
-// 	arm_layer1.MediaType = schema2.MediaTypeLayer
-// 	err = db.ManifestDataLinkToLayer(ctx, arm_mani_id, arm_layer1, 1)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// }
+func TestManifestDataLinks(t *testing.T) {
+	ctx := context.Background()
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("upstream:ft_arm64")
+	bs.AddBootstrap("config:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_arm64")
+	bs.AddBootstrap("layer:1:ft_arm64")
+	bs.AddBootstrap("manifest:ft_arm64")
+	bs.AddBootstrap("annotation:platform:generic")
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := SetupTest(ctx, bs)
+	for _, l := range br.ToLines() {
+		if debug > 0 {
+			t.Log(l)
+		}
+	}
+	if err != nil {
+		db.TeardownTest(bs, br)
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs, br)
+	// Actual Test
+	maniID, err := br.GetInt64("manifest:ft_arm64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	aPlatGenID, err := br.GetInt64("annotation:platform:generic#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.ManifestLinkToAnnotation(ctx, maniID, aPlatGenID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.ManifestDataLinkToAnnotation(ctx, maniID, aPlatGenID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Actual test
+	arm_mani := types.FTarmManifestData()
+	arm_mani_id, err := db.createManifestData(ctx, arm_mani)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotNil(t, arm_mani_id)
+	// Manifest Link To ManifestData
+	err = db.LinkManifestToManifestData(ctx, maniID, arm_mani_id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Link Config
+	arm_config_id, err := br.GetInt64("config:ft_arm64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	arm_config, found, err := db.ConfigGetByID(ctx, arm_config_id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("Config not found")
+	}
+	err = db.ManifestDataLinkToConfig(ctx, arm_mani_id, arm_config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Query all links?
+	manis, err := db.ManifestDataGetAll(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, len(manis))
+	// Add Layers
+	arm_layer0_id, err := br.GetInt64("layer:0:ft_arm64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	arm_layer0, found, err := db.LayerGetByID(ctx, arm_layer0_id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("Layer not found")
+	}
+	// Layer by themselfe do not know what mediaType they are,
+	// it's only defined in relation to a manifestData
+	// (the sha256 does not change whether it is an DOcker or OCI Image - it's just a tarball)
+	arm_layer0.MediaType = schema2.MediaTypeLayer
+	err = db.ManifestDataLinkToLayer(ctx, arm_mani_id, arm_layer0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arm_layer1_id, err := br.GetInt64("layer:1:ft_arm64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	arm_layer1, found, err := db.LayerGetByID(ctx, arm_layer1_id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("Layer not found")
+	}
+	arm_layer1.MediaType = schema2.MediaTypeLayer
+	err = db.ManifestDataLinkToLayer(ctx, arm_mani_id, arm_layer1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
 
-// func TestManifestDataRules(t *testing.T) {
-// 	ctx := context.Background()
-// 	_ = ctx
-// 	debug := 0
-// 	bs := utils.NewBootstrap()
-// 	bs.SetYAMLPrefix("../../../misc/yaml")
-// 	bs.AddBootstrap("platforms:generic")
-// 	bs.AddBootstrap("upstream:ft_arm64")
-// 	bs.AddBootstrap("config:ft_arm64")
-// 	bs.AddBootstrap("layer:0:ft_arm64")
-// 	bs.AddBootstrap("layer:1:ft_arm64")
-// 	bs.AddBootstrap("manifest:ft_arm64")
-// 	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target:platform")
-// 	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
-// 	bs.SetEmptyAll()
-// 	if debug > 0 {
-// 		bs.PostTestSleep = debug
-// 	}
-// 	br, err := SetupTest(ctx, bs)
-// 	if err != nil {
-// 		db.TeardownTest(bs, br)
-// 		t.Fatal(err)
-// 	}
-// 	defer db.TeardownTest(bs, br)
-// 	maniID, err := br.GetInt64("manifest:ft_arm64#id")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	aPlatGenID, err := br.GetInt64("annotation:org.supercontainers.hardware.cpu.target:platform#id")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	err = db.ManifestLinkToAnnotation(ctx, maniID, aPlatGenID)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	// Actual test
-// 	arm_mani := types.FTarmManifestData()
-// 	arm_mani_id, err := db.createManifestData(ctx, arm_mani)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	assert.NotNil(t, arm_mani_id)
-// 	// Manifest Link To ManifestData
-// 	err = db.LinkManifestToManifestData(ctx, maniID, arm_mani_id)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	// Link Config
-// 	arm_config_id, err := br.GetInt64("config:ft_arm64#id")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	arm_config, found, err := db.ConfigGetByID(ctx, arm_config_id)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	if !found {
-// 		t.Fatal("Config not found")
-// 	}
-// 	err = db.ManifestDataLinkToConfig(ctx, arm_mani_id, arm_config)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	// Query all links?
-// 	manis, err := db.ManifestDataGetAll(ctx)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	assert.Equal(t, 1, len(manis))
-// 	// Add Layers
-// 	arm_layer0_id, err := br.GetInt64("layer:0:ft_arm64#id")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	arm_layer0, found, err := db.LayerGetByID(ctx, arm_layer0_id)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	if !found {
-// 		t.Fatal("Layer not found")
-// 	}
-// 	arm_layer0.MediaType = schema2.MediaTypeLayer
-// 	err = db.ManifestDataLinkToLayer(ctx, arm_mani_id, arm_layer0, 0)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	arm_layer1_id, err := br.GetInt64("layer:1:ft_arm64#id")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	arm_layer1, found, err := db.LayerGetByID(ctx, arm_layer1_id)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	if !found {
-// 		t.Fatal("Layer not found")
-// 	}
-// 	arm_layer1.MediaType = schema2.MediaTypeLayer
-// 	err = db.ManifestDataLinkToLayer(ctx, arm_mani_id, arm_layer1, 1)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	err = db.ManifestDataLinkToAnnotation(ctx, arm_mani_id, aPlatGenID)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	// Compute New OCI Manifest
-// 	// Eval Rules
-// 	err = db.RuleEvalAll(ctx)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	// Get By Rule
-// 	r, found, err := db.RuleGetByLabel(ctx, "cpu:generic")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	if !found {
-// 		t.Fatal("Rule not found")
-// 	}
-// 	q := fmt.Sprintf(`MATCH (r:Rule)-[:%s]-(a:Annotation) WHERE ID(r) = %d RETURN a.value AS val`, types.RelationSuccess, r.ID)
-// 	res, found, err := db.QueryOne(q)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	if !found {
-// 		t.Fatal("Annotation not found")
-// 	}
-// 	v, err := res.GetStr("val")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	assert.Equal(t, "platform", v)
-// }
+func TestManifestDataRules(t *testing.T) {
+	ctx := context.Background()
+	_ = ctx
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("upstream:ft_arm64")
+	bs.AddBootstrap("config:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_arm64")
+	bs.AddBootstrap("layer:1:ft_arm64")
+	bs.AddBootstrap("manifest:ft_arm64")
+	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target:platform")
+	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := SetupTest(ctx, bs)
+	if err != nil {
+		db.TeardownTest(bs, br)
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs, br)
+	maniID, err := br.GetInt64("manifest:ft_arm64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	aPlatGenID, err := br.GetInt64("annotation:org.supercontainers.hardware.cpu.target:platform#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.ManifestLinkToAnnotation(ctx, maniID, aPlatGenID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Actual test
+	arm_mani := types.FTarmManifestData()
+	arm_mani_id, err := db.createManifestData(ctx, arm_mani)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotNil(t, arm_mani_id)
+	// Manifest Link To ManifestData
+	err = db.LinkManifestToManifestData(ctx, maniID, arm_mani_id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Link Config
+	arm_config_id, err := br.GetInt64("config:ft_arm64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	arm_config, found, err := db.ConfigGetByID(ctx, arm_config_id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("Config not found")
+	}
+	err = db.ManifestDataLinkToConfig(ctx, arm_mani_id, arm_config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Query all links?
+	manis, err := db.ManifestDataGetAll(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, len(manis))
+	// Add Layers
+	arm_layer0_id, err := br.GetInt64("layer:0:ft_arm64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	arm_layer0, found, err := db.LayerGetByID(ctx, arm_layer0_id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("Layer not found")
+	}
+	arm_layer0.MediaType = schema2.MediaTypeLayer
+	err = db.ManifestDataLinkToLayer(ctx, arm_mani_id, arm_layer0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arm_layer1_id, err := br.GetInt64("layer:1:ft_arm64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	arm_layer1, found, err := db.LayerGetByID(ctx, arm_layer1_id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("Layer not found")
+	}
+	arm_layer1.MediaType = schema2.MediaTypeLayer
+	err = db.ManifestDataLinkToLayer(ctx, arm_mani_id, arm_layer1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.ManifestDataLinkToAnnotation(ctx, arm_mani_id, aPlatGenID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Compute New OCI Manifest
+	// Eval Rules
+	err = db.RuleEvalAll(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Get By Rule
+	r, found, err := db.RuleGetByLabel(ctx, "cpu:generic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("Rule not found")
+	}
+	q := fmt.Sprintf(`MATCH (r:Rule)-[:%s]-(a:Annotation) WHERE ID(r) = %d RETURN a.value AS val`, types.RelationSuccess, r.ID)
+	res, found, err := db.QueryOne(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("Annotation not found")
+	}
+	v, err := res.GetStr("val")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "platform", v)
+}
 
 // func TestManifestDataGetAllByManifestID(t *testing.T) {
 // 	ctx := context.Background()
@@ -1027,6 +1032,10 @@ func TestManifestDataV1GetInsert(t *testing.T) {
 	v1Desc := v1.Descriptor{
 		Digest:    digest.Digest(expManiDataDigest),
 		MediaType: "application/vnd.docker.distribution.manifest.v2+json",
+		Platform: &v1.Platform{
+			Architecture: "arm64",
+			OS:           "linux",
+		},
 	}
 	if maniDataID, found, err := db.ManifestDataV1Get(ctx, v1Desc); err != nil {
 		t.Fatal(err)

@@ -122,7 +122,8 @@ type OCIManifest struct {
 	// SchemaVersion is the image manifest schema that this image follows
 	SchemaVersion int `json:"schemaVersion"`
 	// MediaType is the media type of this schema.
-	MediaType string `json:"mediaType,omitempty"`
+	MediaType    string `json:"mediaType,omitempty"`
+	ArtifactType string `json:"artifactType,omitempty"`
 	// Config references the image configuration as a blob.
 	Config imgspecv1.Descriptor `json:"config"`
 	// Layers lists descriptors for the layers referenced by the

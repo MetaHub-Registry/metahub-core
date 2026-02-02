@@ -19,6 +19,7 @@ import (
 
 const (
 	pkgNameProfile = "neo/profiles.go"
+	errQueryOne    = "failed to get QueryOne"
 )
 
 var (
@@ -405,7 +406,7 @@ func (n Neo) ProfileFromManifestIDViaAnnotations(ctx context.Context, mID int64)
 		))
 		res, _, e := n.QueryOne(q)
 		if e != nil {
-			err = errors.Wrap(e, "failed to get QueryOne")
+			err = errors.Wrap(e, errQueryOne)
 			l.Error(err)
 			continue
 		}
@@ -458,7 +459,7 @@ func (n Neo) ProfileFromManifestIDViaPlatform(ctx context.Context, maniID int64)
 		))
 		res, _, e := n.QueryOne(q)
 		if e != nil {
-			err = errors.Wrap(e, "failed to get QueryOne")
+			err = errors.Wrap(e, errQueryOne)
 			l.Error(err)
 			continue
 		}
@@ -476,13 +477,11 @@ func (n Neo) ProfileFromManifestIDViaPlatform(ctx context.Context, maniID int64)
 }
 
 func (n Neo) ProfileFromManifestDataID(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameProfile,
 		"func":    "ProfileFromManifestDataID",
 		"maniID":  mdID,
 	})
-	_ = l
-	ctx, span := tracer.Start(ctx, "ProfileFromManifestDataID")
 	defer span.End()
 	prfs, e := n.ProfileFromManifestDataIDViaAnnotations(ctx, mdID)
 	if e != nil {
@@ -504,24 +503,20 @@ func (n Neo) ProfileFromManifestDataID(ctx context.Context, mdID int64) (prfs []
 }
 
 func (n Neo) ProfileFromManifestDataIDViaAnnotations(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
-	l := logrus.WithFields(logrus.Fields{
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameProfile,
 		"func":    "ProfileFromManifestDataIDViaAnnotations",
 		"maniID":  mdID,
 	})
-	_, span := tracer.Start(ctx, "ProfileFromManifestDataIDViaAnnotations")
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[:%s]-(a:Annotation)-[]-(md:ManifestData) WHERE id(md) = %d`, types.RelationSuccess, mdID)
 	q += fmt.Sprintf(` RETURN DISTINCT %s`, returnStatementProfile)
+	utils.Debug(l, span, q)
 	res, err := n.Query(q)
-	l.Debug(q)
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
-	))
 	if err != nil {
 		return
 	}
+	utils.Debug(l, span, "Number of profiles found: %d", len(res))
 	prfs = make([]types.Profile, 0)
 	for _, r := range res {
 		p, e := n.ProfileFromResult(r)
@@ -532,14 +527,10 @@ func (n Neo) ProfileFromManifestDataIDViaAnnotations(ctx context.Context, mdID i
 		}
 		q := fmt.Sprintf(`MATCH (md:ManifestData)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule)<-[:USES]-(p:Profile)`, types.RelationFailure)
 		q += fmt.Sprintf(` WHERE id(md) = %d AND id(p) = %d RETURN count(a) AS countAnnotations`, mdID, p.ID)
-		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.query", q),
-		))
+		utils.Debug(l, span, q)
 		res, _, e := n.QueryOne(q)
 		if e != nil {
-			err = errors.Wrap(e, "failed to get QueryOne")
-			l.Error(err)
+			utils.ErrorHandler(l, span, e, errQueryOne)
 			continue
 		}
 		cnt, e := res.GetInt("countAnnotations")
@@ -565,7 +556,7 @@ func (n Neo) ProfileFromManifestDataIDViaPlatform(ctx context.Context, mdID int6
 	_, span := tracer.Start(ctx, "ProfileFromManifestDataIDViaPlatform")
 	defer span.End()
 	rel := types.RelationSuccess
-	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[:%s]->(p:Platform)<-[:IS]-(m:Manifest)-[]-(md:ManifestData) WHERE id(md) = %d`, rel, mdID)
+	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[:%s]->(p:Platform)<-[:IS]-(md:ManifestData) WHERE id(md) = %d`, rel, mdID)
 	q += fmt.Sprintf(` RETURN DISTINCT %s`, returnStatementProfile)
 	res, err := n.Query(q)
 	l.Debug(q)
@@ -591,7 +582,7 @@ func (n Neo) ProfileFromManifestDataIDViaPlatform(ctx context.Context, mdID int6
 		))
 		res, _, e := n.QueryOne(q)
 		if e != nil {
-			err = errors.Wrap(e, "failed to get QueryOne")
+			err = errors.Wrap(e, errQueryOne)
 			l.Error(err)
 			continue
 		}

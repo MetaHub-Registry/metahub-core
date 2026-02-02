@@ -49,6 +49,12 @@ func (n Neo) Setup_Manifest_FT_amd64(ctx context.Context, br *utils.BootstrapRes
 		"func": "Setup_Manifest_FT_amd64",
 	})
 	defer span.End()
+	// Already present?
+	_, err = br.GetInt64("manifest:ft_amd64#id")
+	if err == nil {
+		utils.Debug(l, span, "Manifest ft_amd64 already present, skipping setup")
+		return
+	}
 	// Add Upstream
 	upID, err := br.GetInt64("upstream:ft_amd64#id")
 	if err != nil {
@@ -89,26 +95,26 @@ func (n Neo) Setup_Manifest_FT_amd64(ctx context.Context, br *utils.BootstrapRes
 		return utils.ErrorHandler(l, span, err, "failed to link manifest to upstream")
 	}
 	// Link Config
-	config_id, err := br.GetInt64("config:ft_amd64#id")
-	if err != nil {
-		return utils.ErrorHandler(l, span, err, "failed to get config id from BR")
-	}
-	config, found, err := n.ConfigGetByID(ctx, config_id)
-	if err != nil {
-		return utils.ErrorHandler(l, span, err, "failed to get config by id")
-	}
-	if !found {
-		err = fmt.Errorf("config not found")
-		return
-	}
-	config.MediaType, err = br.Get("config:ft_amd64#mediaType")
-	if err != nil {
-		return utils.ErrorHandler(l, span, err, "failed to get config mediaType from BR")
-	}
+	// config_id, err := br.GetInt64("config:ft_amd64#id")
+	// if err != nil {
+	// 	return utils.ErrorHandler(l, span, err, "failed to get config id from BR")
+	// }
+	// config, found, err := n.ConfigGetByID(ctx, config_id)
+	// if err != nil {
+	// 	return utils.ErrorHandler(l, span, err, "failed to get config by id")
+	// }
+	// if !found {
+	// 	err = fmt.Errorf("config not found")
+	// 	return
+	// }
+	// config.MediaType, err = br.Get("config:ft_amd64#mediaType")
+	// if err != nil {
+	// 	return utils.ErrorHandler(l, span, err, "failed to get config mediaType from BR")
+	// }
 	// ManifestData
 	maniDataID, e := br.GetInt64("manifestdata:ft_amd64#id")
 	if e != nil {
-		utils.NewError(l, span, "ManifestData seems not to be present, skipping linking manifest to it. Trust that this will be done later eventually. :)")
+		utils.Warn(l, span, "ManifestData seems not to be present, skipping linking manifest to it. Trust that this will be done later eventually. :)")
 	} else {
 		err = n.LinkManifestToManifestData(ctx, maniID, maniDataID, "ORIGINAL")
 		if err != nil {

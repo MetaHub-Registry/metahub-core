@@ -243,4 +243,11 @@ func TestUpstreamGetByLayerDigest(t *testing.T) {
 		assert.Equal(t, "20220715-amd64-generic", up.Tag)
 		assert.Equal(t, "sha256:5bf8eee20fde14eb6e3e924c18fafa4d816e131f315810875136f0438ff7beed", up.Digest.String())
 	}
+	if upID, found, err := db.UpstreamGetIDByManifestDataID(ctx, md.ID); err != nil {
+		t.Fatal(err)
+	} else if !found {
+		t.Fatal("Should have found upstream by ManifestData ID")
+	} else {
+		assert.NotEqual(t, 0, upID)
+	}
 }

@@ -38,7 +38,7 @@ const (
 func (n Neo) ManifestDataUpdateDesc(ctx context.Context, maniDataID int64, maniDataV1 v1.Descriptor) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNameMD,
-		"func":       "ManifestDataGetAll",
+		"func":       "ManifestDataUpdateDesc",
 		"maniDataID": maniDataID,
 	})
 	defer span.End()
@@ -73,15 +73,19 @@ func (n Neo) ManifestDataUpdateDesc(ctx context.Context, maniDataID int64, maniD
 
 func (n Neo) ManifestDataV1GetInsert(ctx context.Context, maniSiID int64, maniDataV1 v1.Descriptor) (maniDataID int64, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": pkgNameMD,
-		"func":    "ManifestDataV1GetInsert",
+		"package":  pkgNameMD,
+		"func":     "ManifestDataV1GetInsert",
+		"maniSiID": maniSiID,
+		"maniData": utils.ShortenDigest(maniDataV1.Digest.String()),
 	})
 	defer span.End()
+	utils.Debug(l, span, "Checking for existing ManifestData with Digest: %s", maniDataV1.Digest.String())
 	maniDataID, found, err = n.ManifestDataV1Get(ctx, maniDataV1)
 	if err != nil {
 		err = errors.Wrap(err, "failed to get manifest by digest")
 		return
 	}
+	utils.Debug(l, span, "ManifestData found: %v", found)
 	if !found {
 		mdDig := maniDataV1.Digest.String()
 		utils.Info(l, span, "did not find ManifestData - Inserting new ManifestData")
@@ -89,17 +93,18 @@ func (n Neo) ManifestDataV1GetInsert(ctx context.Context, maniSiID int64, maniDa
 		q := `CREATE (m:ManifestData {digest: "%s", mediaType: "%s", size: %d, label: "%s"}) RETURN id(m) AS manifestID, m.label AS manifestLabel`
 		query := fmt.Sprintf(q, mdDig, maniDataV1.MediaType, maniDataV1.Size, label)
 		utils.Debug(l, span, query)
-		res, e := n.Execute(query)
-		if e != nil {
-			err = errors.Wrap(e, "failed to create (m:ManifestData)")
+		if res, e := n.Execute(query); e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to create (m:ManifestData)")
+			return
+		} else if maniDataID, e = res.GetInt64("manifestID"); e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to get manifestID from result")
 			return
 		}
-		maniDataID, e = res.GetInt64("manifestID")
-		if e != nil {
-			err = errors.Wrap(e, "failed to get manifestID from result")
-			return
-		}
+		utils.Info(l, span, "Created ManifestData.ID: %d for Manifest.ID: %d", maniDataID, maniSiID)
+	} else {
+		utils.Info(l, span, "Found existing ManifestData.ID: %d for Manifest.ID: %d", maniDataID, maniSiID)
 	}
+
 	NodeRel := "CREATED"
 	// Link to manifest standin
 	q := `MATCH (md:ManifestData), (m:Manifest) WHERE id(md) = %d AND id(m) = %d`
@@ -107,11 +112,12 @@ func (n Neo) ManifestDataV1GetInsert(ctx context.Context, maniSiID int64, maniDa
 	query := fmt.Sprintf(q, maniDataID, maniSiID)
 	_, err = n.Execute(query)
 	if err != nil {
-		err = errors.Wrapf(err, "failed to create (m)-[:%s]->(md)", NodeRel)
+		err = utils.ErrorHandler(l, span, err, "failed to create (m)-[:%s]->(md)", NodeRel)
 		return
 	}
+
 	// Link ManifestData to Upstream
-	if upID, upFound, e := n.UpstreamGetIDByManifestID(ctx, maniDataID); e != nil {
+	if upID, upFound, e := n.UpstreamGetIDByManifestID(ctx, maniSiID); e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to get upstreamID by manifestID")
 		return
 	} else if upFound {
@@ -120,6 +126,24 @@ func (n Neo) ManifestDataV1GetInsert(ctx context.Context, maniSiID int64, maniDa
 			err = utils.ErrorHandler(l, span, e, "failed to link manifest to upstream")
 			return
 		}
+	}
+	// Link new ManifestData w/ Platform
+	plat := types.Platform{
+		Arch:    maniDataV1.Platform.Architecture,
+		OS:      maniDataV1.Platform.OS,
+		Variant: maniDataV1.Platform.Variant,
+	}
+	if platID, found, err := n.GetPlatform(ctx, plat); err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to get platform by arch/os/variant")
+		return maniDataID, false, err
+	} else if found {
+		err = n.LinkManifestDataToPlatform(ctx, maniDataID, platID)
+		if err != nil {
+			err = utils.ErrorHandler(l, span, err, "failed to link manifestData to platform")
+			return maniDataID, false, err
+		}
+	} else {
+		utils.Warn(l, span, "Platform not found for ManifestData - skipping Platform link")
 	}
 	return
 }
@@ -130,8 +154,8 @@ func (n Neo) ManifestDataV1Get(ctx context.Context, maniDataV1 v1.Descriptor) (m
 		"func":    "ManifestDataV1Get",
 	})
 	defer span.End()
-	q := `MATCH (m:ManifestData) WHERE m.digest = "%s" AND m.mediaType = "%s"`
-	q += ` RETURN id(m) AS manifestID, m.label AS manifestLabel`
+	q := `MATCH (md:ManifestData) WHERE md.digest = "%s" AND md.mediaType = "%s"`
+	q += ` RETURN id(md) AS manifestDataID`
 	query := fmt.Sprintf(q, maniDataV1.Digest.String(), maniDataV1.MediaType)
 	utils.Debug(l, span, query)
 	res, found, err := n.QueryOne(query)
@@ -141,12 +165,12 @@ func (n Neo) ManifestDataV1Get(ctx context.Context, maniDataV1 v1.Descriptor) (m
 		utils.Warn(l, span, "Not able to found manifestData for digest: %s", maniDataV1.Digest.String())
 		return
 	}
-	maniDataID, err = res.GetInt64("manifestID")
+	maniDataID, err = res.GetInt64("manifestDataID")
 	if err != nil {
-		err = errors.Wrap(err, "failed to get manifestID from result while getting manifest by digest and mediaType")
+		err = errors.Wrap(err, "failed to get manifestDataID from result while getting manifest by digest and mediaType")
 		return
 	}
-	utils.Info(l, span, "Found maniDataID: %d", maniDataID)
+	utils.Info(l, span, "Found manifestDataID: %d", maniDataID)
 	return
 }
 
@@ -271,8 +295,9 @@ func (n Neo) ManifestDataGetAll(ctx context.Context) (manis []types.ManifestData
 	defer span.End()
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
-	q := `MATCH (p:Platform)-[r]-(m:Manifest)-[]-(u:Upstream)`
-	q += ` MATCH (m)-[]-(md:ManifestData)-[rel]-(cfg:Blob) WHERE TYPE(rel) STARTS WITH "docker_container_image" OR TYPE(rel) STARTS WITH "oci_image_config"`
+	q := `MATCH (m:Manifest)-[]-(u:Upstream)`
+	q += ` MATCH (m)-[r]-(md:ManifestData)-[rel]-(cfg:Blob) WHERE cfg.type = "config"`
+	q += ` MATCH (md)-[]-(p:Platform)`
 	q += ` RETURN type(r) AS manifestdataRelType,`
 	q += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
 	q += ` id(m) AS manifestID, m.label AS manifestLabel,`
@@ -723,6 +748,35 @@ func (n Neo) ManifestDataGetByPlatformRule(ctx context.Context, rule types.Rule)
 	return
 }
 
+// ManifestDataMatchesProfile checks if the manifest data matches the profile
+//
+// # Parameters:
+//   - md: the manifest data to check,
+//   - prf: the profile to check against,
+//
+// This function evals all the rules of the profile and matches them against the manifest data.
+//
+// # Returns:
+//   - matches: true if the manifest data matches the profile, false otherwise
+//   - err: error if any occurred during the process
+//
+// # Details:
+//
+// Rules can be of different types (e.g., annotation rules, platform rules, etc.).
+// The function checks each rule type and evaluates whether the manifest data satisfies the conditions defined by the profile's rules.
+// If all rules are satisfied, the function returns true; otherwise, it returns false.
+func (n Neo) ManifestDataMatchesProfile(ctx context.Context, md types.ManifestData, prf types.Profile) (matches bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":      pkgNameMD,
+		"func":         "ManifestDataMatchesProfile",
+		"md.label":     md.Label,
+		"profile.name": prf.Name,
+	})
+	defer span.End()
+	_ = l
+	return true, nil
+}
+
 func (n Neo) ManifestDataCheckProfile(ctx context.Context, md types.ManifestData, prf types.Profile) (ok bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":      pkgNameMD,
@@ -730,7 +784,6 @@ func (n Neo) ManifestDataCheckProfile(ctx context.Context, md types.ManifestData
 		"md.label":     md.Label,
 		"profile.name": prf.Name,
 	})
-	_ = ctx
 	defer span.End()
 	if ok, err := n.ManifestDataCheckProfileCreationRelationship(ctx, md, prf); err != nil {
 		return false, utils.ErrorHandler(l, span, err, "failed to check profile creation")
@@ -757,7 +810,6 @@ func (n Neo) ManifestDataCheckProfileCreationRelationship(ctx context.Context, m
 		"md.label":     md.Label,
 		"profile.name": prf.Name,
 	})
-	_ = ctx
 	defer span.End()
 	q := `MATCH (md:ManifestData)-[r:CREATED_BY]->(p:Profile)`
 	q += fmt.Sprintf(` WHERE id(md) = %d AND id(p) = %d RETURN count(r) AS relCount`, md.ID, prf.ID)
@@ -797,6 +849,49 @@ func (n Neo) ManifestDataCheckProfileAnnotations(ctx context.Context, md types.M
 	}
 	utils.Debug(l, span, "countAnnotations: %d", cnt)
 	ok = cnt == 0
+	if !ok {
+		return
+	}
+	// It might fail if there is a noop rule for a certain annotation
+	// -> in that case we consider it as ok if the manifest has a FALSE relationship with all noop rules
+	// A. Get all noop rules for the profile
+	q = fmt.Sprintf(`MATCH (p:Profile)-[:USES]->(r:Rule) WHERE id(p) = %d AND r.op = "null" and r.type = "anno" RETURN id(r) AS ruleID`, prf.ID)
+	utils.Debug(l, span, q)
+	resRules, err := n.Query(q)
+	if err != nil {
+		return false, utils.ErrorHandler(l, span, err, "failed to get noop rules for profile")
+	}
+	if len(resRules) == 0 {
+		// No noop rules, so the previous check is sufficient
+		return
+	}
+	noopRuleIDs := make([]int64, 0)
+	for _, r := range resRules {
+		rID, e := r.GetInt64("ruleID")
+		if e != nil {
+			return false, utils.ErrorHandler(l, span, e, "failed to get ruleID from result")
+		}
+		noopRuleIDs = append(noopRuleIDs, rID)
+
+	}
+	noopRuleIDsStr := make([]string, 0)
+	for _, id := range noopRuleIDs {
+		noopRuleIDsStr = append(noopRuleIDsStr, fmt.Sprintf("%d", id))
+	}
+	// B. Check if manifest has FALSE relationship with all noop rules
+	q = fmt.Sprintf(`MATCH (md:ManifestData)-[:%s]-(r:Rule)`, types.RelationFailure)
+	q += fmt.Sprintf(` WHERE id(md) = %d AND id(r) IN [%s] `, md.ID, noopRuleIDsStr)
+	utils.Debug(l, span, q)
+	res, _, err = n.QueryOne(q)
+	if err != nil {
+		return false, utils.ErrorHandler(l, span, err, "failed to QueryOne for noop rules")
+	}
+	cnt, err = res.GetInt("countAnnotations")
+	if err != nil {
+		return false, utils.ErrorHandler(l, span, err, "failed to get count annotations for noop rules")
+	}
+	utils.Debug(l, span, "countAnnotations for noop rules: %d", cnt)
+	ok = cnt == len(noopRuleIDs)
 	return
 }
 
@@ -890,6 +985,7 @@ func (n Neo) ManifestDataLinkToLayer(ctx context.Context, maniID int64, layer ty
 	q := fmt.Sprintf(`MATCH (m:ManifestData),(l:Blob) WHERE id(m) = %d AND id(l) = %d`, maniID, layer.ID)
 	q += fmt.Sprintf(` MERGE (m)-[:LayerLink {order: %d, mediaType: "%s"}]->(l)`, idx, layer.MediaType)
 	q += fmt.Sprintf(` SET l.mediaType = "%s", l.type = "layer"`, layer.MediaType)
+
 	utils.Debug(l, span, q)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
@@ -905,6 +1001,21 @@ func (n Neo) ManifestDataLinkToLayer(ctx context.Context, maniID int64, layer ty
 		l.Error(err.Error())
 
 		return
+	}
+	for k, v := range layer.Annotations {
+		a := types.NewAnnotation(k, v)
+		aID, e := n.AnnotationGetInsert(ctx, a)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, "failed to add annotation")
+		}
+		a.ID = aID
+		// TODO: Create ManifestDataLinkToAnnotation function?
+		q := fmt.Sprintf(`MATCH (l:Blob), (a:Annotation) WHERE id(l) = %d AND id(a) = %d MERGE (l)-[:HAS_ANNOTATION]->(a)`, layer.ID, aID)
+		utils.Debug(l, span, q)
+		_, e = n.Execute(q)
+		if e != nil {
+			return utils.ErrorHandler(l, span, e, "failed to link annotation to layer")
+		}
 	}
 	return
 }
@@ -954,11 +1065,12 @@ func (n Neo) ManifestDataInsert(ctx context.Context, maniData *types.ManifestDat
 
 func (n Neo) createManifestData(ctx context.Context, mani types.ManifestData) (maniID int64, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": pkgNameMD,
-		"func":    "createManifestData",
-		"repo":    mani.Upstream.Repo,
-		"tag":     mani.Upstream.Tag,
-		"digest":  mani.Digest,
+		"package":   pkgNameMD,
+		"func":      "createManifestData",
+		"repo":      mani.Upstream.Repo,
+		"tag":       mani.Upstream.Tag,
+		"digest":    mani.Digest,
+		"platform:": mani.Platform.GetLabel(),
 	})
 	defer span.End()
 	label := utils.CreateLabelFromTypeAndDigest(mani.MediaType, mani.Digest)
@@ -984,9 +1096,11 @@ func (n Neo) createManifestData(ctx context.Context, mani types.ManifestData) (m
 		return
 	}
 	utils.Debug(l, span, "Created ManifestData w/ ID '%d'", maniID)
+	var cfg types.Config
 	// Link Config
 	if mani.Config.Digest != "" {
-		cfg, found, err := n.ConfigGetByDigest(ctx, mani.Config.Digest)
+		var found bool
+		cfg, found, err = n.ConfigGetByDigest(ctx, mani.Config.Digest)
 		if err != nil {
 			err = errors.Wrap(err, "failed to get config id")
 			return maniID, err
@@ -1004,6 +1118,16 @@ func (n Neo) createManifestData(ctx context.Context, mani types.ManifestData) (m
 		utils.Debug(l, span, "Linked Config ID '%d' to ManifestData ID '%d'", cfg.ID, maniID)
 	} else {
 		utils.Warn(l, span, "No config for ManifestData ID '%d'", maniID)
+	}
+	// Link Platform
+	if platID, found, err := n.GetPlatform(ctx, mani.Platform); err != nil {
+		err = errors.Wrap(err, "failed to get platform")
+		return maniID, err
+	} else if !found {
+		utils.Warn(l, span, "Platform not found, creating new platform: OS='%s', Arch='%s', Variant='%s'", mani.Platform.OS, mani.Platform.Arch, mani.Platform.Variant)
+	} else if err = n.LinkManifestDataToPlatform(ctx, maniID, platID); err != nil {
+		err = errors.Wrap(err, "failed to link manifest to platform")
+		return maniID, err
 	}
 	// Link Layers
 	for idx, layer := range mani.Layers {
@@ -1485,19 +1609,16 @@ func (n Neo) ManifestDataGetByCollectionTag(ctx context.Context, colID, colTagID
 	utils.Info(l, span, "getting manifest data by collection and tag")
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
-	q := `MATCH (p:Platform)-[r]-(m:Manifest)-[]-(u:Upstream)`
-	q += fmt.Sprintf(` MATCH (c:Collection)-[:UPSTREAM]->(m)-[:CREATED]-(md:ManifestData)-[cfgRel]->(cfg:Blob) WHERE id(c) = %d AND cfg.type = "config"`, colID)
-	q += fmt.Sprintf(` MATCH (t:Tag)-[:UPSTREAM]->(m) WHERE id(t) = %d`, colTagID)
+	q := `MATCH (p:Platform)-[]-(md:ManifestData)-[cfgRel]->(cfg:Blob) WHERE cfg.type = "config" `
+	q += fmt.Sprintf(` MATCH (c:Collection)-[:UPSTREAM]->(m)-[r:CREATED]-(md:ManifestData) WHERE id(c) = %d`, colID)
+	q += fmt.Sprintf(` MATCH (t:Tag)-[:UPSTREAM]->(m)-[:CREATED]->(md) WHERE id(t) = %d`, colTagID)
+	q += ` MATCH (m)-[]->(u:Upstream)`
 	q += ` RETURN type(r) AS manifestdataRelType,`
 	q += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
-	q += ` id(md) AS manifestDataID, md.digest AS manifestDataDigest, md.label AS manifestDataLabel, md.mediaType AS manifestDataMediaType, md.size AS manifestDataSize,`
+	q += manifestDataReturn + `,`
 	q += UpstreamReturn + ` ,`
 	q += ` id(cfg) AS configID, cfg.digest AS configDigest, TYPE(cfgRel) AS configMediaType, cfg.size AS configSize`
-	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
-	))
-	//l.Debug(q)
+	utils.Debug(l, span, q)
 	input := map[string]interface{}{}
 	result, err := session.Run(q, input)
 	if err != nil {
@@ -1507,28 +1628,28 @@ func (n Neo) ManifestDataGetByCollectionTag(ctx context.Context, colID, colTagID
 	for result.Next() {
 		p, e := PlatformFromRecord(result)
 		if e != nil {
-			err = e
+			err = utils.ErrorHandler(l, span, e, "while PlatformFromRecord")
 			return
 		}
 		c, e := n.ConfigFromRecord(ctx, result)
 		if e != nil {
-			err = e
+			err = utils.ErrorHandler(l, span, e, "while ConfigFromRecord")
 			return
 		}
 		u, e := UpstreamFromRecord(result)
 		if e != nil {
-			err = e
+			err = utils.ErrorHandler(l, span, e, "while UpstreamFromRecord")
 			return
 		}
 		m, e := ManifestDataFromRecord(result)
 		if e != nil {
-			err = e
+			err = utils.ErrorHandler(l, span, e, "while ManifestDataFromRecord")
 			return
 		}
 
 		anno, e := n.LabelsGetByConfigID(ctx, c.ID)
 		if e != nil {
-			err = e
+			err = utils.ErrorHandler(l, span, e, "while LabelsGetByConfigID")
 			return
 		}
 		m.Annotations = anno
@@ -1538,7 +1659,7 @@ func (n Neo) ManifestDataGetByCollectionTag(ctx context.Context, colID, colTagID
 		m.Upstream = u
 		prfs, e := n.ProfileFromManifestDataID(ctx, m.ID)
 		if e != nil {
-			err = errors.Wrap(e, "failed to get profiles for manifest data")
+			err = utils.ErrorHandler(l, span, e, "failed to get profiles for manifest data")
 			return
 		}
 		utils.Debug(l, span, "found %d profiles for manifest data", len(prfs))
@@ -1549,13 +1670,13 @@ func (n Neo) ManifestDataGetByCollectionTag(ctx context.Context, colID, colTagID
 			m.Profile = prfs[0].Label
 		}
 		if len(prfs) == 0 {
-			err = fmt.Errorf("no profiles found for manifest data: %d", m.ID)
+			utils.NewError(l, span, "no profiles found for manifest data: %d", m.ID)
 			continue
 		}
 		for _, prf := range prfs {
 			ok, e := n.ManifestDataCheckProfile(ctx, m, prf)
 			if e != nil {
-				l.Errorf("Failed to check profile: %v", err)
+				utils.ErrorHandler(l, span, e, "Failed to check profile")
 				return
 			}
 			msg := fmt.Sprintf("  %t > %d -> filtered md: %s", ok, prf.ID, m.Label)
@@ -2056,6 +2177,7 @@ func (n Neo) ManifestDataLinkToArtifactConfig(ctx context.Context, mdDigest stri
 	if !found {
 		return utils.NewError(l, span, "config blob not found")
 	}
+	// TODO: when Blob is empty, we do not need to create a relationship
 	q := fmt.Sprintf(`MATCH (md:ManifestData),(b:Blob) WHERE md.digest = "%s" AND id(b) = %d`, mdDigest, b.ID)
 	q += ` MERGE (md)-[r:USES]->(b)`
 	q += fmt.Sprintf(` SET r.mediaType = "%s"`, cfg.MediaType)

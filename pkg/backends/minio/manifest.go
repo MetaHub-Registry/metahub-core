@@ -173,7 +173,7 @@ func (m Minio) NewManifestDataFromBytes(ctx context.Context, b []byte) (mani typ
 		return
 	}
 	bInfo := cntMani.ConfigInfo()
-	utils.Debug(l, span, "BlobInfo digest: %s", bInfo.Digest.String())
+	utils.Debug(l, span, "BlobInfo digest: %s / mediaType:%s", bInfo.Digest.String(), bInfo.MediaType)
 	// TODO: Is deriving digest from byte safe?
 	maniDig := digest.FromBytes(b)
 
@@ -183,20 +183,25 @@ func (m Minio) NewManifestDataFromBytes(ctx context.Context, b []byte) (mani typ
 		Size:      bInfo.Size,
 		Data:      b,
 	}
-	imgInfo, e := cntMani.Inspect(m.configGetter)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to inspect config")
-		return
-	}
 	mani.Config = types.Config{
 		Digest:    bInfo.Digest.String(),
 		Size:      bInfo.Size,
 		MediaType: bInfo.MediaType,
 	}
-	mani.Platform = types.Platform{
-		Arch:    imgInfo.Architecture,
-		OS:      imgInfo.Os,
-		Variant: imgInfo.Variant,
+	switch bInfo.MediaType {
+	case "application/vnd.oci.empty.v1+json":
+		utils.Debug(l, span, "empty manifest config detected")
+	default:
+		imgInfo, e := cntMani.Inspect(m.configGetter)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to inspect config")
+			return
+		}
+		mani.Platform = types.Platform{
+			Arch:    imgInfo.Architecture,
+			OS:      imgInfo.Os,
+			Variant: imgInfo.Variant,
+		}
 	}
 	for _, layer := range cntMani.LayerInfos() {
 		mani.Layers = append(mani.Layers, types.Layer{
