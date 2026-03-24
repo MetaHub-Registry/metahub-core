@@ -146,8 +146,44 @@ func TestUserInsert(t *testing.T) {
 	}
 	// ToResponse
 	wwwU4 := gotU4.ToResponse()
-	assert.Equal(t, wwwU4.GithubUsername, gotU4.UserName)
+	assert.Equal(t, wwwU4.Username, gotU4.UserName)
 	assert.Equal(t, 1, len(wwwU4.Secrets))
+}
+
+func TestUserOidcSubRoundtrip(t *testing.T) {
+	ctx := context.Background()
+	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
+	br, err := SetupTest(ctx, bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer TeardownTest(bs, br)
+
+	u := types.User{
+		Username: "oidc-user",
+		OidcSub:  "sub-oidc-42",
+		Email:    "oidc@test.de",
+		Active:   1,
+	}
+	uID, err := sq.InsertUser(ctx, u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEqual(t, int64(-1), uID)
+
+	got, err := sq.GetByUsername(ctx, u.Username)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, u.OidcSub, got.OidcSub)
+	assert.Equal(t, u.Username, got.UserName)
+	assert.Equal(t, u.Email, got.Email)
+
+	// Verify ToResponse maps OidcSub correctly
+	resp := got.ToResponse()
+	assert.Equal(t, u.Username, resp.Username)
+	assert.Equal(t, u.OidcSub, resp.OidcSub)
 }
 
 func TestSecretCRD(t *testing.T) {

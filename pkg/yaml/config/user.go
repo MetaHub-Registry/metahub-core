@@ -15,15 +15,14 @@ import (
 )
 
 type User struct {
-	Username       string `yaml:"username"`
-	FirstName      string `yaml:"first_name"`
-	GithubUsername string `yaml:"github_username"`
-	GithubUserID   string `yaml:"github_user_id"`
-	LastName       string `yaml:"last_name"`
-	Email          string `yaml:"email"`
-	Password       string `yaml:"password"`
-	Hash           string `yaml:"hash"`
-	Role           string `yaml:"role"`
+	Username  string `yaml:"username"`
+	FirstName string `yaml:"first_name"`
+	OidcSub   string `yaml:"oidc_sub"`
+	LastName  string `yaml:"last_name"`
+	Email     string `yaml:"email"`
+	Password  string `yaml:"password"`
+	Hash      string `yaml:"hash"`
+	Role      string `yaml:"role"`
 }
 
 // readUser reads a user config

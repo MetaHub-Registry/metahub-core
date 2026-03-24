@@ -24,7 +24,7 @@ const (
 // that it embeds a token type.
 type User struct {
 	ID         int            `json:"id"`
-	GithubID   string         `json:"github_id"`
+	OidcSub    string         `json:"oidc_sub"`
 	AvatarURL  string         `json:"avatar_url"`
 	UserName   string         `json:"user_name"`
 	Email      string         `json:"email"`
@@ -41,15 +41,15 @@ type User struct {
 
 func (u User) ToResponse() www.User {
 	usr := www.User{
-		GithubUsername: u.UserName,
-		GithubUserID:   u.GithubID,
-		AvatarURL:      u.AvatarURL,
-		Email:          u.Email,
-		Active:         u.Active,
-		FirstName:      u.FirstName,
-		LastName:       u.LastName,
-		Role:           u.Role,
-		Secrets:        []www.Secret{},
+		Username:  u.UserName,
+		OidcSub:   u.OidcSub,
+		AvatarURL: u.AvatarURL,
+		Email:     u.Email,
+		Active:    u.Active,
+		FirstName: u.FirstName,
+		LastName:  u.LastName,
+		Role:      u.Role,
+		Secrets:   []www.Secret{},
 	}
 	for _, ele := range u.Secrets {
 		usr.Secrets = append(usr.Secrets, ele.ToResponse())
@@ -68,13 +68,13 @@ func NewUserFromJSON(in string) (User, error) {
 
 // / SQlite specific methods
 func (s Sqlite) InsertUser(ctx context.Context, u types.User) (userID int64, err error) {
-	q := `INSERT INTO users (user_name, github_id, avatar_url, email, first_name, last_name, user_active, is_logged_in, created_at, updated_at, role)`
+	q := `INSERT INTO users (user_name, oidc_sub, avatar_url, email, first_name, last_name, user_active, is_logged_in, created_at, updated_at, role)`
 	q += ` VALUES (?, ?,?, ?, ?, ?, ?, ?, ?, ?,?)`
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		return
 	}
-	res, err := stmt.Exec(u.Username, u.GithubID, u.AvatarURL, u.Email, u.FirstName, u.LastName, u.Active, u.IsLoggedIn, time.Now(), time.Now(), u.Role)
+	res, err := stmt.Exec(u.Username, u.OidcSub, u.AvatarURL, u.Email, u.FirstName, u.LastName, u.Active, u.IsLoggedIn, time.Now(), time.Now(), u.Role)
 	if err != nil {
 		return
 	}
@@ -265,7 +265,7 @@ func (u User) CreateTables() (err error) {
 	s := `CREATE TABLE IF NOT EXISTS %s (
         id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 		"user_name" TEXT,
-		"github_id" TEXT,
+		"oidc_sub" TEXT,
 		"avatar_url" TEXT,
 		"email" TEXT,
 		"first_name" TEXT,
@@ -320,15 +320,14 @@ func (u *User) getByUsername(ctx context.Context, username string) (*User, error
 	defer span.End()
 
 	//query := `SELECT id, user_name, github_id, avatar_url, email, first_name, last_name, user_active, is_logged_in, created_at, role FROM users WHERE user_name = $1`
-	query := fmt.Sprintf(`SELECT id, user_name, email, first_name, last_name, user_active, is_logged_in, created_at, role FROM users WHERE user_name = '%s'`, username)
+	query := fmt.Sprintf(`SELECT id, user_name, oidc_sub, email, first_name, last_name, user_active, is_logged_in, created_at, role FROM users WHERE user_name = '%s'`, username)
 	utils.Debug(l, span, query)
 	var user User
 	row := db.QueryRowContext(ctx, query)
 	err := row.Scan(
 		&user.ID,
 		&user.UserName,
-		// &user.GithubID,
-		// &user.AvatarURL,
+		&user.OidcSub,
 		&user.Email,
 		&user.FirstName,
 		&user.LastName,
@@ -356,8 +355,6 @@ func (u *User) getByEmail(email string) (*User, error) {
 	err := row.Scan(
 		&user.ID,
 		&user.UserName,
-		//&user.GithubID,
-		//&user.AvatarURL,
 		&user.Email,
 		&user.FirstName,
 		&user.LastName,
@@ -384,8 +381,6 @@ func (u *User) getOne(id int) (*User, error) {
 	err := row.Scan(
 		&user.ID,
 		&user.UserName,
-		//&user.GithubID,
-		//&user.AvatarURL,
 		&user.Email,
 		&user.FirstName,
 		&user.LastName,

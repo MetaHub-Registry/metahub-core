@@ -12,6 +12,9 @@ sonar-scanner \
   -Dsonar.branch.name=$(git rev-parse --abbrev-ref HEAD) \
   -Dsonar.projectKey=${SONAR_QUBE_PROJECT} \
   -Dsonar.sources=. \
+  -Dsonar.go.exclusions="**/*_test.go,**/test_*.go,**/vendor/**,**/test.go,**/testcases.go,**/*swagger*.go,**/coverage.*,**/examples*" \
+  -Dsonar.go.coverage.reportPaths=coverage.txt \
+  -Dsonar.go.tests.reportPaths=report.json \
   -Dsonar.host.url=${SONAR_QUBE_URL} \
-  -Dsonar.login=${SONAR_QUBE_TOKEN}
-  #-Dsonar.analysis.buildTimestamp=2026-01-28T07:00Z
+  -Dsonar.token=${SONAR_QUBE_TOKEN}
+
