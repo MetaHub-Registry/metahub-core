@@ -91,6 +91,10 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 		err = errors.Wrapf(e, "failed to init oauth")
 		logrus.Fatal(err)
 	}
+	if e := initOIDC(&cfg); e != nil {
+		err = errors.Wrapf(e, "failed to init oidc")
+		logrus.Fatal(err)
+	}
 	ctx, err = initTracing(cmd, &cfg)
 	checkErr(err, "failed to init tracing")
 
@@ -208,6 +212,20 @@ func parseFlags(cmd *cobra.Command, regList []string) (cfg MagConfig) {
 			"registries":   strings.Join(regList, ","),
 		},
 	}
+}
+
+func initOIDC(cfg *MagConfig) (err error) {
+	issuer := viper.GetString("oidc.issuer")
+	if issuer == "" {
+		return nil
+	}
+	cfg.OIDC = OIDCCfg{
+		Issuer:       issuer,
+		ClientID:     viper.GetString("oidc.clientid"),
+		ClientSecret: viper.GetString("oidc.secret"),
+		RedirectURI:  viper.GetString("oidc.redirect_uri"),
+	}
+	return nil
 }
 
 func initOauth(cfg *MagConfig) (err error) {

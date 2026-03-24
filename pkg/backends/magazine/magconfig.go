@@ -8,7 +8,15 @@ type MagConfig struct {
 	Tracing     TraceCfg
 	Args        map[string]string
 	OAuth       OAuthCfg
+	OIDC        OIDCCfg
 	CORS        CORS
+}
+
+type OIDCCfg struct {
+	Issuer       string
+	ClientID     string
+	ClientSecret string
+	RedirectURI  string
 }
 
 type CORS struct {

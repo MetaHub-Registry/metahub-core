@@ -1,16 +1,13 @@
 package types
 
 import (
-	"fmt"
-
-	"github.com/google/go-github/github"
 	"github.com/metahub-registry/metahub-core/pkg/types/www"
 )
 
 type User struct {
 	SqlID      int64  `json:"sql_id"`
 	Username   string `yaml:"username"`
-	GithubID   string `yaml:"github_id"`
+	OidcSub    string `yaml:"oidc_sub"`
 	Email      string `yaml:"email"`
 	Active     int    `yaml:"active"`
 	AvatarURL  string `yaml:"avatar_url"`
@@ -22,8 +19,8 @@ type User struct {
 }
 
 func UserFromWWWUser(w www.User, role string) (u User) {
-	u.Username = w.GithubUsername
-	u.GithubID = w.GithubUserID
+	u.Username = w.Username
+	u.OidcSub = w.OidcSub
 	u.Role = role
 	u.Email = w.Email
 	u.FirstName = w.FirstName
@@ -31,13 +28,4 @@ func UserFromWWWUser(w www.User, role string) (u User) {
 	u.Active = 1
 	u.AvatarURL = w.AvatarURL
 	return
-}
-
-func UserFromGitHubUser(u *github.User) User {
-	return User{
-		Username:  *u.Login,
-		GithubID:  fmt.Sprintf("%d", *u.ID),
-		Active:    1,
-		AvatarURL: *u.AvatarURL,
-	}
 }
