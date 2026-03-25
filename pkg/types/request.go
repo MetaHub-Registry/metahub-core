@@ -179,6 +179,14 @@ func (req *Request) ParseAuth(span trace.Span, r *http.Request) (err error) {
 		user = vUser
 	}
 
+	// Read userRole from gorilla context (set by OCIAuthMiddleware)
+	vRole := gCtx.Get(r, "userRole")
+	if vRole != nil {
+		if role, ok := vRole.(string); ok && role != "" {
+			userRole = role
+		}
+	}
+
 	req.User = user
 	req.UserRole = userRole
 	req.Profile = profile
