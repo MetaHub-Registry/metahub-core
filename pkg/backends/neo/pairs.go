@@ -117,7 +117,7 @@ func (n Neo) CollectionTagProfilePairAnnotationGetRegexFiltered(ctx context.Cont
 		"func": "CollectionTagProfilePairAnnotationGetRegexFiltered",
 	})
 	defer span.End()
-	q := `MATCH (prf:Profile)-[:USES]->(Rule)-[:TRUE]->(Annotation)<-[:HAS_ANNOTATION]-(:ManifestData)<-[:CREATED]-(m:Manifest)`
+	q := `MATCH (prf:Profile)-[:USES]->(Rule)-[:TRUE]->(Annotation)<-[:HAS_ANNOTATION]-(:ManifestData)<-[]-(m:Manifest)`
 	q += fmt.Sprintf(` WHERE prf.label =~ "%s"`, profileRegex)
 	q += ` MATCH (c:Collection)-[:UPSTREAM]->(m)<-[:UPSTREAM]-(t:Tag)`
 	q += fmt.Sprintf(` WHERE c.repo =~ "%s" AND t.name =~ "%s"`, repoRegex, tagRegex)

@@ -12,6 +12,64 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/yaml/config"
 )
 
+func TestProfileGetAll(t *testing.T) {
+	ctx := context.Background()
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.SetEmptyAll()
+
+	br, err := SetupTest(ctx, bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs, br)
+
+	t.Run("empty_graph_returns_empty_slice", func(t *testing.T) {
+		ps, err := db.ProfileGetAll(ctx)
+		assert.NoError(t, err)
+		assert.NotNil(t, ps)
+		assert.Len(t, ps, 0)
+	})
+
+	t.Run("profile_without_rules_has_empty_rules_slice", func(t *testing.T) {
+		p := types.Profile{Name: "testprf", Tag: "v1"}
+		_, err := db.CreateProfile(p)
+		assert.NoError(t, err)
+
+		ps, err := db.ProfileGetAll(ctx)
+		assert.NoError(t, err)
+		assert.Len(t, ps, 1)
+		assert.Equal(t, "testprf", ps[0].Name)
+		assert.NotNil(t, ps[0].Rules)
+		assert.Len(t, ps[0].Rules, 0)
+	})
+
+	t.Run("profile_with_rule_has_rules_populated", func(t *testing.T) {
+		// Create a rule and link it to the existing profile
+		r := types.Rule{Name: "test-rule", Tag: "v1", Type: types.RuleTypePlatform, Op: "eq", Key: "arch", Value: "amd64"}
+		ruleID, err := db.RuleCreate(ctx, r)
+		assert.NoError(t, err)
+
+		// Get the profile we created above
+		prf, found, err := db.ProfileGetByNameTag(ctx, "testprf", "v1")
+		assert.NoError(t, err)
+		assert.True(t, found)
+
+		err = db.ProfileLinkRule(ctx, prf.ID, ruleID)
+		assert.NoError(t, err)
+
+		ps, err := db.ProfileGetAll(ctx)
+		assert.NoError(t, err)
+		assert.Len(t, ps, 1)
+		assert.Len(t, ps[0].Rules, 1)
+		assert.Equal(t, ruleID, ps[0].Rules[0].ID)
+		assert.Equal(t, types.RuleTypePlatform, ps[0].Rules[0].Type)
+		assert.Equal(t, "eq", ps[0].Rules[0].Op)
+		assert.Equal(t, "arch", ps[0].Rules[0].Key)
+		assert.Equal(t, "amd64", ps[0].Rules[0].Value)
+	})
+}
+
 func TestProfileCRUD(t *testing.T) {
 	ctx := context.Background()
 	debug := 0

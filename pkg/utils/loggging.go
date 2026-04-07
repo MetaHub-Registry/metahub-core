@@ -14,11 +14,13 @@ import (
 )
 
 func ErrorHandler(l *logrus.Entry, span trace.Span, e error, frmt string, a ...any) (err error) {
-	msg := fmt.Sprintf(frmt, a...)
 	if frmt != "" {
+		msg := fmt.Sprintf(frmt, a...)
 		err = errors.Wrap(e, msg)
+	} else {
+		err = e
 	}
-	if l != nil {
+	if l != nil && err != nil {
 		l.Error(err.Error())
 	}
 	if span != nil {

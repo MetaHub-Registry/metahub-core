@@ -98,6 +98,7 @@ type Database interface {
 	ManifestDataLinkToAnnotation(ctx context.Context, maniID, annotationID int64) (err error)
 	ManifestDataGetByRule(ctx context.Context, rule types.Rule) (mds []types.ManifestData, err error)
 	ManifestDataCheckProfile(ctx context.Context, md types.ManifestData, prf types.Profile) (ok bool, err error)
+	ManifestDataCheckProfileAnnotations(ctx context.Context, md types.ManifestData, prf types.Profile) (ok bool, err error)
 	ManifestDataGetPushedByProfile(ctx context.Context, up types.Upstream, prf types.Profile) (m types.ManifestData, found bool, err error)
 	ManifestDataDelete(ctx context.Context, mani types.ManifestData) (err error)
 	ManifestDataGetByDigest(ctx context.Context, dig string) (m types.ManifestData, found bool, err error)
@@ -211,4 +212,10 @@ type Database interface {
 	LinkManifestDataToSubject(ctx context.Context, mdDigest string, subId int64) (err error)
 	LinkSubjectByDigestMediaType(ctx context.Context, refID int64, subDigest, subMediaType string) (err error)
 	ReferrersGetBySubjectDigest(ctx context.Context, dig string) (refs types.ReferrersResponse, err error)
+	/**** ORAS ********/
+	OrasArtifactGetByRepoLike(ctx context.Context, repo string) ([]types.OrasListing, error)
+	OrasArtifactGetByName(ctx context.Context, repo, artifactType string) (types.OrasArtifact, error)
+	OrasArtifactGetByID(ctx context.Context, manifestID int64) (types.OrasArtifact, error)
+	/**** Profiles (all with rules) ********/
+	ProfileGetAll(ctx context.Context) ([]types.Profile, error)
 }

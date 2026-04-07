@@ -46,7 +46,8 @@ func (pmdps *CollectionTagProfilePair) AddRule(label string) error {
 }
 
 func (pmdps *CollectionTagProfilePair) AddManifest(md ManifestData) error {
-	if md.MediaType != "application/vnd.oci.image.manifest.v1+json" {
+	if md.MediaType != "application/vnd.oci.image.manifest.v1+json" &&
+		md.MediaType != "application/vnd.docker.distribution.manifest.v2+json" {
 		logrus.Warnf("Skip manifest with type: %s", md.MediaType)
 		return nil
 	}

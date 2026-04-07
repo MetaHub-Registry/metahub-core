@@ -509,6 +509,35 @@ func (n Neo) Setup_Collection_FT_generic(ctx context.Context, br *utils.Bootstra
 	return
 }
 
+func (n Neo) Setup_Collection_FT_oras_cyclonedx(ctx context.Context, br *utils.BootstrapResult) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "Setup_Collection_FT_oras_cyclonedx",
+	})
+	_ = l
+	defer span.End()
+	yamlCol := config.FTyamlCollectionCycloneDX()
+	colID, colTagID, err := n.CreateCollection(ctx, yamlCol)
+	if err != nil {
+		return err
+	}
+	br.Add("collection:ft_oras#id", fmt.Sprint(colID))
+	br.Add("tag:cyclonedx#id", fmt.Sprint(colTagID))
+	// Link Collection to ORAS Manifest
+	maniID, err := br.GetInt64("manifest:ft_oras_cyclonedx#id")
+	if err != nil {
+		return err
+	}
+	err = n.LinkCollectionToManifest(ctx, colID, maniID)
+	if err != nil {
+		return err
+	}
+	err = n.LinkCollectionTagToManifest(ctx, colTagID, maniID)
+	if err != nil {
+		return err
+	}
+	return
+}
+
 func (n Neo) Setup_Collection_FT_zen3(ctx context.Context, br *utils.BootstrapResult) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"func": "Setup_Collection_FT_zen3",
@@ -980,6 +1009,12 @@ func (n Neo) Bootstrap_Config(ctx context.Context, bs utils.Bootstrap, br *utils
 			err = errors.Wrapf(err, whileFmrt, b)
 			return
 		}
+	case "ft_oras_cyclonedx":
+		err = n.Setup_Config(ctx, br, types.FTOrasConfig(), b)
+		if err != nil {
+			err = errors.Wrapf(err, whileFmrt, b)
+			return
+		}
 	}
 
 	return
@@ -1010,6 +1045,11 @@ func (n Neo) Bootstrap_Collection(ctx context.Context, bs utils.Bootstrap, br *u
 		}
 	case "ft_amd64":
 		err = n.Setup_Collection_FT_amd64(ctx, br)
+		if err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
+	case "ft_oras_cyclonedx":
+		err = n.Setup_Collection_FT_oras_cyclonedx(ctx, br)
 		if err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
@@ -1059,6 +1099,12 @@ func (n Neo) Bootstrap_Upstream(ctx context.Context, bs utils.Bootstrap, br *uti
 		}
 	case "glow150amd64":
 		err = n.Setup_Upstream(br, types.UpstreamGlow150AMD64, b)
+		if err != nil {
+			err = errors.Wrapf(err, whileFmrt, b)
+			return
+		}
+	case "ft_oras_cyclonedx":
+		err = n.Setup_Upstream(br, types.FTOrasUpstream(), b)
 		if err != nil {
 			err = errors.Wrapf(err, whileFmrt, b)
 			return

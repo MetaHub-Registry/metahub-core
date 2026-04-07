@@ -114,7 +114,16 @@ func (n Neo) CollectionListingGetByRepoLike(ctx context.Context, repo string) (c
 	span.SetAttributes(
 		attribute.Key("repo").String(repo),
 	)
+	// Only return Collection+Tag pairs that have at least one container-image manifest.
+	// This prevents ORAS-only repos from appearing in the collections listing even though
+	// they share a Collection node in the graph.
+	// Note: container image ManifestData uses ORIGINAL/PARSED relationships (not CREATED),
+	// so we match any relationship type between Manifest and ManifestData.
 	q := `MATCH (c:Collection)-[:HAS_TAG]->(t) WHERE c.repo =~ "^%s.*"`
+	q += ` AND EXISTS {`
+	q += `   MATCH (c)-[:UPSTREAM]->(m)-[]-(md:ManifestData)-[cfgRel]->(cfg:Blob)`
+	q += `   WHERE cfg.type = "config" AND cfg.mediaType IN ` + containerImageConfigFilter()
+	q += ` }`
 	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
 	query := fmt.Sprintf(q, repo)
 	utils.Debug(l, span, query)
