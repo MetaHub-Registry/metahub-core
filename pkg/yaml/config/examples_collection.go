@@ -27,3 +27,10 @@ func FTyamlCollectionamd64() ManifestCollection {
 		Tag:  "amd64",
 	}
 }
+
+func FTyamlCollectionCycloneDX() ManifestCollection {
+	return ManifestCollection{
+		Name: "qnib/featuretest",
+		Tag:  "cyclonedx",
+	}
+}

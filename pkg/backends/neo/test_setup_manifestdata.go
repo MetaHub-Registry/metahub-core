@@ -41,8 +41,57 @@ func (n Neo) Bootstrap_ManifestData(ctx context.Context, bs utils.Bootstrap, br 
 		if err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
+	case "ft_oras_cyclonedx":
+		err = n.Setup_OrasManifestData(ctx, br, types.FTOrasManifestData(), b)
+		if err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
 	default:
 		return fmt.Errorf("no ManifestData Setup for '%s'", b)
+	}
+	return
+}
+
+// Setup_OrasManifestData inserts a ManifestData for an ORAS artifact and records the result
+// in the BootstrapResult. Unlike Setup_ManifestData it skips platform linking because ORAS
+// artifacts are not platform-specific.
+func (n Neo) Setup_OrasManifestData(ctx context.Context, br *utils.BootstrapResult, maniData types.ManifestData, label string) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func":  "Setup_OrasManifestData",
+		"label": label,
+	})
+	defer span.End()
+	err = n.ManifestDataGetInsert(ctx, &maniData)
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, "could not insert ORAS ManifestData '%s'", label)
+	}
+	br.Add(fmt.Sprintf("manifestdata:%s#digest", label), maniData.Digest)
+	utils.Debug(l, span, "ORAS ManifestData '%s#digest' inserted: %s", label, maniData.Digest)
+	br.Add(fmt.Sprintf("manifestdata:%s#id", label), fmt.Sprint(maniData.ID))
+	utils.Debug(l, span, "ORAS ManifestData '%s#id' inserted: %d", label, maniData.ID)
+	br.Add(fmt.Sprintf("manifestdata:%s#mediaType", label), maniData.MediaType)
+	utils.Debug(l, span, "ORAS ManifestData '%s#mediaType' inserted: %s", label, maniData.MediaType)
+	// Check if manifest with the same label is already in BR — link it if present.
+	// Use "CREATED" so ORAS queries that match (m)-[:CREATED]-(md:ManifestData) can find it.
+	key := fmt.Sprintf("manifest:%s#id", label)
+	mID, e := br.GetInt64(key)
+	if e != nil {
+		utils.NewError(l, span, "Manifest not yet present, linking will happen later")
+	} else {
+		utils.Warn(l, span, "Found manifest with ID: %d", mID)
+		if e := n.LinkManifestToManifestData(ctx, mID, maniData.ID, "CREATED"); e != nil {
+			utils.Warn(l, span, "LinkManifestToManifestData failed for manifest %d", mID)
+		}
+	}
+	// Link from ManifestData to Upstream
+	if upID, found, e := n.UpstreamGetIDByDigest(ctx, maniData.Upstream.Digest.String()); e != nil {
+		return e
+	} else if found {
+		if e = n.ManifestDataLinkToUpstream(ctx, maniData.ID, upID); e != nil {
+			return utils.ErrorHandler(l, span, e, "ManifestDataLinkToUpstream failed")
+		}
+	} else {
+		return utils.ErrorHandler(l, span, e, "could not find upstream with digest '%s'", maniData.Upstream.Digest.String())
 	}
 	return
 }

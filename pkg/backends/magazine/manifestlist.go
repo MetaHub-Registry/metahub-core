@@ -46,8 +46,9 @@ func (mag Magazine) ComputeManifestlistForCTTP(ctx context.Context, er *types.Ex
 	mds := []types.ManifestData{}
 	for _, m := range tmpMDS {
 		utils.Debug(l, span, "ManifestDataID:%d, Platform:%s", m.ID, m.Platform.GetLabel())
-		// TODO: Kick out Manifests with a single FALSE relationship
-		ok, e := mag.Database.ManifestDataCheckProfile(ctx, m, p)
+		// Use annotation-only check: manifests from parse collections have no UPLOADED_BY/PULLED_BY
+		// creation relationship to a profile, so ManifestDataCheckProfile would always return false.
+		ok, e := mag.Database.ManifestDataCheckProfileAnnotations(ctx, m, p)
 		if e != nil {
 			return utils.ErrorHandler(l, span, e, "Failed to check profile")
 		}

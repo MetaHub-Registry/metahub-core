@@ -98,9 +98,9 @@ func (m Minio) BlobPutObj(ctx context.Context, object string, data []byte) (err 
 		"object":  object,
 	})
 	defer span.End()
-	blobBucketKey := GetBlobBucketKey()
-	cli := m.BucketConfig[blobBucketKey].Client
-	info, e := cli.PutObject(ctx, blobBucketKey, object, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{})
+	bucket := m.GetBlobBucketName()
+	cli := m.BucketConfig[GetBlobBucketKey()].Client
+	info, e := cli.PutObject(ctx, bucket, object, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{})
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, "failed to put object")
 	}
@@ -116,14 +116,14 @@ func (m Minio) BlobRemoveObj(ctx context.Context, object string) (err error) {
 	})
 	defer span.End()
 	utils.Debug(l, span, "Removing blob '%s'", utils.ShortenDigest(object))
-	blobBucketKey := GetBlobBucketKey()
-	cli := m.BucketConfig[blobBucketKey].Client
+	bucket := m.GetBlobBucketName()
+	cli := m.BucketConfig[GetBlobBucketKey()].Client
 	obj, err := m.BlobStatObj(ctx, object)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to stat object before removal")
 	}
 	utils.Debug(l, span, "Blob '%s' found: %d bytes", utils.ShortenDigest(object), obj.Size)
-	err = cli.RemoveObject(ctx, blobBucketKey, object, minio.RemoveObjectOptions{})
+	err = cli.RemoveObject(ctx, bucket, object, minio.RemoveObjectOptions{})
 	utils.Debug(l, span, "Removed blob '%s': %v", utils.ShortenDigest(object), err)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to remove object")
@@ -143,10 +143,10 @@ func (m Minio) BlobGetBytes(ctx context.Context, path string) (b []byte, err err
 	})
 	defer span.End()
 	_ = l
-	blobBucketKey := GetBlobBucketKey()
-	span.SetAttributes(attribute.String("bucket", blobBucketKey))
-	cli := m.BucketConfig[blobBucketKey].Client
-	obj, err := cli.GetObject(ctx, blobBucketKey, path, minio.GetObjectOptions{})
+	bucket := m.GetBlobBucketName()
+	span.SetAttributes(attribute.String("bucket", bucket))
+	cli := m.BucketConfig[GetBlobBucketKey()].Client
+	obj, err := cli.GetObject(ctx, bucket, path, minio.GetObjectOptions{})
 	if err != nil {
 		l.Errorf("Error getting blob: %s", err)
 		return
@@ -169,12 +169,12 @@ func (m Minio) BlobGetPreSignedUrl(ctx context.Context, dig string) (psUrl strin
 		"package": "backends/minio",
 		"func":    "BlobGetPreSignedUrl",
 	})
-	blobBucketKey := GetBlobBucketKey()
-	cli := m.BucketConfig[blobBucketKey].Client
+	bucket := m.GetBlobBucketName()
+	cli := m.BucketConfig[GetBlobBucketKey()].Client
 	reqParams := make(url.Values)
 	psU, err := cli.PresignedGetObject(
 		context.Background(),
-		blobBucketKey,
+		bucket,
 		dig,
 		time.Second*30*60,
 		reqParams)

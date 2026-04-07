@@ -120,6 +120,41 @@ func (n Neo) Bootstrap_Scenario(ctx context.Context, bs utils.Bootstrap, br *uti
 		}
 
 		return
+	case strings.HasPrefix(b, "oras_cyclonedx"):
+		return n.Bootstrap_Scenario_OrasCyclonedx(ctx, bs, br)
 	}
 	return fmt.Errorf("no Scenario Setup for '%s'", b)
+}
+
+// Bootstrap_Scenario_OrasCyclonedx sets up a minimal ORAS CycloneDX artifact in Neo4j:
+//   - upstream (ft_oras_cyclonedx)
+//   - config blob  (ft_oras_cyclonedx, mediaType=application/vnd.cyclonedx)
+//   - manifest     (ft_oras_cyclonedx)
+//   - manifestdata (ft_oras_cyclonedx, linked to config and upstream)
+//   - collection   (qnib/featuretest:cyclonedx, linked to manifest)
+//
+// No platform is set up because ORAS artifacts are not platform-specific.
+func (n Neo) Bootstrap_Scenario_OrasCyclonedx(ctx context.Context, bs utils.Bootstrap, br *utils.BootstrapResult) (err error) {
+	const label = "ft_oras_cyclonedx"
+	// Upstream
+	if e := n.Setup_Upstream(br, types.FTOrasUpstream(), label); e != nil {
+		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: upstream")
+	}
+	// Config (non-container mediaType — this is what makes it an ORAS artifact)
+	if e := n.Setup_Config(ctx, br, types.FTOrasConfig(), label); e != nil {
+		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: config")
+	}
+	// Manifest
+	if e := n.Setup_Manifest_FT_oras_cyclonedx(ctx, br); e != nil {
+		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: manifest")
+	}
+	// ManifestData (links config + upstream; no platform)
+	if e := n.Setup_OrasManifestData(ctx, br, types.FTOrasManifestData(), label); e != nil {
+		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: manifestdata")
+	}
+	// Collection
+	if e := n.Setup_Collection_FT_oras_cyclonedx(ctx, br); e != nil {
+		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: collection")
+	}
+	return
 }

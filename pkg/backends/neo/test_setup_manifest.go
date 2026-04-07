@@ -38,8 +38,58 @@ func (n Neo) Bootstrap_Manifest(ctx context.Context, bs utils.Bootstrap, br *uti
 			br.PrintDict()
 			return errors.Wrapf(err, whileFmrt, b)
 		}
+	case "ft_oras_cyclonedx":
+		err = n.Setup_Manifest_FT_oras_cyclonedx(ctx, br)
+		if err != nil {
+			return errors.Wrapf(err, whileFmrt, b)
+		}
 	default:
 		return fmt.Errorf("no ManifestData Setup for '%s'", b)
+	}
+	return
+}
+
+// Setup_Manifest_FT_oras_cyclonedx sets up a Manifest node for the ORAS CycloneDX artifact
+// and links it to its Upstream. Unlike container-image manifests, ORAS artifacts have no platform.
+func (n Neo) Setup_Manifest_FT_oras_cyclonedx(ctx context.Context, br *utils.BootstrapResult) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "Setup_Manifest_FT_oras_cyclonedx",
+	})
+	defer span.End()
+	// Already present?
+	if _, e := br.GetInt64("manifest:ft_oras_cyclonedx#id"); e == nil {
+		utils.Debug(l, span, "Manifest ft_oras_cyclonedx already present, skipping setup")
+		return
+	}
+	upID, err := br.GetInt64("upstream:ft_oras_cyclonedx#id")
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, "failed to get upstream id from BR")
+	}
+	up, _, err := n.UpstreamGetByID(ctx, upID)
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, "failed to get upstream by id")
+	}
+	as := types.NewAnnotations()
+	m := types.Manifest{
+		Upstream:    up,
+		Annotations: as,
+	}
+	maniID, err := n.ManifestGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, "failed to insert manifest")
+	}
+	utils.Debug(l, span, "Inserted ORAS Manifest with ID: %d", maniID)
+	br.Add("manifest:ft_oras_cyclonedx#id", fmt.Sprint(maniID))
+	err = n.ManifestLinkToUpstream(ctx, maniID, upID)
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, "failed to link manifest to upstream")
+	}
+	// Link ManifestData if already present. Use "CREATED" so ORAS queries that match
+	// (m)-[:CREATED]-(md:ManifestData) can find this artifact.
+	if maniDataID, e := br.GetInt64("manifestdata:ft_oras_cyclonedx#id"); e == nil {
+		if e := n.LinkManifestToManifestData(ctx, maniID, maniDataID, "CREATED"); e != nil {
+			utils.Warn(l, span, "LinkManifestToManifestData failed for manifest %d", maniID)
+		}
 	}
 	return
 }

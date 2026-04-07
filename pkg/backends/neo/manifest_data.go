@@ -33,6 +33,7 @@ const (
 	FailManipuLayerLinkToManifestData = "ManipuLayer_LinkToManifestData failed"
 	FailMediaTypeEmpty                = "mediaType is empty"
 	FailedProfGetByLabel              = "ProfileGetByLabel failed"
+	FailedProfileNotFound             = "profile not found"
 )
 
 func (n Neo) ManifestDataUpdateDesc(ctx context.Context, maniDataID int64, maniDataV1 v1.Descriptor) (err error) {
@@ -811,7 +812,7 @@ func (n Neo) ManifestDataCheckProfileCreationRelationship(ctx context.Context, m
 		"profile.name": prf.Name,
 	})
 	defer span.End()
-	q := `MATCH (md:ManifestData)-[r:CREATED_BY]->(p:Profile)`
+	q := `MATCH (md:ManifestData)-[r]->(p:Profile)`
 	q += fmt.Sprintf(` WHERE id(md) = %d AND id(p) = %d RETURN count(r) AS relCount`, md.ID, prf.ID)
 	utils.Debug(l, span, q)
 	res, _, err := n.QueryOne(q)
@@ -878,9 +879,9 @@ func (n Neo) ManifestDataCheckProfileAnnotations(ctx context.Context, md types.M
 	for _, id := range noopRuleIDs {
 		noopRuleIDsStr = append(noopRuleIDsStr, fmt.Sprintf("%d", id))
 	}
-	// B. Check if manifest has FALSE relationship with all noop rules
-	q = fmt.Sprintf(`MATCH (md:ManifestData)-[:%s]-(r:Rule)`, types.RelationFailure)
-	q += fmt.Sprintf(` WHERE id(md) = %d AND id(r) IN [%s] `, md.ID, noopRuleIDsStr)
+	// B. Check if manifest has TRUE relationship with all noop rules (noop=true means no targeted annotation present)
+	q = fmt.Sprintf(`MATCH (md:ManifestData)-[:%s]-(r:Rule)`, types.RelationSuccess)
+	q += fmt.Sprintf(` WHERE id(md) = %d AND id(r) IN [%s] RETURN count(r) AS countAnnotations`, md.ID, strings.Join(noopRuleIDsStr, ","))
 	utils.Debug(l, span, q)
 	res, _, err = n.QueryOne(q)
 	if err != nil {
@@ -903,7 +904,7 @@ func (n Neo) ManifestDataGetByAnnotationRule(ctx context.Context, rule types.Rul
 	})
 	defer span.End()
 	rel := types.RelationSuccess
-	q := fmt.Sprintf(`MATCH (u:Upstream)-[]-(m:Manifest)-[:CREATED]-(md:ManifestData)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule) WHERE id(r) = %d`, rel, rule.ID)
+	q := fmt.Sprintf(`MATCH (u:Upstream)-[]-(m:Manifest)-[]-(md:ManifestData)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule) WHERE id(r) = %d`, rel, rule.ID)
 	q += ` MATCH (md)-[:IS]->(p:Platform)`
 	q += ` RETURN ` + manifestDataReturn + `,`
 	q += ` id(p) AS platformID, p.os AS platformOS, p.arch AS platformArch, p.variant AS platformVariant,`
@@ -1390,7 +1391,7 @@ func (n Neo) ManifestDataGetByUpstream(ctx context.Context, up types.Upstream) (
 			return m, false, err
 		}
 		if !prfFound {
-			utils.NewError(l, span, "profile not found")
+			utils.NewError(l, span, FailedProfileNotFound)
 			return m, false, err
 		}
 		utils.Debug(l, span, "Found profile '%s' with ID %d", up.Profile, prf.ID)
@@ -1609,9 +1610,13 @@ func (n Neo) ManifestDataGetByCollectionTag(ctx context.Context, colID, colTagID
 	utils.Info(l, span, "getting manifest data by collection and tag")
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
-	q := `MATCH (p:Platform)-[]-(md:ManifestData)-[cfgRel]->(cfg:Blob) WHERE cfg.type = "config" `
-	q += fmt.Sprintf(` MATCH (c:Collection)-[:UPSTREAM]->(m)-[r:CREATED]-(md:ManifestData) WHERE id(c) = %d`, colID)
-	q += fmt.Sprintf(` MATCH (t:Tag)-[:UPSTREAM]->(m)-[:CREATED]->(md) WHERE id(t) = %d`, colTagID)
+	q := `MATCH (p:Platform)-[]-(md:ManifestData)-[cfgRel]->(cfg:Blob) WHERE cfg.type = "config"`
+	// Filter to container image config media types only (excludes ORAS artifact configs).
+	// Uses cfg.mediaType property (always the full MIME string) rather than TYPE(cfgRel),
+	// because the relationship type encoding varies between bootstrap paths.
+	q += ` AND cfg.mediaType IN ["application/vnd.oci.image.config.v1+json", "application/vnd.docker.container.image.v1+json"]`
+	q += fmt.Sprintf(` MATCH (c:Collection)-[:UPSTREAM]->(m)-[r]-(md:ManifestData) WHERE id(c) = %d`, colID)
+	q += fmt.Sprintf(` MATCH (t:Tag)-[:UPSTREAM]->(m)-[]->(md) WHERE id(t) = %d`, colTagID)
 	q += ` MATCH (m)-[]->(u:Upstream)`
 	q += ` RETURN type(r) AS manifestdataRelType,`
 	q += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
@@ -1674,7 +1679,9 @@ func (n Neo) ManifestDataGetByCollectionTag(ctx context.Context, colID, colTagID
 			continue
 		}
 		for _, prf := range prfs {
-			ok, e := n.ManifestDataCheckProfile(ctx, m, prf)
+			// Use annotation-only check here: parsed manifests have no UPLOADED_BY/PULLED_BY
+			// relationship to a profile, so ManifestDataCheckProfile would always return false.
+			ok, e := n.ManifestDataCheckProfileAnnotations(ctx, m, prf)
 			if e != nil {
 				utils.ErrorHandler(l, span, e, "Failed to check profile")
 				return
@@ -2066,7 +2073,7 @@ func (n Neo) ManifestDataExistsForTagProfile(ctx context.Context, up upstream.Up
 		return "", false, err
 	}
 	if !found {
-		err = utils.ErrorHandler(l, span, errors.New("profile not found"), "")
+		err = utils.ErrorHandler(l, span, errors.New(FailedProfileNotFound), "")
 		return "", false, err
 	}
 	utils.Debug(l, span, "Found profile '%s' with ID %d", up.Profile, prf.ID)
@@ -2117,7 +2124,7 @@ func (n Neo) ManifestDataExists(ctx context.Context, up upstream.UpstreamTriple)
 		return "", false, err
 	}
 	if !found {
-		err = utils.ErrorHandler(l, span, errors.New("profile not found"), "")
+		err = utils.ErrorHandler(l, span, errors.New(FailedProfileNotFound), "profile '%s' not found in database", up.Profile)
 		return "", false, err
 	}
 	utils.Debug(l, span, "Found profile '%s' with ID %d", up.Profile, prf.ID)

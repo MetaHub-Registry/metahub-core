@@ -156,6 +156,56 @@ func (n Neo) GetProfiles(ctx context.Context) (ps []types.Profile, err error) {
 	return
 }
 
+// ProfileGetAll returns all Profile nodes from the graph, each with its linked Rules populated.
+// It fetches profiles first, then resolves their rules using the existing rule query infrastructure.
+func (n Neo) ProfileGetAll(ctx context.Context) (ps []types.Profile, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameProfile,
+		"func":    "ProfileGetAll",
+	})
+	defer span.End()
+
+	q := fmt.Sprintf(`MATCH (prf:Profile) RETURN %s`, returnStatementProfile)
+	utils.Debug(l, span, q)
+	res, err := n.Query(q)
+	if err != nil {
+		utils.ErrorHandler(l, span, err, "while executing ProfileGetAll query")
+		return
+	}
+	ps = make([]types.Profile, 0)
+	for _, r := range res {
+		p, e := n.ProfileFromResult(r)
+		if e != nil {
+			logrus.Error(e)
+			continue
+		}
+		// Fetch linked rules for this profile
+		rq := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule) WHERE id(prf) = %d RETURN %s`, p.ID, ruleReturn)
+		rres, e := n.Query(rq)
+		if e != nil {
+			utils.ErrorHandler(l, span, e, "while fetching rules for profile")
+			continue
+		}
+		p.Rules = make([]types.ProfileRule, 0)
+		for _, rr := range rres {
+			rule, e := RuleFromResult(rr)
+			if e != nil {
+				logrus.Warnf("ProfileGetAll: skipping malformed rule: %v", e)
+				continue
+			}
+			p.Rules = append(p.Rules, types.ProfileRule{
+				ID:    rule.ID,
+				Type:  rule.Type,
+				Op:    rule.Op,
+				Key:   rule.Key,
+				Value: rule.Value,
+			})
+		}
+		ps = append(ps, p)
+	}
+	return
+}
+
 func (n Neo) GetProfile(prf types.Profile) (prfID int64, success bool, err error) {
 	q := `MATCH (n:Profile) WHERE n.name = "%s" AND n.tag = "%s" RETURN id(n) AS ID`
 	query := fmt.Sprintf(q, prf.Name, prf.Tag)

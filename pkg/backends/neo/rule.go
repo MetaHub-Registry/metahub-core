@@ -315,8 +315,8 @@ func (n Neo) RuleEvalAnnotationRuleNULL(ctx context.Context, r types.Rule) (err 
 			return err
 		}
 	}
-	// Check out all ManifestData without an annotation matching the key pattern
-	q = `MATCH (md:ManifestData) WHERE NOT (md)-[:HAS]->(:Annotation {key: "%s"})`
+	// Check out all ManifestData without an annotation matching the key pattern (regex)
+	q = `MATCH (md:ManifestData) WHERE NOT EXISTS { MATCH (md)-[:HAS_ANNOTATION]->(a:Annotation) WHERE a.key =~ "%s" }`
 	q += ` RETURN id(md) AS manifestDataID`
 	query = fmt.Sprintf(q, r.Key)
 	utils.Debug(l, span, query)
