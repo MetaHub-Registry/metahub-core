@@ -44,15 +44,15 @@ func (n Neo) PlatformGetByID(platID int64) (plat types.Platform, found bool, err
 	return
 }
 
-func (n Neo) PlatformGetByManifestDataID(ctx context.Context, maniDataID int64) (plat types.Platform, found bool, err error) {
+func (n Neo) PlatformGetByManifestID(ctx context.Context, maniDataID int64) (plat types.Platform, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNamePlatform,
-		"func":       "PlatformGetByManifestDataID",
+		"func":       "PlatformGetByManifestID",
 		"maniDataID": maniDataID,
 	})
 	defer span.End()
 
-	q := fmt.Sprintf(`MATCH (n:Platform)<-[:IS]-(md:ManifestData) WHERE id(md) = %d`, maniDataID)
+	q := fmt.Sprintf(`MATCH (n:Platform)<-[:HAS_PLATFORM]-(md:Manifest) WHERE id(md) = %d`, maniDataID)
 	q += ` RETURN id(n) AS platformID, n.arch AS platformArch, n.os AS platformOS, n.variant AS platformVariant`
 	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)
@@ -77,7 +77,7 @@ func (n Neo) GetPlatform(ctx context.Context, plat types.Platform) (platID int64
 	defer session.Close()
 	result, err := session.Run(query, map[string]interface{}{})
 	if err != nil {
-		utils.ErrorHandler(l, span, err, "Failed to run query")
+		utils.ErrorHandler(l, span, err, errFailedRunQuery)
 		return
 	}
 	if result.Next() {

@@ -25,20 +25,18 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	//jeager
+	// Container cleanup is done explicitly before os.Exit at the end
+	// (defers don't run after os.Exit)
+	var jeagerC *tracing.JeagerContainer
 	jeagerThriftURI := ""
-	//jeagerHttpURI := ""
 	jeagerBase := os.Getenv("JAEGER_BASE")
 	if jeagerBase == "" {
-		jeagerC, err := tracing.SetupJeager(ctx)
+		jeagerC, err = tracing.SetupJeager(ctx)
 		if err != nil {
 			logrus.Fatal(err)
 		}
-		defer jeagerC.Terminate(ctx)
-		//jeagerHttpURI = jeagerC.HttpURI
 		jeagerThriftURI = jeagerC.ThriftURI
 	} else {
-		//jeagerHttpURI = fmt.Sprintf("http://%s:16686", jeagerBase)
 		jeagerThriftURI = fmt.Sprintf("%s:14268", jeagerBase)
 	}
 	trEnd := ""
@@ -73,14 +71,17 @@ func TestMain(m *testing.M) {
 		logrus.Fatal(err)
 	}
 	min.BucketCheck()
-	defer minioC.Terminate(ctx)
 	code := m.Run()
-	switch code {
-	case 0:
-		logrus.Info("Tests OK")
-	default:
-		logrus.Infof("Tests FAILED with code %d", code)
+	// Shut down the tracer provider to flush spans and stop goroutines.
+	if err := tracing.Shutdown(ctx); err != nil {
+		logrus.Warnf("tracer shutdown: %v", err)
 	}
+	// Explicitly terminate containers before os.Exit (defers won't run)
+	minioC.Terminate(ctx)
+	if jeagerC != nil {
+		jeagerC.Terminate(ctx)
+	}
+	os.Exit(code)
 }
 
 /*

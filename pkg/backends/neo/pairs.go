@@ -72,11 +72,15 @@ func (n Neo) CollectionTagProfilePairPlatformGetRegexFiltered(ctx context.Contex
 		"prfRegex":  prfRegex,
 	})
 	defer span.End()
+	// Path Z Phase C3: walk via Slot instead of the :ManifestWrapper wrapper.
+	// The Slot model provides the (repo, tag) → Manifest association
+	// that previously went through (:Repo)-[:UPSTREAM]->(:ManifestWrapper).
 	rel := types.RelationSuccess
-	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(Rule)-[%s]->(p:Platform)<-[:IS]-(md:ManifestData)-[]-(m:Manifest)`, rel)
+	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(Rule)-[%s]->(p:Platform)<-[:HAS_PLATFORM]-(md:Manifest)`, rel)
 	q += fmt.Sprintf(` WHERE prf.label =~ "%s"`, prfRegex)
-	q += ` MATCH (c:Collection)-[:UPSTREAM]->(m)<-[:UPSTREAM]-(t:Tag)`
-	q += fmt.Sprintf(` WHERE c.repo =~ "%s" AND t.name =~ "%s"`, repoRegex, tagRegex)
+	q += ` MATCH (s:Slot)-[:HAS_PUSHED]->(md)`
+	q += fmt.Sprintf(` WHERE s.repo =~ "%s" AND s.tag =~ "%s"`, repoRegex, tagRegex)
+	q += ` MATCH (c:Repo {repo: s.repo})-[:HAS_TAG]->(t:Tag {name: s.tag})`
 	utils.Debug(l, span, q+" RETURN *")
 	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule,`
 	q += ` id(c) AS collectionID, c.repo AS collectionRepo,`
@@ -95,14 +99,15 @@ func (n Neo) CollectionTagProfilePairPlatformGetAll(ctx context.Context) (ctpps 
 	})
 	defer span.End()
 	rel := types.RelationSuccess
-	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(Rule)-[%s]->(p:Platform)<-[:IS]-(md:ManifestData)-[]-(m:Manifest)`, rel)
-	q += ` MATCH (c:Collection)-[:UPSTREAM]->(m)<-[:UPSTREAM]-(t:Tag)`
+	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(Rule)-[%s]->(p:Platform)<-[:HAS_PLATFORM]-(md:Manifest)`, rel)
+	q += ` MATCH (s:Slot)-[:HAS_PUSHED]->(md)`
+	q += ` MATCH (c:Repo {repo: s.repo})-[:HAS_TAG]->(t:Tag {name: s.tag})`
 	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule,`
 	q += ` id(c) AS collectionID, c.repo AS collectionRepo,`
 	q += ` id(t) AS tagID, t.name AS tagName`
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	res, err := n.Query(q)
 	if err != nil {
@@ -117,16 +122,18 @@ func (n Neo) CollectionTagProfilePairAnnotationGetRegexFiltered(ctx context.Cont
 		"func": "CollectionTagProfilePairAnnotationGetRegexFiltered",
 	})
 	defer span.End()
-	q := `MATCH (prf:Profile)-[:USES]->(Rule)-[:TRUE]->(Annotation)<-[:HAS_ANNOTATION]-(:ManifestData)<-[]-(m:Manifest)`
+	// Path Z Phase C3: walk via Slot instead of :ManifestWrapper wrapper.
+	q := `MATCH (prf:Profile)-[:USES]->(Rule)-[:TRUE]->(Annotation)<-[:HAS_ANNOTATION]-(md:Manifest)`
 	q += fmt.Sprintf(` WHERE prf.label =~ "%s"`, profileRegex)
-	q += ` MATCH (c:Collection)-[:UPSTREAM]->(m)<-[:UPSTREAM]-(t:Tag)`
-	q += fmt.Sprintf(` WHERE c.repo =~ "%s" AND t.name =~ "%s"`, repoRegex, tagRegex)
+	q += ` MATCH (s:Slot)-[:HAS_PUSHED]->(md)`
+	q += fmt.Sprintf(` WHERE s.repo =~ "%s" AND s.tag =~ "%s"`, repoRegex, tagRegex)
+	q += ` MATCH (c:Repo {repo: s.repo})-[:HAS_TAG]->(t:Tag {name: s.tag})`
 	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule,`
 	q += ` id(c) AS collectionID, c.repo AS collectionRepo,`
 	q += ` id(t) AS tagID, t.name AS tagName`
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	res, err := n.Query(q)
 	if err != nil {
@@ -139,12 +146,14 @@ func (n Neo) CollectionTagProfilePairAnnotationGetRegexFiltered(ctx context.Cont
 
 func (n Neo) CollectionTagProfilePairAnnotationGetAll(ctx context.Context) (ctpps []types.CollectionTagProfilePair, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "neo/pairs.go",
+		"package": pkgNamePairs,
 		"func":    "CollectionTagProfilePairAnnotationGetAll",
 	})
 	defer span.End()
-	q := `MATCH (prf:Profile)-[:USES]->(Rule)-[:TRUE]->(Annotation)<-[:HAS_ANNOTATION]-(:ManifestData)<-[]-(m:Manifest)`
-	q += ` MATCH (c:Collection)-[:UPSTREAM]->(m)<-[:UPSTREAM]-(t:Tag)`
+	// Path Z Phase C3: walk via Slot instead of :ManifestWrapper wrapper.
+	q := `MATCH (prf:Profile)-[:USES]->(Rule)-[:TRUE]->(Annotation)<-[:HAS_ANNOTATION]-(md:Manifest)`
+	q += ` MATCH (s:Slot)-[:HAS_PUSHED]->(md)`
+	q += ` MATCH (c:Repo {repo: s.repo})-[:HAS_TAG]->(t:Tag {name: s.tag})`
 	utils.Debug(l, span, q+" RETURN *")
 	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule,`
 	q += ` id(c) AS collectionID, c.repo AS collectionRepo,`
@@ -159,7 +168,7 @@ func (n Neo) CollectionTagProfilePairAnnotationGetAll(ctx context.Context) (ctpp
 
 func (n Neo) collectionTagProfilePairFromResult(ctx context.Context, res []types.Result) (ctpps []types.CollectionTagProfilePair, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package":     "neo/pairs.go",
+		"package":     pkgNamePairs,
 		"func":        "collectionTagProfilePairFromResult",
 		"resultCount": len(res),
 	})
@@ -185,22 +194,22 @@ func (n Neo) collectionTagProfilePairFromResult(ctx context.Context, res []types
 			continue
 		}
 		c.ColTag = t
-		utils.Debug(l, span, "Collection %s:%s", c.Repo, t.Tag)
+		utils.Debug(l, span, "Repo %s:%s", c.Repo, t.Tag)
 		ctpp, err := types.NewCollectionTagProfilePair(c, t, p)
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
 			err = utils.ErrorHandler(l, span, err, "while creating new CollectionTagProfilePair")
 			return ctpps, err
 		}
-		/// Get Manifests for this Collection/Tag
-		mds, err := n.ManifestDataGetByCollectionTag(ctx, c.ID, t.ID)
+		/// Get Manifests for this Repo/Tag
+		mds, err := n.ManifestGetByCollectionTag(ctx, c.ID, t.ID)
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
 			err = utils.ErrorHandler(l, span, err, "while getting manifestdata by collection tag")
 			return ctpps, err
 		}
 		for _, md := range mds {
-			utils.Debug(l, span, "Adding ManifestData to pair '%s'", md.Label)
+			utils.Debug(l, span, "Adding Manifest to pair '%s'", md.Label)
 			err = ctpp.AddManifest(md)
 			if err != nil {
 				span.SetStatus(codes.Error, err.Error())

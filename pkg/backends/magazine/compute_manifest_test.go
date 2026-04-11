@@ -64,7 +64,7 @@ import (
 // 		t.Fatal(err)
 // 	}
 // 	defer TeardownTest(bs, br)
-// 	// Connect Collection/Tag
+// 	// Connect Repo/Tag
 // 	maniID, err := br.GetInt64("manifest:ft_arm64#id")
 // 	if err != nil {
 // 		t.Fatalf("Failed to get manifest:ft_arm64#id: %v", err)
@@ -91,8 +91,8 @@ import (
 // 	if e := mag.ComputeAllManifests(ctx); e != nil {
 // 		t.Fatalf("Failed to ComputeAllManifests: %v", e)
 // 	}
-// 	// Fetch ManifestData with manipulation
-// 	q := `MATCH (oci:ManifestData)-[]->(:Blob)<-[]-(dkr:ManifestData)<-[:USES]-(mpl:ManipuLayer)`
+// 	// Fetch Manifest with manipulation
+// 	q := `MATCH (oci:Manifest)-[]->(:Blob)<-[]-(dkr:Manifest)<-[:USES]-(mpl:ManipuLayer)`
 // 	q += ` RETURN DISTINCT id(oci) AS ociID`
 // 	t.Log(q)
 // 	res, found, err := mag.Database.QueryOne(q)
@@ -106,13 +106,13 @@ import (
 // 		t.Fatalf("Failed to GetInt64: %v", err)
 // 	}
 
-// 	md, found, err := mag.Database.ManifestDataGetByID(ctx, mdID)
+// 	md, found, err := mag.Database.ManifestGetByID(ctx, mdID)
 // 	if err != nil {
-// 		t.Fatalf("Failed to ManifestDataGetByID: %v", err)
+// 		t.Fatalf("Failed to ManifestGetByID: %v", err)
 // 	} else if !found {
-// 		t.Fatalf("Failed to ManifestDataGetByID: not found")
+// 		t.Fatalf("Failed to ManifestGetByID: not found")
 // 	}
-// 	// TODO: The OCI ManifestData has 5 OCI layes and the manipulation layers connected, hence 8 in total
+// 	// TODO: The OCI Manifest has 5 OCI layes and the manipulation layers connected, hence 8 in total
 // 	assert.Equal(t, 8, len(md.Layers))
 // }
 
@@ -163,7 +163,7 @@ import (
 // 		t.Fatal(err)
 // 	}
 // 	defer TeardownTest(bs, br)
-// 	// Connect Collection/Tag
+// 	// Connect Repo/Tag
 // 	maniID, err := br.GetInt64("manifest:ft_amd64#id")
 // 	if err != nil {
 // 		t.Fatalf("Failed to get manifest:ft_amd64#id: %v", err)
@@ -186,8 +186,8 @@ import (
 // 	if e := mag.ComputeAllManifests(ctx); e != nil {
 // 		t.Fatalf("Failed to ComputeAllManifests: %v", e)
 // 	}
-// 	// Fetch ManifestData with manipulation
-// 	q := `MATCH (m:Manifest)-[:CREATED]->(oci:ManifestData)`
+// 	// Fetch Manifest with manipulation
+// 	q := `MATCH (m:ManifestWrapper)-[:CREATED]->(oci:Manifest)`
 // 	q += fmt.Sprintf(` WHERE id(m) = %d`, maniID)
 // 	q += ` RETURN DISTINCT id(oci) AS ociID`
 // 	t.Log(q)
@@ -202,11 +202,11 @@ import (
 // 		t.Fatalf("Failed to GetInt64: %v", err)
 // 	}
 
-// 	md, found, err := mag.Database.ManifestDataGetByID(ctx, mdID)
+// 	md, found, err := mag.Database.ManifestGetByID(ctx, mdID)
 // 	if err != nil {
-// 		t.Fatalf("Failed to ManifestDataGetByID: %v", err)
+// 		t.Fatalf("Failed to ManifestGetByID: %v", err)
 // 	} else if !found {
-// 		t.Fatalf("Failed to ManifestDataGetByID: not found")
+// 		t.Fatalf("Failed to ManifestGetByID: not found")
 // 	}
 // 	assert.Equal(t, 2, len(md.Layers))
 
@@ -265,7 +265,7 @@ func TestComputeManifest(t *testing.T) {
 	})
 	_ = l
 	defer span.End()
-	// Connect Collection/Tag
+	// Connect Repo/Tag
 	maniID, err := br.GetInt64("manifest:ft_arm64#id")
 	if err != nil {
 		t.Fatalf("Failed to get manifest:ft_arm64#id: %v", err)
@@ -289,11 +289,11 @@ func TestComputeManifest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get manifest:ft_arm64#id: %v", err)
 	}
-	mani, found, err := mag.Database.ManifestGetByID(ctx, mID)
+	mani, found, err := mag.Database.ManifestWrapperGetByID(ctx, mID)
 	if err != nil {
-		t.Fatalf("Failed to ManifestGetByID: %v", err)
+		t.Fatalf("Failed to ManifestWrapperGetByID: %v", err)
 	} else if !found {
-		t.Fatalf("Failed to ManifestGetByID: not found")
+		t.Fatalf("Failed to ManifestWrapperGetByID: not found")
 	}
 	if e := mag.ComputeManifest(ctx, mani); e != nil {
 		t.Fatalf("Failed to ComputeAllManifests: %v", e)
@@ -302,8 +302,8 @@ func TestComputeManifest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get manifestdata:ft_arm64#id: %v", err)
 	}
-	// Fetch ManifestData with manipulation
-	q := fmt.Sprintf(`MATCH (oci:ManifestData)-[]->(:Blob) WHERE oci.mediaType IN ["%s"] AND id(oci) = %d`, strings.Join([]string{MediaTypeDockerManifestV2, v1.MediaTypeImageManifest}, `", "`), mdID)
+	// Fetch Manifest with manipulation
+	q := fmt.Sprintf(`MATCH (oci:Manifest)-[]->(:Blob) WHERE oci.mediaType IN ["%s"] AND id(oci) = %d`, strings.Join([]string{MediaTypeDockerManifestV2, v1.MediaTypeImageManifest}, `", "`), mdID)
 	q += ` RETURN DISTINCT id(oci) AS ociID`
 	t.Log(q)
 	res, found, err := mag.Database.QueryOne(q)
@@ -316,11 +316,11 @@ func TestComputeManifest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to GetInt64: %v", err)
 	}
-	md, found, err := mag.Database.ManifestDataGetByID(ctx, mdID)
+	md, found, err := mag.Database.ManifestGetByID(ctx, mdID)
 	if err != nil {
-		t.Fatalf("Failed to ManifestDataGetByID: %v", err)
+		t.Fatalf("Failed to ManifestGetByID: %v", err)
 	} else if !found {
-		t.Fatalf("Failed to ManifestDataGetByID: not found")
+		t.Fatalf("Failed to ManifestGetByID: not found")
 	}
 	expLen := 2
 	if len(md.Layers) != expLen {

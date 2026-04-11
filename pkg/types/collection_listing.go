@@ -6,7 +6,7 @@ type CollectionListing struct {
 	Tag           string                  `json:"tag"`
 	ColTag        CollectionTag           `json:"-"`
 	Annotations   map[string]string       `json:"annotations"`
-	Manifests     map[string]ManifestData `json:"manifests"`
+	Manifests     map[string]Manifest `json:"manifests"`
 	ManifestCount int64                   `json:"manifest_count"`
 }
 
@@ -17,7 +17,7 @@ func NewCollectionListing(repo, tag string) CollectionListing {
 		Tag:           tag,
 		Repo:          repo,
 		ColTag:        ct,
-		Manifests:     map[string]ManifestData{},
+		Manifests:     map[string]Manifest{},
 		ManifestCount: 0,
 	}
 }

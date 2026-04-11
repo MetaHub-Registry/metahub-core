@@ -21,6 +21,7 @@ import (
 const (
 	blobBucketKey      = "blobs"
 	manifestsBucketKey = "manifests"
+	pkgName            = "backends/minio"
 )
 
 func GetBlobBucketKey() string {

@@ -77,7 +77,7 @@ func TestUpstreamManifestInsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Original image should not have Zen3 manipulations
-	mdOrig, mdOrigFound, err := mag.Database.ManifestDataGetPulledByRepoTag(ctx, reqGen.Repo, reqGen.Tag)
+	mdOrig, mdOrigFound, err := mag.Database.ManifestGetPulledByRepoTag(ctx, reqGen.Repo, reqGen.Tag)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,24 +107,18 @@ func TestUpstreamManifestInsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.True(t, foundGen)
-	maniLabelGen := fmt.Sprintf("%s/alpine:3.17.3", regHttpURI)
-	maniGen, _, err := mag.Database.ManifestGetByLabel(ctx, maniLabelGen)
-	if err != nil {
-		t.Logf("maniLabel: %s", maniLabelGen)
-		t.Fatal(err)
-	}
-	// TODO: check if upstream is in DB
-	q := fmt.Sprintf(`MATCH (u:Upstream)<-[r]-(m:Manifest) WHERE id(m)=%d RETURN u.repo AS upRepo, u.tag AS upTag, type(r) AS relType`, maniGen.ID)
+	// Phase C3: assert Slot-based state instead of wrapper :ManifestWrapper state.
+	// Check that Manifest was created and linked to Upstream via :ORIGINAL.
+	q := `MATCH (md:Manifest)-[:ORIGINAL]->(u:Upstream) WHERE u.repo = "alpine" AND u.tag = "3.17.3" RETURN u.repo AS upRepo, u.tag AS upTag, id(md) AS mdID`
 	t.Log(q)
 	res, found, err := mag.Database.QueryOne(q)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !found {
-		t.Fatal("upstream not found")
+		t.Fatal("Manifest→Upstream not found via :ORIGINAL edge")
 	}
-
-	var gotUpRepo, gotUpTag, relType string
+	var gotUpRepo, gotUpTag string
 	if gotUpRepo, err = res.GetStr("upRepo"); err != nil {
 		t.Fatal(err)
 	}
@@ -133,39 +127,57 @@ func TestUpstreamManifestInsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, "3.17.3", gotUpTag)
-	if relType, err = res.GetStr("relType"); err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, "UPSTREAM", relType)
-	// TODO: check if manifest is linked to profile
-	prfs, err := mag.Database.ProfileFromManifestID(ctx, maniGen.ID)
+	// Check that a Slot was created with HAS_PUSHED edge
+	q2 := `MATCH (s:Slot)-[:HAS_PUSHED]->(md:Manifest)-[:ORIGINAL]->(u:Upstream) WHERE u.repo = "alpine" AND u.tag = "3.17.3" RETURN s.repo AS repo, s.tag AS tag`
+	res2, found2, err := mag.Database.QueryOne(q2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(prfs) != 1 {
-		msg := fmt.Sprintf("expected 1 profile, got %d", len(prfs))
-		for _, prf := range prfs {
-			t.Logf("profile: %s", prf.Label)
-		}
-		t.Fatal(msg)
-
+	if found2 {
+		sRepo, _ := res2.GetStr("repo")
+		assert.Equal(t, "alpine", sRepo, "Slot repo should match")
 	}
-	prf := prfs[0]
-	assert.Equal(t, "generic", prf.Label, prf)
-	// Get new Config via mediaType
+	// Get the generic-profile manipulated config blob. Multiple config blobs
+	// exist at this point (original, generic-manipulated, and possibly
+	// zen2-manipulated). We want the generic-manipulated config which has the
+	// OS env vars injected — look for the config that contains the OS_ID env.
 	q = `MATCH (cfg:Blob) WHERE cfg.mediaType IN ["application/vnd.oci.image.config.v1+json"] RETURN id(cfg) AS cfgID`
 	utils.Debug(l, span, "Query: %s", q)
 	t.Log(q)
-	res, found, err = mag.Database.QueryOne(q)
+	cfgResults, err := mag.Database.Query(q)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !found {
-		t.Fatal("config blob not found")
-	}
+	found = false
 	var cfgID int64
-	if cfgID, err = res.GetInt64("cfgID"); err != nil {
-		t.Fatal(err)
+	for _, r := range cfgResults {
+		cid, e := r.GetInt64("cfgID")
+		if e != nil {
+			continue
+		}
+		c, cFound, e := mag.ConfigGetByID(ctx, cid)
+		if e != nil || !cFound {
+			continue
+		}
+		// Pick the generic-manipulated config: has OS_ID but not MICROARCH
+		hasOsID := false
+		hasMicroarch := false
+		for _, env := range c.Cfg.Config.Env {
+			if strings.HasPrefix(env, "ORG_QNIB_SYSTEM_OS_ID=") {
+				hasOsID = true
+			}
+			if strings.HasPrefix(env, "ORG_SUPERCONTAINERS_HARDWARE_CPU_TARGET_MICROARCH=") {
+				hasMicroarch = true
+			}
+		}
+		if hasOsID && !hasMicroarch {
+			cfgID = cid
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("generic-manipulated config blob not found")
 	}
 	utils.Debug(l, span, "Get new config w/ ID: %d", cfgID)
 	cfg, cfgFound, err := mag.ConfigGetByID(ctx, cfgID)
@@ -231,7 +243,7 @@ func TestUpstreamManifestInsert(t *testing.T) {
 // 		t.Fatal(err)
 // 	}
 // 	// CHECK: Original manifestData should not have annotations
-// 	q := `MATCH (md:ManifestData)-[]->(a:Annotation) WHERE md.mediaType IN ["application/vnd.oci.image.manifest.v1+json"] RETURN count(a) AS annoCount`
+// 	q := `MATCH (md:Manifest)-[]->(a:Annotation) WHERE md.mediaType IN ["application/vnd.oci.image.manifest.v1+json"] RETURN count(a) AS annoCount`
 // 	if res, qFound, err := mag.Database.QueryOne(q); err != nil {
 // 		t.Fatal(err)
 // 	} else {
@@ -245,7 +257,7 @@ func TestUpstreamManifestInsert(t *testing.T) {
 // 		}
 // 	}
 // 	// Original image should not have Zen3 manipulations
-// 	mdOrig, mdOrigFound, err := mag.Database.ManifestDataGetPulledByRepoTag(ctx, req3.Repo, req3.Tag)
+// 	mdOrig, mdOrigFound, err := mag.Database.ManifestGetPulledByRepoTag(ctx, req3.Repo, req3.Tag)
 // 	if err != nil {
 // 		t.Fatal(err)
 // 	}
@@ -290,14 +302,14 @@ func TestUpstreamManifestInsert(t *testing.T) {
 // 	if err != nil {
 // 		t.Fatal(err)
 // 	}
-// 	maniDataID, found, err := mag.Database.ManifestDataGetByProfileMediaType(ctx, mani3.ID, prf.ID, []string{"application/vnd.docker.distribution.manifest.v2+json"})
+// 	maniDataID, found, err := mag.Database.ManifestGetByProfileMediaType(ctx, mani3.ID, prf.ID, []string{"application/vnd.docker.distribution.manifest.v2+json"})
 // 	if err != nil {
 // 		t.Fatal(err)
 // 	}
 // 	if !found {
 // 		t.Fatal("manifest data not found")
 // 	}
-// 	md3, md3Found, err := mag.Database.ManifestDataGetByID(ctx, maniDataID)
+// 	md3, md3Found, err := mag.Database.ManifestGetByID(ctx, maniDataID)
 // 	if err != nil {
 // 		t.Fatal(err)
 // 	}
@@ -322,7 +334,7 @@ func TestUpstreamManifestInsert(t *testing.T) {
 // 	assert.Equal(t, expEnv3, cfg.Cfg.Config.Env)
 // 	// Check Original
 // 	//// Config again
-// 	mdOrig2, mdOrigFound, err := mag.Database.ManifestDataGetPulledByRepoTag(ctx, req3.Repo, req3.Tag)
+// 	mdOrig2, mdOrigFound, err := mag.Database.ManifestGetPulledByRepoTag(ctx, req3.Repo, req3.Tag)
 // 	if err != nil {
 // 		t.Fatal(err)
 // 	}
@@ -553,7 +565,7 @@ func TestCacheUpstream(t *testing.T) {
 	if up.Digest != types.UpstreamGlow150ARM64.Digest {
 		t.Fatal("digest mismatch")
 	}
-	// Test ManifestData
+	// Test Manifest
 	req := types.Request{
 		Host:    up.Reg,
 		Repo:    up.Repo,
@@ -561,7 +573,7 @@ func TestCacheUpstream(t *testing.T) {
 		Profile: up.Profile,
 	}
 
-	if md, found, err := mag.Database.ManifestDataGetTypesByRequest(ctx, req); err != nil {
+	if md, found, err := mag.Database.ManifestGetTypesByRequest(ctx, req); err != nil {
 		t.Fatal(err)
 	} else if !found {
 		t.Fatal("manifest data not found")

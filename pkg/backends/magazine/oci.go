@@ -22,64 +22,72 @@ const (
 	pkgNameOci                = "magazine/oci.go"
 	FailUnwindProfile         = "failed to unwind Profile"
 	MediaTypeDockerManifestV2 = "application/vnd.docker.distribution.manifest.v2+json"
+	keyManiID                 = "mani.ID"
+	attrLogSeverity           = "log.severity"
+	attrLogMessage            = "log.message"
+	fmtGetProfileForMD        = "failed to get Profile for Manifest.ID: %d"
+	fmtOCIv1AlreadyPresent    = "OCIv1 manifest already present for Manifest.ID: %d"
+	fmtOCIv1NotPresent        = "OCIv1 manifest NOT present for Manifest.ID: %d"
+	errCreateBaseManifest     = "failed to create base manifest"
+	errLinkProfileManifest    = "failed to link profile and manifestdata"
 )
 
-func (mag Magazine) CreateOCIv1UploadedByPrf(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prf types.Profile) (maniID int64, found bool, err error) {
+func (mag Magazine) CreateOCIv1UploadedByPrf(ctx context.Context, mani types.ManifestWrapper, origMani types.Manifest, prf types.Profile) (maniID int64, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameOci,
 		"func":    "CreateOCIv1UploadedByPrf",
-		"mani.ID": mani.ID,
+		keyManiID: mani.ID,
 	})
 	ctx, span := tracer.Start(ctx, "CreateOCIv1UploadedByPrf")
 	defer span.End()
 	// Get UPLOADED Manifests
-	prf, found, e := mag.Database.ProfileGetUploadedByViaManifestDataID(ctx, origMani.ID)
+	prf, found, e := mag.Database.ProfileGetUploadedByViaManifestID(ctx, origMani.ID)
 	if e != nil {
-		err = errors.Wrapf(e, "failed to get Profile for ManifestData.ID: %d", origMani.ID)
+		err = errors.Wrapf(e, fmtGetProfileForMD, origMani.ID)
 		return
 	}
 	if !found {
 		return
 	}
 	// TODO: Check if OCIv1 is already present
-	_, foundOCI, err := mag.Database.ManifestDataGetByProfileMediaType(ctx, mani.ID, prf.ID, []string{v1.MediaTypeImageManifest, MediaTypeDockerManifestV2})
+	_, foundOCI, err := mag.Database.ManifestGetByProfileMediaType(ctx, mani.ID, prf.ID, []string{v1.MediaTypeImageManifest, MediaTypeDockerManifestV2})
 	if err != nil {
 		return
 	}
 	if foundOCI {
-		msg := fmt.Sprintf("OCIv1 manifest already present for Manifest.ID: %d", mani.ID)
+		msg := fmt.Sprintf(fmtOCIv1AlreadyPresent, mani.ID)
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, "debug"),
+			attribute.String(attrLogMessage, msg),
 		))
 		l.Info(msg)
 		return
 	} else {
-		msg := fmt.Sprintf("OCIv1 manifest NOT present for Manifest.ID: %d", mani.ID)
+		msg := fmt.Sprintf(fmtOCIv1NotPresent, mani.ID)
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, "debug"),
+			attribute.String(attrLogMessage, msg),
 		))
 		l.Info(msg)
 	}
 	maniID, e = mag.OCICreateBaseManifest(ctx, mani, origMani, prf.ID)
 	if e != nil {
-		err = errors.Wrap(e, "failed to create base manifest")
+		err = errors.Wrap(e, errCreateBaseManifest)
 		return
 	}
 	msg := fmt.Sprintf("Profile '%s' did the upload", prf.Label)
 	l.Debug(msg)
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", msg),
+		attribute.String(attrLogSeverity, "debug"),
+		attribute.String(attrLogMessage, msg),
 	))
-	e = mag.Database.LinkManifestDataToProfile(ctx, maniID, prf.ID, "UPLOADED_BY")
+	e = mag.Database.LinkManifestToProfile(ctx, maniID, prf.ID, "UPLOADED_BY")
 	if e != nil {
-		err = errors.Wrap(e, "failed to link profile and manifestdata")
+		err = errors.Wrap(e, errLinkProfileManifest)
 		l.Error(err)
 		return
 	}
-	// TODO: We need to unwind the rules so that annotations are added to the ManifestData
+	// TODO: We need to unwind the rules so that annotations are added to the Manifest
 	e = mag.Database.ProfileUnwindRules(ctx, prf.ID, maniID)
 	if e != nil {
 		err = errors.Wrap(e, FailUnwindProfile)
@@ -90,68 +98,68 @@ func (mag Magazine) CreateOCIv1UploadedByPrf(ctx context.Context, mani types.Man
 	return
 }
 
-func (mag Magazine) CreateOCIv1UploadedBy(ctx context.Context, mani types.Manifest, origMani types.ManifestData) (maniID int64, found bool, err error) {
+func (mag Magazine) CreateOCIv1UploadedBy(ctx context.Context, mani types.ManifestWrapper, origMani types.Manifest) (maniID int64, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameOci,
 		"func":    "CreateOCIv1UploadedBy",
-		"mani.ID": mani.ID,
+		keyManiID: mani.ID,
 	})
 	ctx, span := tracer.Start(ctx, "CreateOCIv1UploadedBy")
 	defer span.End()
 	// Get UPLOADED Manifests
-	prf, found, e := mag.Database.ProfileGetUploadedByViaManifestDataID(ctx, origMani.ID)
+	prf, found, e := mag.Database.ProfileGetUploadedByViaManifestID(ctx, origMani.ID)
 	if e != nil {
-		err = errors.Wrapf(e, "failed to get Profile for ManifestData.ID: %d", origMani.ID)
+		err = errors.Wrapf(e, fmtGetProfileForMD, origMani.ID)
 		return
 	}
 	if !found {
 		return
 	}
 	// TODO: Check if OCIv1 is already present
-	_, foundOCI, err := mag.Database.ManifestDataGetByProfileMediaType(ctx, mani.ID, prf.ID, []string{v1.MediaTypeImageManifest, MediaTypeDockerManifestV2})
+	_, foundOCI, err := mag.Database.ManifestGetByProfileMediaType(ctx, mani.ID, prf.ID, []string{v1.MediaTypeImageManifest, MediaTypeDockerManifestV2})
 	if err != nil {
 		return
 	}
 	if foundOCI {
-		msg := fmt.Sprintf("OCIv1 manifest already present for Manifest.ID: %d", mani.ID)
+		msg := fmt.Sprintf(fmtOCIv1AlreadyPresent, mani.ID)
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, "debug"),
+			attribute.String(attrLogMessage, msg),
 		))
 		l.Info(msg)
 		return
 	} else {
-		msg := fmt.Sprintf("OCIv1 manifest NOT present for Manifest.ID: %d", mani.ID)
+		msg := fmt.Sprintf(fmtOCIv1NotPresent, mani.ID)
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, "debug"),
+			attribute.String(attrLogMessage, msg),
 		))
 		l.Info(msg)
 	}
-	prf, prfFound, e := mag.Database.ProfileGetUploadedByViaManifestDataID(ctx, origMani.ID)
+	prf, prfFound, e := mag.Database.ProfileGetUploadedByViaManifestID(ctx, origMani.ID)
 	if e != nil {
-		err = errors.Wrapf(e, "failed to get Profile for ManifestData.ID: %d", origMani.ID)
+		err = errors.Wrapf(e, fmtGetProfileForMD, origMani.ID)
 		return
 	}
 	maniID, e = mag.OCICreateBaseManifest(ctx, mani, origMani, prf.ID)
 	if e != nil {
-		err = errors.Wrap(e, "failed to create base manifest")
+		err = errors.Wrap(e, errCreateBaseManifest)
 		return
 	}
 	if prfFound {
 		msg := fmt.Sprintf("Profile '%s' did the upload", prf.Label)
 		l.Debug(msg)
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, "debug"),
+			attribute.String(attrLogMessage, msg),
 		))
-		e := mag.Database.LinkManifestDataToProfile(ctx, maniID, prf.ID, "UPLOADED_BY")
+		e := mag.Database.LinkManifestToProfile(ctx, maniID, prf.ID, "UPLOADED_BY")
 		if e != nil {
-			err = errors.Wrap(e, "failed to link profile and manifestdata")
+			err = errors.Wrap(e, errLinkProfileManifest)
 			l.Error(err)
 			return
 		}
-		// TODO: We need to unwind the rules so that annotations are added to the ManifestData
+		// TODO: We need to unwind the rules so that annotations are added to the Manifest
 		e = mag.Database.ProfileUnwindRules(ctx, prf.ID, maniID)
 		if e != nil {
 			err = errors.Wrap(e, FailUnwindProfile)
@@ -162,37 +170,37 @@ func (mag Magazine) CreateOCIv1UploadedBy(ctx context.Context, mani types.Manife
 	return
 }
 
-func (mag Magazine) CreateOCIv1PulledByPrf(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prf types.Profile) (maniID int64, found bool, err error) {
+func (mag Magazine) CreateOCIv1PulledByPrf(ctx context.Context, mani types.ManifestWrapper, origMani types.Manifest, prf types.Profile) (maniID int64, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameOci,
 		"func":    "CreateOCIv1PulledByPrf",
-		"mani.ID": mani.ID,
+		keyManiID: mani.ID,
 	})
 	defer span.End()
 	// Get Pulled Manifests
-	maniID, foundManiData, err := mag.Database.ManifestDataGetByProfileMediaType(ctx, mani.ID, prf.ID, []string{v1.MediaTypeImageManifest, MediaTypeDockerManifestV2})
+	maniID, foundManiData, err := mag.Database.ManifestGetByProfileMediaType(ctx, mani.ID, prf.ID, []string{v1.MediaTypeImageManifest, MediaTypeDockerManifestV2})
 	if err != nil {
-		utils.ErrorHandler(l, span, err, "failed to get ManifestData for Manifest.ID: %d", mani.ID)
+		utils.ErrorHandler(l, span, err, "failed to get Manifest for Manifest.ID: %d", mani.ID)
 		return
 	}
 	if foundManiData {
-		utils.Info(l, span, "OCIv1 manifest already present for Manifest.ID: %d", mani.ID)
+		utils.Info(l, span, fmtOCIv1AlreadyPresent, mani.ID)
 		return
 	} else {
-		utils.Debug(l, span, "OCIv1 manifest NOT present for Manifest.ID: %d", mani.ID)
+		utils.Debug(l, span, fmtOCIv1NotPresent, mani.ID)
 	}
 	maniID, e := mag.OCICreateBaseManifest(ctx, mani, origMani, prf.ID)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to create base manifest")
+		err = utils.ErrorHandler(l, span, e, errCreateBaseManifest)
 		return
 	}
 	utils.Warn(l, span, "Profile '%s' did the pull", prf.Label)
-	e = mag.Database.LinkManifestDataToProfile(ctx, maniID, prf.ID, "UPLOADED_BY")
+	e = mag.Database.LinkManifestToProfile(ctx, maniID, prf.ID, "UPLOADED_BY")
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to link profile and manifestdata")
+		err = utils.ErrorHandler(l, span, e, errLinkProfileManifest)
 		return
 	}
-	// TODO: We need to unwind the rules so that annotations are added to the ManifestData
+	// TODO: We need to unwind the rules so that annotations are added to the Manifest
 	e = mag.Database.ProfileUnwindRules(ctx, prf.ID, maniID)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, FailUnwindProfile)
@@ -202,7 +210,7 @@ func (mag Magazine) CreateOCIv1PulledByPrf(ctx context.Context, mani types.Manif
 	return
 }
 
-func (mag Magazine) CreateOCIv1ParsedManifest(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prfIDs ...int64) (maniID int64, success bool, err error) {
+func (mag Magazine) CreateOCIv1ParsedManifest(ctx context.Context, mani types.ManifestWrapper, origMani types.Manifest, prfIDs ...int64) (maniID int64, success bool, err error) {
 	prfID := int64(0)
 	if len(prfIDs) == 1 {
 		prfID = prfIDs[0]
@@ -210,7 +218,7 @@ func (mag Magazine) CreateOCIv1ParsedManifest(ctx context.Context, mani types.Ma
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameOci,
 		"func":    "CreateOCIv1ParsedManifest",
-		"mani.ID": mani.ID,
+		keyManiID: mani.ID,
 		"prfID":   prfID,
 	})
 	defer span.End()
@@ -221,18 +229,18 @@ func (mag Magazine) CreateOCIv1ParsedManifest(ctx context.Context, mani types.Ma
 	}
 
 	// Get parsed manifests
-	maniID, foundOCI, err := mag.Database.ManifestDataGetRelIDByMediaType(ctx, mani.ID, []string{v1.MediaTypeImageManifest, MediaTypeDockerManifestV2}, "PARSED")
+	maniID, foundOCI, err := mag.Database.ManifestGetRelIDByMediaType(ctx, mani.ID, []string{v1.MediaTypeImageManifest, MediaTypeDockerManifestV2}, "PARSED")
 	if err != nil {
 		return
 	}
 	if foundOCI {
-		l.Debugf("OCIv1 manifest already present for Manifest.ID: %d", mani.ID)
+		l.Debugf(fmtOCIv1AlreadyPresent, mani.ID)
 		success = true
 		return
 	}
 	maniID, e := mag.OCICreateBaseManifest(ctx, mani, origMani, prfID)
 	if e != nil {
-		err = errors.Wrap(e, "failed to create base manifest")
+		err = errors.Wrap(e, errCreateBaseManifest)
 		return
 	}
 	success = true
@@ -243,17 +251,17 @@ func (mag Magazine) CreateOCIv1ParsedManifest(ctx context.Context, mani types.Ma
 	return
 }
 
-func (mag Magazine) CreateOCIv1ForProfile(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prf types.Profile) (maniDataID int64, err error) {
+func (mag Magazine) CreateOCIv1ForProfile(ctx context.Context, mani types.ManifestWrapper, origMani types.Manifest, prf types.Profile) (maniDataID int64, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":       pkgNameOci,
 		"func":          "CreateOCIv1ForProfile",
-		"mani.ID":       mani.ID,
+		keyManiID:       mani.ID,
 		"maniData.ID":   origMani.ID,
 		"maniData.Type": origMani.Type,
 		"prf.ID":        prf.ID,
 	})
 	defer span.End()
-	utils.Warn(l, span, "Creating OCIv1 manifest for Manifest.ID: %d // ManifestData.type: '%s'", mani.ID, origMani.Type)
+	utils.Warn(l, span, "Creating OCIv1 manifest for Manifest.ID: %d // Manifest.type: '%s'", mani.ID, origMani.Type)
 	switch origMani.Type {
 	case "UPLOADED_BY", "MANIFEST_DERIVED_FROM":
 		mdID, success, e := mag.CreateOCIv1UploadedByPrf(ctx, mani, origMani, prf)
@@ -292,8 +300,8 @@ func (mag Magazine) CreateOCIv1ForProfile(ctx context.Context, mani types.Manife
 		msg := fmt.Sprintf("unknown manifest data type: %s", origMani.Type)
 		err = errors.New(msg)
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, "error"),
+			attribute.String(attrLogMessage, msg),
 		))
 		span.RecordError(err)
 		l.Error(msg)
@@ -302,11 +310,11 @@ func (mag Magazine) CreateOCIv1ForProfile(ctx context.Context, mani types.Manife
 	return
 }
 
-func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMani types.ManifestData) (maniDataID int64, err error) {
+func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.ManifestWrapper, origMani types.Manifest) (maniDataID int64, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package":       pkgNameOci,
 		"func":          "CreateOCIv1",
-		"mani.ID":       mani.ID,
+		keyManiID:       mani.ID,
 		"maniData.ID":   origMani.ID,
 		"maniData.Type": origMani.Type,
 	})
@@ -314,12 +322,12 @@ func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMa
 	ctx, span := tracer.Start(ctx, "CreateOCIv1")
 	defer span.End()
 	// TODO: Check which profiles where used for the manifest
-	maniPrf, e := mag.Database.ProfileFromManifestID(ctx, mani.ID)
+	maniPrf, e := mag.Database.ProfileFromManifestWrapperID(ctx, mani.ID)
 	if e != nil {
 		err = errors.Wrapf(e, "failed to get profiles for manifest id '%d'", mani.ID)
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", err.Error()),
+			attribute.String(attrLogSeverity, "error"),
+			attribute.String(attrLogMessage, err.Error()),
 		))
 		span.RecordError(err)
 		l.Error(err.Error())
@@ -328,8 +336,8 @@ func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMa
 	}
 	msg := fmt.Sprintf("found %d profiles for manifest: %v", len(maniPrf), maniPrf)
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", msg),
+		attribute.String(attrLogSeverity, "debug"),
+		attribute.String(attrLogMessage, msg),
 	))
 	l.Debug(msg)
 	switch origMani.Type {
@@ -359,8 +367,8 @@ func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMa
 		msg := fmt.Sprintf("unknown manifest data type: %s", origMani.Type)
 		err = errors.New(msg)
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, "error"),
+			attribute.String(attrLogMessage, msg),
 		))
 		span.RecordError(err)
 		l.Error(msg)
@@ -369,11 +377,11 @@ func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.Manifest, origMa
 	return
 }
 
-func (mag Magazine) OCIApplyManipulations(ctx context.Context, mani types.Manifest, origMani *types.ManifestData, prfID, ociManiDataID int64) (v1Cfg *v1.Image, ok bool, err error) {
+func (mag Magazine) OCIApplyManipulations(ctx context.Context, mani types.ManifestWrapper, origMani *types.Manifest, prfID, ociManiDataID int64) (v1Cfg *v1.Image, ok bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":     pkgNameOci,
 		"func":        "OCIApplyManipulations",
-		"mani.ID":     mani.ID,
+		keyManiID:     mani.ID,
 		"origMani.ID": origMani.ID,
 		"prfID":       prfID,
 	})
@@ -393,8 +401,8 @@ func (mag Magazine) OCIApplyManipulations(ctx context.Context, mani types.Manife
 	utils.Debug(l, span, "Obtained manipulation config digest: %s", mplCfgDigest)
 
 	// A. Generate `oci.image.config.v1`
-	if manipuLayer, err := mag.Database.GetLayersForManifestDataID(ctx, ociManiDataID); err != nil {
-		return v1Cfg, false, utils.ErrorHandler(l, span, err, "while in GetLayersForManifestDataID")
+	if manipuLayer, err := mag.Database.GetLayersForManifestID(ctx, ociManiDataID); err != nil {
+		return v1Cfg, false, utils.ErrorHandler(l, span, err, "while in GetLayersForManifestID")
 	} else {
 		origMani.Layers = append(origMani.Layers, manipuLayer...)
 	}
@@ -424,11 +432,11 @@ func (mag Magazine) OCIApplyManipulations(ctx context.Context, mani types.Manife
 }
 
 // TODO: When no manipulation are applied, no update is needed
-func (mag Magazine) OCICreateBaseManifest(ctx context.Context, mani types.Manifest, origMani types.ManifestData, prfID int64) (ociManiDataID int64, err error) {
+func (mag Magazine) OCICreateBaseManifest(ctx context.Context, mani types.ManifestWrapper, origMani types.Manifest, prfID int64) (ociManiDataID int64, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":     pkgNameOci,
 		"func":        "OCICreateBaseManifest",
-		"mani.ID":     mani.ID,
+		keyManiID:     mani.ID,
 		"origMani.ID": origMani.ID,
 		"prfID":       prfID,
 	})
@@ -469,14 +477,14 @@ func (mag Magazine) OCICreateBaseManifest(ctx context.Context, mani types.Manife
 		err = utils.ErrorHandler(l, span, e, "failed to get anno rules for profile %d", prfID)
 		return
 	}
-	// Create a new ociManifestData as a copy of origMani (as OCIv1)
+	// Create a new ociManifest as a copy of origMani (as OCIv1)
 	// Graph
 	maniDesc, err := ManifestV1ToDescriptor(m)
 	if err != nil {
 		return
 	}
 	utils.Debug(l, span, "Temp digest: %s", maniDesc.Digest.String())
-	ociManiDataID, _, err = mag.Database.ManifestDataV1GetInsert(ctx, mani.ID, maniDesc)
+	ociManiDataID, _, err = mag.Database.ManifestV1GetInsert(ctx, mani.ID, maniDesc)
 	if err != nil {
 		return
 	}
@@ -559,35 +567,35 @@ func (mag Magazine) OCICreateBaseManifest(ctx context.Context, mani types.Manife
 		return
 	}
 	// Graph
-	err = mag.Database.ManifestDataUpdateDesc(ctx, ociManiDataID, maniDesc)
+	err = mag.Database.ManifestUpdateDesc(ctx, ociManiDataID, maniDesc)
 	if err != nil {
-		return ociManiDataID, utils.ErrorHandler(l, span, err, "while in ManifestDataUpdate")
+		return ociManiDataID, utils.ErrorHandler(l, span, err, "while in ManifestUpdate")
 	}
-	// Link ManifestData to Annotations
-	err = mag.Database.ManifestDataAddAnnotations(ctx, ociManiDataID, &mani.Annotations)
+	// Link Manifest to Annotations
+	err = mag.Database.ManifestAddAnnotations(ctx, ociManiDataID, &mani.Annotations)
 	if err != nil {
-		err = utils.ErrorHandler(l, span, err, "failed to add ManifestData annotations")
+		err = utils.ErrorHandler(l, span, err, "failed to add Manifest annotations")
 		return
 	}
-	// //// Link ManifestData to Config
-	err = mag.Database.ManifestDataLinkToOCIv1Config(ctx, ociManiDataID, cfg)
+	// //// Link Manifest to Config
+	err = mag.Database.ManifestLinkToOCIv1Config(ctx, ociManiDataID, cfg)
 	if err != nil {
-		err = utils.ErrorHandler(l, span, err, "failed to link ManifestData to OCIv1 Config")
+		err = utils.ErrorHandler(l, span, err, "failed to link Manifest to OCIv1 Config")
 		return
 	}
-	// //// Link ManifestData to Layers
+	// //// Link Manifest to Layers
 	for _, ld := range layerMap {
-		err = mag.Database.ManifestDataLinkToOCIv1Layer(ctx, ociManiDataID, ld)
+		err = mag.Database.ManifestLinkToOCIv1Layer(ctx, ociManiDataID, ld)
 		if err != nil {
-			err = utils.ErrorHandler(l, span, err, "failed to link ManifestData to OCIv1 Layer")
+			err = utils.ErrorHandler(l, span, err, "failed to link Manifest to OCIv1 Layer")
 			return
 		}
 	}
-	utils.Info(l, span, "Created OCIv1 ManifestData.ID: %d for Manifest.ID: %d", ociManiDataID, mani.ID)
+	utils.Info(l, span, "Created OCIv1 Manifest.ID: %d for Manifest.ID: %d", ociManiDataID, mani.ID)
 	return
 }
 
-func (mag Magazine) GenerateOCIv1Config(ctx context.Context, maniSI types.Manifest, origMani types.ManifestData) (v1Cfg *v1.Image, err error) {
+func (mag Magazine) GenerateOCIv1Config(ctx context.Context, maniSI types.ManifestWrapper, origMani types.Manifest) (v1Cfg *v1.Image, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":                pkgNameOci,
 		"func":                   "mag.GenerateOCIv1Config",
@@ -689,7 +697,7 @@ func (mag Magazine) GenerateOCIv1ConfigDescriptor(ctx context.Context, v1Cfg *v1
 	}
 	dig := digest.FromBytes(cfgBytes)
 	size := len(cfgBytes)
-	// Get Labels from Config attached to ManifestData and Annotations from Manifest
+	// Get Labels from Config attached to Manifest and Annotations from Manifest
 	dscr = v1.Descriptor{
 		MediaType: v1.MediaTypeImageConfig,
 		Data:      cfgBytes,

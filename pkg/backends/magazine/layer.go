@@ -91,7 +91,7 @@ func (mag Magazine) parseCacheLayers() (cacheLayers int, err error) {
 	return
 }
 
-func (mag Magazine) CacheLayers(ctx context.Context, mani types.ManifestData) (err error) {
+func (mag Magazine) CacheLayers(ctx context.Context, mani types.Manifest) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameLayer,
 		"func":    "mag.CacheLayers",

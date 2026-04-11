@@ -259,8 +259,8 @@ func NewRequest(ctx context.Context, r *http.Request) Request {
 	req.ParseRange(span, r)
 	req.ParseAuth(span, r)
 	uid := chi.URLParam(r, "uuid")
-	cntLenStr := r.Header.Get("Content-Length")
-	cntType := r.Header.Get("Content-Type")
+	cntLenStr := r.Header.Get(ContentLength)
+	cntType := r.Header.Get(ContentType)
 	cntLen, _ := strconv.Atoi(cntLenStr)
 	scope := ""
 	rManifest, _ := regexp.Compile(`^\/v2\/[\w\/]+\/manifests\/\w+`)

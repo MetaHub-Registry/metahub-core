@@ -20,7 +20,7 @@ func TestManifestFromBlob(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer min.PreTearDown(bs)
-	mani, err := min.NewManifestDataFromBytes(ctx, featureTestGenericMani)
+	mani, err := min.NewManifestFromBytes(ctx, featureTestGenericMani)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -118,6 +118,26 @@ func TestCollectionTagProfilePairAnnotationGetAll(t *testing.T) {
 		span.End()
 		t.Fatal(err)
 	}
+	// Path Z task 7.7: D5 invariant canary after every RuleEvalAll.
+	assertRuleShortcutInvariantsOrFatal(t, ctx)
+	// Path Z Phase C3: CTPP queries now walk via Slot instead of the
+	// :ManifestWrapper wrapper. Create a Slot + HAS_PUSHED edge for the
+	// bootstrapped manifest data so the Slot-based walk can find it.
+	mdID, err := br.GetInt64("manifestdata:ft_zen3#id")
+	if err != nil {
+		span.End()
+		t.Fatal(err)
+	}
+	slot, err := db.SlotGetCreate(ctx, "qnib/featuretest", "zen3", "cpu#zen3")
+	if err != nil {
+		span.End()
+		t.Fatal(err)
+	}
+	err = db.SlotAppendPushedManifest(ctx, slot.ID, mdID)
+	if err != nil {
+		span.End()
+		t.Fatal(err)
+	}
 	span.End()
 	defer db.TeardownTest(bs, br)
 	// Actual test

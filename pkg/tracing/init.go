@@ -1,6 +1,7 @@
 package tracing
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -38,6 +39,15 @@ func InitTracer(svcName, jaegerEndpoint string) (tr trace.Tracer, err error) {
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 	return otel.Tracer(svcName), nil
+}
+
+// Shutdown flushes remaining spans and shuts down the global tracer provider.
+// Safe to call even if InitTracer was never called (no-op in that case).
+func Shutdown(ctx context.Context) error {
+	if tp, ok := otel.GetTracerProvider().(*sdktrace.TracerProvider); ok {
+		return tp.Shutdown(ctx)
+	}
+	return nil
 }
 
 func SpanDebug(span trace.Span, frm string, args ...interface{}) {

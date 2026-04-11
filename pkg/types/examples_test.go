@@ -14,7 +14,7 @@ func TestFTarmConfigByte(t *testing.T) {
 }
 
 func TestFTarmManifest(t *testing.T) {
-	mani := FTarmManifestData()
+	mani := FTarmManifest()
 	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mani.Digest)
 	assert.Len(t, mani.Layers, 2)
 }

@@ -39,7 +39,7 @@ func (n Neo) OrasArtifactGetByRepoLike(ctx context.Context, repo string) (listin
 		repoPattern = fmt.Sprintf("^%s.*", repoPattern)
 	}
 
-	q := fmt.Sprintf(`MATCH (c:Collection)-[:HAS_TAG]->(t) MATCH (c)-[:UPSTREAM]->(m)-[r]-(md:ManifestData) MATCH (md)-[cfgRel]->(cfg:Blob) WHERE cfg.type = "config" AND c.repo =~ "%s" AND NOT cfg.mediaType IN %s RETURN c.repo AS repo, cfg.mediaType AS artifactType, count(md) AS artifactCount`,
+	q := fmt.Sprintf(`MATCH (c:Repo)-[:HAS_TAG]->(t) MATCH (c)-[:UPSTREAM]->(m)-[r]-(md:Manifest) MATCH (md)-[cfgRel]->(cfg:Blob) WHERE cfg.type = "config" AND c.repo =~ "%s" AND NOT cfg.mediaType IN %s RETURN c.repo AS repo, cfg.mediaType AS artifactType, count(md) AS artifactCount`,
 		repoPattern, containerImageConfigFilter())
 
 	utils.Debug(l, span, q)
@@ -86,7 +86,7 @@ func (n Neo) OrasArtifactGetByName(ctx context.Context, repo, artifactType strin
 	defer span.End()
 	_ = ctx
 
-	q := fmt.Sprintf(`MATCH (c:Collection)-[:HAS_TAG]->(t) MATCH (c)-[:UPSTREAM]->(m)-[r]-(md:ManifestData) MATCH (md)-[cfgRel]->(cfg:Blob) WHERE cfg.type = "config" AND c.repo = "%s" AND cfg.mediaType = "%s" RETURN id(md) AS manifestDataID, md.digest AS manifestDataDigest, md.mediaType AS manifestDataMediaType, c.repo AS repo, cfg.mediaType AS artifactType LIMIT 1`,
+	q := fmt.Sprintf(`MATCH (c:Repo)-[:HAS_TAG]->(t) MATCH (c)-[:UPSTREAM]->(m)-[r]-(md:Manifest) MATCH (md)-[cfgRel]->(cfg:Blob) WHERE cfg.type = "config" AND c.repo = "%s" AND cfg.mediaType = "%s" RETURN id(md) AS manifestDataID, md.digest AS manifestDataDigest, md.mediaType AS manifestDataMediaType, c.repo AS repo, cfg.mediaType AS artifactType LIMIT 1`,
 		repo, artifactType)
 
 	utils.Debug(l, span, q)
@@ -102,7 +102,7 @@ func (n Neo) OrasArtifactGetByName(ctx context.Context, repo, artifactType strin
 	return
 }
 
-// OrasArtifactGetByID returns a single OrasArtifact matching the given Neo4j ManifestData node ID.
+// OrasArtifactGetByID returns a single OrasArtifact matching the given Neo4j Manifest node ID.
 func (n Neo) OrasArtifactGetByID(ctx context.Context, manifestID int64) (artifact types.OrasArtifact, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgOrasName,
@@ -112,7 +112,7 @@ func (n Neo) OrasArtifactGetByID(ctx context.Context, manifestID int64) (artifac
 	defer span.End()
 	_ = ctx
 
-	q := fmt.Sprintf(`MATCH (c:Collection)-[:HAS_TAG]->(t) MATCH (c)-[:UPSTREAM]->(m)-[r]-(md:ManifestData) MATCH (md)-[cfgRel]->(cfg:Blob) WHERE cfg.type = "config" AND id(md) = %d AND NOT cfg.mediaType IN %s RETURN id(md) AS manifestDataID, md.digest AS manifestDataDigest, md.mediaType AS manifestDataMediaType, c.repo AS repo, cfg.mediaType AS artifactType LIMIT 1`,
+	q := fmt.Sprintf(`MATCH (c:Repo)-[:HAS_TAG]->(t) MATCH (c)-[:UPSTREAM]->(m)-[r]-(md:Manifest) MATCH (md)-[cfgRel]->(cfg:Blob) WHERE cfg.type = "config" AND id(md) = %d AND NOT cfg.mediaType IN %s RETURN id(md) AS manifestDataID, md.digest AS manifestDataDigest, md.mediaType AS manifestDataMediaType, c.repo AS repo, cfg.mediaType AS artifactType LIMIT 1`,
 		manifestID, containerImageConfigFilter())
 
 	utils.Debug(l, span, q)
@@ -156,7 +156,7 @@ func orasArtifactFromResult(res types.Result) (a types.OrasArtifact, err error) 
 		a.Annotations = map[string]string{}
 	}
 	if a.Blobs == nil {
-		a.Blobs = []types.ManifestData{}
+		a.Blobs = []types.Manifest{}
 	}
 	return
 }

@@ -36,7 +36,7 @@ func TestOrasArtifactJSONRoundTrip(t *testing.T) {
 		MediaType:    "application/vnd.oci.image.manifest.v1+json",
 		ArtifactType: "application/vnd.cyclonedx",
 		Annotations:  map[string]string{"org.example.key": "value"},
-		Blobs:        []types.ManifestData{},
+		Blobs:        []types.Manifest{},
 	}
 
 	data, err := json.Marshal(original)
@@ -63,7 +63,7 @@ func TestOrasArtifactJSONFields(t *testing.T) {
 		MediaType:    "application/vnd.oci.image.manifest.v1+json",
 		ArtifactType: "application/vnd.spdx+json",
 		Annotations:  map[string]string{},
-		Blobs:        []types.ManifestData{},
+		Blobs:        []types.Manifest{},
 	}
 	data, err := json.Marshal(a)
 	require.NoError(t, err)

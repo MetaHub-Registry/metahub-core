@@ -11,7 +11,7 @@ func TestProfilePair(t *testing.T) {
 		Tag:  "tag",
 		Rule: "cpu:generic=true",
 	}
-	c0 := Collection{
+	c0 := Repo{
 		ID:   2,
 		Repo: "repo",
 	}
@@ -19,7 +19,7 @@ func TestProfilePair(t *testing.T) {
 		ID:  3,
 		Tag: "tag",
 	}
-	md1 := ManifestData{
+	md1 := Manifest{
 		ID: 4,
 	}
 	pp, err := NewCollectionTagProfilePair(c0, t0, p0)

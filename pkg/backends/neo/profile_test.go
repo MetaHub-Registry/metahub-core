@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"github.com/metahub-registry/metahub-core/pkg/yaml/config"
@@ -207,6 +208,8 @@ func TestProfileFromManifestID(t *testing.T) {
 	if e := db.RuleEvalAll(ctx); e != nil {
 		t.Fatal(e)
 	}
+	// Path Z task 7.7: D5 invariant canary after every RuleEvalAll.
+	assertRuleShortcutInvariantsOrFatal(t, ctx)
 	span.End()
 	// Actual test
 	l, ctx, span := utils.InitLogging(context.Background(), tracer, map[string]any{
@@ -214,7 +217,7 @@ func TestProfileFromManifestID(t *testing.T) {
 	})
 	defer span.End()
 	_ = l
-	maniID, err := br.GetInt64("manifest:ft_arm64#id")
+	maniID, err := br.GetInt64("manifestdata:ft_arm64#id")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +227,7 @@ func TestProfileFromManifestID(t *testing.T) {
 	}
 	assert.Equal(t, 1, len(prfs))
 	// AMD
-	maniID_AMD, err := br.GetInt64("manifest:ft_amd64#id")
+	maniID_AMD, err := br.GetInt64("manifestdata:ft_amd64#id")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +238,7 @@ func TestProfileFromManifestID(t *testing.T) {
 	assert.Equal(t, 1, len(prfs_AMD))
 	// Zen3
 
-	maniID_zen3, err := br.GetInt64("manifest:ft_zen3#id")
+	maniID_zen3, err := br.GetInt64("manifestdata:ft_zen3#id")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,16 +246,20 @@ func TestProfileFromManifestID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(prfs_zen3) != 2 {
+	// The zen3 manifest has a cpu annotation, so cpu:noop=false for it; only
+	// the zen3 profile (cpu:zen3=true) matches, not the generic one.
+	if len(prfs_zen3) != 1 {
 		for _, prf := range prfs_zen3 {
 			t.Log(prf)
 		}
-		t.Fatal("Expected 2 profile, got", len(prfs_zen3))
+		t.Fatal("Expected 1 profile, got", len(prfs_zen3))
 	}
 	// Rules
 	if e := db.RuleEvalAll(ctx); e != nil {
 		t.Fatal(e)
 	}
+	// Path Z task 7.7: D5 invariant canary after every RuleEvalAll.
+	assertRuleShortcutInvariantsOrFatal(t, ctx)
 	prfZen3 := prfs_zen3[0]
 	if rls, err := db.ProfileGetPlatformRules(ctx, prfZen3.ID); err != nil {
 		t.Fatal(err)
@@ -293,8 +300,10 @@ func TestProfileFromManifestIDZen3(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Path Z task 7.7: D5 invariant canary after every RuleEvalAll.
+	assertRuleShortcutInvariantsOrFatal(t, ctx)
 	// Zen3
-	maniID_zen3, err := br.GetInt64("manifest:ft_zen3#id")
+	maniID_zen3, err := br.GetInt64("manifestdata:ft_zen3#id")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +311,7 @@ func TestProfileFromManifestIDZen3(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, 1, len(prfs_zen3))
+	require.Equal(t, 1, len(prfs_zen3), "expected 1 profile for zen3 manifest")
 	prfZen3 := prfs_zen3[0]
 	if rls, err := db.ProfileGetPlatformRules(ctx, prfZen3.ID); err != nil {
 		t.Fatal(err)
@@ -408,7 +417,7 @@ func TestProfileFromManifestIDManipulations(t *testing.T) {
 	}
 	span.End()
 	defer db.TeardownTest(bs, br)
-	// Connect Collection/Tag
+	// Connect Repo/Tag
 	_, ctx, span = utils.InitLogging(context.Background(), tracer, map[string]any{
 		"func": "TestRuleGetCreate.Run",
 	})

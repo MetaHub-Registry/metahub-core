@@ -20,7 +20,19 @@ const (
 	pkgNameUser = "sqlite/user.go"
 )
 
-// User is the stucture which holds one user from the database. Note
+// Token holds an authentication token for a user session.
+type Token struct {
+	ID        int       `json:"id"`
+	UserID    int       `json:"user_id"`
+	Email     string    `json:"email"`
+	Token     string    `json:"token"`
+	TokenHash []byte    `json:"-"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Expiry    time.Time `json:"expiry"`
+}
+
+// User is the structure which holds one user from the database. Note
 // that it embeds a token type.
 type User struct {
 	ID         int            `json:"id"`

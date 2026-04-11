@@ -143,9 +143,9 @@ func TestLayerGetUpstream(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Add more layers to trigger multiple results
-	q := `MATCH (l:Blob), (md:ManifestData)`
+	q := `MATCH (l:Blob), (md:Manifest)`
 	q += fmt.Sprintf(` WHERE id(l) = %d AND id(md) = %d`, lId, md.ID)
-	q += ` MERGE (l)<-[:LayerLink]-(md)`
+	q += ` MERGE (l)<-[:HAS_LAYER]-(md)`
 	if _, e := db.Execute(q); e != nil {
 		t.Fatal(e)
 	}
@@ -155,7 +155,7 @@ func TestLayerGetUpstream(t *testing.T) {
 		assert.Equal(t, "application/vnd.docker.image.rootfs.diff.tar.gzip", mt)
 	}
 	//TODO: Create second relationship to trigger multiple results
-	//q := `MATCH (l:Blob), (md:ManifestData) `
+	//q := `MATCH (l:Blob), (md:Manifest) `
 
 }
 
@@ -192,7 +192,7 @@ func TestLayerDescriptorGetInsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Greater(t, lyrID0, int64(0))
+	assert.GreaterOrEqual(t, lyrID0, int64(0), "layer ID should be a valid neo4j ID (>=0)")
 
 	if lyrID, err := db.LayerDescriptorGetInsert(ctx, desc); err != nil {
 		t.Fatal(err)

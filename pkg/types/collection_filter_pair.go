@@ -1,7 +1,7 @@
 package types
 
 type CollectionFilterPair struct {
-	Collection Collection
+	Repo Repo
 	Filter     Filter
-	Manifests  []ManifestData
+	Manifests  []Manifest
 }

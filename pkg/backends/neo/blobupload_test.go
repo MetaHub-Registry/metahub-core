@@ -162,6 +162,30 @@ func TestBlobuploadCRU(t *testing.T) {
 	}
 	assert.Equal(t, 1, len(res))
 
+	// Path Z task 5.5: BlobUploadUpdateByUUID should also create a
+	// (Profile)-[:UPLOADED {repo, timestamp}]->(Blob) edge when the target
+	// is a :Blob node. Verify the edge exists, carries the repo, and has a
+	// non-zero timestamp.
+	profEdgeQ := fmt.Sprintf(
+		`MATCH (p:Profile {label: "generic"})-[rel:UPLOADED]->(b:Blob) WHERE b.digest = "%s" RETURN rel.repo AS edgeRepo, rel.timestamp AS edgeTimestamp`,
+		layerDigest,
+	)
+	profRes, profFound, err := db.QueryOne(profEdgeQ)
+	if err != nil {
+		t.Fatalf("Profile->Blob edge query: %v", err)
+	}
+	assert.True(t, profFound, "Profile-[:UPLOADED]->Blob edge should exist after BlobUploadUpdateByUUID")
+	if profFound {
+		edgeRepo, err := profRes.GetStr("edgeRepo")
+		if err == nil {
+			assert.Equal(t, "qnib/featuretest", edgeRepo, "Profile->Blob edge should carry the repo from the BlobUpload")
+		}
+		edgeTs, err := profRes.GetInt64("edgeTimestamp")
+		if err == nil {
+			assert.NotZero(t, edgeTs, "Profile->Blob edge should carry a non-zero timestamp")
+		}
+	}
+
 	//// CONFIG
 	configBU := types.OCIBlobUpload{
 		Repo:          "qnib/featuretest",

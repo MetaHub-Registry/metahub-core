@@ -45,9 +45,9 @@ func (br BlobReference) WriteWWW(w http.ResponseWriter) {
 	b := br.Data
 	size := len(b)
 	// TODO: Check if we need to set the Content-Type
-	w.Header().Set("Content-Type", br.MediaType)
-	w.Header().Set("Content-Length", fmt.Sprint(size))
-	w.Header().Set("Docker-Content-Digest", br.Digest)
+	w.Header().Set(ContentType, br.MediaType)
+	w.Header().Set(ContentLength, fmt.Sprint(size))
+	w.Header().Set(DockerContentDigest, br.Digest)
 	w.Header().Set("Docker-Distribution-API-Version", "registry/2.0")
 	w.Header().Set("Etag", br.Digest)
 	w.Write(br.Data)

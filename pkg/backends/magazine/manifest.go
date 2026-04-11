@@ -19,29 +19,26 @@ const (
 	pkgNameMani = "magazine/manifest.go"
 )
 
-func (mag Magazine) NeoLinkManifestToUpstream(ctx context.Context, maniID, upID int64) (err error) {
-	return mag.Database.ManifestLinkToUpstream(ctx, maniID, upID)
-}
+// Path Z Phase C3: NeoLinkManifestToUpstream, LinkManifestToManifest,
+// and NeoLinkManifestToLayer are deleted — they were thin delegations to
+// wrapper-era functions. Content-leaf linking uses :ORIGINAL edges created
+// by createManifest, and Slot-based attribution replaces Collection links.
 
-func (mag Magazine) LinkManifestToManifestData(ctx context.Context, maniID, maniDataID int64, props ...string) (err error) {
-	return mag.Database.LinkManifestToManifestData(ctx, maniID, maniDataID, props...)
-}
-
-func (mag Magazine) NeoLinkManifestDataToConfig(ctx context.Context, maniID int64, cfg types.Config) (err error) {
-	return mag.Database.ManifestDataLinkToConfig(ctx, maniID, cfg)
+func (mag Magazine) NeoLinkManifestToConfig(ctx context.Context, maniID int64, cfg types.Config) (err error) {
+	return mag.Database.ManifestLinkToConfig(ctx, maniID, cfg)
 }
 
 func (mag Magazine) NeoLinkManifestToLayer(ctx context.Context, maniID int64, l types.Layer, idx int) (err error) {
-	return mag.Database.ManifestDataLinkToLayer(ctx, maniID, l, idx)
+	return mag.Database.ManifestLinkToLayer(ctx, maniID, l, idx)
 }
 
-func (mag Magazine) NeoLinkManifestDataToPlatform(ctx context.Context, maniID, platID int64) (err error) {
-	return mag.Database.LinkManifestDataToPlatform(ctx, maniID, platID)
+func (mag Magazine) NeoLinkManifestToPlatform(ctx context.Context, maniID, platID int64) (err error) {
+	return mag.Database.LinkManifestToPlatform(ctx, maniID, platID)
 }
 
-func (mag Magazine) GetManifest(ctx context.Context, m ycfg.Manifest) (mani types.ManifestData, err error) {
+func (mag Magazine) GetManifest(ctx context.Context, m ycfg.Manifest) (mani types.Manifest, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "magazine/manifest.go",
+		"package": pkgNameMani,
 		"func":    "GetManifest",
 	})
 	_, span := tracer.Start(ctx, "GetManifest")
@@ -118,7 +115,7 @@ func (mag Magazine) GetManifest(ctx context.Context, m ycfg.Manifest) (mani type
 	return
 }
 
-func (mag Magazine) ManifestGetByHTTPRequest(ctx context.Context, r *http.Request) (m types.ManifestData, found bool, err error) {
+func (mag Magazine) ManifestGetByHTTPRequest(ctx context.Context, r *http.Request) (m types.Manifest, found bool, err error) {
 	req := types.NewRequest(ctx, r)
 	repo := chi.URLParam(r, "repo")
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
@@ -178,15 +175,15 @@ func (mag Magazine) ManifestDeleteByHTTPRequest(ctx context.Context, r *http.Req
 		return
 	}
 	if !found || req.Tag != "" {
-		//Not a plain Manifest, let's try to delete a Collection
-		logrus.Warn("Not a plain Manifest, let's try to delete a Collection")
+		//Not a plain Manifest, let's try to delete a Repo
+		logrus.Warn("Not a plain Manifest, let's try to delete a Repo")
 		found, e := mag.RemoveCollectionByRequest(ctx, req)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to delete collection")
 			return
 		}
 		if !found {
-			err = utils.NewError(l, span, "Collection not found")
+			err = utils.NewError(l, span, "Repo not found")
 			return
 		}
 		return
@@ -194,7 +191,7 @@ func (mag Magazine) ManifestDeleteByHTTPRequest(ctx context.Context, r *http.Req
 	return
 }
 
-func (mag Magazine) ManifestGetByRequest(ctx context.Context, req types.Request) (m types.ManifestData, found bool, err error) {
+func (mag Magazine) ManifestGetByRequest(ctx context.Context, req types.Request) (m types.Manifest, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMani,
 		"func":    "ManifestGetByRequest",
@@ -203,7 +200,7 @@ func (mag Magazine) ManifestGetByRequest(ctx context.Context, req types.Request)
 	})
 	defer span.End()
 	// Fetch Manifest from SQLite
-	m, found, e := mag.Database.ManifestDataGetTypesByRequest(ctx, req)
+	m, found, e := mag.Database.ManifestGetTypesByRequest(ctx, req)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to get Manifest from Database")
 		return
@@ -219,8 +216,16 @@ func (mag Magazine) ManifestGetByRequest(ctx context.Context, req types.Request)
 	return
 }
 
-// storeManifestUploadOCIManifest
-func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req types.Request, buf []byte) (mani types.Manifest, ociMani types.OCIManifest, err error) {
+// storeManifestUploadOCIManifest unmarshals the OCI manifest from the raw
+// push body, stores it in Minio, inserts layers, de-duplicates by profile,
+// and returns the content-leaf types.Manifest.
+//
+// Path Z Phase C3: all legacy wrapper operations (:ManifestWrapper node creation
+// via ManifestGetInsert, Collection linking, ManifestWrapperLinkToUpstream,
+// LinkManifestToManifest) are removed. The content-leaf :Manifest
+// node is the sole persistent artefact; Slot-based attribution and the
+// :ORIGINAL edge to :Upstream handle grouping and provenance.
+func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req types.Request, buf []byte) (md types.Manifest, ociMani types.OCIManifest, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMani,
 		"func":    "storeManifestUploadOCIManifest",
@@ -236,7 +241,7 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 	e := json.Unmarshal(buf, &ociMani)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to unmarshal OCI Manifest '%s'", string(buf))
-		return mani, ociMani, err
+		return md, ociMani, err
 	}
 	utils.Debug(l, span, "unmarshal ociMani: %v", ociMani)
 	dig := digest.FromBytes(buf)
@@ -250,53 +255,31 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 		err = utils.ErrorHandler(l, span, e, "failed to put Manifest into Minio")
 		return
 	}
-	col, _, e := mag.Database.CollectionGetCreateByRepoTag(ctx, req.Repo, req.Tag)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to get Collection from Database")
-		return
-	}
-
-	// Store Manifest (the standin under which all ManifestData are stored)
+	// Phase C3: wrapper :ManifestWrapper node creation fully removed.
+	// The Upstream node is created by ManifestGetInsert→createManifest
+	// via the :ORIGINAL edge. Slot-based attribution is handled by
+	// wireSlotOnPush in the caller (StoreManifestUpload).
 	up := types.Upstream{
 		Reg:    req.Host,
 		Repo:   req.Repo,
 		Tag:    req.Tag,
 		Digest: dig,
 	}
-	as := []types.Annotation{}
-	utils.Debug(l, span, "Inserting ManifestGetInsert for Upstream: %s", up.GetLabel())
-	maniId, err := mag.Database.ManifestGetInsert(ctx, up, as...)
-	if err != nil {
-		err = utils.ErrorHandler(l, span, err, "failed to ManifestGetInsert")
-		return
-	}
-	utils.Debug(l, span, "Inserted Manifest w/ ID %d", maniId)
-	var found bool
-	mani, found, err = mag.Database.ManifestGetByID(ctx, maniId)
-	if err != nil {
-		err = utils.ErrorHandler(l, span, err, "failed to ManifestGetByID")
-		return
-	}
-	if !found {
-		err = utils.NewError(l, span, "manifest with ID %d not found after insert", maniId)
-		return
-	}
-	mani.ID = maniId
-	// Link Manifest to Collection
-	e = mag.Database.LinkCollectionToManifest(ctx, col.ID, maniId)
+	// Ensure Upstream node exists (for :ORIGINAL edge in createManifest)
+	_, _, e = mag.Database.UpstreamGetInsertByRequest(ctx, types.Request{
+		Host:   req.Host,
+		Repo:   req.Repo,
+		Tag:    req.Tag,
+		Digest: dig.String(),
+	})
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to LinkCollectionToManifest")
+		err = utils.ErrorHandler(l, span, e, "failed to ensure Upstream exists")
 		return
 	}
-	e = mag.Database.LinkCollectionTagToManifest(ctx, col.ColTag.ID, maniId)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to LinkCollectionTagToManifest")
-		return
-	}
+	// Insert layers
 	lyrs := []types.Layer{}
 	for idx, lyrDesc := range ociMani.Layers {
 		utils.Debug(l, span, "Layer %d: %s", idx, utils.ShortenDigest(lyrDesc.Digest.String()))
-
 		lyr, e := types.LayerFromDesc(ctx, lyrDesc)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to create Layer from distribution.Descriptor")
@@ -309,6 +292,7 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 		}
 		lyrs = append(lyrs, lyr)
 	}
+	// Profile lookup
 	prf, found, e := mag.Database.ProfileGetByLabel(ctx, req.Profile)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to get profile '%s' from database", prf.Label)
@@ -318,19 +302,19 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 		err = utils.NewError(l, span, "profile '%s' not found", prf.Label)
 		return
 	}
-	md, found, e := mag.Database.ManifestDataGetPushedByProfile(ctx, up, prf)
+	// De-duplicate: check if a manifest was already pushed for this profile
+	md, found, e = mag.Database.ManifestGetPushedByProfile(ctx, up, prf)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to get ManifestData for profile '%s' from database", prf.Label)
+		err = utils.ErrorHandler(l, span, e, "failed to get Manifest for profile '%s' from database", prf.Label)
 		return
 	}
 	if found {
 		utils.Debug(l, span, "manifest '%s' already pushed for profile: '%s'", up.String(), prf.Label)
 		if dig.String() != md.Digest {
 			utils.Debug(l, span, "incoming manifest ('%s') is different from already present manifest ('%s')", utils.ShortenDigest(dig.String()), utils.ShortenDigest(md.Digest))
-			// TODO: Remove manifestdata already pushed
-			e = mag.Database.ManifestDataDelete(ctx, md)
+			e = mag.Database.ManifestDelete(ctx, md)
 			if e != nil {
-				err = utils.ErrorHandler(l, span, e, "failed to delete ManifestData from Database")
+				err = utils.ErrorHandler(l, span, e, "failed to delete Manifest from Database")
 				return
 			}
 		} else {
@@ -338,12 +322,12 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 		}
 	}
 
-	// Store ManifestData (the actual Manifest with digest and all)
+	// Store content-leaf Manifest
 	annos := types.NewAnnotations()
 	for k, v := range ociMani.Annotations {
 		annos.AddNewAnnotation(k, v)
 	}
-	md = types.ManifestData{
+	md = types.Manifest{
 		Digest:       dig.String(),
 		MediaType:    ociMani.MediaType,
 		ArtifactType: ociMani.ArtifactType,
@@ -353,42 +337,22 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 		Upstream:     up,
 		Annotations:  annos,
 	}
-	e = mag.Database.ManifestDataGetInsert(ctx, &md)
+	e = mag.Database.ManifestGetInsert(ctx, &md)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to getInsert ManifestData from Database")
+		err = utils.ErrorHandler(l, span, e, "failed to getInsert Manifest from Database")
 		return
 	}
-	mani.Manifests = []types.ManifestData{md}
-	e = mag.LinkManifestToManifestData(ctx, maniId, md.ID, "Manifest_Derived_From")
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to mag.LinkManifestToManifestData")
+	if e = mag.Database.LinkManifestToProfile(ctx, md.ID, prf.ID, "UPLOADED_BY"); e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to link Manifest to Profile")
 		return
 	}
-	if e = mag.Database.LinkManifestDataToProfile(ctx, md.ID, prf.ID, "UPLOADED_BY"); e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to mag.LinkManifestToManifestData")
+	if e = mag.Database.ManifestAddAnnotations(ctx, md.ID, &md.Annotations); e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to add annotations to Manifest")
 		return
 	}
-	if e = mag.Database.ManifestLinkToUpstream(ctx, maniId, up.ID); e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to mag.LinkManifestToManifestData")
-		return
-	}
-
-	if e = mag.Database.ManifestDataAddAnnotations(ctx, md.ID, &md.Annotations); e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to add annotations to ManifestData")
-		return
-	}
-	// Remove orhpaned layers
-	// e = mag.LayersDeleteUnused(ctx)
-	// if e != nil {
-	// 	err = utils.ErrorHandler(l, span, e, "failed to delete unused layers")
-	// 	return
-	// }
-	// // Remove orhpaned config
-	// e = mag.ConfigsDeleteUnused(ctx)
-	// if e != nil {
-	// 	err = utils.ErrorHandler(l, span, e, "failed to delete unused config")
-	// 	return
-	// }
+	// Phase C3: wrapper links (LinkManifestToManifest, ManifestWrapperLinkToUpstream)
+	// fully removed. Content-leaf is linked to Upstream via :ORIGINAL edge
+	// in createManifest. Slot attribution via wireSlotOnPush in caller.
 	return
 }
 
@@ -403,7 +367,7 @@ func (mag Magazine) RemoveManifestByRequest(ctx context.Context, req types.Reque
 		"digest":  req.Digest,
 	})
 	defer span.End()
-	m := types.ManifestData{
+	m := types.Manifest{
 		Upstream: types.Upstream{
 			Repo: req.Repo,
 			Tag:  req.Tag,
@@ -411,7 +375,7 @@ func (mag Magazine) RemoveManifestByRequest(ctx context.Context, req types.Reque
 		Digest: req.Digest,
 	}
 
-	found, err = mag.Database.ManifestDataRemove(ctx, req)
+	found, err = mag.Database.ManifestRemove(ctx, req)
 	if err != nil {
 		err = utils.ErrorHandler(l, span, err, "failed to Database.ManifestRemove")
 		return

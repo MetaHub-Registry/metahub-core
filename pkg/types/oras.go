@@ -8,8 +8,8 @@ type OrasArtifact struct {
 	MediaType    string            `json:"media_type"`
 	ArtifactType string            `json:"artifact_type"`
 	Annotations  map[string]string `json:"annotations"`
-	Subject      *ManifestData     `json:"subject,omitempty"`
-	Blobs        []ManifestData    `json:"blobs"`
+	Subject      *Manifest     `json:"subject,omitempty"`
+	Blobs        []Manifest    `json:"blobs"`
 }
 
 // OrasListing holds navigation metadata for a single ORAS artifact repo+artifactType entry,

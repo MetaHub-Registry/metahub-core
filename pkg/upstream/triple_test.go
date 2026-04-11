@@ -83,3 +83,36 @@ func TestUpstreamToUpstreamTriple(t *testing.T) {
 		t.Fatalf("expected tag %s, got %s", up.Tag, upt.Tag)
 	}
 }
+
+func TestNewUpstreamTripleFromMap(t *testing.T) {
+	m := map[string]any{
+		"reg":       "myregistry.io",
+		"repo":      "myrepo/myimage",
+		"tag":       "latest",
+		"mediaType": "application/vnd.oci.image.manifest.v1+json",
+		"digest":    "sha256:6ec0f660682c2f5b391af1d81d3b4839da06f050269546177b28e4b51d8d4c30",
+		"size":      int64(3456),
+	}
+	upt, err := NewUpstreamTriple(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if upt.Repo != "myrepo/myimage" {
+		t.Fatalf("expected myrepo/myimage, got %s", upt.Repo)
+	}
+}
+
+func TestNewUpstreamTripleBase_InvalidDigest(t *testing.T) {
+	_, err := NewUpstreamTripleBase("reg", "repo", "tag", "mt", "invalid", 0)
+	if err == nil {
+		t.Fatal("expected error for invalid digest")
+	}
+}
+
+func TestUpstreamTripleToBytes(t *testing.T) {
+	upt := UpstreamTriple{Reg: "reg", Repo: "repo", Tag: "tag"}
+	b := upt.ToBytes()
+	if len(b) == 0 {
+		t.Fatal("expected non-empty bytes")
+	}
+}

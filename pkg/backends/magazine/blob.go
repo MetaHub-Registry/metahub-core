@@ -131,7 +131,7 @@ func (mag Magazine) BlobExists(ctx context.Context, up upstream.UpstreamTriple) 
 
 func (mag Magazine) ComposeFromChunks(ctx context.Context, bu *types.OCIBlobUpload, chunks []types.BlobChunk) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "magazine/blob.go",
+		"package": pkgNameBlob,
 		"func":    "ComposeFromChunks",
 	})
 	defer span.End()
@@ -157,7 +157,7 @@ func (mag Magazine) ComposeFromChunks(ctx context.Context, bu *types.OCIBlobUplo
 
 func (mag Magazine) BlobGetByHTTPRequest(ctx context.Context, r *http.Request) (blob *types.Blob, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "magazine/blob.go",
+		"package": pkgNameBlob,
 		"func":    "BlobGetByHTTPRequest",
 	})
 	defer span.End()

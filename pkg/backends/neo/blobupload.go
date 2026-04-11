@@ -100,6 +100,29 @@ func (n Neo) BlobUploadUpdateByUUID(ctx context.Context, i *types.OCIBlobUpload)
 		if err != nil {
 			return err
 		}
+		// Path Z task 5.5: also MERGE a (Profile)-[:UPLOADED {repo, timestamp}]->(Blob)
+		// attribution edge when the uploaded node is a :Blob. This lets the pull
+		// handler fall back to profile-level UPLOADED edges in the pre-manifest
+		// upload window, and it gives the WebUI a way to list blobs pushed by a
+		// given profile per repo. The edge is skipped for :BlobChunk targets
+		// (partial uploads that haven't materialized as blobs yet) and for
+		// BlobUploads missing the upload_profile / repo properties (upgraded
+		// data from pre-Path-Z). MERGE is idempotent on the (Profile, Blob)
+		// pair; the `repo` and `timestamp` properties live on the edge so
+		// per-repo attribution stays distinct.
+		if nodeType == "Blob" && i.UploadProfile != "" && i.Repo != "" {
+			profEdgeQ := fmt.Sprintf(
+				`MERGE (p:Profile {label: "%s"}) WITH p MATCH (b:Blob) WHERE id(b) = %d MERGE (p)-[rel:UPLOADED]->(b) ON CREATE SET rel.repo = "%s", rel.timestamp = timestamp()`,
+				i.UploadProfile, nodeID, i.Repo,
+			)
+			utils.Debug(l, span, profEdgeQ)
+			if _, e := n.Execute(profEdgeQ); e != nil {
+				// Non-fatal: the primary BlobUpload->Blob edge is already in
+				// place, and the pull handler can still walk via the
+				// reachability chain. Log a warning and continue.
+				utils.Debug(l, span, "failed to create Profile-[:UPLOADED]->Blob edge (non-fatal): %v", e)
+			}
+		}
 		return nil
 	default:
 		return errors.Errorf("more than one node with digest '%s' found", i.Digest)
@@ -314,10 +337,16 @@ func OCIBlobUploadFromResult(res types.Result) (ct types.OCIBlobUpload, err erro
 func (n Neo) BlobUploadDeleteUnused(ctx context.Context) (err error) {
 	_, span := tracer.Start(ctx, "BlobUpload_DeleteUnused")
 	defer span.End()
+	// NOTE: this query uses the legacy :IS relationship as an "is-referenced"
+	// marker for BlobUpload cleanup. It is unrelated to the
+	// (Manifest)-[:IS]->(Platform) edge that was renamed to :HAS_PLATFORM in
+	// Path Z task 5.1. Leaving this line alone preserves the existing cleanup
+	// semantics. A future cleanup pass can rename this to something clearer
+	// like :LINKED, but that is out of scope for the slot-centred refactor.
 	q := `MATCH (bu:BlobUpload)-[:CHUNK]->(bc:BlobChunk) WHERE NOT (bu)-[:IS]-() DETACH DELETE bu,bc RETURN count(bu) AS delCnt`
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	res, err := n.Execute(q)
 	if err != nil {
@@ -331,14 +360,14 @@ func (n Neo) BlobUploadDeleteUnused(ctx context.Context) (err error) {
 	}
 	msg := fmt.Sprintf("Deleted %d BlobUploads", delCnt)
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", msg),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogMessage, msg),
 	))
 	return
 }
 
 // layerGetBlobUploadByDigest checks if the layer was UPLOADED without being associated to a manifest.
-// Usually a layer should be connected to a ManifestData eventually, but it might happen that it is just pushed without being associated to a manifest.
+// Usually a layer should be connected to a Manifest eventually, but it might happen that it is just pushed without being associated to a manifest.
 func (n Neo) BlobUploadGetByBlobDigest(ctx context.Context, dig string) (bu types.OCIBlobUpload, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameBlobUpload,

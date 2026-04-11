@@ -23,6 +23,7 @@ import (
 
 const (
 	pkgNameRegcli                         = "magazine/regcli.go"
+	fmtRepoRef                            = "%s/%s:%s"
 	FailNoDigest                          = "No digest provided"
 	FailNewRegClient                      = "Failed to create new regclient"
 	FailCreateRef                         = "Failed creating ref"
@@ -383,7 +384,7 @@ func (mag Magazine) GetManifestByUpstreamTripleByTag(ctx context.Context, up ups
 		"tag":        up.Tag,
 		"registry":   up.Reg,
 	})
-	blobUrl := fmt.Sprintf("%s/%s:%s", up.Reg, up.Repo, up.Tag)
+	blobUrl := fmt.Sprintf(fmtRepoRef, up.Reg, up.Repo, up.Tag)
 	span.SetAttributes(attribute.Key("url").String(blobUrl))
 	defer span.End()
 	msg := fmt.Sprintf("BlobURL: '%s'", blobUrl)
@@ -438,7 +439,7 @@ func (mag Magazine) getManifestByRegRepoRef(ctx context.Context, reg, repo, mRef
 		blobUrl = fmt.Sprintf("%s/%s", reg, repo)
 	} else {
 		tag = mRef
-		blobUrl = fmt.Sprintf("%s/%s:%s", reg, repo, tag)
+		blobUrl = fmt.Sprintf(fmtRepoRef, reg, repo, tag)
 
 	}
 	span.SetAttributes(attribute.Key("url").String(blobUrl))
@@ -503,7 +504,7 @@ func (mag Magazine) headManifestByRegRepoTag(ctx context.Context, reg, repo, tag
 	if err != nil {
 		return blob, false, utils.ErrorHandler(l, span, err, "Failed creating regClient")
 	}
-	blobUrl := fmt.Sprintf("%s/%s:%s", reg, repo, tag)
+	blobUrl := fmt.Sprintf(fmtRepoRef, reg, repo, tag)
 	utils.Debug(l, span, "blobUrl: %s ", blobUrl)
 	span.SetAttributes(attribute.Key("url").String(blobUrl))
 

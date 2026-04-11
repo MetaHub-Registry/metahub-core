@@ -11,22 +11,22 @@ import (
 )
 
 type CollectionTagProfilePair struct {
-	Collection  Collection
+	Repo  Repo
 	Tag         CollectionTag
 	Profile     Profile
 	Rules       set.StringSet
 	ManifestIDs set.StringSet
-	Manifests   []ManifestData
+	Manifests   []Manifest
 }
 
-func NewCollectionTagProfilePair(c Collection, t CollectionTag, p Profile) (pp CollectionTagProfilePair, err error) {
+func NewCollectionTagProfilePair(c Repo, t CollectionTag, p Profile) (pp CollectionTagProfilePair, err error) {
 	pp = CollectionTagProfilePair{
-		Collection:  c,
+		Repo:  c,
 		Tag:         t,
 		Profile:     p,
 		Rules:       set.NewStringSet(),
 		ManifestIDs: set.NewStringSet(),
-		Manifests:   []ManifestData{},
+		Manifests:   []Manifest{},
 	}
 	lbs, err := utils.ExprGetLabels(p.Rule)
 	if err != nil {
@@ -45,7 +45,7 @@ func (pmdps *CollectionTagProfilePair) AddRule(label string) error {
 	return nil
 }
 
-func (pmdps *CollectionTagProfilePair) AddManifest(md ManifestData) error {
+func (pmdps *CollectionTagProfilePair) AddManifest(md Manifest) error {
 	if md.MediaType != "application/vnd.oci.image.manifest.v1+json" &&
 		md.MediaType != "application/vnd.docker.distribution.manifest.v2+json" {
 		logrus.Warnf("Skip manifest with type: %s", md.MediaType)
@@ -60,5 +60,5 @@ func (pmdps *CollectionTagProfilePair) AddManifest(md ManifestData) error {
 }
 
 func (ctpp CollectionTagProfilePair) String() string {
-	return fmt.Sprintf("[%d]%s:%s[%d] [%s:%s] (manifests:'%s')", ctpp.Collection.ID, ctpp.Collection.Repo, ctpp.Tag.Tag, ctpp.Tag.ID, ctpp.Profile.Name, ctpp.Profile.Tag, strings.Join(ctpp.ManifestIDs.ToSlice(), "', '"))
+	return fmt.Sprintf("[%d]%s:%s[%d] [%s:%s] (manifests:'%s')", ctpp.Repo.ID, ctpp.Repo.Repo, ctpp.Tag.Tag, ctpp.Tag.ID, ctpp.Profile.Name, ctpp.Profile.Tag, strings.Join(ctpp.ManifestIDs.ToSlice(), "', '"))
 }

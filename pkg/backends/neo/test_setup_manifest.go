@@ -10,7 +10,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
-func (n Neo) Bootstrap_Manifest(ctx context.Context, bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
+func (n Neo) Bootstrap_ManifestWrapper(ctx context.Context, bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
 	switch b {
 	case "ft_arm64":
 		err = n.Setup_Manifest_FT_arm64(br)
@@ -44,7 +44,7 @@ func (n Neo) Bootstrap_Manifest(ctx context.Context, bs utils.Bootstrap, br *uti
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 	default:
-		return fmt.Errorf("no ManifestData Setup for '%s'", b)
+		return fmt.Errorf("no Manifest Setup for '%s'", b)
 	}
 	return
 }
@@ -70,25 +70,25 @@ func (n Neo) Setup_Manifest_FT_oras_cyclonedx(ctx context.Context, br *utils.Boo
 		return utils.ErrorHandler(l, span, err, "failed to get upstream by id")
 	}
 	as := types.NewAnnotations()
-	m := types.Manifest{
+	m := types.ManifestWrapper{
 		Upstream:    up,
 		Annotations: as,
 	}
-	maniID, err := n.ManifestGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
+	maniID, err := n.ManifestWrapperGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to insert manifest")
 	}
 	utils.Debug(l, span, "Inserted ORAS Manifest with ID: %d", maniID)
 	br.Add("manifest:ft_oras_cyclonedx#id", fmt.Sprint(maniID))
-	err = n.ManifestLinkToUpstream(ctx, maniID, upID)
+	err = n.ManifestWrapperLinkToUpstream(ctx, maniID, upID)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to link manifest to upstream")
 	}
-	// Link ManifestData if already present. Use "CREATED" so ORAS queries that match
-	// (m)-[:CREATED]-(md:ManifestData) can find this artifact.
+	// Link Manifest if already present. Use "CREATED" so ORAS queries that match
+	// (m)-[:CREATED]-(md:Manifest) can find this artifact.
 	if maniDataID, e := br.GetInt64("manifestdata:ft_oras_cyclonedx#id"); e == nil {
-		if e := n.LinkManifestToManifestData(ctx, maniID, maniDataID, "CREATED"); e != nil {
-			utils.Warn(l, span, "LinkManifestToManifestData failed for manifest %d", maniID)
+		if e := n.LinkManifestWrapperToManifest(ctx, maniID, maniDataID, "CREATED"); e != nil {
+			utils.Warn(l, span, "LinkManifestWrapperToManifest failed for manifest %d", maniID)
 		}
 	}
 	return
@@ -130,17 +130,17 @@ func (n Neo) Setup_Manifest_FT_amd64(ctx context.Context, br *utils.BootstrapRes
 	}
 	utils.Debug(l, span, "Get Platform: %s/%s/%s", plat.OS, plat.Arch, plat.Variant)
 	as := types.NewAnnotations()
-	m := types.Manifest{
+	m := types.ManifestWrapper{
 		Upstream:    up,
 		Annotations: as,
 	}
-	maniID, err := n.ManifestGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
+	maniID, err := n.ManifestWrapperGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to insert manifest")
 	}
 	utils.Debug(l, span, "Inserted Manifest with ID: %d", maniID)
 	br.Add("manifest:ft_amd64#id", fmt.Sprint(maniID))
-	err = n.ManifestLinkToUpstream(ctx, maniID, upID)
+	err = n.ManifestWrapperLinkToUpstream(ctx, maniID, upID)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to link manifest to upstream")
 	}
@@ -161,17 +161,17 @@ func (n Neo) Setup_Manifest_FT_amd64(ctx context.Context, br *utils.BootstrapRes
 	// if err != nil {
 	// 	return utils.ErrorHandler(l, span, err, "failed to get config mediaType from BR")
 	// }
-	// ManifestData
+	// Manifest
 	maniDataID, e := br.GetInt64("manifestdata:ft_amd64#id")
 	if e != nil {
-		utils.Warn(l, span, "ManifestData seems not to be present, skipping linking manifest to it. Trust that this will be done later eventually. :)")
+		utils.Warn(l, span, "Manifest seems not to be present, skipping linking manifest to it. Trust that this will be done later eventually. :)")
 	} else {
-		err = n.LinkManifestToManifestData(ctx, maniID, maniDataID, "ORIGINAL")
+		err = n.LinkManifestWrapperToManifest(ctx, maniID, maniDataID, "ORIGINAL")
 		if err != nil {
 			return utils.ErrorHandler(l, span, err, "failed to link manifest to config")
 		}
 	}
-	err = n.LinkManifestDataToPlatform(ctx, maniDataID, plaID)
+	err = n.LinkManifestToPlatform(ctx, maniDataID, plaID)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to link manifestData to platform")
 	}
@@ -190,15 +190,15 @@ func (n Neo) Setup_Manifest_FT_arm64(br *utils.BootstrapResult) (err error) {
 	if err != nil {
 		return err
 	}
-	m := types.Manifest{
+	m := types.ManifestWrapper{
 		Upstream: up,
 	}
-	maniID, err := n.ManifestGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
+	maniID, err := n.ManifestWrapperGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
 	br.Add("manifest:ft_arm64#id", fmt.Sprint(maniID))
 	if err != nil {
 		return err
 	}
-	err = n.ManifestLinkToUpstream(ctx, maniID, upID)
+	err = n.ManifestWrapperLinkToUpstream(ctx, maniID, upID)
 	if err != nil {
 		return err
 	}
@@ -224,7 +224,7 @@ func (n Neo) Setup_Manifest_FT_arm64(br *utils.BootstrapResult) (err error) {
 			logrus.Error(err)
 			return err
 		}
-		err = n.ManifestDataLinkToConfig(ctx, maniID, arm_config)
+		err = n.ManifestLinkToConfig(ctx, maniID, arm_config)
 		if err != nil {
 			logrus.Error(err)
 			return err
@@ -248,12 +248,12 @@ func (n Neo) SetupManifestFTZen(br *utils.BootstrapResult) (err error) {
 	as := types.NewAnnotations()
 	z3 := types.NewAnnotation("org.supercontainers.hardware.cpu.target.microarch", "zen")
 	as.AddAnnotation(z3)
-	m := types.Manifest{
+	m := types.ManifestWrapper{
 		Upstream:    up,
 		Annotations: as,
 	}
 	// Manifest
-	maniID, err := n.ManifestGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
+	maniID, err := n.ManifestWrapperGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
 	br.Add("manifest:ft_zen#id", fmt.Sprint(maniID))
 	if err != nil {
 		return err
@@ -279,7 +279,7 @@ func (n Neo) SetupManifestFTZen(br *utils.BootstrapResult) (err error) {
 		logrus.Error(err)
 		return err
 	}
-	err = n.ManifestDataLinkToConfig(ctx, maniID, config)
+	err = n.ManifestLinkToConfig(ctx, maniID, config)
 	if err != nil {
 		logrus.Error(err)
 		return err
@@ -308,18 +308,18 @@ func (n Neo) Setup_Manifest_FT_zen3(br *utils.BootstrapResult) (err error) {
 	as := types.NewAnnotations()
 	z3 := types.NewAnnotation("org.supercontainers.hardware.cpu.target.microarch", "zen3")
 	as.AddAnnotation(z3)
-	m := types.Manifest{
+	m := types.ManifestWrapper{
 		Upstream: up,
 
 		Annotations: as,
 	}
 	// Manifest
-	maniID, err := n.ManifestGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
+	maniID, err := n.ManifestWrapperGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
 	br.Add("manifest:ft_zen3#id", fmt.Sprint(maniID))
 	if err != nil {
 		return err
 	}
-	err = n.ManifestLinkToUpstream(ctx, maniID, upID)
+	err = n.ManifestWrapperLinkToUpstream(ctx, maniID, upID)
 	if err != nil {
 		return err
 	}
@@ -343,7 +343,7 @@ func (n Neo) Setup_Manifest_FT_zen3(br *utils.BootstrapResult) (err error) {
 		logrus.Error(err)
 		return err
 	}
-	err = n.ManifestDataLinkToConfig(ctx, maniID, config)
+	err = n.ManifestLinkToConfig(ctx, maniID, config)
 	if err != nil {
 		logrus.Error(err)
 		return err

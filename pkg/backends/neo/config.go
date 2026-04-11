@@ -16,6 +16,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+const (
+	errConfigFromDBResult = "failed to create config from DB result"
+)
+
 var (
 	configMediaType = `unknownConfig`
 	pkgNameConfig   = "neo/config.go"
@@ -31,8 +35,8 @@ func (n Neo) ConfigGetIDByDigest(ctx context.Context, dig string) (cfgID int64, 
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (c:Blob) WHERE c.digest = "%s" RETURN id(c) as ID`, dig)
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	l.Debug(q)
 	res, found, err := n.QueryOne(q)
@@ -50,12 +54,12 @@ func (n Neo) ConfigGetByManiDataID(ctx context.Context, mdID int64) (cfg types.C
 		"maniDataID": mdID,
 	})
 	defer span.End()
-	q := fmt.Sprintf(`MATCH (md:ManifestData)-[rel]->(n:Blob) WHERE id(md) = %d AND n.type = "config"`, mdID)
+	q := fmt.Sprintf(`MATCH (md:Manifest)-[rel]->(n:Blob) WHERE id(md) = %d AND n.type = "config"`, mdID)
 	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize`
 	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
-		utils.ErrorHandler(l, span, err, "Failed to run query")
+		utils.ErrorHandler(l, span, err, errFailedRunQuery)
 		return
 	}
 	if !found {
@@ -64,7 +68,7 @@ func (n Neo) ConfigGetByManiDataID(ctx context.Context, mdID int64) (cfg types.C
 	}
 	cfg, err = n.ConfigFromResult(ctx, res)
 	if err != nil {
-		utils.ErrorHandler(l, span, err, "failed to create config from DB result")
+		utils.ErrorHandler(l, span, err, errConfigFromDBResult)
 		return
 	}
 	return
@@ -82,7 +86,7 @@ func (n Neo) ConfigGetByID(ctx context.Context, cfgID int64) (cfg types.Config, 
 	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
-		err = utils.ErrorHandler(l, span, err, "Failed to run query")
+		err = utils.ErrorHandler(l, span, err, errFailedRunQuery)
 		return
 	}
 	if !found {
@@ -91,7 +95,7 @@ func (n Neo) ConfigGetByID(ctx context.Context, cfgID int64) (cfg types.Config, 
 	}
 	cfg, err = n.ConfigFromResult(ctx, res)
 	if err != nil {
-		err = utils.ErrorHandler(l, span, err, "failed to create config from DB result")
+		err = utils.ErrorHandler(l, span, err, errConfigFromDBResult)
 		return
 	}
 	return
@@ -134,7 +138,7 @@ func (n Neo) ConfigGetByDigest(ctx context.Context, dig string) (cfg types.Confi
 	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
-		err = utils.ErrorHandler(l, span, err, "Failed to run query")
+		err = utils.ErrorHandler(l, span, err, errFailedRunQuery)
 		return
 	}
 	if !found {
@@ -143,7 +147,7 @@ func (n Neo) ConfigGetByDigest(ctx context.Context, dig string) (cfg types.Confi
 	}
 	cfg, err = n.ConfigFromResult(ctx, res)
 	if err != nil {
-		err = utils.ErrorHandler(l, span, err, "failed to create config from DB result")
+		err = utils.ErrorHandler(l, span, err, errConfigFromDBResult)
 		return
 	}
 	return
@@ -157,7 +161,7 @@ func (n Neo) ConfigDeleteByDigest(ctx context.Context, dig string) (err error) {
 	})
 	_ = ctx
 	defer span.End()
-	q := fmt.Sprintf(`MATCH (c:Blob)<-[]-(md:ManifestData) WHERE c.digest = "%s" RETURN count(md) AS count`, dig)
+	q := fmt.Sprintf(`MATCH (c:Blob)<-[]-(md:Manifest) WHERE c.digest = "%s" RETURN count(md) AS count`, dig)
 	utils.Debug(l, span, q)
 	if res, _, err := n.QueryOne(q); err != nil {
 		return utils.ErrorHandler(l, span, err, types.FailNeoExecute)
@@ -224,8 +228,8 @@ func (n Neo) ConfigGetInsertByOCIManifest(ctx context.Context, ociMani types.OCI
 	if found {
 		msg := fmt.Sprintf("config '%s' found", shortDig)
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, attrSevDebug),
+			attribute.String(attrLogMessage, msg),
 		))
 		l.Debug(msg)
 		if cfg.MediaType == "" {
@@ -257,8 +261,8 @@ func (n Neo) createConfig(ctx context.Context, cfg types.Config) (cfgID int64, e
 	q := `CREATE (n:Blob {digest: "%s", size: %d, label: "%s", type: "config", mediaType: "%s"}) RETURN id(n) AS ID`
 	query := fmt.Sprintf(q, cfg.Digest, cfg.Size, label, cfg.MediaType)
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", query),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, query),
 	))
 	res, err := n.Execute(query)
 	if err != nil {
@@ -292,8 +296,8 @@ func (n Neo) ConfigInsert(ctx context.Context, cfg types.Config) (cfgID int64, e
 	if !success {
 		msg := "config not found, creating new config"
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, attrSevDebug),
+			attribute.String(attrLogMessage, msg),
 		))
 		l.Debug(msg)
 		cfgID, err = n.createConfig(ctx, cfg)
@@ -353,18 +357,18 @@ func (n Neo) ConfigGetMediaTypeByID(ctx context.Context, cfgID int64) (mt string
 	span.SetAttributes(
 		attribute.Key("cfgID").Int64(cfgID),
 	)
-	q := fmt.Sprintf(`MATCH (cfg:Blob)<-[cfgRel]-(md:ManifestData) WHERE id(cfg) = %d`, cfgID)
+	q := fmt.Sprintf(`MATCH (cfg:Blob)<-[cfgRel]-(md:Manifest) WHERE id(cfg) = %d`, cfgID)
 	q += ` RETURN cfg.mediaType AS configMediaType`
 	res, found, err := n.QueryOne(q)
 	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
+		logrus.Errorf(errFailedRunQueryFmt, err)
 		return
 	}
 	if !found {
 		msg := fmt.Sprintf("mediaType for config not found, but it is a config (set to %s)", configMediaType)
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, attrSevDebug),
+			attribute.String(attrLogMessage, msg),
 		))
 		l.Debug(msg)
 		mt = configMediaType
@@ -475,18 +479,18 @@ func (n Neo) ConfigsDeleteUnused(ctx context.Context) (err error) {
 	})
 	_, span := tracer.Start(ctx, "ConfigsDeleteUnused")
 	defer span.End()
-	q := `MATCH (c:Blob) WHERE NOT (c)<-[]-(:ManifestData) DETACH DELETE c RETURN count(c) AS deletedConfigs`
+	q := `MATCH (c:Blob) WHERE NOT (c)<-[]-(:Manifest) DETACH DELETE c RETURN count(c) AS deletedConfigs`
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	res, err := n.Execute(q)
 	if err != nil {
 		err = errors.Wrap(err, "failed to delete unused configs")
 		span.SetStatus(codes.Error, err.Error())
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", err.Error()),
+			attribute.String(attrLogSeverity, attrSevError),
+			attribute.String(attrLogMessage, err.Error()),
 		))
 		span.RecordError(err)
 		l.Error(err.Error())
@@ -499,8 +503,8 @@ func (n Neo) ConfigsDeleteUnused(ctx context.Context) (err error) {
 	}
 	msg := fmt.Sprintf("Deleted %d configs", deletedConfigs)
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", msg),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogMessage, msg),
 	))
 	return
 }
@@ -525,16 +529,16 @@ func (n Neo) ConfigExists(ctx context.Context, up upstream.UpstreamTriple) (medi
 	q += fmt.Sprintf(` WHERE c.digest = "%s"`, up.Digest.String())
 	q += ` RETURN c.digest AS configDigest, c.size AS configSize, id(c) AS configID`
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	res, found, e := n.QueryOne(q)
 	if e != nil {
 		msg := FailQueryExec
 		err = errors.Wrap(e, msg)
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, attrSevError),
+			attribute.String(attrLogMessage, msg),
 		))
 		span.RecordError(err)
 		l.Error(msg)
@@ -543,8 +547,8 @@ func (n Neo) ConfigExists(ctx context.Context, up upstream.UpstreamTriple) (medi
 	if !found {
 		msg := "config not found"
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, attrSevDebug),
+			attribute.String(attrLogMessage, msg),
 		))
 		l.Debug(msg)
 		return "", false, nil
@@ -554,8 +558,8 @@ func (n Neo) ConfigExists(ctx context.Context, up upstream.UpstreamTriple) (medi
 		msg := "failed to parse config from result"
 		err = errors.Wrap(err, msg)
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, attrSevError),
+			attribute.String(attrLogMessage, msg),
 		))
 		span.RecordError(err)
 		l.Error(msg)
@@ -565,8 +569,8 @@ func (n Neo) ConfigExists(ctx context.Context, up upstream.UpstreamTriple) (medi
 
 	msg := fmt.Sprintf("found config with type '%s'", cfg.MediaType)
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", msg),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogMessage, msg),
 	))
 	l.Debug(msg)
 	return cfg.MediaType, true, nil
@@ -583,7 +587,7 @@ func (n Neo) ConfigScrubByID(ctx context.Context, cfgID int64) (err error) {
 	defer span.End()
 	key := "configDigest"
 	// Delete config if not connected anymore (in Minio?)
-	q := fmt.Sprintf(`MATCH (c:Blob)<-[r]-(:ManifestData)  WHERE id(c) = %d`, cfgID)
+	q := fmt.Sprintf(`MATCH (c:Blob)<-[r]-(:Manifest)  WHERE id(c) = %d`, cfgID)
 	q += ` RETURN count(r) AS relCount, c.digest AS configDigest`
 	utils.Debug(l, span, "query to count relationships: %s", q)
 	res, _, e := n.QueryOne(q)

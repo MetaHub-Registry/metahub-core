@@ -12,7 +12,7 @@ const (
 	pkgNameInternal = "neo/internal.go"
 )
 
-func (n Neo) getMani(ctx context.Context, br utils.BootstrapResult, label string) (mani types.Manifest, err error) {
+func (n Neo) getMani(ctx context.Context, br utils.BootstrapResult, label string) (mani types.ManifestWrapper, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameInternal,
 		"func":    "getMani",
@@ -23,7 +23,7 @@ func (n Neo) getMani(ctx context.Context, br utils.BootstrapResult, label string
 	if e != nil {
 		return mani, e
 	}
-	mani, maniFound, err := n.ManifestGetByID(ctx, maniID)
+	mani, maniFound, err := n.ManifestWrapperGetByID(ctx, maniID)
 	if err != nil {
 		return mani, err
 	}
@@ -33,7 +33,7 @@ func (n Neo) getMani(ctx context.Context, br utils.BootstrapResult, label string
 	return mani, nil
 }
 
-func (n Neo) getManiData(ctx context.Context, br utils.BootstrapResult, label string) (maniData types.ManifestData, err error) {
+func (n Neo) getManiData(ctx context.Context, br utils.BootstrapResult, label string) (maniData types.Manifest, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameInternal,
 		"func":    "getMani",
@@ -44,7 +44,7 @@ func (n Neo) getManiData(ctx context.Context, br utils.BootstrapResult, label st
 	if e != nil {
 		return maniData, e
 	}
-	maniData, maniDataFound, err := n.ManifestDataGetByID(ctx, maniDataID)
+	maniData, maniDataFound, err := n.ManifestGetByID(ctx, maniDataID)
 	if err != nil {
 		return maniData, err
 	}

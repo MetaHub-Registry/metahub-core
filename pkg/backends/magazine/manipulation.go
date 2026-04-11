@@ -63,14 +63,14 @@ func (mag Magazine) ManipulationUnwind(ctx context.Context, maniID, maniDataID, 
 				utils.Warn(l, span, "ManipuLayer: %s (%d Layers) is satisfies by manifest ", mpl.Image.Label, len(mpl.Image.Layers))
 				cfg, found, err := mag.Database.ConfigGetByManiDataID(ctx, mpl.Image.ID)
 				if err != nil {
-					return mplCfgDigest, utils.ErrorHandler(l, span, err, "Failed to get Config for ManifestData of ManipuLayer %d", mpl.Image.ID)
+					return mplCfgDigest, utils.ErrorHandler(l, span, err, "Failed to get Config for Manifest of ManipuLayer %d", mpl.Image.ID)
 				} else if !found {
-					return mplCfgDigest, utils.NewError(l, span, "Did not find config for ManifestData of ManipuLayer %d", mpl.Image.ID)
+					return mplCfgDigest, utils.NewError(l, span, "Did not find config for Manifest of ManipuLayer %d", mpl.Image.ID)
 				}
 				mplCfgDigest = cfg.Digest
 				for idx, lyr := range mpl.Image.Layers {
-					if e := mag.Database.ManifestDataLinkToLayer(ctx, maniDataID, lyr, idx); e != nil {
-						return mplCfgDigest, utils.ErrorHandler(l, span, e, neo.FailManifestDataLinkToLayer)
+					if e := mag.Database.ManifestLinkToLayer(ctx, maniDataID, lyr, idx); e != nil {
+						return mplCfgDigest, utils.ErrorHandler(l, span, e, neo.FailManifestLinkToLayer)
 					}
 				}
 			} else {

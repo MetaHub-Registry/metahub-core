@@ -12,7 +12,7 @@ const (
 	pkgNameInternal = "magazine/internal.go"
 )
 
-func (mag Magazine) getMani(ctx context.Context, br utils.BootstrapResult, label string) (mani types.Manifest, err error) {
+func (mag Magazine) getMani(ctx context.Context, br utils.BootstrapResult, label string) (mani types.ManifestWrapper, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameInternal,
 		"func":    "getMani",
@@ -23,7 +23,7 @@ func (mag Magazine) getMani(ctx context.Context, br utils.BootstrapResult, label
 	if e != nil {
 		return mani, e
 	}
-	mani, maniFound, err := mag.Database.ManifestGetByID(ctx, maniID)
+	mani, maniFound, err := mag.Database.ManifestWrapperGetByID(ctx, maniID)
 	if err != nil {
 		return mani, err
 	}
@@ -51,7 +51,7 @@ func (mag Magazine) getProfile(ctx context.Context, br utils.BootstrapResult, la
 	return
 }
 
-func (mag Magazine) getManiData(ctx context.Context, br utils.BootstrapResult, label string) (mani types.ManifestData, err error) {
+func (mag Magazine) getManiData(ctx context.Context, br utils.BootstrapResult, label string) (mani types.Manifest, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameInternal,
 		"func":    "getManiData",
@@ -62,12 +62,12 @@ func (mag Magazine) getManiData(ctx context.Context, br utils.BootstrapResult, l
 	if e != nil {
 		return mani, e
 	}
-	mani, maniFound, err := mag.ManifestDataGetByID(ctx, mdID)
+	mani, maniFound, err := mag.ManifestGetByID(ctx, mdID)
 	if err != nil {
 		return mani, err
 	}
 	if !maniFound {
-		return mani, fmt.Errorf("did not find ManifestData with ID %d", mdID)
+		return mani, fmt.Errorf("did not find Manifest with ID %d", mdID)
 	}
 	return mani, nil
 }

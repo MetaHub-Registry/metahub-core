@@ -3,3 +3,4 @@ coverage.xml
 lcov.info
 .scannerwork
 .env
+.opencode/package-lock.json

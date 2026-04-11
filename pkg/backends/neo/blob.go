@@ -78,8 +78,8 @@ func (n Neo) BlobExists(ctx context.Context, up upstream.UpstreamTriple) (found 
 	q := fmt.Sprintf(`MATCH (b:Blob) WHERE b.digest = "%s"`, up.Digest.String())
 	q += ` RETURN id(b) AS blobID, b.digest AS blobDigest, b.size AS blobSize`
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	res, found, e := n.QueryOne(q)
 	if e != nil {
@@ -89,8 +89,8 @@ func (n Neo) BlobExists(ctx context.Context, up upstream.UpstreamTriple) (found 
 	if !found {
 		msg := "blob not found"
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, attrSevDebug),
+			attribute.String(attrLogMessage, msg),
 		))
 		l.Debug(msg)
 		return false, nil
@@ -100,8 +100,8 @@ func (n Neo) BlobExists(ctx context.Context, up upstream.UpstreamTriple) (found 
 		msg := "failed to create Blob from result"
 		err = errors.Wrap(err, msg)
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, attrSevError),
+			attribute.String(attrLogMessage, msg),
 		))
 		span.RecordError(err)
 		l.Error(msg)
@@ -152,7 +152,7 @@ func (n Neo) BlobGetByDigest(ctx context.Context, dig string) (b *types.Blob, fo
 	defer session.Close()
 	result, err := session.Run(query, map[string]interface{}{})
 	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
+		logrus.Errorf(errFailedRunQueryFmt, err)
 		return
 	}
 	if result.Next() {
@@ -202,7 +202,7 @@ func (n Neo) BlobDeleteByDigest(ctx context.Context, dig string) (err error) {
 	defer session.Close()
 	res, err := session.Run(query, map[string]interface{}{})
 	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
+		logrus.Errorf(errFailedRunQueryFmt, err)
 		return
 	}
 	if res.Next() {

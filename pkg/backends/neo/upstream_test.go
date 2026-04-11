@@ -189,9 +189,9 @@ func TestUpstreamGetByLayerDigest(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Add more layers to trigger multiple results
-	q := `MATCH (l:Blob), (md:ManifestData)`
+	q := `MATCH (l:Blob), (md:Manifest)`
 	q += fmt.Sprintf(` WHERE id(l) = %d AND id(md) = %d AND l.type = "layer"`, l0.ID, md.ID)
-	q += ` MERGE (l)<-[:LayerLink]-(md)`
+	q += ` MERGE (l)<-[:HAS_LAYER]-(md)`
 	if _, e := db.Execute(q); e != nil {
 		t.Fatal(e)
 	}
@@ -208,9 +208,9 @@ func TestUpstreamGetByLayerDigest(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, 2, len(lrys))
-	q = `MATCH (l:Blob), (md:ManifestData)`
+	q = `MATCH (l:Blob), (md:Manifest)`
 	q += fmt.Sprintf(` WHERE id(l) = %d AND id(md) = %d`, l0.ID, md.ID)
-	q += ` MERGE (l)<-[:LayerLink]-(md)`
+	q += ` MERGE (l)<-[:HAS_LAYER]-(md)`
 	if _, e := db.Execute(q); e != nil {
 		t.Fatal(e)
 	}
@@ -243,10 +243,12 @@ func TestUpstreamGetByLayerDigest(t *testing.T) {
 		assert.Equal(t, "20220715-amd64-generic", up.Tag)
 		assert.Equal(t, "sha256:5bf8eee20fde14eb6e3e924c18fafa4d816e131f315810875136f0438ff7beed", up.Digest.String())
 	}
-	if upID, found, err := db.UpstreamGetIDByManifestDataID(ctx, md.ID); err != nil {
+	// md is a Manifest content node, so use the function that queries
+	// (md:Manifest)-[]->(up:Upstream) rather than (m:ManifestWrapper).
+	if upID, found, err := db.UpstreamGetIDByManifestWrapperID(ctx, md.ID); err != nil {
 		t.Fatal(err)
 	} else if !found {
-		t.Fatal("Should have found upstream by ManifestData ID")
+		t.Fatal("Should have found upstream by Manifest ID")
 	} else {
 		assert.NotEqual(t, 0, upID)
 	}

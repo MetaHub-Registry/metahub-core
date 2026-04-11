@@ -354,16 +354,16 @@ func (n Neo) Setup_Manifest_FT_mpich_amd64(br *utils.BootstrapResult) (err error
 	if err = as.AddNewAnnotation("org.supercontainers.mpi.implementation", "mpich"); err != nil {
 		return err
 	}
-	m := types.Manifest{
+	m := types.ManifestWrapper{
 		Upstream:    up,
 		Annotations: as,
 	}
-	maniID, err := n.ManifestGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
+	maniID, err := n.ManifestWrapperGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
 	br.Add("manifest:ft_mpich_amd64#id", fmt.Sprint(maniID))
 	if err != nil {
 		return err
 	}
-	err = n.ManifestLinkToUpstream(ctx, maniID, upID)
+	err = n.ManifestWrapperLinkToUpstream(ctx, maniID, upID)
 	if err != nil {
 		return err
 	}
@@ -405,7 +405,7 @@ func (n Neo) Setup_Manifest_FT_mpich_amd64(br *utils.BootstrapResult) (err error
 		logrus.Error(err)
 		return err
 	}
-	err = n.ManifestDataLinkToConfig(ctx, maniID, config)
+	err = n.ManifestLinkToConfig(ctx, maniID, config)
 	if err != nil {
 		logrus.Error(err)
 		return err
@@ -419,7 +419,7 @@ func (n Neo) Setup_Collection_FT_amd64(ctx context.Context, br *utils.BootstrapR
 	})
 	_ = l
 	defer span.End()
-	// Add Collection
+	// Add Repo
 	yamlCol := config.FTyamlCollectionamd64()
 	colID, colTagID, err := n.CreateCollection(ctx, yamlCol)
 	if err != nil {
@@ -427,7 +427,7 @@ func (n Neo) Setup_Collection_FT_amd64(ctx context.Context, br *utils.BootstrapR
 	}
 	br.Add("collection:ft#id", fmt.Sprint(colID))
 	br.Add("tag:amd64#id", fmt.Sprint(colTagID))
-	// Link Collection To Manifest
+	// Link Repo To Manifest
 	for _, mani := range []string{"manifest:ft_amd64#id"} {
 		maniID, err := br.GetInt64(mani)
 		if err != nil {
@@ -451,7 +451,7 @@ func (n Neo) Setup_Collection_FT_arm64(ctx context.Context, br *utils.BootstrapR
 	})
 	_ = l
 	defer span.End()
-	// Add Collection
+	// Add Repo
 	yamlCol := config.FTyamlCollectionArm64()
 	colID, colTagID, err := n.CreateCollection(ctx, yamlCol)
 	if err != nil {
@@ -459,7 +459,7 @@ func (n Neo) Setup_Collection_FT_arm64(ctx context.Context, br *utils.BootstrapR
 	}
 	br.Add("collection:ft#id", fmt.Sprint(colID))
 	br.Add("tag:arm64#id", fmt.Sprint(colTagID))
-	// Link Collection To Manifest
+	// Link Repo To Manifest
 	for _, mani := range []string{"manifest:ft_arm64#id"} {
 		maniID, err := br.GetInt64(mani)
 		if err != nil {
@@ -483,7 +483,7 @@ func (n Neo) Setup_Collection_FT_generic(ctx context.Context, br *utils.Bootstra
 	})
 	_ = l
 	defer span.End()
-	// Add Collection
+	// Add Repo
 	yamlCol := config.FTyamlCollectionGeneric()
 	colID, colTagID, err := n.CreateCollection(ctx, yamlCol)
 	if err != nil {
@@ -491,7 +491,7 @@ func (n Neo) Setup_Collection_FT_generic(ctx context.Context, br *utils.Bootstra
 	}
 	br.Add("collection:ft#id", fmt.Sprint(colID))
 	br.Add("tag:generic#id", fmt.Sprint(colTagID))
-	// Link Collection To Manifest
+	// Link Repo To Manifest
 	for _, mani := range []string{"manifest:ft_arm64#id", "manifest:ft_amd64#id"} {
 		maniID, err := br.GetInt64(mani)
 		if err != nil {
@@ -522,7 +522,7 @@ func (n Neo) Setup_Collection_FT_oras_cyclonedx(ctx context.Context, br *utils.B
 	}
 	br.Add("collection:ft_oras#id", fmt.Sprint(colID))
 	br.Add("tag:cyclonedx#id", fmt.Sprint(colTagID))
-	// Link Collection to ORAS Manifest
+	// Link Repo to ORAS Manifest
 	maniID, err := br.GetInt64("manifest:ft_oras_cyclonedx#id")
 	if err != nil {
 		return err
@@ -544,7 +544,7 @@ func (n Neo) Setup_Collection_FT_zen3(ctx context.Context, br *utils.BootstrapRe
 	})
 	_ = l
 	defer span.End()
-	// Add Collection
+	// Add Repo
 	yamlCol := config.FTyamlCollectionZen3()
 	colID, colTagID, err := n.CreateCollection(ctx, yamlCol)
 	if err != nil {
@@ -553,7 +553,7 @@ func (n Neo) Setup_Collection_FT_zen3(ctx context.Context, br *utils.BootstrapRe
 	br.Add("collection:ft#id", fmt.Sprint(colID))
 	br.Add("tag:zen3#id", fmt.Sprint(colTagID))
 
-	// Link Collection To Manifest
+	// Link Repo To Manifest
 	for _, mani := range []string{"manifest:ft_zen3#id"} {
 		maniID, err := br.GetInt64(mani)
 		if err != nil {
@@ -573,12 +573,12 @@ func (n Neo) Setup_Collection_FT_zen3(ctx context.Context, br *utils.BootstrapRe
 
 func (n Neo) Setup_ManifestList_FT_generic(br *utils.BootstrapResult) (err error) {
 	// // Manifest
-	arm_ml := types.FTarmManifestData()
+	arm_ml := types.FTarmManifest()
 	arm_ml.ID, err = br.GetInt64("manifestdata:ft_arm64#id")
 	if err != nil {
 		return err
 	}
-	amd_ml := types.FTarmManifestData()
+	amd_ml := types.FTarmManifest()
 	amd_ml.ID, err = br.GetInt64("manifestdata:ft_amd64#id")
 	if err != nil {
 		return err
@@ -589,7 +589,7 @@ func (n Neo) Setup_ManifestList_FT_generic(br *utils.BootstrapResult) (err error
 	if err != nil {
 		return err
 	}
-	err = n.LinkManifestListToManifests(ml_generic_id, []types.ManifestData{arm_ml, amd_ml})
+	err = n.LinkManifestListToManifests(ml_generic_id, []types.Manifest{arm_ml, amd_ml})
 	if err != nil {
 		return err
 	}
@@ -598,9 +598,9 @@ func (n Neo) Setup_ManifestList_FT_generic(br *utils.BootstrapResult) (err error
 
 func (n Neo) Cypher_Collection_FT_tag1(br *utils.BootstrapResult) (err error) {
 	// Seed DB
-	// Collection
+	// Repo
 	q := `MERGE (t:Tag {name: "tag1"})`
-	q += ` MERGE (c:Collection {repo: "qnib/featuretest"})`
+	q += ` MERGE (c:Repo {repo: "qnib/featuretest"})`
 	q += ` MERGE (c)-[:HAS_TAG]->(t)`
 	q += ` RETURN id(c) AS colID, id(t) AS tagID`
 	res, err := n.Execute(q)
@@ -617,109 +617,6 @@ func (n Neo) Cypher_Collection_FT_tag1(br *utils.BootstrapResult) (err error) {
 		return err
 	}
 	br.Add("tag:tag1#cypher_id", fmt.Sprint(tagID))
-	return
-}
-
-func (n Neo) Cypher_AddCollection_FT_generic(br *utils.BootstrapResult) (err error) {
-	// Seed DB
-	colID, err := br.GetInt64("collection:ft#cypher_id")
-	if err != nil {
-		return err
-	}
-	tagID, err := br.GetInt64("tag:tag1#cypher_id")
-	if err != nil {
-		return err
-	}
-	// Collection
-	q := `MATCH (t1:Tag), (c1:Collection) WHERE id(c1) = %d AND id(t1) = %d`
-	// Platform
-	q += ` MERGE (p0:Profile {name: "generic"})`
-	q += ` MERGE (f1:Filter {label: "generic", feature: ""})`
-	q += ` MERGE (p0)-[:USES]->(f1)`
-	q += ` MERGE (pArm:Platform {label: "linux/arm64", arch: "arm64", os: "linux", variant: "", features: ""})`
-	q += ` MERGE (f1)-[:USES]->(pArm)`
-	q += ` MERGE (mdArm:ManifestData {digest: "digest: sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mediaType: "application/vnd.docker.distribution.manifest.v2+json", size: 735})`
-	q += ` MERGE (pArm)<-[:IS]-(mArm:Manifest {label: c1.repo+":"+t1.name})-[:CREATED]->(mdArm)`
-	q += ` MERGE (t1)-[:UPSTREAM]->(mArm)`
-	q += ` MERGE (c1)-[:UPSTREAM]->(mArm)`
-	q += ` MERGE (upArm:Upstream {reg: "metahub-registry.org", repo: "qnib/featuretest", tag: "tag1-linux.arm64"})`
-	q += ` MERGE (upArm)<-[:UPSTREAM]-(mArm)`
-	q += ` MERGE (cfgArm:Blob {digest: "digest: sha256:cf5c26263929e84d7373d23b2692222cceceb3175b3325b183ead2ab6b5a5ce3", mediaType: "application/vnd.docker.container.image.v1+json", size: 2191})`
-	q += ` MERGE (mArm)-[:application/vnd.docker.container.image.v1+json]->(cfgArm)`
-	q += ` MERGE (pAmd:Platform {label: "linux/amd64", arch: "amd64", os: "linux", variant: "", features: ""})`
-	q += ` MERGE (f1)-[:USES]->(pAmd)`
-	q += ` MERGE (mdAmd:ManifestData {digest: "digest: sha256:5bf8eee20fde14eb6e3e924c18fafa4d816e131f315810875136f0438ff7beed", mediaType: "application/vnd.docker.distribution.manifest.v2+json", size: 735})`
-	q += ` MERGE (pAmd)<-[:IS]-(mAmd:Manifest {label: c1.repo+":"+t1.name})-[:CREATED]->(mdAmd)`
-	q += ` MERGE (t1)-[:UPSTREAM]->(mAmd)`
-	q += ` MERGE (c1)-[:UPSTREAM]->(mAmd)`
-	q += ` MERGE (upAmd:Upstream {reg: "metahub-registry.org", repo: "qnib/featuretest", tag: "tag1-linux.amd64"})`
-	q += ` MERGE (upAmd)<-[:UPSTREAM]-(mAmd)`
-	q += ` MERGE (cfgAmd:Blob {digest: "digest: sha256:83fdbde95f56beb69853240df571a7f085c561b4f8d914c5cc5e0f171dcb86df", mediaType: "application/vnd.docker.container.image.v1+json", size: 2191})`
-	q += ` MERGE (mAmd)-[:application/vnd.docker.container.image.v1+json]->(cfgAmd)`
-	query := fmt.Sprintf(q, colID, tagID)
-	_, err = n.Execute(query)
-	return
-}
-
-func (n Neo) Cypher_ManifestList_FT_generic(br *utils.BootstrapResult) (err error) {
-	// Seed DB
-	// Collection
-	q := `MERGE (t1:Tag {name: "tag1"})`
-	q += ` MERGE (c1:Collection {repo: "qnib/featuretest"})`
-	// Platform
-	q += ` MERGE (p0:Profile {name: "generic"})`
-	q += ` MERGE (f1:Filter {label: "generic", feature: ""})`
-	q += ` MERGE (p0)-[:USES]->(f1)`
-	q += ` MERGE (pArm:Platform {label: "linux/arm64", arch: "arm64", os: "linux", variant: "", features: ""})`
-	q += ` MERGE (f1)-[:USES]->(pArm)`
-	q += ` MERGE (mdArm:ManifestData {digest: "digest: sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", mediaType: "application/vnd.docker.distribution.manifest.v2+json", size: 735})`
-	q += ` MERGE (pArm)<-[:IS]-(mArm:Manifest  {label: c1.repo+":"+t1.name})-[:CREATED]->(mdArm)`
-	q += ` MERGE (mlGen:ManifestList {digest: "digest: sha256:9d23fb26fef6bd93a9ec12b89d4674b270a7a54cb09dfed6933c0abcacddfc0f", mediaType: "application/vnd.docker.distribution.manifest.list.v2+json", size: 106})`
-	q += ` MERGE (mlGen)-[:INCLUDES]->(mArm)`
-	q += ` MERGE (t1)-[:UPSTREAM]->(mArm)`
-	q += ` MERGE (c1)-[:UPSTREAM]->(mArm)`
-	q += ` MERGE (t1)-[:REF]->(mlGen)`
-	q += ` MERGE (c1)-[:REF]->(mlGen)`
-	q += ` MERGE (t1)-[:HAS_TAG]->(c1)`
-	q += ` MERGE (pAmd:Platform {label: "linux/amd64", arch: "amd64", os: "linux", variant: "", features: ""})`
-	q += ` MERGE (f1)-[:USES]->(pAmd)`
-	q += ` MERGE (mdAmd:ManifestData {digest: "digest: sha256:5bf8eee20fde14eb6e3e924c18fafa4d816e131f315810875136f0438ff7beed", mediaType: "application/vnd.docker.distribution.manifest.v2+json", size: 735})`
-	q += ` MERGE (pAmd)<-[:IS]-(mAmd:Manifest {label: c1.repo+":"+t1.name})-[:CREATED]->(mdAmd)`
-	q += ` MERGE (t1)-[:UPSTREAM]->(mAmd)`
-	q += ` MERGE (c1)-[:UPSTREAM]->(mAmd)`
-	q += ` MERGE (mlGen)-[:INCLUDES]->(mAmd)`
-	q += ` MERGE (mlGen)-[:IMPLEMENTS]->(f1)`
-	q += ` MERGE (upArm:Upstream {reg: "metahub-registry.org", repo: "qnib/featuretest", tag: "tag1-linux.arm64"})`
-	q += ` MERGE (upArm)<-[:UPSTREAM]-(mArm)`
-	q += ` MERGE (upAmd:Upstream {reg: "metahub-registry.org", repo: "qnib/featuretest", tag: "tag1-linux.amd64"})`
-	q += ` MERGE (upAmd)<-[:UPSTREAM]-(mAmd)`
-	_, err = n.Execute(q)
-	return
-}
-
-func (n Neo) Cypher_ManifestList_FT_skylake(br *utils.BootstrapResult) (err error) {
-	// Collection
-	q := `MERGE (t1:Tag {name: "tag1"})`
-	q += ` MERGE (c1:Collection {repo: "qnib/featuretest"})`
-	// Platform
-	q += ` MERGE (p0:Profile {name: "skylake"})`
-	q += ` MERGE (f1:Filter {label: "skylake", feature: "cpu:skylake"})`
-	q += ` MERGE (p0)-[:USES]->(f1)`
-	q += ` MERGE (pIL:Platform {label: "skylake", arch: "amd64", os: "linux", variant: "", features: "cpu:skylake"})`
-	q += ` MERGE (f1)-[:USES]->(pIL)`
-	q += ` MERGE (mdSL:ManifestData {digest: "digest: sha256:bde4b56852850ea948d2b4426fffdcff31bdb8fa1aec6c822af03e93e114fa05", mediaType: "application/vnd.docker.distribution.manifest.v2+json", size: 735})`
-	q += ` MERGE (pIL)<-[:IS]-(mIL:Manifest {label: c1.repo+":"+t1.name})-[:CREATED]->(mdSL)`
-	/// ManifestList
-	q += ` MERGE (mlSL:ManifestList {digest: "digest: sha256:07992d9ce9abfdf556cf553c9be9276c14fcfc325724be67e43364f6a8fa0add", mediaType: "application/vnd.docker.distribution.manifest.list.v2+json", size: 106})`
-	q += ` MERGE (mlSL)-[:INCLUDES]->(mdSL)`
-	q += ` MERGE (mlSL)-[:IMPLEMENTS]->(f1)`
-	q += ` MERGE (t1)-[:REF]->(mlIL)`
-	q += ` MERGE (c1)-[:REF]->(mlIL)`
-	q += ` MERGE (t1)-[:HAS_TAG]->(c1)`
-	q += ` MERGE (t1)-[:UPSTREAM]->(mIL)`
-	q += ` MERGE (c1)-[:UPSTREAM]->(mIL)`
-	q += ` MERGE (upIL:Upstream {reg: "metahub-registry.org", repo: "qnib/featuretest", tag: "tag1-skylake"})<-[:UPSTREAM]-(mIL)`
-	_, err = n.Execute(q)
 	return
 }
 
@@ -840,12 +737,12 @@ func (n Neo) BootstrapTestWithBR(ctx context.Context, b string, bs utils.Bootstr
 		}
 		return
 	case "manifestdata":
-		if err = n.Bootstrap_ManifestData(ctx, bs, br, rest); err != nil {
+		if err = n.Bootstrap_Manifest(ctx, bs, br, rest); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 		return
 	case "manifest":
-		if err = n.Bootstrap_Manifest(ctx, bs, br, rest); err != nil {
+		if err = n.Bootstrap_ManifestWrapper(ctx, bs, br, rest); err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 		return
@@ -880,28 +777,21 @@ func (n Neo) BootstrapTestWithBR(ctx context.Context, b string, bs utils.Bootstr
 		if err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
-	case "cypher:manifestlist:ft_generic":
-		err = n.Cypher_ManifestList_FT_generic(br)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
 	case "cypher:collection:ft_tag1":
 		err = n.Cypher_Collection_FT_tag1(br)
 		if err != nil {
 			return errors.Wrapf(err, whileFmrt, b)
 		}
 
-	case "cypher:collection_only:ft_generic":
-		err = n.Cypher_AddCollection_FT_generic(br)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
-	case "cypher:manifestlist:ft_skylake":
-		err = n.Cypher_ManifestList_FT_skylake(br)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
-
+	// Path Z task 6 phase C2: the former `cypher:manifestlist:ft_generic`,
+	// `cypher:collection_only:ft_generic`, and `cypher:manifestlist:ft_skylake`
+	// bootstrap cases were removed together with their helper functions
+	// (`Cypher_ManifestList_FT_generic`, `Cypher_AddCollection_FT_generic`,
+	// `Cypher_ManifestList_FT_skylake`). Those helpers seeded legacy `:ManifestWrapper`
+	// wrapper nodes via `MERGE (pArm)<-[:HAS_PLATFORM]-(mArm:ManifestWrapper {label: ...})`.
+	// Their only callers were the commented-out `TestBasic` in
+	// `pkg/backends/magazine/catalog_test.go` and two commented-out tests in
+	// `pkg/backends/neo/index_test.go:136-137`. No live test used them.
 	default:
 		err = fmt.Errorf("no Setup for '%s'", b)
 		return err
@@ -1080,7 +970,7 @@ func (n Neo) Bootstrap_Upstream(ctx context.Context, bs utils.Bootstrap, br *uti
 			return
 		}
 	case "ft_zen":
-		err = n.Setup_Upstream(br, types.ManifestDataAmd64Zen.Upstream, b)
+		err = n.Setup_Upstream(br, types.ManifestAmd64Zen.Upstream, b)
 		if err != nil {
 			err = errors.Wrapf(err, whileFmrt, b)
 			return

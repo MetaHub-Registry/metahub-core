@@ -22,7 +22,7 @@ func (mag Magazine) ComputeAllManifests(ctx context.Context) (err error) {
 		return
 	}
 	// 	1. Get all manifest(standins)
-	manis, e := mag.Database.ManifestGetAll(ctx)
+	manis, e := mag.Database.ManifestWrapperGetAll(ctx)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "while getting all manifests")
 		return
@@ -30,12 +30,12 @@ func (mag Magazine) ComputeAllManifests(ctx context.Context) (err error) {
 	for _, mani := range manis {
 		utils.Info(l, span, ">> Manifest: %s", mani.Upstream.String())
 		// Get profiles connected to this manifest?
-		prfs, e := mag.Database.ProfileFromManifestID(ctx, mani.ID)
+		prfs, e := mag.Database.ProfileFromManifestWrapperID(ctx, mani.ID)
 		if e != nil {
 			return utils.ErrorHandler(l, span, e, "while getting profiles for manifest %d", mani.ID)
 		}
 		for _, prf := range prfs {
-			utils.Info(l, span, " - Computing ManifestList for profile %s", prf.Label)
+			utils.Info(l, span, " - Computing Index for profile %s", prf.Label)
 			e := mag.ComputeManifestForProfile(ctx, mani, prf)
 			if e != nil {
 				err = utils.ErrorHandler(l, span, e, "while in ComputeManifest for %s", mani.Upstream.String())
@@ -47,7 +47,7 @@ func (mag Magazine) ComputeAllManifests(ctx context.Context) (err error) {
 }
 
 // ComputeManifests looks for changes to a manifest (e.g. new annotations), creates new config blobs and subsequently updates the manifest.
-func (mag Magazine) ComputeManifest(ctx context.Context, mani types.Manifest) (err error) {
+func (mag Magazine) ComputeManifest(ctx context.Context, mani types.ManifestWrapper) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameCompMani,
 		"func":    "ComputeManifest",
@@ -58,10 +58,10 @@ func (mag Magazine) ComputeManifest(ctx context.Context, mani types.Manifest) (e
 	l.Warnf("Manifest: %s/%s:%s", mani.Upstream.Reg, mani.Upstream.Repo, mani.Upstream.Tag)
 	for _, maniData := range mani.Manifests {
 		if maniData.MediaType == v1.MediaTypeImageManifest {
-			utils.Warn(l, span, "[SKIP] ManifestData %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
+			utils.Warn(l, span, "[SKIP] Manifest %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
 			continue
 		}
-		utils.Warn(l, span, ">> ManifestData %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
+		utils.Warn(l, span, ">> Manifest %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
 		if len(mani.Annotations.Keys) > 0 {
 			utils.Warn(l, span, "  >> Annotations: %v", mani.Annotations.Keys)
 		}
@@ -74,7 +74,7 @@ func (mag Magazine) ComputeManifest(ctx context.Context, mani types.Manifest) (e
 	return
 }
 
-func (mag Magazine) ComputeManifestForProfile(ctx context.Context, mani types.Manifest, prf types.Profile) (err error) {
+func (mag Magazine) ComputeManifestForProfile(ctx context.Context, mani types.ManifestWrapper, prf types.Profile) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameCompMani,
 		"func":    "ComputeManifestForProfile",
@@ -86,10 +86,10 @@ func (mag Magazine) ComputeManifestForProfile(ctx context.Context, mani types.Ma
 	utils.Warn(l, span, "> Manifest [prf:%s]: %s/%s:%s", prf.Label, mani.Upstream.Reg, mani.Upstream.Repo, mani.Upstream.Tag)
 	for _, maniData := range mani.Manifests {
 		if maniData.MediaType == v1.MediaTypeImageManifest {
-			utils.Warn(l, span, "[SKIP] ManifestData %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
+			utils.Warn(l, span, "[SKIP] Manifest %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
 			continue
 		}
-		utils.Info(l, span, ">> ManifestData %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
+		utils.Info(l, span, ">> Manifest %s (%-10s): %s (Annotations: %d, Layers:%d)", utils.ShortenDigest(maniData.Digest), maniData.Origin, maniData.MediaType, len(mani.Annotations.Keys), len(maniData.Layers))
 		if len(mani.Annotations.Keys) > 0 {
 			l.Infof("  >> Annotations: %v", mani.Annotations.Keys)
 		}
@@ -107,8 +107,8 @@ func (mag Magazine) ComputeManifestForProfile(ctx context.Context, mani types.Ma
 			return utils.ErrorHandler(l, span, e, "while in ComputeManifest")
 		}
 		utils.Warn(l, span, "  >> ociManiDataID: %d", ociManiDataID)
-		// Link Profile and new ManifestData
-		if e = mag.Database.ManifestDataLinkToProfile(ctx, ociManiDataID, prf.ID); e != nil {
+		// Link Profile and new Manifest
+		if e = mag.Database.ManifestLinkToProfile(ctx, ociManiDataID, prf.ID); e != nil {
 			return utils.ErrorHandler(l, span, e, "while linking manifestdata to profile")
 		}
 	}

@@ -13,16 +13,16 @@ import (
 
 type ExprRes struct {
 	Expr        set.StringSet
-	Data        map[int64]map[string]ManifestData
-	ManiMap     map[int64]ManifestData
+	Data        map[int64]map[string]Manifest
+	ManiMap     map[int64]Manifest
 	RuleManiMap map[string]set.StringSet
 }
 
 func NewExprRes() *ExprRes {
 	return &ExprRes{
 		Expr:        set.NewStringSet(),
-		Data:        make(map[int64]map[string]ManifestData),
-		ManiMap:     make(map[int64]ManifestData),
+		Data:        make(map[int64]map[string]Manifest),
+		ManiMap:     make(map[int64]Manifest),
 		RuleManiMap: make(map[string]set.StringSet),
 	}
 }
@@ -31,7 +31,7 @@ func (r *ExprRes) IsEmpty() bool {
 	return len(r.Expr) == 0
 }
 
-func (r *ExprRes) Add(rule string, md ManifestData) {
+func (r *ExprRes) Add(rule string, md Manifest) {
 	r.Expr.Add(rule)
 	if _, ok := r.ManiMap[md.ID]; !ok {
 		r.ManiMap[md.ID] = md
@@ -43,7 +43,7 @@ func (r *ExprRes) Add(rule string, md ManifestData) {
 
 	value, found := r.Data[md.ID]
 	if !found {
-		value = make(map[string]ManifestData)
+		value = make(map[string]Manifest)
 		r.Data[md.ID] = value
 	} else {
 		value[rule] = md
@@ -63,8 +63,8 @@ func (er ExprRes) GetTrueIDs() []int64 {
 	return ids
 }
 
-func (er ExprRes) GetTrueManifestData() []ManifestData {
-	mds := make([]ManifestData, 0)
+func (er ExprRes) GetTrueManifest() []Manifest {
+	mds := make([]Manifest, 0)
 	for expr := range er.Expr {
 		for _, rules := range er.Data {
 			if md, found := rules[expr]; found {
@@ -75,7 +75,7 @@ func (er ExprRes) GetTrueManifestData() []ManifestData {
 	return mds
 }
 
-func (er *ExprRes) GetManifestdataForRules(rules ...string) []ManifestData {
+func (er *ExprRes) GetManifestdataForRules(rules ...string) []Manifest {
 	res := set.NewStringSet()
 	for _, rule := range rules {
 		if er.Expr.Contains(rule) {
@@ -84,7 +84,7 @@ func (er *ExprRes) GetManifestdataForRules(rules ...string) []ManifestData {
 			}
 		}
 	}
-	mds := make([]ManifestData, 0)
+	mds := make([]Manifest, 0)
 	for _, mdID := range res.ToSlice() {
 		id, err := strconv.ParseInt(mdID, 10, 64)
 		if err != nil {
@@ -99,7 +99,7 @@ func (er *ExprRes) GetManifestdataForRules(rules ...string) []ManifestData {
 	return mds
 }
 
-func (er ExprRes) FilterByCTPP(ctx context.Context, ctpp CollectionTagProfilePair) (mds []ManifestData) {
+func (er ExprRes) FilterByCTPP(ctx context.Context, ctpp CollectionTagProfilePair) (mds []Manifest) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":        "types/expres.go",
 		"func":           "FilterByCTPP",
@@ -118,7 +118,7 @@ func (er ExprRes) FilterByCTPP(ctx context.Context, ctpp CollectionTagProfilePai
 			}
 		}
 	}
-	mds = make([]ManifestData, 0)
+	mds = make([]Manifest, 0)
 	for _, mdID := range res.ToSlice() {
 		utils.Debug(l, span, "Processing manifestdata id: %s", mdID)
 		time.Sleep(5 * time.Millisecond)

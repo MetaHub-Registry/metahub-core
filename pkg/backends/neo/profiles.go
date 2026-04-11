@@ -18,8 +18,10 @@ import (
 )
 
 const (
-	pkgNameProfile = "neo/profiles.go"
-	errQueryOne    = "failed to get QueryOne"
+	pkgNameProfile         = "neo/profiles.go"
+	errQueryOne            = "failed to get QueryOne"
+	errProfileFromResult   = "failed to get profile from result"
+	errGetCountAnnotations = "failed to get countAnnotations"
 )
 
 var (
@@ -120,10 +122,10 @@ func (n Neo) ProfilesGetByRegexLabel(ctx context.Context, labelRegex string) (ps
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (prf:Profile) WHERE prf.label =~ "%s"`, labelRegex)
 	q += fmt.Sprintf(` RETURN %s`, returnStatementProfile)
-	logrus.Fatalf("q: %s", q)
+	logrus.Debugf("q: %s", q)
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	res, err := n.Query(q)
 	ps = make([]types.Profile, 0)
@@ -213,7 +215,7 @@ func (n Neo) GetProfile(prf types.Profile) (prfID int64, success bool, err error
 	defer session.Close()
 	result, err := session.Run(query, map[string]interface{}{})
 	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
+		logrus.Errorf(errFailedRunQueryFmt, err)
 		return
 	}
 	if result.Next() {
@@ -312,7 +314,7 @@ func (n Neo) ProfileFromResult(res types.Result) (p types.Profile, err error) {
 	return
 }
 
-func (n Neo) ProfileFromManifestID(ctx context.Context, maniID int64) (prfs []types.Profile, err error) {
+func (n Neo) ProfileFromManifestWrapperID(ctx context.Context, maniID int64) (prfs []types.Profile, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameProfile,
 		"func":    "ProfileFromManifestID",
@@ -341,7 +343,7 @@ func (n Neo) ProfileFromManifestID(ctx context.Context, maniID int64) (prfs []ty
 		}
 	}
 
-	prfs3, e := n.ProfileFromManifestIDViaOriginalManifestData(ctx, maniID)
+	prfs3, e := n.ProfileFromManifestIDViaOriginalManifest(ctx, maniID)
 	if e != nil {
 		err = errors.Wrap(e, "failed to get profiles via platform for Manifest")
 		return
@@ -356,51 +358,51 @@ func (n Neo) ProfileFromManifestID(ctx context.Context, maniID int64) (prfs []ty
 	return
 }
 
-func (n Neo) ProfileFromManifestIDViaOriginalManifestData(ctx context.Context, maniID int64) (prfs []types.Profile, err error) {
+func (n Neo) ProfileFromManifestIDViaOriginalManifest(ctx context.Context, maniID int64) (prfs []types.Profile, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameProfile,
-		"func":    "ProfileFromManifestIDViaOriginalManifestData",
+		"func":    "ProfileFromManifestIDViaOriginalManifest",
 		"maniID":  maniID,
 	})
 	defer span.End()
 	_ = ctx
-	// TODO: Get Original ManifestData (parsed, uploaded or pulled)
-	mds, e := n.ManifestDataGetAllByManifestID(ctx, maniID)
+	// TODO: Get Original Manifest (parsed, uploaded or pulled)
+	mds, e := n.ManifestGetAllByManifestID(ctx, maniID)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to get ManifestData for Manifest")
+		err = utils.ErrorHandler(l, span, e, "failed to get Manifest for Manifest")
 		return
 	}
-	selectMds := []types.ManifestData{}
+	selectMds := []types.Manifest{}
 	for _, md := range mds {
 		if md.Type == "CREATED" {
-			utils.Debug(l, span, "ManifestData is of type '%s' - skipping", md.Type)
+			utils.Debug(l, span, "Manifest is of type '%s' - skipping", md.Type)
 		} else {
-			utils.Debug(l, span, "ManifestData is of type '%s' - good for us", md.Type)
+			utils.Debug(l, span, "Manifest is of type '%s' - good for us", md.Type)
 			selectMds = append(selectMds, md)
 		}
 	}
 	prfs = []types.Profile{}
-	// TODO: Get Profiles from Original ManifestData
+	// TODO: Get Profiles from Original Manifest
 	for _, md := range selectMds {
-		if ps, err := n.ProfileFromManifestDataIDViaOrig(ctx, md.ID); err != nil {
+		if ps, err := n.ProfileFromManifestIDViaOrig(ctx, md.ID); err != nil {
 			return prfs, err
 		} else {
-			utils.Debug(l, span, "Found %d profiles via ManifestData %d", len(ps), md.ID)
+			utils.Debug(l, span, "Found %d profiles via Manifest %d", len(ps), md.ID)
 			prfs = append(prfs, ps...)
 		}
 	}
 	return
 }
 
-func (n Neo) ProfileFromManifestDataIDViaOrig(ctx context.Context, maniDataID int64) (prfs []types.Profile, err error) {
+func (n Neo) ProfileFromManifestIDViaOrig(ctx context.Context, maniDataID int64) (prfs []types.Profile, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNameProfile,
-		"func":       "ProfileFromManifestDataIDViaOrig",
+		"func":       "ProfileFromManifestIDViaOrig",
 		"maniDataID": maniDataID,
 	})
 	defer span.End()
 	_ = ctx
-	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(:Rule)-[:TRUE]->(p:Platform)<-[r]-(md:ManifestData) WHERE id(md) = %d`, maniDataID)
+	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(:Rule)-[:TRUE]->(p:Platform)<-[r]-(md:Manifest) WHERE id(md) = %d`, maniDataID)
 	q += fmt.Sprintf(` RETURN DISTINCT %s`, returnStatementProfile)
 	utils.Debug(l, span, q)
 	res, e := n.Query(q)
@@ -412,7 +414,7 @@ func (n Neo) ProfileFromManifestDataIDViaOrig(ctx context.Context, maniDataID in
 	for _, r := range res {
 		p, e := n.ProfileFromResult(r)
 		if e != nil {
-			err = utils.ErrorHandler(l, span, e, "failed to get profile from result")
+			err = utils.ErrorHandler(l, span, e, errProfileFromResult)
 			continue
 		}
 		prfs = append(prfs, p)
@@ -421,7 +423,7 @@ func (n Neo) ProfileFromManifestDataIDViaOrig(ctx context.Context, maniDataID in
 
 }
 
-func (n Neo) ProfileFromManifestIDViaAnnotations(ctx context.Context, mID int64) (prfs []types.Profile, err error) {
+func (n Neo) ProfileFromManifestWrapperIDViaAnnotations(ctx context.Context, mID int64) (prfs []types.Profile, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameProfile,
 		"func":    "ProfileFromManifestIDViaAnnotations",
@@ -429,13 +431,13 @@ func (n Neo) ProfileFromManifestIDViaAnnotations(ctx context.Context, mID int64)
 	})
 	_, span := tracer.Start(ctx, "ProfileFromManifestIDViaAnnotations")
 	defer span.End()
-	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[:%s]-(a:Annotation)-[]-(m:Manifest) WHERE id(m) = %d`, types.RelationSuccess, mID)
+	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[:%s]-(a:Annotation)-[]-(m:ManifestWrapper) WHERE id(m) = %d`, types.RelationSuccess, mID)
 	q += fmt.Sprintf(` RETURN DISTINCT %s`, returnStatementProfile)
 	res, err := n.Query(q)
 	l.Debug(q)
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	if err != nil {
 		return
@@ -444,15 +446,15 @@ func (n Neo) ProfileFromManifestIDViaAnnotations(ctx context.Context, mID int64)
 	for _, r := range res {
 		p, e := n.ProfileFromResult(r)
 		if e != nil {
-			err = errors.Wrap(e, "failed to get profile from result")
+			err = errors.Wrap(e, errProfileFromResult)
 			l.Error(err)
 			continue
 		}
-		q := fmt.Sprintf(`MATCH (m:Manifest)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule)<-[:USES]-(p:Profile)`, types.RelationFailure)
+		q := fmt.Sprintf(`MATCH (m:ManifestWrapper)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule)<-[:USES]-(p:Profile)`, types.RelationFailure)
 		q += fmt.Sprintf(` WHERE id(m) = %d AND id(p) = %d RETURN count(a) AS countAnnotations`, mID, p.ID)
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.query", q),
+			attribute.String(attrLogSeverity, attrSevDebug),
+			attribute.String(attrLogQuery, q),
 		))
 		res, _, e := n.QueryOne(q)
 		if e != nil {
@@ -462,7 +464,7 @@ func (n Neo) ProfileFromManifestIDViaAnnotations(ctx context.Context, mID int64)
 		}
 		cnt, e := res.GetInt("countAnnotations")
 		if e != nil {
-			err = errors.Wrap(e, "failed to get countAnnotations")
+			err = errors.Wrap(e, errGetCountAnnotations)
 			l.Error(err)
 
 			return
@@ -474,7 +476,7 @@ func (n Neo) ProfileFromManifestIDViaAnnotations(ctx context.Context, mID int64)
 	return
 }
 
-func (n Neo) ProfileFromManifestIDViaPlatform(ctx context.Context, maniID int64) (prfs []types.Profile, err error) {
+func (n Neo) ProfileFromManifestWrapperIDViaPlatform(ctx context.Context, maniID int64) (prfs []types.Profile, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameProfile,
 		"func":    "ProfileFromManifestIDViaPlatform",
@@ -483,13 +485,13 @@ func (n Neo) ProfileFromManifestIDViaPlatform(ctx context.Context, maniID int64)
 	_, span := tracer.Start(ctx, "ProfileFromManifestIDViaPlatform")
 	defer span.End()
 	rel := types.RelationSuccess
-	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[:%s]->(p:Platform)<-[:IS]-(m:Manifest) WHERE id(m) = %d`, rel, maniID)
+	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[:%s]->(p:Platform)<-[:HAS_PLATFORM]-(m:ManifestWrapper) WHERE id(m) = %d`, rel, maniID)
 	q += fmt.Sprintf(` RETURN DISTINCT %s`, returnStatementProfile)
 	res, err := n.Query(q)
 	l.Debug(q)
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	if err != nil {
 		return
@@ -501,11 +503,11 @@ func (n Neo) ProfileFromManifestIDViaPlatform(ctx context.Context, maniID int64)
 			logrus.Error(err)
 			continue
 		}
-		q := fmt.Sprintf(`MATCH (m:Manifest)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule)<-[:USES]-(p:Profile)`, types.RelationFailure)
+		q := fmt.Sprintf(`MATCH (m:ManifestWrapper)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule)<-[:USES]-(p:Profile)`, types.RelationFailure)
 		q += fmt.Sprintf(` WHERE id(m) = %d AND id(p) = %d RETURN count(a) AS countAnnotations`, maniID, p.ID)
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.query", q),
+			attribute.String(attrLogSeverity, attrSevDebug),
+			attribute.String(attrLogQuery, q),
 		))
 		res, _, e := n.QueryOne(q)
 		if e != nil {
@@ -515,7 +517,7 @@ func (n Neo) ProfileFromManifestIDViaPlatform(ctx context.Context, maniID int64)
 		}
 		cnt, e := res.GetInt("countAnnotations")
 		if e != nil {
-			err = errors.Wrap(e, "failed to get countAnnotations")
+			err = errors.Wrap(e, errGetCountAnnotations)
 			l.Error(err)
 			continue
 		}
@@ -526,40 +528,40 @@ func (n Neo) ProfileFromManifestIDViaPlatform(ctx context.Context, maniID int64)
 	return
 }
 
-func (n Neo) ProfileFromManifestDataID(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
+func (n Neo) ProfileFromManifestID(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameProfile,
-		"func":    "ProfileFromManifestDataID",
+		"func":    "ProfileFromManifestID",
 		"maniID":  mdID,
 	})
 	defer span.End()
-	prfs, e := n.ProfileFromManifestDataIDViaAnnotations(ctx, mdID)
+	prfs, e := n.ProfileFromManifestIDViaAnnotations(ctx, mdID)
 	if e != nil {
-		utils.ErrorHandler(l, span, e, "failed to get profiles via annotations for ManifestData")
+		utils.ErrorHandler(l, span, e, "failed to get profiles via annotations for Manifest")
 		return
 	}
 	if len(prfs) == 0 {
-		prfs2, e := n.ProfileFromManifestDataIDViaPlatform(ctx, mdID)
+		prfs2, e := n.ProfileFromManifestIDViaPlatform(ctx, mdID)
 		if e != nil {
-			utils.ErrorHandler(l, span, e, "failed to get profiles via platform for ManifestData")
+			utils.ErrorHandler(l, span, e, "failed to get profiles via platform for Manifest")
 			return
 		}
-		utils.Debug(l, span, "found %d profiles via platform for ManifestData", len(prfs2))
+		utils.Debug(l, span, "found %d profiles via platform for Manifest", len(prfs2))
 		prfs = append(prfs, prfs2...)
 	} else {
-		utils.Debug(l, span, "found %d profiles via annotations for ManifestData", len(prfs))
+		utils.Debug(l, span, "found %d profiles via annotations for Manifest", len(prfs))
 	}
 	return
 }
 
-func (n Neo) ProfileFromManifestDataIDViaAnnotations(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
+func (n Neo) ProfileFromManifestIDViaAnnotations(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameProfile,
-		"func":    "ProfileFromManifestDataIDViaAnnotations",
+		"func":    "ProfileFromManifestIDViaAnnotations",
 		"maniID":  mdID,
 	})
 	defer span.End()
-	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[:%s]-(a:Annotation)-[]-(md:ManifestData) WHERE id(md) = %d`, types.RelationSuccess, mdID)
+	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[:%s]-(a:Annotation)-[]-(md:Manifest) WHERE id(md) = %d`, types.RelationSuccess, mdID)
 	q += fmt.Sprintf(` RETURN DISTINCT %s`, returnStatementProfile)
 	utils.Debug(l, span, q)
 	res, err := n.Query(q)
@@ -571,11 +573,11 @@ func (n Neo) ProfileFromManifestDataIDViaAnnotations(ctx context.Context, mdID i
 	for _, r := range res {
 		p, e := n.ProfileFromResult(r)
 		if e != nil {
-			err = errors.Wrap(e, "failed to get profile from result")
+			err = errors.Wrap(e, errProfileFromResult)
 			l.Error(err)
 			continue
 		}
-		q := fmt.Sprintf(`MATCH (md:ManifestData)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule)<-[:USES]-(p:Profile)`, types.RelationFailure)
+		q := fmt.Sprintf(`MATCH (md:Manifest)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule)<-[:USES]-(p:Profile)`, types.RelationFailure)
 		q += fmt.Sprintf(` WHERE id(md) = %d AND id(p) = %d RETURN count(a) AS countAnnotations`, mdID, p.ID)
 		utils.Debug(l, span, q)
 		res, _, e := n.QueryOne(q)
@@ -585,7 +587,7 @@ func (n Neo) ProfileFromManifestDataIDViaAnnotations(ctx context.Context, mdID i
 		}
 		cnt, e := res.GetInt("countAnnotations")
 		if e != nil {
-			err = errors.Wrap(e, "failed to get countAnnotations")
+			err = errors.Wrap(e, errGetCountAnnotations)
 			l.Error(err)
 
 			return
@@ -597,22 +599,22 @@ func (n Neo) ProfileFromManifestDataIDViaAnnotations(ctx context.Context, mdID i
 	return
 }
 
-func (n Neo) ProfileFromManifestDataIDViaPlatform(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
+func (n Neo) ProfileFromManifestIDViaPlatform(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameProfile,
-		"func":    "ProfileFromManifestDataIDViaPlatform",
+		"func":    "ProfileFromManifestIDViaPlatform",
 		"maniID":  mdID,
 	})
-	_, span := tracer.Start(ctx, "ProfileFromManifestDataIDViaPlatform")
+	_, span := tracer.Start(ctx, "ProfileFromManifestIDViaPlatform")
 	defer span.End()
 	rel := types.RelationSuccess
-	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[:%s]->(p:Platform)<-[:IS]-(md:ManifestData) WHERE id(md) = %d`, rel, mdID)
+	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[:%s]->(p:Platform)<-[:HAS_PLATFORM]-(md:Manifest) WHERE id(md) = %d`, rel, mdID)
 	q += fmt.Sprintf(` RETURN DISTINCT %s`, returnStatementProfile)
 	res, err := n.Query(q)
 	l.Debug(q)
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	if err != nil {
 		return
@@ -624,11 +626,11 @@ func (n Neo) ProfileFromManifestDataIDViaPlatform(ctx context.Context, mdID int6
 			logrus.Error(err)
 			continue
 		}
-		q := fmt.Sprintf(`MATCH (md:ManifestData)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule)<-[:USES]-(p:Profile)`, types.RelationFailure)
+		q := fmt.Sprintf(`MATCH (md:Manifest)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule)<-[:USES]-(p:Profile)`, types.RelationFailure)
 		q += fmt.Sprintf(` WHERE id(md) = %d AND id(p) = %d RETURN count(a) AS countAnnotations`, mdID, p.ID)
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.query", q),
+			attribute.String(attrLogSeverity, attrSevDebug),
+			attribute.String(attrLogQuery, q),
 		))
 		res, _, e := n.QueryOne(q)
 		if e != nil {
@@ -638,7 +640,7 @@ func (n Neo) ProfileFromManifestDataIDViaPlatform(ctx context.Context, mdID int6
 		}
 		cnt, e := res.GetInt("countAnnotations")
 		if e != nil {
-			err = errors.Wrap(e, "failed to get countAnnotations")
+			err = errors.Wrap(e, errGetCountAnnotations)
 			l.Error(err)
 			continue
 		}
@@ -649,7 +651,7 @@ func (n Neo) ProfileFromManifestDataIDViaPlatform(ctx context.Context, mdID int6
 	return
 }
 
-func (n Neo) EvalUploadProfile(ctx context.Context, mani types.Manifest, origMani types.ManifestData) (err error) {
+func (n Neo) EvalUploadProfile(ctx context.Context, mani types.ManifestWrapper, origMani types.Manifest) (err error) {
 	ctx, span := tracer.Start(ctx, "EvalUploadProfile")
 	defer span.End()
 	_ = ctx
@@ -665,7 +667,7 @@ func (n Neo) EvalUploadProfile(ctx context.Context, mani types.Manifest, origMan
 	}
 	blobUploadID, _ := res.GetInt64("blobUploadID")
 	blobUploadProfile, _ := res.GetStr("blobUploadProfile")
-	logrus.Fatalf("blobUploadProfile[%-4d]: %s", blobUploadID, blobUploadProfile)
+	logrus.Debugf("blobUploadProfile[%-4d]: %s", blobUploadID, blobUploadProfile)
 
 	return
 }
@@ -708,19 +710,19 @@ func (n Neo) ProfileManifestType(ctx context.Context, maniID int64) (relType str
 	span.SetAttributes(
 		attribute.Key("maniID").Int64(maniID),
 	)
-	q := `MATCH (prf:Profile)<-[r]-(md:ManifestData)<-[]-(m:Manifest)`
+	q := `MATCH (prf:Profile)<-[r]-(md:Manifest)<-[]-(m:ManifestWrapper)`
 	q += fmt.Sprintf(` WHERE id(m) = %d`, maniID)
 	q += ` RETURN TYPE(r) AS relType`
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	l.Debug(q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
+			attribute.String(attrLogSeverity, attrSevError),
 			attribute.String("log.error", err.Error()),
 		))
 		span.RecordError(err)
@@ -729,7 +731,7 @@ func (n Neo) ProfileManifestType(ctx context.Context, maniID int64) (relType str
 	if !found {
 		err = fmt.Errorf("no manifest found for id %d", maniID)
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
+			attribute.String(attrLogSeverity, attrSevError),
 			attribute.String("log.error", err.Error()),
 		))
 		return
@@ -738,23 +740,23 @@ func (n Neo) ProfileManifestType(ctx context.Context, maniID int64) (relType str
 	return
 }
 
-func (n Neo) ProfileGetUploadedByViaManifestDataID(ctx context.Context, maniID int64) (p types.Profile, found bool, err error) {
+func (n Neo) ProfileGetUploadedByViaManifestID(ctx context.Context, maniID int64) (p types.Profile, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameProfile,
-		"func":    "ProfileGetUploadedByViaManifestDataID",
+		"func":    "ProfileGetUploadedByViaManifestID",
 		"maniID":  maniID,
 	})
-	_, span := tracer.Start(ctx, "Profile_GetUploadedBy_BiaManifestDataID")
+	_, span := tracer.Start(ctx, "Profile_GetUploadedBy_BiaManifestID")
 	defer span.End()
 	span.SetAttributes(
 		attribute.Key("maniID").Int64(maniID),
 	)
-	q := `MATCH (prf:Profile)<-[:UPLOADED_BY]-(md:ManifestData)`
+	q := `MATCH (prf:Profile)<-[:UPLOADED_BY]-(md:Manifest)`
 	q += fmt.Sprintf(` WHERE id(md) = %d`, maniID)
 	q += fmt.Sprintf(` RETURN %s`, returnStatementProfile)
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	l.Debug(q)
 	res, found, err := n.QueryOne(q)
@@ -765,23 +767,23 @@ func (n Neo) ProfileGetUploadedByViaManifestDataID(ctx context.Context, maniID i
 	return
 }
 
-func (n Neo) ProfileGetPulledByViaManifestDataID(ctx context.Context, maniID int64) (p types.Profile, found bool, err error) {
+func (n Neo) ProfileGetPulledByViaManifestID(ctx context.Context, maniID int64) (p types.Profile, found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameProfile,
-		"func":    "ProfileGetPulledByViaManifestDataID",
+		"func":    "ProfileGetPulledByViaManifestID",
 		"maniID":  maniID,
 	})
-	_, span := tracer.Start(ctx, "ProfileGetPulledByViaManifestDataID")
+	_, span := tracer.Start(ctx, "ProfileGetPulledByViaManifestID")
 	defer span.End()
 	span.SetAttributes(
 		attribute.Key("maniID").Int64(maniID),
 	)
-	q := `MATCH (prf:Profile)<-[:PULLED_BY]-(md:ManifestData)`
+	q := `MATCH (prf:Profile)<-[:PULLED_BY]-(md:Manifest)`
 	q += fmt.Sprintf(` WHERE id(md) = %d`, maniID)
 	q += fmt.Sprintf(` RETURN %s`, returnStatementProfile)
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	l.Debug(q)
 	res, found, err := n.QueryOne(q)
@@ -875,7 +877,7 @@ func (n Neo) ProfileUnwindRules(ctx context.Context, prfID, maniDataID int64) (e
 				err = errors.Wrapf(err, "failed to get annotation %s:%s", a.Key, a.Value)
 				return err
 			}
-			e := n.ManifestDataLinkToAnnotation(ctx, maniDataID, aID)
+			e := n.ManifestLinkToAnnotation(ctx, maniDataID, aID)
 			if e != nil {
 				err = errors.Wrapf(e, "failed to link manifestData '%d' with  annotation %d", maniDataID, aID)
 				return err
@@ -924,5 +926,62 @@ func (n Neo) ProfileFromYAML(ctx context.Context, p config.Profile) (prf types.P
 		Rule:          p.Rule,
 		Manipulations: mps,
 	}
+	return
+}
+
+// ProfileInjectDeterministicAnnotations links every deterministic
+// ("anno eq") rule of the given profile as an annotation on the given
+// Manifest. Non-deterministic rules (regex, ne, null, platform rules,
+// etc.) are silently skipped; the returned counts let the caller observe
+// how many rules were injected vs skipped and a Debug log line is emitted
+// per skipped rule for operator visibility.
+//
+// It is the push-time cousin of ProfileUnwindRules, used by
+// Magazine.ComputeManifestlistsForRepoTag. The helper is idempotent:
+// re-running it on the same (profile, manifestdata) pair will not create
+// duplicate Annotation nodes or HAS_ANNOTATION edges because both
+// AnnotationGetInsert and ManifestLinkToAnnotation rely on MERGE
+// semantics in their underlying Cypher.
+func (n Neo) ProfileInjectDeterministicAnnotations(ctx context.Context, prfID, maniDataID int64) (injected int, skipped int, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":    pkgNameProfile,
+		"func":       "ProfileInjectDeterministicAnnotations",
+		"prfID":      prfID,
+		"maniDataID": maniDataID,
+	})
+	defer span.End()
+
+	// Fetch every rule attached to the profile so we can classify them and
+	// count the deterministic/non-deterministic split.
+	allRules, err := n.RulesGetByProfileID(ctx, prfID)
+	if err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to get rules for profile %d", prfID)
+		return
+	}
+
+	for _, r := range allRules.Rules {
+		if r.Type == types.RuleTypeAnnotation && r.Op == "eq" {
+			a := types.NewAnnotation(r.Key, r.Value)
+			aID, e := n.AnnotationGetInsert(ctx, a)
+			if e != nil {
+				err = utils.ErrorHandler(l, span, e, "failed to get/insert annotation %s=%s", a.Key, a.Value)
+				return
+			}
+			if e := n.ManifestLinkToAnnotation(ctx, maniDataID, aID); e != nil {
+				err = utils.ErrorHandler(l, span, e, "failed to link manifestdata %d to annotation %d", maniDataID, aID)
+				return
+			}
+			injected++
+			utils.Debug(l, span, "injected deterministic rule %s (type=%s op=%s %s=%s)", r.Label, r.Type, r.Op, r.Key, r.Value)
+			continue
+		}
+		// Any other rule type/op is non-deterministic at push time — it
+		// needs rule eval or regex matching against the manifest's own
+		// annotations, which happens during ComputeManifestlistsForRepoTag's
+		// RuleEvalAll call. We only count and log it here.
+		skipped++
+		utils.Debug(l, span, "skipping non-deterministic rule %s (type=%s op=%s)", r.Label, r.Type, r.Op)
+	}
+	utils.Debug(l, span, "profile %d: injected %d, skipped %d rules on manifestdata %d", prfID, injected, skipped, maniDataID)
 	return
 }

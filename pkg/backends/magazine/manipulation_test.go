@@ -62,7 +62,7 @@ func TestManipulationCreateOCI(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(mani.Manifests) != 1 {
-		t.Fatalf("Expected 1 ManifestData, but got %d", len(mani.Manifests))
+		t.Fatalf("Expected 1 Manifest, but got %d", len(mani.Manifests))
 	}
 	maniData := mani.Manifests[0]
 	if maniData.Type == "" {
@@ -87,7 +87,7 @@ func TestManipulationCreateOCI(t *testing.T) {
 	} else {
 		assert.Equal(t, "sha256:26608a4ddd90f25b3854b5d5f2543b158f79c6e6bdb4099b65b63eb0dcf9d45d", cfgDig)
 	}
-	maniDataUnwound, mdFound, e := mag.Database.ManifestDataGetByDigest(ctx, maniData.Digest)
+	maniDataUnwound, mdFound, e := mag.Database.ManifestGetByDigest(ctx, maniData.Digest)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -106,7 +106,7 @@ func TestManipulationCreateOCI(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	ociManiData, glowFound, e := mag.ManifestDataGetByID(ctx, maniDataUnwoundID)
+	ociManiData, glowFound, e := mag.ManifestGetByID(ctx, maniDataUnwoundID)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -150,8 +150,8 @@ func TestManipulationParse(t *testing.T) {
 	}
 	manipuGlow.ID = mpID
 	// Check if Upstream was really cached
-	expMDDig := types.ManifestDataDTGlow150Arm64().Digest
-	if md, found, err := mag.Database.ManifestDataGetByDigest(ctx, expMDDig.String()); err != nil {
+	expMDDig := types.ManifestDTGlow150Arm64().Digest
+	if md, found, err := mag.Database.ManifestGetByDigest(ctx, expMDDig.String()); err != nil {
 		t.Fatal(err)
 	} else if !found {
 		t.Fatal("Did not find manifestdata")
@@ -203,8 +203,8 @@ func TestManipulationParseExtended(t *testing.T) {
 	}
 	manipuGlow.ID = mpID
 	// Check if Upstream was really cached
-	expMDDig := types.ManifestDataDTGlow151Arm64().Digest
-	if md, found, err := mag.Database.ManifestDataGetByDigest(ctx, expMDDig.String()); err != nil {
+	expMDDig := types.ManifestDTGlow151Arm64().Digest
+	if md, found, err := mag.Database.ManifestGetByDigest(ctx, expMDDig.String()); err != nil {
 		t.Fatal(err)
 	} else if !found {
 		t.Fatal("Did not find manifestdata")
@@ -294,13 +294,15 @@ func TestManipulationUnwind(t *testing.T) {
 	if err = mag.Database.RuleEvalAll(ctx); err != nil {
 		t.Fatal(err)
 	}
+	// Path Z task 7.7: D5 invariant canary after every RuleEvalAll.
+	assertRuleShortcutInvariantsOrFatal(t, ctx)
 	/// Unwind Rules
 	if cfgDigest, e := mag.ManipulationUnwind(ctx, mani.ID, maniData.ID, prf.ID); e != nil {
 		t.Fatal(e)
 	} else {
 		assert.Equal(t, "sha256:26608a4ddd90f25b3854b5d5f2543b158f79c6e6bdb4099b65b63eb0dcf9d45d", cfgDigest)
 	}
-	ociManiData, mdFound, e := mag.Database.ManifestDataGetByDigest(ctx, mani.Manifests[0].Digest)
+	ociManiData, mdFound, e := mag.Database.ManifestGetByDigest(ctx, mani.Manifests[0].Digest)
 	if e != nil {
 		t.Fatal(e)
 	}

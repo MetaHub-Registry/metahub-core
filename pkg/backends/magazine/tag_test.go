@@ -70,7 +70,7 @@ func TestTagList(t *testing.T) {
 	}
 	assert.Equal(t, 1, len(res.Tags))
 	// Remove Manifests and expect the collection to stick around with 0 tags
-	/*m := types.Manifest{
+	/*m := types.ManifestWrapper{
 			Upstream: types.Upstream{
 				Repo: "qnib-pub-containers/qnib/plain-featuretest",
 				Tag:  "20220715-arm64-generic",

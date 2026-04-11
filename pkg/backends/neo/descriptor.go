@@ -53,15 +53,16 @@ func (neo Neo) ReferrersGetBySubjectDigest(ctx context.Context, dig string) (ref
 			continue
 		}
 		switch nodeType {
-		case "ManifestData":
+		// Phase C3: content-leaf renamed from :Manifest to :Manifest.
+		case "Manifest":
 			digest, err := r.GetStr("digest")
 			if err != nil {
 				return refs, utils.ErrorHandler(l, span, err, "while getting manifest digest")
 			}
-			if md, found, err := neo.ManifestDataGetByDigest(ctx, digest); err != nil {
+			if md, found, err := neo.ManifestGetByDigest(ctx, digest); err != nil {
 				return refs, utils.ErrorHandler(l, span, err, "while getting manifest data by digest")
 			} else if found {
-				utils.Debug(l, span, "Adding ManifestData to reffers list %s with %d annotation", utils.ShortenDigest(md.Digest), len(md.Annotations.Data))
+				utils.Debug(l, span, "Adding Manifest to reffers list %s with %d annotation", utils.ShortenDigest(md.Digest), len(md.Annotations.Data))
 				refs.Manifests = append(refs.Manifests, md.ToOCIDescriptor())
 			}
 		case "ManifestList":
@@ -72,7 +73,7 @@ func (neo Neo) ReferrersGetBySubjectDigest(ctx context.Context, dig string) (ref
 			if mld, err := neo.ManifestListGetByDigest(ctx, digest); err != nil {
 				return refs, utils.ErrorHandler(l, span, err, "while getting manifestlist data by digest")
 			} else if mld != nil {
-				utils.Debug(l, span, "Adding ManifestList to reffers list %s with %d annotation", utils.ShortenDigest(mld.Digest), len(mld.Annotations))
+				utils.Debug(l, span, "Adding Index to reffers list %s with %d annotation", utils.ShortenDigest(mld.Digest), len(mld.Annotations))
 				refs.Manifests = append(refs.Manifests, mld.ToOCIDescriptor())
 			}
 		default:

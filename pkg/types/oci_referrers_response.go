@@ -15,7 +15,7 @@ type ReferrersResponse struct {
 }
 
 func (r ReferrersResponse) WriteWWW(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", r.MediaType)
+	w.Header().Set(ContentType, r.MediaType)
 	b, err := r.ToBytes()
 	if err != nil {
 		logrus.Errorf("failed to marshal manifest: %v", err)

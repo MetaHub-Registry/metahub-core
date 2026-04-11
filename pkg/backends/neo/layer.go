@@ -45,16 +45,16 @@ func (n Neo) LayerPlainInsert(ctx context.Context, l types.Layer) (blobID int64,
 	return
 }
 
-func (n Neo) LayerGetByLayerAndManifestDataID(ctx context.Context, layerID, mdID int64) (lyr types.Layer, found bool, err error) {
+func (n Neo) LayerGetByLayerAndManifestID(ctx context.Context, layerID, mdID int64) (lyr types.Layer, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":        pkgNameLyr,
-		"func":           "LayerGetByLayerAndManifestDataID",
+		"func":           "LayerGetByLayerAndManifestID",
 		"layerID":        layerID,
 		"manifestDataID": mdID,
 	})
 	_ = ctx
 	defer span.End()
-	q := `MATCH (md:ManifestData)-[r]->(n:Blob)`
+	q := `MATCH (md:Manifest)-[r]->(n:Blob)`
 	q += fmt.Sprintf(` WHERE id(n) = %d AND id(md) = %d`, layerID, mdID)
 	q += ` RETURN id(n) AS layerID, n.digest AS layerDigest, n.size AS layerSize, n.mediaType AS layerMediaType`
 	utils.Debug(l, span, q)
@@ -82,7 +82,7 @@ func (n Neo) LayerGetByID(ctx context.Context, layerID int64) (l types.Layer, fo
 	defer session.Close()
 	result, err := session.Run(query, map[string]interface{}{})
 	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
+		logrus.Errorf(errFailedRunQueryFmt, err)
 		return
 	}
 	if result.Next() {
@@ -117,7 +117,7 @@ func (n Neo) LayerGetByDigest(ctx context.Context, dig string) (l types.Layer, f
 	defer session.Close()
 	result, err := session.Run(query, map[string]interface{}{})
 	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
+		logrus.Errorf(errFailedRunQueryFmt, err)
 		return
 	}
 	if result.Next() {
@@ -166,7 +166,7 @@ func (n Neo) LayerDeleteByDigest(ctx context.Context, dig string) (err error) {
 	defer session.Close()
 	_, err = session.Run(query, map[string]interface{}{})
 	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
+		logrus.Errorf(errFailedRunQueryFmt, err)
 		return
 	}
 	return err
@@ -182,7 +182,7 @@ func (n Neo) LayerDeleteByDigest(ctx context.Context, dig string) (err error) {
 		_ = ctx
 		defer span.End()
 
-		q := fmt.Sprintf(`MATCH (l:Blob)<-[r]-(:ManifestData)  WHERE id(l) = %d`, lyrID)
+		q := fmt.Sprintf(`MATCH (l:Blob)<-[r]-(:Manifest)  WHERE id(l) = %d`, lyrID)
 		q += ` RETURN count(r) AS relCount`
 		utils.Debug(l, span, q)
 		res, _, e := n.QueryOne(q)
@@ -209,7 +209,7 @@ func (n Neo) GetLayer(layer types.Layer) (layerID int64, success bool, err error
 	defer session.Close()
 	result, err := session.Run(query, map[string]interface{}{})
 	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
+		logrus.Errorf(errFailedRunQueryFmt, err)
 		return
 	}
 	if result.Next() {
@@ -224,7 +224,7 @@ func (n Neo) GetLayer(layer types.Layer) (layerID int64, success bool, err error
 	return
 }
 
-func (n Neo) GetLayersForManifest(ctx context.Context, m types.ManifestData) (layers []types.Layer, err error) {
+func (n Neo) GetLayersForManifest(ctx context.Context, m types.Manifest) (layers []types.Layer, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameLyr,
 		"func":    "GetLayersForManifest",
@@ -233,14 +233,14 @@ func (n Neo) GetLayersForManifest(ctx context.Context, m types.ManifestData) (la
 	_ = ctx
 	defer span.End()
 	layers = []types.Layer{}
-	q := fmt.Sprintf(`MATCH (l:Blob)<-[lyRel]-(m:ManifestData) WHERE m.digest = "%s" AND l.type = "layer"`, m.Digest)
+	q := fmt.Sprintf(`MATCH (l:Blob)<-[lyRel]-(m:Manifest) WHERE m.digest = "%s" AND l.type = "layer"`, m.Digest)
 	q += ` RETURN id(l) AS ID, l.digest AS digest, l.mediaType AS mediaType, l.size AS size`
 	utils.Debug(l, span, q)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	result, err := session.Run(q, map[string]interface{}{})
 	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
+		logrus.Errorf(errFailedRunQueryFmt, err)
 		return
 	}
 	for result.Next() {
@@ -318,15 +318,15 @@ func (n Neo) LayerCreateByDescriptor(l distribution.Descriptor) (layerID int64, 
 	return
 }
 
-func (n Neo) GetLayersForManifestDataID(ctx context.Context, maniDataID int64) (layers []types.Layer, err error) {
+func (n Neo) GetLayersForManifestID(ctx context.Context, maniDataID int64) (layers []types.Layer, err error) {
 	layers = []types.Layer{}
-	q := `MATCH (l:Blob)<-[r]-(m:ManifestData) WHERE id(m) = %d AND l.type = "layer"`
+	q := `MATCH (l:Blob)<-[r]-(m:Manifest) WHERE id(m) = %d AND l.type = "layer"`
 	q += ` RETURN id(l) AS layerID, l.digest AS layerDigest, l.mediaType AS layerMediaType, l.size AS layerSize`
 	q += ` ORDER BY r.order`
 	query := fmt.Sprintf(q, maniDataID)
 	res, err := n.Query(query)
 	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
+		logrus.Errorf(errFailedRunQueryFmt, err)
 		return
 	}
 	for _, r := range res {
@@ -378,12 +378,12 @@ func (n Neo) LayerGetMediaTypeByID(ctx context.Context, lyID int64) (mt string, 
 	})
 	defer span.End()
 	_ = ctx
-	q := fmt.Sprintf(`MATCH (l:Blob)<-[layerRel]-(md:ManifestData) WHERE id(l) = %d AND l.type = "layer"`, lyID)
+	q := fmt.Sprintf(`MATCH (l:Blob)<-[layerRel]-(md:Manifest) WHERE id(l) = %d AND l.type = "layer"`, lyID)
 	q += ` RETURN DISTINCT l.mediaType AS layerMediaType`
 	utils.Debug(l, span, q)
 	res, e := n.Query(q)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "Failed to run query")
+		err = utils.ErrorHandler(l, span, e, errFailedRunQuery)
 		return
 	}
 	switch len(res) {
@@ -470,10 +470,10 @@ func (n Neo) LayerDescriptorGetInsert(ctx context.Context, desc v1.Descriptor) (
 func (n Neo) LayersDeleteUnused(ctx context.Context) (err error) {
 	_, span := tracer.Start(ctx, "LayersDeleteUnused")
 	defer span.End()
-	q := `MATCH (l:Blob) WHERE l.type = "layer" AND NOT (l)<-[]-(:ManifestData) DETACH DELETE l RETURN count(l) AS deletedLayers`
+	q := `MATCH (l:Blob) WHERE l.type = "layer" AND NOT (l)<-[]-(:Manifest) DETACH DELETE l RETURN count(l) AS deletedLayers`
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	res, err := n.Execute(q)
 	if err != nil {
@@ -487,8 +487,8 @@ func (n Neo) LayersDeleteUnused(ctx context.Context) (err error) {
 	}
 	msg := fmt.Sprintf("Deleted %d layers", deletedLayers)
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.message", msg),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogMessage, msg),
 	))
 	return
 }
@@ -501,7 +501,7 @@ func (n Neo) layerGetUpstreamRegistryMediaTypeTypeByDigest(ctx context.Context, 
 	})
 	_ = ctx
 	defer span.End()
-	q := `MATCH (l:Blob)<-[r]-(md:ManifestData)-[]-(u:Upstream) `
+	q := `MATCH (l:Blob)<-[r]-(md:Manifest)-[]-(u:Upstream) `
 	q += fmt.Sprintf(` WHERE l.digest = "%s" AND l.type = "layer"`, dig)
 	q += " RETURN DISTINCT u.reg AS upstreamRegistry, l.mediaType AS layerMediaType"
 	utils.Debug(l, span, q)
@@ -568,8 +568,8 @@ func (n Neo) LayerExists(ctx context.Context, up upstream.UpstreamTriple) (found
 	q := fmt.Sprintf(`MATCH (l:Blob) WHERE l.digest = "%s" AND l.type = "layer"`, up.Digest.String())
 	q += ` RETURN id(l) AS layerID, l.digest AS layerDigest, l.size AS layerSize`
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	res, found, e := n.QueryOne(q)
 	if e != nil {
@@ -579,8 +579,8 @@ func (n Neo) LayerExists(ctx context.Context, up upstream.UpstreamTriple) (found
 	if !found {
 		msg := "layer not found"
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, attrSevDebug),
+			attribute.String(attrLogMessage, msg),
 		))
 		l.Debug(msg)
 		return false, nil
@@ -590,8 +590,8 @@ func (n Neo) LayerExists(ctx context.Context, up upstream.UpstreamTriple) (found
 		msg := "failed to create Layer from result"
 		err = errors.Wrap(err, msg)
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, attrSevError),
+			attribute.String(attrLogMessage, msg),
 		))
 		span.RecordError(err)
 		l.Error(msg)
@@ -608,7 +608,7 @@ func (n Neo) LayerGetUpstream(ctx context.Context, lID int64) (up types.Upstream
 	})
 	defer span.End()
 	_ = ctx
-	q := `MATCH (u:Upstream)<-[]-(m:Manifest)-[]->(md:ManifestData)-[]->(l:Blob)`
+	q := `MATCH (u:Upstream)<-[]-(m:ManifestWrapper)-[]->(md:Manifest)-[]->(l:Blob)`
 	q += fmt.Sprintf(` WHERE id(l) = %d AND l.type = "layer"`, lID)
 	q += ` RETURN DISTINCT id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag, u.digest AS upstreamDigest`
 	res, found, e := n.QueryOne(q)

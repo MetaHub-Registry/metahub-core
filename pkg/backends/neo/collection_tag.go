@@ -24,7 +24,7 @@ func (n Neo) CollectionTagGetIDByManifestID(ctx context.Context, maniID int64) (
 	})
 	_ = ctx
 	defer span.End()
-	q := fmt.Sprintf(`MATCH (m:Manifest)<-[]-(t:Tag) WHERE id(m) = %d`, maniID)
+	q := fmt.Sprintf(`MATCH (m:ManifestWrapper)<-[]-(t:Tag) WHERE id(m) = %d`, maniID)
 	q += ` RETURN id(t) AS ID`
 	utils.Debug(l, span, q)
 	if res, found, e := n.QueryOne(q); e != nil {
@@ -53,7 +53,7 @@ func (n Neo) CollectionTagCleanupByID(ctx context.Context, tagID int64) (err err
 	_ = ctx
 	defer span.End()
 	key := "countTag"
-	q := fmt.Sprintf(`MATCH (m:Manifest)<-[]-(t:Tag) WHERE id(t) = %d`, tagID)
+	q := fmt.Sprintf(`MATCH (m:ManifestWrapper)<-[]-(t:Tag) WHERE id(t) = %d`, tagID)
 	q += fmt.Sprintf(` RETURN count(t) AS %s`, key)
 	countUpstream := -1
 	if res, _, e := n.QueryOne(q); e != nil {
@@ -108,7 +108,7 @@ func (n Neo) LinkCollectionTagToManifest(ctx context.Context, colTagID, maniID i
 	})
 	_ = ctx
 	defer span.End()
-	q := `MATCH (t:Tag), (m:Manifest) WHERE id(t) = %d AND id(m) = %d`
+	q := `MATCH (t:Tag), (m:ManifestWrapper) WHERE id(t) = %d AND id(m) = %d`
 	q += ` MERGE (t)-[:UPSTREAM]->(m)`
 	query := fmt.Sprintf(q, colTagID, maniID)
 	utils.Debug(l, span, query)
@@ -131,7 +131,7 @@ func (n Neo) LinkCollectionTagToManifestRemove(ctx context.Context, colTagID, ma
 	})
 	_ = ctx
 	defer span.End()
-	q := `MATCH (t:Tag)-[u:UPSTREAM]->(m:Manifest) WHERE id(t) = %d AND id(m) = %d`
+	q := `MATCH (t:Tag)-[u:UPSTREAM]->(m:ManifestWrapper) WHERE id(t) = %d AND id(m) = %d`
 	q += ` DELETE u`
 	query := fmt.Sprintf(q, colTagID, maniID)
 	utils.Debug(l, span, query)
@@ -178,7 +178,7 @@ func (n Neo) CollectionGetTagsListByRepo(ctx context.Context, repo string) (tags
 	}
 	var colID int64
 	key := "colID"
-	q := fmt.Sprintf(`MATCH (c:Collection) WHERE c.repo = "%s" RETURN id(c) AS %s`, repo, key)
+	q := fmt.Sprintf(`MATCH (c:Repo) WHERE c.repo = "%s" RETURN id(c) AS %s`, repo, key)
 	utils.Debug(l, span, q)
 	if res, found, e := n.QueryOne(q); e != nil {
 		return tags, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
@@ -189,7 +189,7 @@ func (n Neo) CollectionGetTagsListByRepo(ctx context.Context, repo string) (tags
 			return tags, utils.ErrorHandler(l, span, e, types.FailBrGet, key)
 		}
 	}
-	q = fmt.Sprintf(`MATCH (c:Collection)-[:HAS_TAG]->(t:Tag) WHERE id(c) = %d`, colID)
+	q = fmt.Sprintf(`MATCH (c:Repo)-[:HAS_TAG]->(t:Tag) WHERE id(c) = %d`, colID)
 	q += ` RETURN id(t) AS tagID, t.name AS tagName`
 	utils.Debug(l, span, q)
 	if res, err := n.Query(q); err != nil {
@@ -247,7 +247,7 @@ func (n Neo) CollectionTagCountRelationships(ctID int64) (count int64, err error
 }
 
 func (n Neo) CollectionTagDetachFromCollection(cID, ctID int64) (err error) {
-	q := `MATCH (c:Collection)-[r:HAS_TAG]->(t:Tag) WHERE id(c) = %d AND id(t) = %d`
+	q := `MATCH (c:Repo)-[r:HAS_TAG]->(t:Tag) WHERE id(c) = %d AND id(t) = %d`
 	q += ` DELETE r`
 	query := fmt.Sprintf(q, cID, ctID)
 	//fmt.Printf("!!! Query: \n%s\n", query)

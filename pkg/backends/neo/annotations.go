@@ -66,14 +66,14 @@ func (n Neo) LabelsGetByConfigID(ctx context.Context, cfgID int64) (as types.Ann
 	return
 }
 
-func (n Neo) GetAnnotationsByManifestDataID(ctx context.Context, msID int64) (as types.Annotations, err error) {
-	_, span := tracer.Start(ctx, "GetAnnotationsByManifestDataID")
+func (n Neo) GetAnnotationsByManifestID(ctx context.Context, msID int64) (as types.Annotations, err error) {
+	_, span := tracer.Start(ctx, "GetAnnotationsByManifestID")
 	defer span.End()
-	q := fmt.Sprintf(`MATCH (md:ManifestData)-[:HAS_ANNOTATION]->(a:Annotation) WHERE id(md) = %d`, msID)
+	q := fmt.Sprintf(`MATCH (md:Manifest)-[:HAS_ANNOTATION]->(a:Annotation) WHERE id(md) = %d`, msID)
 	q += ` RETURN id(a) AS annotationID, a.key AS annotationKey, a.value AS annotationValue`
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	res, err := n.Query(q)
 	if err != nil {
@@ -94,7 +94,7 @@ func (n Neo) GetAnnotationsByManifestDataID(ctx context.Context, msID int64) (as
 	return
 }
 
-func (n Neo) GetAnnotationsByManifestID(ctx context.Context, msID int64) (as types.Annotations, err error) {
+func (n Neo) GetAnnotationsByManifestWrapperID(ctx context.Context, msID int64) (as types.Annotations, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMani,
 		"func":    "neo.GetAnnotationsByManifestID",
@@ -102,7 +102,7 @@ func (n Neo) GetAnnotationsByManifestID(ctx context.Context, msID int64) (as typ
 	})
 	defer span.End()
 	_ = l
-	q := fmt.Sprintf(`MATCH (ms:Manifest)-[:HAS_ANNOTATION]->(a:Annotation) WHERE id(ms) = %d`, msID)
+	q := fmt.Sprintf(`MATCH (ms:ManifestWrapper)-[:HAS_ANNOTATION]->(a:Annotation) WHERE id(ms) = %d`, msID)
 	q += ` RETURN id(a) AS annotationID, a.key AS annotationKey, a.value AS annotationValue`
 	utils.Debug(l, span, q)
 	res, err := n.Query(q)
