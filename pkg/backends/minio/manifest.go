@@ -58,7 +58,7 @@ func (m Minio) ManifestGetBytes(ctx context.Context, path string) (b []byte, err
 }
 */
 
-func (m Minio) GetCachedManifest(ctx context.Context, dig digest.Digest) (res types.ManifestData, found bool, err error) {
+func (m Minio) GetCachedManifest(ctx context.Context, dig digest.Digest) (res types.Manifest, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMani,
 		"func":    "GetCachedManifest",
@@ -88,9 +88,9 @@ func (m Minio) GetCachedManifest(ctx context.Context, dig digest.Digest) (res ty
 	return
 }
 
-func (m Minio) GetManifest(ctx context.Context, up upstream.UpstreamTriple) (res types.ManifestData, isCached bool, err error) {
+func (m Minio) GetManifest(ctx context.Context, up upstream.UpstreamTriple) (res types.Manifest, isCached bool, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "backends/minio",
+		"package": pkgName,
 		"func":    "GetManifest",
 	})
 	_ = l
@@ -107,7 +107,7 @@ func (m Minio) GetManifest(ctx context.Context, up upstream.UpstreamTriple) (res
 
 func (m Minio) PutManifestByUpstream(ctx context.Context, b []byte, up types.Upstream) (err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "backends/minio",
+		"package": pkgName,
 		"func":    "PutManifestByUpstream",
 	})
 	ctx, span := tracer.Start(ctx, "PutManifestByUpstream")
@@ -127,7 +127,7 @@ func (m Minio) PutManifestByUpstream(ctx context.Context, b []byte, up types.Ups
 
 func (m Minio) PutManifest(ctx context.Context, b []byte, up upstream.UpstreamTriple) (err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "backends/minio",
+		"package": pkgName,
 		"func":    "PutManifest",
 	})
 	ctx, span := tracer.Start(ctx, "PutManifestObj")
@@ -159,7 +159,7 @@ func RawManifestFromBlob(b []byte) (mani manifest.Manifest, err error) {
 	return
 }
 
-func (m Minio) NewManifestDataFromBytes(ctx context.Context, b []byte) (mani types.ManifestData, err error) {
+func (m Minio) NewManifestFromBytes(ctx context.Context, b []byte) (mani types.Manifest, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMani,
 		"func":    "NewManifestFromBytes",
@@ -177,7 +177,7 @@ func (m Minio) NewManifestDataFromBytes(ctx context.Context, b []byte) (mani typ
 	// TODO: Is deriving digest from byte safe?
 	maniDig := digest.FromBytes(b)
 
-	mani = types.ManifestData{
+	mani = types.Manifest{
 		MediaType: mt,
 		Digest:    maniDig.String(),
 		Size:      bInfo.Size,
@@ -213,7 +213,7 @@ func (m Minio) NewManifestDataFromBytes(ctx context.Context, b []byte) (mani typ
 	return
 }
 
-func (m Minio) ManifestGetObj(ctx context.Context, path string) (mani types.ManifestData, err error) {
+func (m Minio) ManifestGetObj(ctx context.Context, path string) (mani types.Manifest, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMani,
 		"func":    "ManifestGetObj",
@@ -232,7 +232,7 @@ func (m Minio) ManifestGetObj(ctx context.Context, path string) (mani types.Mani
 		err = utils.ErrorHandler(l, span, e, "Error ReadAll")
 		return
 	}
-	mani, e = m.NewManifestDataFromBytes(ctx, b)
+	mani, e = m.NewManifestFromBytes(ctx, b)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "m.NewManifestFromBytes")
 		return
@@ -241,7 +241,7 @@ func (m Minio) ManifestGetObj(ctx context.Context, path string) (mani types.Mani
 	return
 }
 
-func (m Minio) GetManifestViaPath(ctx context.Context, path string) (mani types.ManifestData, err error) {
+func (m Minio) GetManifestViaPath(ctx context.Context, path string) (mani types.Manifest, err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgNameMani,
 		"func":    "GetManifestViaPath",

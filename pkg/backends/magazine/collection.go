@@ -67,8 +67,8 @@ func (mag Magazine) HeadManistNotFoundForProfile(ctx context.Context, req types.
 	defer span.End()
 	_ = l
 	_ = ctx
-	//// 1. Find the PULLED upstream Manifest & ManifestData
-	mani, maniFound, e := mag.Database.ManifestGetByRepoTag(ctx, req.Repo, req.Tag)
+	//// 1. Find the PULLED upstream Manifest & Manifest
+	mani, maniFound, e := mag.Database.ManifestWrapperGetByRepoTag(ctx, req.Repo, req.Tag)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, colErrFrmt, "manifest", req.Repo, req.Tag)
 		return
@@ -78,7 +78,7 @@ func (mag Magazine) HeadManistNotFoundForProfile(ctx context.Context, req types.
 		return md, false, err
 	}
 	utils.Debug(l, span, "found manifest %s", mani.Upstream.String())
-	maniData, maniDataFound, e := mag.Database.ManifestDataGetPulledByRepoTag(ctx, req.Repo, req.Tag)
+	maniData, maniDataFound, e := mag.Database.ManifestGetPulledByRepoTag(ctx, req.Repo, req.Tag)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, colErrFrmt, "manifestData", req.Repo, req.Tag)
 		return
@@ -88,7 +88,7 @@ func (mag Magazine) HeadManistNotFoundForProfile(ctx context.Context, req types.
 		return md, false, err
 	}
 	utils.Debug(l, span, "found manifestData: %s", utils.ShortenDigest(maniData.Digest))
-	//// 2. Create a new ManifestData for the profile
+	//// 2. Create a new Manifest for the profile
 	prf, prfFound, e := mag.Database.ProfileGetByLabel(ctx, req.Profile)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "error getting profile '%s'", req.Profile)
@@ -99,7 +99,7 @@ func (mag Magazine) HeadManistNotFoundForProfile(ctx context.Context, req types.
 		return md, false, err
 	}
 	_ = prf
-	// TODO: Create OCI ManifestData for profile
+	// TODO: Create OCI Manifest for profile
 
 	ociManiDataID, _, e := mag.CreateOCIv1PulledByPrf(ctx, mani, maniData, prf)
 	if e != nil {
@@ -108,8 +108,8 @@ func (mag Magazine) HeadManistNotFoundForProfile(ctx context.Context, req types.
 	}
 	utils.Debug(l, span, "created oci manifest for profile '%s': %d", req.Profile, ociManiDataID)
 
-	//// 3. UnWind the profile for that ManifestData
-	//// 4. Compute ManifestList for the profile
+	//// 3. UnWind the profile for that Manifest
+	//// 4. Compute Index for the profile
 
 	return md, found, err
 }

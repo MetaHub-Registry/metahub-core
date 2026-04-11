@@ -156,7 +156,7 @@ func TestStoreManifestUploadOCIManifest(t *testing.T) {
 	defer TeardownTest(bs, br)
 	// Tests
 	ctx := context.Background()
-	inMani := types.FTarmManifestData()
+	inMani := types.FTarmManifest()
 	req := types.Request{
 		Repo:    "qnib/plain-featuretest",
 		Tag:     "20220715-arm64-generic",
@@ -164,14 +164,10 @@ func TestStoreManifestUploadOCIManifest(t *testing.T) {
 		Profile: "cpu#generic",
 		Digest:  inMani.Digest,
 	}
-	m, ociMani, err := mag.storeManifestUploadOCIManifest(ctx, req, inMani.Data)
+	md, ociMani, err := mag.storeManifestUploadOCIManifest(ctx, req, inMani.Data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(m.Manifests) != 1 {
-		t.Fatalf("Expected 1 manifest, got %d", len(m.Manifests))
-	}
-	md := m.Manifests[0]
 	assert.Equal(t, "sha256:ecb2919cfe22d74996ed677453f4e6f3bfd2806a7b591697a2fbea9ebee95db5", md.Digest)
 	assert.Equal(t, "sha256:cf5c26263929e84d7373d23b2692222cceceb3175b3325b183ead2ab6b5a5ce3", ociMani.Config.Digest.String())
 	minMani, err := mag.Minio.ManifestGetObj(ctx, md.Digest)
@@ -339,15 +335,15 @@ func TestManifestStoreManifestUploadEmbeddedConfigNoLayerwithLabels(t *testing.T
 		t.Fatal(err)
 	}
 	assert.Equal(t, cfgDigest, cfgObj.Digest)
-	// Check Collections
-	manis, err := mag.Database.ManifestGetAll(ctx)
+	// Path Z Phase C3: check content-leaf Manifest by digest instead of
+	// wrapper ManifestWrapper. ManifestGetAll still walks via :ManifestWrapper wrapper
+	// (pre-rename); use digest-based lookup instead.
+	mdByDigest, mdFound, err := mag.Database.ManifestGetByDigest(ctx, mani.Digest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(manis) != 1 {
-		t.Fatalf("Expected 1 manifest, got %d", len(manis))
-	}
-
+	assert.True(t, mdFound, "Manifest should exist after push")
+	assert.Equal(t, mani.Digest, mdByDigest.Digest, "Manifest digest should match pushed manifest")
 }
 
 func TestManifestComputeManifestForProfileARM(t *testing.T) {
@@ -394,6 +390,8 @@ func TestManifestComputeManifestForProfileARM(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Path Z task 7.7: D5 invariant canary after every RuleEvalAll.
+	assertRuleShortcutInvariantsOrFatal(t, ctx)
 	maniID, err := br.GetInt64("manifest:ft_arm64#id")
 	if err != nil {
 		t.Fatal(err)
@@ -409,7 +407,7 @@ func TestManifestComputeManifestForProfileARM(t *testing.T) {
 		t.Fatal("Profile not found")
 	}
 	t.Logf("Profile ID: %d // ManiID: %d", prfID, maniID)
-	mani, found, err := mag.Database.ManifestGetByID(ctx, maniID)
+	mani, found, err := mag.Database.ManifestWrapperGetByID(ctx, maniID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -425,13 +423,15 @@ func TestManifestComputeManifestForProfileARM(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Path Z task 7.7: D5 invariant canary after every RuleEvalAll.
+	assertRuleShortcutInvariantsOrFatal(t, ctx)
 	// Check if the manifest is in the collection
-	mdID, found, e := mag.Database.ManifestDataGetIDByMediaType(ctx, mani.ID, "application/vnd.docker.distribution.manifest.v2+json")
+	mdID, found, e := mag.Database.ManifestGetIDByMediaType(ctx, mani.ID, "application/vnd.docker.distribution.manifest.v2+json")
 	if e != nil {
 		t.Fatal(e)
 	}
 	if !found {
-		t.Fatal("ManifestData not found")
+		t.Fatal("Manifest not found")
 	}
 	assert.NotEqual(t, mdID, maniID)
 	span.End()
@@ -505,7 +505,139 @@ func TestManifestComputeManifestForProfileARM(t *testing.T) {
 // 		t.Fatal(err)
 // 	}
 // 	if !found {
-// 		t.Fatal("ManifestData not found")
+// 		t.Fatal("Manifest not found")
 // 	}
 // 	assert.Equal(t, "application/vnd.docker.distribution.manifest.v2+json", md.MediaType)
 // }
+
+// TestStoreManifestUpload_WiresSlot exercises Path Z task 6 phase A: the
+// additive Slot wiring in StoreManifestUpload. A successful manifest push
+// with a non-empty req.Profile SHALL:
+//   - create a :Slot node for the (repo, tag, profile) triple (idempotently),
+//   - append a :HAS_PUSHED edge from the Slot to the content-leaf Manifest.
+//
+// The legacy wrapper path (CollectionGetCreateByRepoTag + Link* helpers)
+// continues to run alongside the Slot wiring during the phase-A migration
+// window. This test does not assert the legacy path state — that is
+// covered by the existing push tests.
+func TestStoreManifestUpload_WiresSlot(t *testing.T) {
+	bs := utils.NewBootstrap()
+	debug := 0
+	bs.SetEmptyAll()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("users")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := mag.SetupTest(ctx, bs)
+	if err != nil {
+		TeardownTest(bs, br)
+		t.Fatal(err)
+	}
+	defer TeardownTest(bs, br)
+	// Use the same minimal OCI manifest with embedded config and no
+	// layers as TestManifestStoreManifestUploadEmbeddedConfigNoLayer —
+	// it's the shortest path to a successful StoreManifestUpload.
+	buf := []byte(`{
+			"schemaVersion": 2,
+			"config": {
+				"mediaType": "application/vnd.oci.image.config.v1+json",
+				"digest": "sha256:65b1de14a76de70a46ff0839ab79775aceb96ee12069fb6ed45bc35f958fdbcb",
+				"size": 129,
+				"data": "ewoJImF1dGhvciI6ICJkbkljNHRjODBPNUxwNTk4IiwKCSJhcmNoaXRlY3R1cmUiOiAiYW1kNjQiLAoJIm9zIjogImxpbnV4IiwKCSJyb290ZnMiOiB7CgkJInR5cGUiOiAibGF5ZXJzIiwKCQkiZGlmZl9pZHMiOiBbXQoJfQp9",
+				"newUnspecifiedField": "aGVsbG8gd29ybGQ="
+			},
+			"layers": []
+			}`)
+	req := types.Request{
+		Repo:        "qnib/slot-wiring-test",
+		Tag:         "v1",
+		Profile:     "cpu#generic",
+		User:        "oci",
+		ContentType: "application/vnd.oci.image.manifest.v1+json",
+	}
+	mani, err := mag.StoreManifestUpload(ctx, req, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotZero(t, mani.ID, "pushed manifest should have a non-zero ID")
+
+	// Assertion 1: Slot was created for the triple
+	slot, found, err := mag.Database.SlotGetByTriple(ctx, req.Repo, req.Tag, req.Profile)
+	if err != nil {
+		t.Fatalf("SlotGetByTriple: %v", err)
+	}
+	assert.True(t, found, "Slot should exist for (%s, %s, %s) after StoreManifestUpload", req.Repo, req.Tag, req.Profile)
+	if !found {
+		return
+	}
+	// Note: we do NOT assert slot.ID != 0. Neo4j node IDs start at 0 and
+	// under bs.SetEmptyAll() the graph is freshly wiped, so the Slot may
+	// legitimately get ID 0 in isolated test runs. The fact that
+	// `found == true` is sufficient confirmation that the Slot exists;
+	// the triple-fields assertions below pin down which Slot it is.
+	assert.Equal(t, req.Repo, slot.Repo)
+	assert.Equal(t, req.Tag, slot.Tag)
+	assert.Equal(t, req.Profile, slot.Profile)
+
+	// Assertion 2: HAS_PUSHED edge exists from the Slot to the pushed Manifest
+	hasPushedQ := fmt.Sprintf(
+		`MATCH (s:Slot)-[r:HAS_PUSHED]->(m:Manifest) WHERE id(s) = %d AND id(m) = %d RETURN count(r) AS edgeCount, r.timestamp AS ts`,
+		slot.ID, mani.ID,
+	)
+	res, resFound, err := mag.Database.QueryOne(hasPushedQ)
+	if err != nil {
+		t.Fatalf("HAS_PUSHED query: %v", err)
+	}
+	assert.True(t, resFound, "HAS_PUSHED edge query should return a row")
+	if resFound {
+		edgeCount, _ := res.GetInt64("edgeCount")
+		assert.Equal(t, int64(1), edgeCount, "exactly one HAS_PUSHED edge should exist from slot %d to manifest %d", slot.ID, mani.ID)
+		ts, _ := res.GetInt64("ts")
+		assert.NotZero(t, ts, "HAS_PUSHED edge should carry a non-zero timestamp")
+	}
+
+	// Assertion 3: Slot is idempotent - a second push of the same
+	// manifest creates a second HAS_PUSHED edge (append-only log) but
+	// does not duplicate the Slot node itself.
+	_, err = mag.StoreManifestUpload(ctx, req, buf)
+	if err != nil {
+		t.Fatalf("second StoreManifestUpload: %v", err)
+	}
+	slot2, found2, err := mag.Database.SlotGetByTriple(ctx, req.Repo, req.Tag, req.Profile)
+	if err != nil {
+		t.Fatalf("second SlotGetByTriple: %v", err)
+	}
+	assert.True(t, found2)
+	assert.Equal(t, slot.ID, slot2.ID, "Slot ID should be stable across repushes (MERGE idempotency)")
+	// Count HAS_PUSHED edges on the slot - should be 2 now because
+	// HAS_PUSHED is an append-only log per design D3.
+	countQ := fmt.Sprintf(
+		`MATCH (s:Slot)-[r:HAS_PUSHED]->() WHERE id(s) = %d RETURN count(r) AS edgeCount`,
+		slot.ID,
+	)
+	countRes, countFound, err := mag.Database.QueryOne(countQ)
+	if err != nil {
+		t.Fatalf("HAS_PUSHED count query: %v", err)
+	}
+	if countFound {
+		totalEdges, _ := countRes.GetInt64("edgeCount")
+		assert.Equal(t, int64(2), totalEdges, "re-push should append a second HAS_PUSHED edge (append-only log)")
+	}
+}
+
+// Note: an earlier draft of this test file had a
+// `TestStoreManifestUpload_EmptyProfileSkipsSlot` test that asserted
+// the Slot wiring was a no-op for empty req.Profile. It was removed
+// because the upstream `storeManifestUploadOCIManifest` helper already
+// rejects empty profiles with `profile '' not found` BEFORE reaching
+// the Slot wiring at the bottom of StoreManifestUpload. The defensive
+// `if req.Profile != ""` guard in StoreManifestUpload is therefore
+// belt-and-braces; it stays in place to keep the Slot wiring resilient
+// against any future caller that bypasses storeManifestUploadOCIManifest
+// (e.g., a hypothetical lower-level helper that constructs the manifest
+// directly without going through the profile lookup).

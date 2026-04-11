@@ -13,6 +13,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+const (
+	attrLogSeverity = "log.severity"
+	attrLogMessage  = "log.message"
+)
+
 func ErrorHandler(l *logrus.Entry, span trace.Span, e error, frmt string, a ...any) (err error) {
 	if frmt != "" {
 		msg := fmt.Sprintf(frmt, a...)
@@ -26,8 +31,8 @@ func ErrorHandler(l *logrus.Entry, span trace.Span, e error, frmt string, a ...a
 	if span != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", err.Error()),
+			attribute.String(attrLogSeverity, "error"),
+			attribute.String(attrLogMessage, err.Error()),
 		))
 		span.RecordError(err)
 	}
@@ -75,8 +80,8 @@ func ErrorHandlerWithWWW(w http.ResponseWriter, l *logrus.Entry, span trace.Span
 	if span != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", err.Error()),
+			attribute.String(attrLogSeverity, "error"),
+			attribute.String(attrLogMessage, err.Error()),
 		))
 		span.RecordError(err)
 	}
@@ -103,8 +108,8 @@ func NewError(l *logrus.Entry, span trace.Span, frmt string, a ...any) (err erro
 
 		span.SetStatus(codes.Error, err.Error())
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", err.Error()),
+			attribute.String(attrLogSeverity, "error"),
+			attribute.String(attrLogMessage, err.Error()),
 		))
 		span.RecordError(err)
 	}
@@ -118,8 +123,8 @@ func Info(l *logrus.Entry, span trace.Span, frmt string, a ...any) {
 	msg := fmt.Sprintf(frmt, a...)
 	if span != nil {
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "info"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, "info"),
+			attribute.String(attrLogMessage, msg),
 		))
 	}
 	if l != nil {
@@ -131,8 +136,8 @@ func Debug(l *logrus.Entry, span trace.Span, frmt string, a ...any) {
 	msg := fmt.Sprintf(frmt, a...)
 	if span != nil {
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, "debug"),
+			attribute.String(attrLogMessage, msg),
 		))
 	}
 	if l != nil {
@@ -146,8 +151,8 @@ func DebugOK(l *logrus.Entry, span trace.Span, frmt string, a ...any) {
 	msg := fmt.Sprintf(frmt, a...)
 	if span != nil {
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "debug"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, "debug"),
+			attribute.String(attrLogMessage, msg),
 		))
 		span.SetStatus(codes.Ok, msg)
 	}
@@ -160,8 +165,8 @@ func Warn(l *logrus.Entry, span trace.Span, frmt string, a ...any) {
 	msg := fmt.Sprintf(frmt, a...)
 	if span != nil {
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "warn"),
-			attribute.String("log.message", msg),
+			attribute.String(attrLogSeverity, "warn"),
+			attribute.String(attrLogMessage, msg),
 		))
 	}
 	if l != nil {

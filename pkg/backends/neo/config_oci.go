@@ -39,8 +39,8 @@ func (n Neo) OCIv1ConfigGetInsertDescriptor(ctx context.Context, desc v1.Descrip
 	q := fmt.Sprintf(`CREATE (c:Blob) SET c.digest = "%s", c.size = %d, c.label ="%s", c.type = "config", c.mediaType = "%s"`, desc.Digest.String(), desc.Size, label, desc.MediaType)
 	q += ` RETURN id(c) as configID, c.size AS configSize, c.digest AS configDigest`
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	res, err := n.Execute(q)
 	if err != nil {
@@ -51,8 +51,8 @@ func (n Neo) OCIv1ConfigGetInsertDescriptor(ctx context.Context, desc v1.Descrip
 		err = errors.Wrap(e, "failed to create Config from result")
 		span.SetStatus(codes.Error, err.Error())
 		span.AddEvent("log", trace.WithAttributes(
-			attribute.String("log.severity", "error"),
-			attribute.String("log.message", err.Error()),
+			attribute.String(attrLogSeverity, attrSevError),
+			attribute.String(attrLogMessage, err.Error()),
 		))
 		span.RecordError(err)
 		l.Error(err.Error())

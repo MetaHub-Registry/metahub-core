@@ -34,20 +34,20 @@ func FTOrasConfig() Config {
 	}
 }
 
-// FTOrasManifestData returns a ManifestData representing an ORAS CycloneDX artifact.
+// FTOrasManifest returns a Manifest representing an ORAS CycloneDX artifact.
 // The config mediaType is "application/vnd.cyclonedx", which causes ORAS artifact queries
 // to include this manifest (it is excluded from the container-image config allowlist).
 // Platform is intentionally empty: ORAS artifacts are not platform-specific.
-func FTOrasManifestData() ManifestData {
-	orasManifestData := NewDataTuple("data/manifests/oras/0408af498cb876a98e041b4f93470a3a0b5e1ba587d4edf3be0b20b32073bc75.json")
+func FTOrasManifest() Manifest {
+	orasManifest := NewDataTuple("data/manifests/oras/0408af498cb876a98e041b4f93470a3a0b5e1ba587d4edf3be0b20b32073bc75.json")
 	cfg := FTOrasConfig()
 	up := FTOrasUpstream()
-	return ManifestData{
-		Digest:       string(orasManifestData.Digest),
-		Size:         int64(len(orasManifestData.Data)),
+	return Manifest{
+		Digest:       string(orasManifest.Digest),
+		Size:         int64(len(orasManifest.Data)),
 		MediaType:    "application/vnd.oci.image.manifest.v1+json",
 		ArtifactType: MediaTypeCycloneDX,
-		Data:         orasManifestData.Data,
+		Data:         orasManifest.Data,
 		Config:       cfg,
 		Type:         "ORIGINAL",
 		Upstream:     up,

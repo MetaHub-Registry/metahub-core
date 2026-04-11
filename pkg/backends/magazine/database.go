@@ -37,8 +37,11 @@ type Database interface {
 	UpstreamGetByLayerDigest(ctx context.Context, dig string) (up types.Upstream, found bool, err error)
 	/********* Annotation/Labels *********/
 	ConfigAddLabels(ctx context.Context, cfgID int64, a *types.Annotations) (err error)
-	ManifestAddAnnotations(ctx context.Context, maniID int64, as *types.Annotations) (err error)
-	ManifestAddAnnotation(ctx context.Context, maniID int64, a *types.Annotation) (err error)
+	// ManifestAddAnnotation / ManifestAddAnnotations were dead wrapper-era
+	// helpers removed in Path Z Phase C3 step 2 — they were only ever called
+	// by their own definitions. Annotation attachment to content-leaf
+	// manifests goes through ManifestLinkToAnnotation / the per-push
+	// annotation wiring in ManifestInsert instead.
 	/********* Blob **********/
 	BlobExists(ctx context.Context, up upstream.UpstreamTriple) (found bool, err error)
 	BlobGetByDigest(ctx context.Context, dig string) (b *types.Blob, found bool, err error)
@@ -51,8 +54,8 @@ type Database interface {
 	LayersDeleteUnused(ctx context.Context) (err error)
 	LayerExists(ctx context.Context, up upstream.UpstreamTriple) (found bool, err error)
 	LayerGetUpstream(ctx context.Context, lID int64) (up types.Upstream, found bool, err error)
-	GetLayersForManifestDataID(ctx context.Context, maniDataID int64) (layers []types.Layer, err error)
-	LayerGetByLayerAndManifestDataID(ctx context.Context, layerID, mdID int64) (lyr types.Layer, found bool, err error)
+	GetLayersForManifestID(ctx context.Context, maniDataID int64) (layers []types.Layer, err error)
+	LayerGetByLayerAndManifestID(ctx context.Context, layerID, mdID int64) (lyr types.Layer, found bool, err error)
 	/********* Config **********/
 	ConfigGetByDigest(ctx context.Context, dig string) (cfg types.Config, found bool, err error)
 	ConfigGetByID(ctx context.Context, cfgID int64) (cfg types.Config, found bool, err error)
@@ -69,71 +72,104 @@ type Database interface {
 	OCIv1ConfigGetInsertDescriptor(ctx context.Context, desc v1.Descriptor) (cfg types.Config, found bool, err error)
 	ConfigExists(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error)
 	/********* Manifest **********/
-	ManifestGet(ctx context.Context, upID int64, suffix ...string) (msID int64, found bool, err error)
-	ManifestGetInsert(ctx context.Context, up types.Upstream, as ...types.Annotation) (maniID int64, err error)
-	ManifestGetAll(ctx context.Context) (manis []types.Manifest, err error)
-	ManifestGetByLabel(ctx context.Context, colName string) (mani types.Manifest, found bool, err error)
-	ManifestGetByUpstreamDigest(ctx context.Context, dig string) (mani types.Manifest, found bool, err error)
-	ManifestGetInsertWithDesc(ctx context.Context, up types.Upstream, maniIn manifestlist.ManifestDescriptor) (maniID int64, err error)
-	ManifestGetInsertWithUpstream(ctx context.Context, up types.Upstream) (maniID int64, err error)
-	ManifestGetCreateWithProfile(ctx context.Context, upID int64, prfName string) (man types.Manifest, err error)
-	ManifestGetByRepoTag(ctx context.Context, repo, tag string) (mani types.Manifest, found bool, err error)
-	ManifestGetByID(ctx context.Context, maniID int64) (mani types.Manifest, found bool, err error)
-	ManifestGetByIDWithProfile(ctx context.Context, maniID, prfID int64) (mani types.Manifest, found bool, err error)
+	// ManifestGet was deleted in Path Z Phase C3 step 3. It walked the
+	// wrapper :ManifestWrapper node looking for the one attached to a given
+	// :Upstream, a query that is not meaningful in the slot-centred
+	// model. Only callers were the wrapper-era tests TestManifestCR
+	// and TestManifestWrapperGetInsert, both deleted in the same commit.
+	ManifestWrapperGetInsert(ctx context.Context, up types.Upstream, as ...types.Annotation) (maniID int64, err error)
+	ManifestWrapperGetAll(ctx context.Context) (manis []types.ManifestWrapper, err error)
+	ManifestWrapperGetByLabel(ctx context.Context, colName string) (mani types.ManifestWrapper, found bool, err error)
+	// ManifestGetByUpstreamDigest, ManifestWrapperGetInsertWithUpstream, and
+	// ManifestGetCreateWithProfile were dead wrapper-era helpers with zero
+	// external callers across metalib + metahub-api. Removed in Path Z
+	// Phase C3 step 2. ManifestWrapperGetInsertWithUpstream in particular was a
+	// no-op stub returning (0, nil) from before the wrapper refactor.
+	ManifestWrapperGetInsertWithDesc(ctx context.Context, up types.Upstream, maniIn manifestlist.ManifestDescriptor) (maniID int64, err error)
+	ManifestWrapperGetByRepoTag(ctx context.Context, repo, tag string) (mani types.ManifestWrapper, found bool, err error)
+	ManifestWrapperGetByID(ctx context.Context, maniID int64) (mani types.ManifestWrapper, found bool, err error)
+	ManifestWrapperGetByIDWithProfile(ctx context.Context, maniID, prfID int64) (mani types.ManifestWrapper, found bool, err error)
+	// ManifestExists and ManifestExistsForTagProfile are Slot-agnostic
+	// existence checks — they walk :Index and :Manifest directly
+	// without consulting the legacy :ManifestWrapper wrapper. Renamed from
+	// ManifestWrapperExists / ManifestWrapperExistsForTagProfile in Path Z Phase C3.
 	ManifestExists(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error)
 	ManifestExistsForTagProfile(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error)
-	/// ManifestData
-	ManifestDataGetPulledByRepoTag(ctx context.Context, repo, tag string) (maniData types.ManifestData, found bool, err error)
-	ManifestDataGetIDByDigest(ctx context.Context, dig string) (maniID int64, found bool, err error)
-	ManifestDataInsert(ctx context.Context, mani *types.ManifestData) (maniID int64, err error)
-	ManifestDataGetTypesByRequest(ctx context.Context, req types.Request) (res types.ManifestData, found bool, err error)
-	ManifestDataGetInsert(ctx context.Context, mani *types.ManifestData) (err error)
-	ManifestDataRemove(ctx context.Context, req types.Request) (found bool, err error)
-	ManifestDataGetByCollectionTag(ctx context.Context, colID, colTagID int64) (manis []types.ManifestData, err error)
-	ManifestDataGetAll(ctx context.Context) (manis []types.ManifestData, err error)
-	ManifestDataGetByID(ctx context.Context, mdID int64) (m types.ManifestData, found bool, err error)
-	ManifestDataLinkToOCIv1Config(ctx context.Context, maniID int64, cfg types.Config) (err error)
-	ManifestDataLinkToOCIv1Layer(ctx context.Context, maniID int64, layer types.LayerDesc) (err error)
-	ManifestDataAddAnnotations(ctx context.Context, maniID int64, a *types.Annotations) (err error)
-	ManifestDataLinkToAnnotation(ctx context.Context, maniID, annotationID int64) (err error)
-	ManifestDataGetByRule(ctx context.Context, rule types.Rule) (mds []types.ManifestData, err error)
-	ManifestDataCheckProfile(ctx context.Context, md types.ManifestData, prf types.Profile) (ok bool, err error)
-	ManifestDataCheckProfileAnnotations(ctx context.Context, md types.ManifestData, prf types.Profile) (ok bool, err error)
-	ManifestDataGetPushedByProfile(ctx context.Context, up types.Upstream, prf types.Profile) (m types.ManifestData, found bool, err error)
-	ManifestDataDelete(ctx context.Context, mani types.ManifestData) (err error)
-	ManifestDataGetByDigest(ctx context.Context, dig string) (m types.ManifestData, found bool, err error)
-	ManifestDataLinkToUpstream(ctx context.Context, maniID, upID int64) (err error)
+	/// Manifest
+	ManifestGetPulledByRepoTag(ctx context.Context, repo, tag string) (maniData types.Manifest, found bool, err error)
+	ManifestGetIDByDigest(ctx context.Context, dig string) (maniID int64, found bool, err error)
+	ManifestInsert(ctx context.Context, mani *types.Manifest) (maniID int64, err error)
+	ManifestGetTypesByRequest(ctx context.Context, req types.Request) (res types.Manifest, found bool, err error)
+	ManifestGetInsert(ctx context.Context, mani *types.Manifest) (err error)
+	ManifestRemove(ctx context.Context, req types.Request) (found bool, err error)
+	ManifestGetByCollectionTag(ctx context.Context, colID, colTagID int64) (manis []types.Manifest, err error)
+	// ManifestGetRawByRepoTag returns every Manifest ever pushed to
+	// (repo, tag), walking via the Upstream node's `(repo, tag)` compound
+	// key so that multi-arch push history is fully visible even when the
+	// :ManifestWrapper wrapper's outgoing edge is replaced on subsequent pushes.
+	// This is the raw push-time lookup used by
+	// ComputeManifestlistsForRepoTag — the returned rows only have ID,
+	// Digest, MediaType, Size, Label and the relationship type populated.
+	// An empty result is returned as `([], nil)`; callers treat empty as
+	// "nothing to compute".
+	ManifestGetRawByRepoTag(ctx context.Context, repo, tag string) (manis []types.Manifest, err error)
+	ManifestGetAll(ctx context.Context) (manis []types.Manifest, err error)
+	ManifestGetByID(ctx context.Context, mdID int64) (m types.Manifest, found bool, err error)
+	ManifestLinkToOCIv1Config(ctx context.Context, maniID int64, cfg types.Config) (err error)
+	ManifestLinkToOCIv1Layer(ctx context.Context, maniID int64, layer types.LayerDesc) (err error)
+	ManifestAddAnnotations(ctx context.Context, maniID int64, a *types.Annotations) (err error)
+	ManifestLinkToAnnotation(ctx context.Context, maniID, annotationID int64) (err error)
+	// ManifestsMatchingRule is the umbrella rule-match getter that
+	// unions the three per-flavour walks (annotation shortcut, platform
+	// shortcut, direct anno-null edge) and returns every Manifest
+	// matching the given Rule, deduplicated by Manifest ID. See the
+	// rule-shortcut taxonomy in design decision D5. Path Z task 7.4 —
+	// renamed from ManifestGetByRule.
+	ManifestsMatchingRule(ctx context.Context, rule types.Rule) (mds []types.Manifest, err error)
+	// Phase C3: ManifestGetByRule deprecated shim deleted. Use ManifestsMatchingRule.
+	// AssertRuleShortcutInvariants runs the four cypher queries from
+	// Path Z design decision D5 and returns a slice of human-readable
+	// violation messages — one per way the rule evaluator has drifted
+	// from the three-flavour shortcut taxonomy. An empty slice means
+	// all four invariants hold. Path Z task 1.5.
+	AssertRuleShortcutInvariants(ctx context.Context) (violations []string, err error)
+	ManifestCheckProfile(ctx context.Context, md types.Manifest, prf types.Profile) (ok bool, err error)
+	ManifestCheckProfileAnnotations(ctx context.Context, md types.Manifest, prf types.Profile) (ok bool, err error)
+	ManifestGetPushedByProfile(ctx context.Context, up types.Upstream, prf types.Profile) (m types.Manifest, found bool, err error)
+	ManifestDelete(ctx context.Context, mani types.Manifest) (err error)
+	ManifestGetByDigest(ctx context.Context, dig string) (m types.Manifest, found bool, err error)
+	ManifestLinkToUpstream(ctx context.Context, maniID, upID int64) (err error)
 	////// OS
 
-	ManifestGetOS(ctx context.Context, maniDataID int64) (os types.OS, found bool, err error)
-	ManifestUpsertOS(ctx context.Context, maniDataID int64, os types.OS) (err error)
+	ManifestWrapperGetOS(ctx context.Context, maniDataID int64) (os types.OS, found bool, err error)
+	ManifestWrapperUpsertOS(ctx context.Context, maniDataID int64, os types.OS) (err error)
 	/******* Manifest OCI Transformation ********/
-	ManifestDataGetIDByMediaType(ctx context.Context, msID int64, mediaType string) (maniID int64, found bool, err error)
-	ManifestDataGetRelIDByMediaType(ctx context.Context, msID int64, mediaType []string, relType string) (maniID int64, found bool, err error)
-	ManifestDataGetByProfileMediaType(ctx context.Context, mID, prfID int64, mediaTypes []string) (maniID int64, found bool, err error)
+	ManifestGetIDByMediaType(ctx context.Context, msID int64, mediaType string) (maniID int64, found bool, err error)
+	ManifestGetRelIDByMediaType(ctx context.Context, msID int64, mediaType []string, relType string) (maniID int64, found bool, err error)
+	ManifestGetByProfileMediaType(ctx context.Context, mID, prfID int64, mediaTypes []string) (maniID int64, found bool, err error)
 	/******* ManifestV1 ********/
-	ManifestDataV1GetInsert(ctx context.Context, maniSiID int64, mani v1.Descriptor) (maniID int64, found bool, err error)
-	ManifestDataUpdateDesc(ctx context.Context, maniDataID int64, maniDataV1 v1.Descriptor) (err error)
-	//Manifest_Update(ctx context.Context, maniID int64, mani types.ManifestData) (err error)
-	/********* ManifestList **********/
-	ManifestListInsert(ctx context.Context, ml *types.ManifestList) (err error)
-	ManifestListGetByRequest(ctx context.Context, req types.Request) (ml types.ManifestList, found bool, err error)
-	ManifestListGetByDigest(ctx context.Context, dig string) (ml *types.ManifestList, err error)
+	ManifestV1GetInsert(ctx context.Context, maniSiID int64, mani v1.Descriptor) (maniID int64, found bool, err error)
+	ManifestUpdateDesc(ctx context.Context, maniDataID int64, maniDataV1 v1.Descriptor) (err error)
+	//Manifest_Update(ctx context.Context, maniID int64, mani types.Manifest) (err error)
+	/********* Index **********/
+	ManifestListInsert(ctx context.Context, ml *types.Index) (err error)
+	IndexGetByRequest(ctx context.Context, req types.Request) (ml types.Index, found bool, err error)
+	ManifestListGetByDigest(ctx context.Context, dig string) (ml *types.Index, err error)
 	ManifestListAddAnnotation(ctx context.Context, mlID int64, a *types.Annotation) (err error)
 	ManifestListLinkToAnnotation(ctx context.Context, mlID, annotationID int64) (err error)
 	InsertManifestList(ctx context.Context, dig digest.Digest, mt string, size int) (mlID int64, err error)
-	/********* Collection **********/
-	CollectionGetAll(ctx context.Context) (colls []types.Collection, err error)
+	/********* Repo **********/
+	CollectionGetAll(ctx context.Context) (colls []types.Repo, err error)
 	CollectionGetIDByYaml(ctx context.Context, ycol yamlCfg.ManifestCollection) (colID, colTagID int64, found bool, err error)
 	CollectionCreateByYaml(ctx context.Context, ycol yamlCfg.ManifestCollection) (colID, colTagID int64, err error)
 	CollectionGetCreateUpstreamTriple(ctx context.Context, up types.Upstream, maniIn manifestlist.ManifestDescriptor) (upID, maniID int64, prf types.Profile, err error)
-	CollectionGetByRepoTagWoManifests(ctx context.Context, repo, tag string) (c types.Collection, found bool, err error)
-	CollectionGetByRepoTag(ctx context.Context, repo, tag string) (c types.Collection, found bool, err error)
-	CollectionGetCreateByRepoTag(ctx context.Context, repo, tag string) (c types.Collection, found bool, err error)
+	CollectionGetByRepoTagWoManifests(ctx context.Context, repo, tag string) (c types.Repo, found bool, err error)
+	CollectionGetByRepoTag(ctx context.Context, repo, tag string) (c types.Repo, found bool, err error)
+	CollectionGetCreateByRepoTag(ctx context.Context, repo, tag string) (c types.Repo, found bool, err error)
 	CollectionListingGetByName(ctx context.Context, repoName, colTagName string) (col types.CollectionListing, err error)
 	CollectionListingGetByID(ctx context.Context, colID, colTagID int64) (col types.CollectionListing, err error)
 	CollectionListingGetByRepoLike(ctx context.Context, repo string) (cols []types.CollectionListing, err error)
-	CollectionRemove(ctx context.Context, c types.Collection) (found bool, err error)
+	CollectionRemove(ctx context.Context, c types.Repo) (found bool, err error)
 	CollectionExists(ctx context.Context, up upstream.UpstreamTriple) (found bool, err error)
 	/**** CollectionTag ****/
 	CollectionTagCountRelationships(ctID int64) (count int64, err error)
@@ -142,17 +178,17 @@ type Database interface {
 	/********* Links **********/
 	LinkCollectionTagToManifest(ctx context.Context, colTagID, maniID int64) error // Connects a collection tag to a manifest to indicate it is servered by that collection
 	LinkCollectionToManifest(ctx context.Context, colID, maniID int64) error       // Connects a collection to a manifest to indicate it is servered by that collection
-	ManifestLinkToUpstream(ctx context.Context, maniID, upID int64) error          // Connects a manifest to an upstream
-	ManifestDataLinkToConfig(ctx context.Context, maniID int64, cfg types.Config) error
+	ManifestWrapperLinkToUpstream(ctx context.Context, maniID, upID int64) error        // Connects a manifest to an upstream
+	ManifestLinkToConfig(ctx context.Context, maniID int64, cfg types.Config) error
 	LinkManifestListToCollection(mlID, colID int64) (err error)
 	LinkManifestListToCollectionTag(mlID, colTagID int64) (err error)
 	LinkManifestListToProfile(mlID, prfID int64) (err error)
-	LinkManifestListToManifestData(ctx context.Context, mlID, mdID int64) (err error)
-	ManifestDataLinkToLayer(ctx context.Context, maniDataID int64, layer types.Layer, idx int) error
-	ManifestDataLinkToProfile(ctx context.Context, maniDataID, profileID int64) error
-	LinkManifestDataToPlatform(ctx context.Context, maniDataID, platID int64) error
-	LinkManifestToManifestData(ctx context.Context, maniID, maniDataID int64, props ...string) error
-	LinkManifestDataToProfile(ctx context.Context, mdID, prfID int64, relation string) error
+	LinkManifestListToManifest(ctx context.Context, mlID, mdID int64) (err error)
+	ManifestLinkToLayer(ctx context.Context, maniDataID int64, layer types.Layer, idx int) error
+	ManifestLinkToProfile(ctx context.Context, maniDataID, profileID int64) error
+	LinkManifestToPlatform(ctx context.Context, maniDataID, platID int64) error
+	LinkManifestWrapperToManifest(ctx context.Context, maniID, maniDataID int64, props ...string) error
+	LinkManifestToProfile(ctx context.Context, mdID, prfID int64, relation string) error
 	/****** BlobUpload ******/
 	BlobUploadCreateByOCI(ctx context.Context, i *types.OCIBlobUpload) (err error)
 	BlobUploadUpdateByUUID(ctx context.Context, i *types.OCIBlobUpload) (err error)
@@ -175,12 +211,20 @@ type Database interface {
 	ProfileGetByLabel(ctx context.Context, label string) (p types.Profile, found bool, err error)
 	ProfileGetByID(ctx context.Context, prfID int64) (p types.Profile, found bool, err error)
 	ProfileAuthorizedPushHandler(ctx context.Context, req types.Request) (prf types.Profile, err error)
-	ProfileGetUploadedByViaManifestDataID(ctx context.Context, maniID int64) (p types.Profile, found bool, err error)
-	ProfileGetPulledByViaManifestDataID(ctx context.Context, maniID int64) (p types.Profile, found bool, err error)
+	ProfileGetUploadedByViaManifestID(ctx context.Context, maniID int64) (p types.Profile, found bool, err error)
+	ProfileGetPulledByViaManifestID(ctx context.Context, maniID int64) (p types.Profile, found bool, err error)
 	ProfileUnwindRules(ctx context.Context, prfID, maniID int64) (err error)
 	ProfileGetAnnoEqRules(ctx context.Context, prfID int64) (rs []types.Rule, err error)
+	// ProfileInjectDeterministicAnnotations links every deterministic
+	// ("anno eq") rule of the given profile as an annotation on the given
+	// Manifest. Non-deterministic rules (regex, ne, null, platform rules,
+	// etc.) are silently skipped; the returned counts let the caller observe
+	// how many rules were injected vs skipped. It is the push-time cousin of
+	// ProfileUnwindRules used by Magazine.ComputeManifestlistsForRepoTag.
+	ProfileInjectDeterministicAnnotations(ctx context.Context, prfID, maniDataID int64) (injected int, skipped int, err error)
 	ProfileManifestType(ctx context.Context, maniID int64) (relType string, found bool, err error)
 	ProfileFromManifestID(ctx context.Context, maniID int64) (prfs []types.Profile, err error)
+	ProfileFromManifestWrapperID(ctx context.Context, maniID int64) (prfs []types.Profile, err error)
 	ProfileFromYAML(ctx context.Context, p yamlCfg.Profile) (prf types.Profile, err error)
 	// Rules
 	RuleEvalAnnotationRule(ctx context.Context, r types.Rule) (err error)
@@ -196,9 +240,9 @@ type Database interface {
 	CollectionTagProfilePairGetRegexFiltered(ctx context.Context, repoRegex, tagRegex, prfRegex string) (ctpps []types.CollectionTagProfilePair, err error)
 
 	/**** TEMP ****/
-	EvalUploadProfile(ctx context.Context, mani types.Manifest, origMani types.ManifestData) (err error)
+	EvalUploadProfile(ctx context.Context, mani types.ManifestWrapper, origMani types.Manifest) (err error)
 	/***** BaseLayer *****/
-	ManifestGetAllSystemAnnos(ctx context.Context, maniDataID int64) (as types.Annotations, err error)
+	ManifestWrapperGetAllSystemAnnos(ctx context.Context, maniDataID int64) (as types.Annotations, err error)
 	/***** Manipulations *****/
 	ManipulationGetCreate(ctx context.Context, mp *types.Manipulation) (err error)
 	ManipulationsGetByProfileID(ctx context.Context, prfID int64) (mps []types.Manipulation, err error)
@@ -208,8 +252,8 @@ type Database interface {
 	ManipuCmdsGetByManipulayerID(ctx context.Context, mplyrID int64) (mpcs []types.ManipuCmd, err error)
 	ManipuEnvsGetByManipulayerID(ctx context.Context, mplyrID int64) (mpes []types.ManipuEnv, err error)
 	/**** Artefact ********/
-	ManifestDataLinkToArtifactConfig(ctx context.Context, mdDigest string, cfg v1.Descriptor) (err error)
-	LinkManifestDataToSubject(ctx context.Context, mdDigest string, subId int64) (err error)
+	ManifestLinkToArtifactConfig(ctx context.Context, mdDigest string, cfg v1.Descriptor) (err error)
+	LinkManifestToSubject(ctx context.Context, mdDigest string, subId int64) (err error)
 	LinkSubjectByDigestMediaType(ctx context.Context, refID int64, subDigest, subMediaType string) (err error)
 	ReferrersGetBySubjectDigest(ctx context.Context, dig string) (refs types.ReferrersResponse, err error)
 	/**** ORAS ********/
@@ -218,4 +262,45 @@ type Database interface {
 	OrasArtifactGetByID(ctx context.Context, manifestID int64) (types.OrasArtifact, error)
 	/**** Profiles (all with rules) ********/
 	ProfileGetAll(ctx context.Context) ([]types.Profile, error)
+	/******* Slot (Path Z slot-centred model) ********/
+	// SlotGetCreate MERGEs a Slot for the given triple and its three join
+	// edges to Repo/Tag/Profile. Idempotent on the compound (repo, tag,
+	// profile) key.
+	SlotGetCreate(ctx context.Context, repo, tag, profile string) (types.Slot, error)
+	// SlotGetByTriple is a read-only lookup; found is false when no Slot
+	// exists for the triple.
+	SlotGetByTriple(ctx context.Context, repo, tag, profile string) (s types.Slot, found bool, err error)
+	// SlotGetAllForRepoTag returns every Slot for a (repo, tag) pair
+	// across all profiles. Used by the compute path.
+	SlotGetAllForRepoTag(ctx context.Context, repo, tag string) ([]types.Slot, error)
+	// SlotGetAllForRepo returns every Slot for a repo across all (tag,
+	// profile) pairs. Used by the catalog endpoint.
+	SlotGetAllForRepo(ctx context.Context, repo string) ([]types.Slot, error)
+	// SlotLinkPointsTo replaces the Slot's current POINTS_TO edge with a
+	// new one targeting indexID, archiving the previous target into
+	// HAS_HISTORY atomically. Idempotent: re-linking the same Index is a
+	// no-op.
+	SlotLinkPointsTo(ctx context.Context, slotID, indexID int64) error
+	// SlotAppendPushedManifest appends a timestamped HAS_PUSHED edge from
+	// the Slot to the Manifest. Append-only, never deduplicated.
+	SlotAppendPushedManifest(ctx context.Context, slotID, manifestID int64) error
+	// SlotAppendPushedIndex appends a timestamped HAS_PUSHED_INDEX edge
+	// from the Slot to the Index. Append-only.
+	SlotAppendPushedIndex(ctx context.Context, slotID, indexID int64) error
+	// ManifestGetAllForSlot walks HAS_PUSHED edges from the given Slot
+	// and returns every content-leaf Manifest ever pushed to it,
+	// deduplicated by manifest ID. Used by the compute path as the
+	// Slot-first raw-md fetch. Returns an empty slice if the Slot
+	// exists but has no pushes yet. See design D7.
+	ManifestGetAllForSlot(ctx context.Context, slotID int64) ([]types.Manifest, error)
+	// SetIndexOrigin sets the `origin` property on an :Index node with
+	// first-writer-wins semantics. Path Z task 8.2 / design D8.
+	// Valid origin values are neo.IndexOriginClientPushed and
+	// neo.IndexOriginComputed.
+	SetIndexOrigin(ctx context.Context, indexID int64, origin string) error
+	// LinkIndexReferenceWithOrder MERGEs a :REFERENCES edge with an
+	// `order` property, used by client-pushed indexes to preserve the
+	// descriptor order from the original OCI manifest list. Idempotent.
+	// Path Z task 8.2.
+	LinkIndexReferenceWithOrder(ctx context.Context, indexID, mdID int64, order int) error
 }

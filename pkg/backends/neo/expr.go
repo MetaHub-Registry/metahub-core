@@ -59,7 +59,7 @@ func (n Neo) TraverseExpr(er *types.ExprRes, expr lep.Expression) (bool, error) 
 			if !found {
 				return false, fmt.Errorf("rule with label '%s' not found", rLabel)
 			}
-			mds, err := n.ManifestDataGetByRule(ctx, r)
+			mds, err := n.ManifestsMatchingRule(ctx, r)
 			if err != nil {
 				return false, err
 			}

@@ -82,9 +82,9 @@ func (c Config) ToDescriptor() imgspecv1.Descriptor {
 func (c Config) WriteWWWHeader(w http.ResponseWriter) {
 	b := c.Data
 	size := len(b)
-	w.Header().Set("Content-Type", c.MediaType)
-	w.Header().Set("Content-Length", fmt.Sprint(size))
-	w.Header().Set("Docker-Content-Digest", c.Digest)
+	w.Header().Set(ContentType, c.MediaType)
+	w.Header().Set(ContentLength, fmt.Sprint(size))
+	w.Header().Set(DockerContentDigest, c.Digest)
 	w.Header().Set("Docker-Distribution-API-Version", "registry/2.0")
 	w.Header().Set("Etag", c.Digest)
 }
@@ -92,9 +92,9 @@ func (c Config) WriteWWWHeader(w http.ResponseWriter) {
 func (c Config) WriteWWW(w http.ResponseWriter) {
 	b := c.Data
 	size := len(b)
-	w.Header().Set("Content-Type", c.MediaType)
-	w.Header().Set("Content-Length", fmt.Sprint(size))
-	w.Header().Set("Docker-Content-Digest", c.Digest)
+	w.Header().Set(ContentType, c.MediaType)
+	w.Header().Set(ContentLength, fmt.Sprint(size))
+	w.Header().Set(DockerContentDigest, c.Digest)
 	w.Header().Set("Docker-Distribution-API-Version", "registry/2.0")
 	w.Header().Set("Etag", c.Digest)
 	w.Write(c.Data)

@@ -73,7 +73,7 @@ func (m Minio) BlobStatObj(ctx context.Context, object string) (obj minio.Object
 
 func (m Minio) PutBlob(ctx context.Context, b []byte, dig string) (err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "backends/minio",
+		"package": pkgName,
 		"func":    "PutBlob",
 	})
 	tr := otel.Tracer("neomin")
@@ -137,7 +137,7 @@ func (m Minio) GetBlobBucketName() string {
 
 func (m Minio) BlobGetBytes(ctx context.Context, path string) (b []byte, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "backends/minio",
+		"package": pkgName,
 		"func":    "BlobGetBytes",
 		"path":    path,
 	})
@@ -166,7 +166,7 @@ func (m Minio) BlobGetBytes(ctx context.Context, path string) (b []byte, err err
 
 func (m Minio) BlobGetPreSignedUrl(ctx context.Context, dig string) (psUrl string, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "backends/minio",
+		"package": pkgName,
 		"func":    "BlobGetPreSignedUrl",
 	})
 	bucket := m.GetBlobBucketName()

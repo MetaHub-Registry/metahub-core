@@ -206,7 +206,7 @@ func (n Neo) RulesGetByManifestID(ctx context.Context, maniID int64) (rules type
 	defer span.End()
 	_ = ctx
 	// Platform rules
-	q := `MATCH (m:Manifest)-[]-(md:ManifestData)-[:IS]->(plat:Platform)<-[:TRUE]-(r:Rule)`
+	q := `MATCH (m:ManifestWrapper)-[]-(md:Manifest)-[:HAS_PLATFORM]->(plat:Platform)<-[:TRUE]-(r:Rule)`
 	q += fmt.Sprintf(`WHERE id(m) = %d RETURN %s`, maniID, ruleReturn)
 	utils.Debug(l, span, q)
 	res, err := n.Query(q)
@@ -228,7 +228,7 @@ func (n Neo) RulesGetByManifestID(ctx context.Context, maniID int64) (rules type
 
 func (n Neo) RuleEvalAll(ctx context.Context) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "neo/rule.go",
+		"package": pkgNameRule,
 		"func":    "RuleEvalAll",
 	})
 	defer span.End()
@@ -258,7 +258,7 @@ func (n Neo) RuleEvalAll(ctx context.Context) (err error) {
 
 func (n Neo) RuleEvalPlatformRule(ctx context.Context, r types.Rule) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "neo/rule.go",
+		"package": pkgNameRule,
 		"func":    "RuleEvalPlatformRule",
 	})
 	defer span.End()
@@ -288,7 +288,7 @@ func (n Neo) RuleEvalPlatformRule(ctx context.Context, r types.Rule) (err error)
 
 func (n Neo) RuleEvalAnnotationRuleNULL(ctx context.Context, r types.Rule) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "neo/rule.go",
+		"package": pkgNameRule,
 		"func":    "RuleEvalAnnotationRuleNULL",
 	})
 	defer span.End()
@@ -315,8 +315,8 @@ func (n Neo) RuleEvalAnnotationRuleNULL(ctx context.Context, r types.Rule) (err 
 			return err
 		}
 	}
-	// Check out all ManifestData without an annotation matching the key pattern (regex)
-	q = `MATCH (md:ManifestData) WHERE NOT EXISTS { MATCH (md)-[:HAS_ANNOTATION]->(a:Annotation) WHERE a.key =~ "%s" }`
+	// Check out all Manifest without an annotation matching the key pattern (regex)
+	q = `MATCH (md:Manifest) WHERE NOT EXISTS { MATCH (md)-[:HAS_ANNOTATION]->(a:Annotation) WHERE a.key =~ "%s" }`
 	q += ` RETURN id(md) AS manifestDataID`
 	query = fmt.Sprintf(q, r.Key)
 	utils.Debug(l, span, query)
@@ -329,7 +329,7 @@ func (n Neo) RuleEvalAnnotationRuleNULL(ctx context.Context, r types.Rule) (err 
 		if err != nil {
 			return err
 		}
-		err = n.RuleManifestDataSuccess(ctx, r.ID, mdID)
+		err = n.RuleManifestSuccess(ctx, r.ID, mdID)
 		if err != nil {
 			return err
 		}
@@ -424,7 +424,7 @@ func (n Neo) RuleGetSuccessPlatform(ctx context.Context, r types.Rule) (ps []typ
 
 func (n Neo) RulePlatformSuccess(ctx context.Context, ruleID, platformID int64) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "neo/rule.go",
+		"package": pkgNameRule,
 		"func":    "RulePlatformSuccess",
 	})
 	defer span.End()
@@ -437,13 +437,13 @@ func (n Neo) RulePlatformSuccess(ctx context.Context, ruleID, platformID int64) 
 	return
 }
 
-func (n Neo) RuleManifestDataSuccess(ctx context.Context, ruleID, mdID int64) (err error) {
+func (n Neo) RuleManifestSuccess(ctx context.Context, ruleID, mdID int64) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": "neo/rule.go",
-		"func":    "RuleManifestDataSuccess",
+		"package": pkgNameRule,
+		"func":    "RuleManifestSuccess",
 	})
 	defer span.End()
-	q := `MATCH (r:Rule), (md:ManifestData)`
+	q := `MATCH (r:Rule), (md:Manifest)`
 	q += ` WHERE id(r) = %d AND id(md) = %d`
 	q += ` MERGE (r)-[:%s]->(md)`
 	query := fmt.Sprintf(q, ruleID, mdID, types.RelationSuccess)

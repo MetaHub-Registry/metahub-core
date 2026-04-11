@@ -135,6 +135,25 @@ func (n Neo) Setup(ctx context.Context) (err error) {
 		name string
 		attr []string
 	}
+	// Task 4.4: idempotently drop legacy constraints from the pre-Path-Z
+	// label namespace. These were created before the Collection->Repo,
+	// Manifest->Manifest, ManifestList->Index, and Slot renames, and
+	// will linger as dead weight on upgraded databases unless dropped
+	// explicitly. Fresh test graphs are unaffected.
+	legacyConstraints := []string{
+		"constraint_node_collection",
+		"constraint_node_manifestdata",
+		"constraint_node_manifestlist",
+		"constraint_node_manifest_label",
+		"constraint_node_manifestdata_digest",
+	}
+	for _, name := range legacyConstraints {
+		qDrop := fmt.Sprintf(`DROP CONSTRAINT %s IF EXISTS`, name)
+		if _, e := session.Run(qDrop, input); e != nil {
+			utils.ErrorHandler(l, span, e, fmt.Sprintf("dropping legacy constraint %s", name))
+			l.Fatal()
+		}
+	}
 	nodes := []pair{
 		{
 			name: "Profile",
@@ -146,18 +165,20 @@ func (n Neo) Setup(ctx context.Context) (err error) {
 			name: "Rule",
 			attr: []string{"label"},
 		}, {
-			name: "Collection",
-			attr: []string{"label"},
+			name: "Repo",
+			attr: []string{"repo"},
 		}, {
 			name: "Platform",
 			attr: []string{"label"},
 		}, {
-			name: "Manifest",
+			// Phase C3: wrapper renamed from :Manifest to :ManifestWrapper.
+			name: "ManifestWrapper",
 			attr: []string{"label"},
 		}, {
-			//name: "ManifestData",
-			//attr: []string{"digest", "mediaType"},
-			//}, {
+			// Phase C3: content-leaf renamed from :Manifest to :Manifest.
+			name: "Manifest",
+			attr: []string{"digest"},
+		}, {
 			name: "Config",
 			attr: []string{"digest", "mediaType"},
 		}, {
@@ -166,6 +187,18 @@ func (n Neo) Setup(ctx context.Context) (err error) {
 		}, {
 			name: "ManipuLayer",
 			attr: []string{"label", "rule"},
+		}, {
+			// Task 4.2: :Index digest uniqueness constraint. Every Index
+			// node (client-pushed or computed) is keyed on its OCI
+			// descriptor digest. See task 3.2 for the cypher label rename.
+			name: "Index",
+			attr: []string{"digest"},
+		}, {
+			// Task 4.2: compound :Slot {repo, tag, profile} uniqueness
+			// constraint. The Slot is the primary per-triple anchor in the
+			// slot-centred model; see design §D2 for the invariants.
+			name: "Slot",
+			attr: []string{"repo", "tag", "profile"},
 		},
 	}
 	for _, t := range nodes {

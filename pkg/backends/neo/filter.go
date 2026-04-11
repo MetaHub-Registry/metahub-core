@@ -20,7 +20,7 @@ func (n Neo) GetFilter(f types.Filter) (filterID int64, found bool, err error) {
 	query := fmt.Sprintf(q, f.Name)
 	res, found, err := n.QueryOne(query)
 	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
+		logrus.Errorf(errFailedRunQueryFmt, err)
 		return
 	}
 	if !found {
@@ -214,8 +214,8 @@ func (n Neo) FilterFromResult(res types.Result) (f types.Filter, err error) {
 }
 
 
-func (n Neo) ProfileManifestDataPairGet() (fmdps types.ProfileManifestDataPairs, err error) {
-	q := `MATCH (md:ManifestData)-[:HAS_ANNOTATION]->(Annotation)<-[:TRUE]-(Rule)<-[:HAS_RULE]->(p:Profile)`
+func (n Neo) ProfileManifestPairGet() (fmdps types.ProfileManifestPairs, err error) {
+	q := `MATCH (md:Manifest)-[:HAS_ANNOTATION]->(Annotation)<-[:TRUE]-(Rule)<-[:HAS_RULE]->(p:Profile)`
 	q += ` RETURN DISTINCT`
 	logrus.Fatal("Check manifestData return values!")
 	q += ` ` + manifestDataReturn + `,`
@@ -226,21 +226,21 @@ func (n Neo) ProfileManifestDataPairGet() (fmdps types.ProfileManifestDataPairs,
 		logrus.Error(err)
 		return
 	}
-	pmdps = types.NewProfileManifestDataPairs()
+	pmdps = types.NewProfileManifestPairs()
 	for _, r := range res {
 		p, err := n.ProfileFromResult(r)
 		if err != nil {
 			logrus.Error(err)
 			continue
 		}
-		md, err := n.ManifestDataFromResult(r)
+		md, err := n.ManifestFromResult(r)
 		if err != nil {
 			logrus.Error(err)
 			continue
 		}
-		pmdp := types.ProfileManifestDataPair{
+		pmdp := types.ProfileManifestPair{
 			Profile:      p,
-			ManifestData: md,
+			Manifest: md,
 		}
 		_ = pmdp
 		//fmdps.Pairs = append(fmdps.Pairs, fmdp)

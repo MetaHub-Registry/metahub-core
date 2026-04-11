@@ -57,14 +57,14 @@ func (n Neo) ManipuLayerCreate(ctx context.Context, mpl *types.ManipuLayer) (err
 			return utils.ErrorHandler(l, span, e, FailManipuEnvInsert)
 		}
 	}
-	// Connect to ManifestData
-	if md, found, err := n.ManifestDataGetByDigest(ctx, mpl.Image.Digest); err != nil {
-		return utils.ErrorHandler(l, span, err, FailManifestDataGetByDigest)
+	// Connect to Manifest
+	if md, found, err := n.ManifestGetByDigest(ctx, mpl.Image.Digest); err != nil {
+		return utils.ErrorHandler(l, span, err, FailManifestGetByDigest)
 	} else if !found {
-		return utils.NewError(l, span, "failed to get ManifestData: %s", mpl.Image.Digest)
+		return utils.NewError(l, span, "failed to get Manifest: %s", mpl.Image.Digest)
 	} else {
-		if err = n.ManifestDataLinkToManipulayer(ctx, md.ID, mpl.ID); err != nil {
-			return utils.ErrorHandler(l, span, err, FailManipuLayerLinkToManifestData)
+		if err = n.ManifestLinkToManipulayer(ctx, md.ID, mpl.ID); err != nil {
+			return utils.ErrorHandler(l, span, err, FailManipuLayerLinkToManifest)
 		}
 	}
 	// Connect to Rule
@@ -161,7 +161,7 @@ func (n Neo) ManipuLayerFromResult(ctx context.Context, res types.Result) (mpl t
 	id, _ := res.GetInt64("mplID")
 	label, _ := res.GetStr("mplLabel")
 	rule, _ := res.GetStr("mplRule")
-	md, err := n.ManifestDataForManipuLayerID(ctx, id)
+	md, err := n.ManifestForManipuLayerID(ctx, id)
 	if err != nil {
 		return mpl, utils.ErrorHandler(l, span, err, FailGetLayersForManipuLayerID)
 	}
@@ -247,11 +247,11 @@ func (n Neo) ManipuLayerFromUpstream(ctx context.Context, up types.Upstream, cfg
 	} else {
 		up.ID = upID
 	}
-	md, found, err := n.ManifestDataGetByUpstream(ctx, up)
+	md, found, err := n.ManifestGetByUpstream(ctx, up)
 	if err != nil {
-		return mpl, utils.ErrorHandler(l, span, err, FailManifestDataGetByUpstream)
+		return mpl, utils.ErrorHandler(l, span, err, FailManifestGetByUpstream)
 	} else if !found {
-		return mpl, utils.NewError(l, span, FailManifestDataNotFound)
+		return mpl, utils.NewError(l, span, FailManifestNotFound)
 	}
 	mpes := make([]types.ManipuEnv, 0)
 	for _, e := range cfgMpl.Environment {

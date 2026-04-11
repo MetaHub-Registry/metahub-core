@@ -39,7 +39,7 @@ func (mag Magazine) CacheImageConfigViaUpstream(ctx context.Context, up upstream
 	return
 }
 
-func (mag Magazine) CachImageConfig(ctx context.Context, mani *types.ManifestData) (err error) {
+func (mag Magazine) CachImageConfig(ctx context.Context, mani *types.Manifest) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameConfig,
 		"func":    "CachImageConfig",

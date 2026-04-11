@@ -96,38 +96,38 @@ func CollectionTagGeneric() CollectionTag {
 	return CollectionTag{Tag: "generic"}
 }
 
-func FTGenericCollection() Collection {
+func FTGenericCollection() Repo {
 	ct := CollectionTagGeneric()
-	return Collection{
+	return Repo{
 		Repo:   "qnib/featuretest",
 		Tag:    ct.Tag,
 		ColTag: ct,
-		ManifestLists: []ManifestList{
+		ManifestLists: []Index{
 			FTarmManifestlist(),
 			FTamdManifestlist(),
 		},
 	}
 }
 
-func FTarmCollection() Collection {
+func FTarmCollection() Repo {
 	ct := CollectionTagarm()
-	return Collection{
+	return Repo{
 		Repo:   "qnib/featuretest",
 		Tag:    ct.Tag,
 		ColTag: ct,
-		ManifestLists: []ManifestList{
+		ManifestLists: []Index{
 			FTarmManifestlist(),
 		},
 	}
 }
 
-func FTamd64Collection() Collection {
+func FTamd64Collection() Repo {
 	ct := CollectionTagamd64()
-	return Collection{
+	return Repo{
 		Repo:   "qnib/featuretest",
 		Tag:    ct.Tag,
 		ColTag: ct,
-		ManifestLists: []ManifestList{
+		ManifestLists: []Index{
 			FTamdManifestlist(),
 		},
 	}

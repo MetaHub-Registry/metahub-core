@@ -120,7 +120,7 @@ func TestCollectionListingAll(t *testing.T) {
 		assert.Equal(t, "arm64", cl.ColTag.Tag)
 		assert.Equal(t, "qnib/featuretest", cl.Repo)
 		// Manifests may be empty with standard bootstrap: CREATED relationships are set up
-		// only by the cypher bootstrap path (ManifestDataGetByCollectionTag needs CREATED).
+		// only by the cypher bootstrap path (ManifestGetByCollectionTag needs CREATED).
 		for _, m := range cl.Manifests {
 			assert.NotEmpty(t, m.Digest, "any returned manifest must have a digest")
 		}

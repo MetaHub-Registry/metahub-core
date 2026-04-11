@@ -48,7 +48,7 @@ package magazine
 // 		t.Fatal(err)
 // 	}
 // 	defer TeardownTest(bs, br)
-// 	// Connect Collection/Tag
+// 	// Connect Repo/Tag
 // 	maniID, err := br.GetInt64("manifest:ft_arm64#id")
 // 	if err != nil {
 // 		t.Fatalf("Failed to get manifest:ft_arm64#id: %v", err)
@@ -75,7 +75,7 @@ package magazine
 // 	if e := mag.ComputeManifestlists(ctx); e != nil {
 // 		t.Fatalf("Failed to ComputeManifestlists: %v", e)
 // 	}
-// 	q := `MATCH (ml:ManifestList) RETURN count(ml) as count`
+// 	q := `MATCH (ml:Index) RETURN count(ml) as count`
 // 	if res, _, err := mag.Database.QueryOne(q); err != nil {
 // 		t.Fatalf("Failed to QueryOne: %v", err)
 // 	} else {
@@ -87,7 +87,7 @@ package magazine
 // 		// one for each profile and not a combined one
 // 		assert.Equal(t, 0, count)
 // 	}
-// 	// ManifestDataGetByProfileMediaType
+// 	// ManifestGetByProfileMediaType
 // 	mArm64ID, err := br.GetInt64("manifest:ft_arm64#id")
 // 	if err != nil {
 // 		t.Fatalf("Failed to get manifest:ft_arm64#id: %v", err)
@@ -100,7 +100,7 @@ package magazine
 // 	if err != nil {
 // 		t.Fatalf("Failed to get manifestdata:ft_arm64#id: %v", err)
 // 	}
-// 	if gotMdID, found, err := mag.Database.ManifestDataGetByProfileMediaType(ctx, mArm64ID, prfID, []string{"application/vnd.docker.distribution.manifest.v2+json"}); err != nil {
+// 	if gotMdID, found, err := mag.Database.ManifestGetByProfileMediaType(ctx, mArm64ID, prfID, []string{"application/vnd.docker.distribution.manifest.v2+json"}); err != nil {
 // 		t.Fatal(err)
 // 	} else if !found {
 // 		t.Fatalf("Should be found got:%d", gotMdID)

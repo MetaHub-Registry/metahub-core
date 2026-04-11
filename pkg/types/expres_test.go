@@ -7,8 +7,8 @@ import (
 )
 
 var (
-	md1 = ManifestData{ID: 1}
-	md2 = ManifestData{ID: 2}
+	md1 = Manifest{ID: 1}
+	md2 = Manifest{ID: 2}
 )
 
 func TestExpResSimple(t *testing.T) {
@@ -28,7 +28,7 @@ func TestExpResSimple(t *testing.T) {
 	er.Add("bar", md2)
 	ids = er.GetTrueIDs()
 	assert.Equal(t, 2, len(ids))
-	mds = er.GetTrueManifestData()
+	mds = er.GetTrueManifest()
 	assert.Equal(t, 2, len(mds))
 	mds1 := er.GetManifestdataForRules("foo")
 	assert.Equal(t, 2, len(mds1))

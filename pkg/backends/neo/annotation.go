@@ -109,8 +109,8 @@ func (n Neo) AnnotationEvalRule(ctx context.Context, a types.Annotation) (err er
 	q := fmt.Sprintf(`MATCH (r:Rule) WHERE r.key = "%s" AND r.type = "%s"`, a.Key, types.RuleTypeAnnotation)
 	q += fmt.Sprintf(` RETURN %s`, ruleReturn)
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	res, err := n.Query(q)
 	if err != nil {
@@ -135,13 +135,13 @@ func (n Neo) AnnotationEvalRule(ctx context.Context, a types.Annotation) (err er
 		if a.EvalRule(r) {
 			msg := fmt.Sprintf("rule[%d] %s=%s matched annotation[%d] %s=%s", r.ID, r.Key, r.Value, a.ID, a.Key, a.Value)
 			span.AddEvent("log", trace.WithAttributes(
-				attribute.String("log.severity", "debug"),
-				attribute.String("log.message", msg),
+				attribute.String(attrLogSeverity, attrSevDebug),
+				attribute.String(attrLogMessage, msg),
 			))
 			err = n.RuleAnnotationSuccess(ctx, r.ID, a.ID)
 			if err != nil {
 				span.AddEvent("log", trace.WithAttributes(
-					attribute.String("log.severity", "error"),
+					attribute.String(attrLogSeverity, attrSevError),
 					attribute.String("log.error", err.Error()),
 				))
 				return err

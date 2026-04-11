@@ -172,14 +172,14 @@ func (m Minio) Bootstrap_Scenario(ctx context.Context, bs utils.Bootstrap, br *u
 			if e := m.Setup_Config_FT_arm64(br); e != nil {
 				return errors.Wrapf(e, whileFmrt, `config:`+b)
 			}
-			md = types.ManifestDataDTFeaturetestArm64()
+			md = types.ManifestDTFeaturetestArm64()
 		case "ft_amd64":
 			if e := m.Setup_Config_FT_amd64(br); e != nil {
 				return errors.Wrapf(e, whileFmrt, `config:`+b)
 			}
-			md = types.ManifestDataAmd64Byte()
+			md = types.ManifestAmd64Byte()
 		}
-		// ManifestData
+		// Manifest
 		err = m.ManifestsPutObj(ctx, md.Digest.String(), md.Data)
 		if err != nil {
 			err = errors.Wrapf(err, whileFmrt, `manifestData:`+b)
@@ -405,14 +405,14 @@ func (m Minio) BootstrapTestWithBR(ctx context.Context, bs utils.Bootstrap, br *
 				logrus.Fatal(err)
 			}
 		case "manifestdata:ft_amd64":
-			dt := types.ManifestDataAmd64Byte()
+			dt := types.ManifestAmd64Byte()
 			err = m.ManifestsPutObj(ctx, dt.Digest.String(), dt.Data)
 			if err != nil {
 				err = errors.Wrapf(err, whileFmrt, b)
 				return
 			}
 		case "manifestdata:ft_zen_5c99":
-			dt := types.ManifestDataDTFeaturetestZen()
+			dt := types.ManifestDTFeaturetestZen()
 			err = m.ManifestsPutObj(ctx, dt.Digest.String(), dt.Data)
 			if err != nil {
 				err = errors.Wrapf(err, whileFmrt, b)

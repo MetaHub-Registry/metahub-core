@@ -99,9 +99,9 @@ func TestCollectionTagLinkCollection(t *testing.T) {
 		t.Fatal(e)
 	}
 	assert.Equal(t, 2, len(tags.Tags))
-	// Remove AMD64 ManifestData should remove everything below
+	// Remove AMD64 Manifest should remove everything below
 	//sha256:5bf8eee20fde14eb6e3e924c18fafa4d816e131f315810875136f0438ff7beed
-	//db.ManifestData_Delete(ctx, maniAMD64)
+	//db.Manifest_Delete(ctx, maniAMD64)
 	if err = db.CollectionTagCleanupByID(ctx, ct_got.ID); err != nil {
 		t.Fatal(err)
 	}

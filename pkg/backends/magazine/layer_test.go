@@ -17,7 +17,7 @@ func TestCacheLayers(t *testing.T) {
 	}
 	defer TeardownTest(bs, br)
 	// Test
-	mani := types.ManifestDataFeaturetestArm64
+	mani := types.ManifestFeaturetestArm64
 	err = mag.CacheLayers(ctx, mani)
 	if err != nil {
 		t.Fatal(err)

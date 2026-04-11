@@ -11,7 +11,8 @@ import (
 )
 
 const (
-	pkgNameSqlSecrets = "sqlite/secrets.go"
+	pkgNameSqlSecrets   = "sqlite/secrets.go"
+	errFailDeleteSecret = "Failed to delete secret"
 )
 
 type Secret struct {
@@ -126,12 +127,12 @@ func (s Sqlite) DelSecret(ctx context.Context, uID int, sID string) (err error) 
 	utils.Debug(l, span, "id=%d // user_id=%d", sInt, uID)
 	res, e := stmt.Exec(sInt, uID)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "Failed to delete secret")
+		err = utils.ErrorHandler(l, span, e, errFailDeleteSecret)
 		return
 	}
 	row, e := res.RowsAffected()
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "Failed to delete secret")
+		err = utils.ErrorHandler(l, span, e, errFailDeleteSecret)
 		return
 	}
 
@@ -160,12 +161,12 @@ func (s Sqlite) DelSecretByName(ctx context.Context, uID int, sName string) (err
 	}
 	res, err := stmt.Exec(sName, uID)
 	if err != nil {
-		err = utils.ErrorHandler(l, span, err, "Failed to delete secret")
+		err = utils.ErrorHandler(l, span, err, errFailDeleteSecret)
 		return
 	}
 	row, e := res.RowsAffected()
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "Failed to delete secret")
+		err = utils.ErrorHandler(l, span, e, errFailDeleteSecret)
 		return
 	}
 	if row == 0 {

@@ -14,7 +14,7 @@ func TestExprSimple(t *testing.T) {
 	bs := utils.NewBootstrap()
 	bs.SetYAMLPrefix("../../../misc/yaml")
 	bs.SetEmptyAll()
-	// TODO: Add ManifestData that matches annotation
+	// TODO: Add Manifest that matches annotation
 	bs.AddBootstrap("annotation:foo:bar")
 	bs.AddBootstrap("rules:rules/foo/bar.yaml")
 	//bs.PostTestSleep = 120
@@ -30,6 +30,10 @@ func TestExprSimple(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Path Z task 7.7: every RuleEvalAll call site runs the D5
+	// invariant canary immediately afterward. Catches regressions
+	// where the evaluator mis-classifies a rule's shortcut target.
+	assertRuleShortcutInvariantsOrFatal(t, ctx)
 	/// Now tests
 	er := types.NewExprRes()
 	query := `foo:bar=true`

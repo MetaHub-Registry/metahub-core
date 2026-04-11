@@ -18,51 +18,23 @@ var (
 )
 
 type Sqlite struct {
-	// File is the path to the sqlite database file
-	MhFile  string
-	UsrFile string
-	Sql     *sql.DB
-	//BlobUpload    BlobUpload
-	User          User
-	Secret        Secret
-	Token         Token
-	Profile       Profile
-	Config        Config
-	Layer         Layer
-	Platform      Platform
-	Filter        Filter
-	Upstream      Upstream
-	Manifest      Manifest
-	Collection    Collection
-	CollectionTag CollectionTag
-	ManifestList  ManifestList
+	// MhFile is the path to the sqlite database file
+	MhFile string
+	Sql    *sql.DB
+	User   User
+	Secret Secret
 }
 
 func New(mhFile string, tables string) (s Sqlite, err error) {
 	s = Sqlite{
 		MhFile: mhFile,
-		//BlobUpload:    BlobUpload{},
-		User:          User{},
-		Token:         Token{},
-		Config:        Config{},
-		Profile:       Profile{},
-		Filter:        Filter{},
-		Platform:      Platform{},
-		Upstream:      Upstream{},
-		Layer:         Layer{},
-		Manifest:      Manifest{},
-		Collection:    Collection{},
-		CollectionTag: CollectionTag{},
-		ManifestList:  ManifestList{},
+		User:   User{},
+		Secret: Secret{},
 	}
 	err = s.createDB(mhFile, tables)
 	if err != nil {
 		return s, err
 	}
-	// err = s.createViews(tables)
-	// if err != nil {
-	// 	return s, err
-	// }
 	return
 }
 
@@ -84,36 +56,6 @@ func (s Sqlite) Setup() error {
 
 func (s Sqlite) Query(q string) (*sql.Rows, error) {
 	return db.Query(q)
-}
-
-func (s Sqlite) createViews(tables string) (err error) {
-	if tables == "none" {
-		return
-	}
-	logrus.Debug(">> Create sqlite3 views")
-	tbls := []string{}
-	for _, ele := range strings.Split(tables, ",") {
-		if ele != "" {
-			tbls = append(tbls, ele)
-		}
-	}
-	t := set.FromSlice(tbls)
-	if len(tables) == 0 || t.Has("collections") {
-		if err = s.Collection.CreateViews(); err != nil {
-			return
-		}
-	}
-	if len(tables) == 0 || t.Has("manifests") {
-		if err = s.Manifest.CreateViews(); err != nil {
-			return
-		}
-	}
-	if len(tables) == 0 || t.Has("manifestlists") {
-		if err = s.ManifestList.CreateViews(); err != nil {
-			return
-		}
-	}
-	return
 }
 
 func (s Sqlite) EmptyData(all bool) (err error) {
@@ -174,56 +116,6 @@ func (s *Sqlite) createDB(mhFile string, tables string) (err error) {
 		err = s.Secret.CreateTables()
 		checkErr(err, "while creating secret-tables")
 	}
-	// if len(tables) == 0 || t.Has("blob-upload") {
-	// 	err = s.BlobUpload.CreateTables()
-	// 	checkErr(err, "while creating blob-upload")
-	// }
-
-	// if len(tables) == 0 || t.Has("tokens") {
-	// 	err = s.Token.CreateTables()
-	// 	checkErr(err, "while creating token-tables")
-	// }
-	// if len(tables) == 0 || t.Has("profiles") {
-	// 	err = s.Profile.CreateTables()
-	// 	checkErr(err, "")
-	// }
-
-	// if len(tables) == 0 || t.Has("configs") {
-	// 	err = s.Config.CreateTables()
-	// 	checkErr(err, "")
-	// }
-	// if len(tables) == 0 || t.Has("layers") {
-	// 	err = s.Layer.CreateTables()
-	// 	checkErr(err, "")
-	// }
-	// if len(tables) == 0 || t.Has("upstreams") {
-	// 	err = s.Upstream.CreateTables()
-	// 	checkErr(err, "")
-	// }
-	// if len(tables) == 0 || t.Has("manifests") {
-	// 	err = s.Manifest.CreateTables()
-	// 	checkErr(err, "")
-	// }
-	// if len(tables) == 0 || t.Has("collections") {
-	// 	err = s.Collection.CreateTables()
-	// 	checkErr(err, "")
-	// }
-	// if len(tables) == 0 || t.Has("collection_tags") {
-	// 	err = s.CollectionTag.CreateTables()
-	// 	checkErr(err, "")
-	// }
-	// if len(tables) == 0 || t.Has("manifestlists") {
-	// 	err = s.ManifestList.CreateTables()
-	// 	checkErr(err, "")
-	// }
-	// if len(tables) == 0 || t.Has("profiles") {
-	// 	err = s.Platform.CreateTables()
-	// 	checkErr(err, "")
-	// }
-	// if len(tables) == 0 || t.Has("filters") {
-	// 	err = s.Filter.CreateTables()
-	// 	checkErr(err, "")
-	// }
 	return
 }
 

@@ -12,12 +12,15 @@ import (
 )
 
 const (
-	exeErrMD = "while executing ManifestDataGetByCollectionTag"
+	exeErrMD                 = "while executing ManifestGetByCollectionTag"
+	pkgNameCollListing       = "neo/collection_listing.go"
+	errCollListingFromResult = "while executing CollectionListingFromResult"
+	msgAddManifest           = "Add manifest '%s'"
 )
 
 func (n Neo) CollectionListingGetByID(ctx context.Context, colID, colTagID int64) (col types.CollectionListing, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package":  "neo/collection_listing.go",
+		"package":  pkgNameCollListing,
 		"func":     "CollectionListingGetByID",
 		"colID":    colID,
 		"colTagID": colTagID,
@@ -26,11 +29,11 @@ func (n Neo) CollectionListingGetByID(ctx context.Context, colID, colTagID int64
 	defer span.End()
 	_ = ctx
 	_ = l
-	q := fmt.Sprintf(`MATCH (c:Collection)-[:HAS_TAG]->(t) WHERE id(c) = %d AND id(t) = %d`, colID, colTagID)
+	q := fmt.Sprintf(`MATCH (c:Repo)-[:HAS_TAG]->(t) WHERE id(c) = %d AND id(t) = %d`, colID, colTagID)
 	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
 	span.AddEvent("log", trace.WithAttributes(
-		attribute.String("log.severity", "debug"),
-		attribute.String("log.query", q),
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, q),
 	))
 	l.Debug(q)
 	res, found, err := n.QueryOne(q)
@@ -43,18 +46,18 @@ func (n Neo) CollectionListingGetByID(ctx context.Context, colID, colTagID int64
 	}
 	col, err = CollectionListingFromResult(res)
 	if err != nil {
-		utils.ErrorHandler(l, span, err, "while executing CollectionListingFromResult")
+		utils.ErrorHandler(l, span, err, errCollListingFromResult)
 		return
 	}
 	// Fill Manifests
-	manis, err := n.ManifestDataGetByCollectionTag(ctx, col.ID, col.ColTag.ID)
+	manis, err := n.ManifestGetByCollectionTag(ctx, col.ID, col.ColTag.ID)
 	if err != nil {
 		utils.ErrorHandler(l, span, err, exeErrMD)
 		return
 	}
 	for _, m := range manis {
 		k := m.Label
-		utils.Debug(l, span, fmt.Sprintf("Add manifest '%s'", k))
+		utils.Debug(l, span, fmt.Sprintf(msgAddManifest, k))
 		col.Manifests[k] = m
 		col.ManifestCount++
 	}
@@ -63,7 +66,7 @@ func (n Neo) CollectionListingGetByID(ctx context.Context, colID, colTagID int64
 
 func (n Neo) CollectionListingGetByName(ctx context.Context, repoName, colTagName string) (col types.CollectionListing, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "neo/collection_listing.go",
+		"package": pkgNameCollListing,
 		"func":    "CollectionListingGetByName",
 		"repo":    repoName,
 		"tag":     colTagName,
@@ -71,7 +74,7 @@ func (n Neo) CollectionListingGetByName(ctx context.Context, repoName, colTagNam
 	ctx, span := tracer.Start(ctx, "CollectionListingGetByName")
 	defer span.End()
 	_ = ctx
-	q := fmt.Sprintf(`MATCH (c:Collection)-[:HAS_TAG]->(t) WHERE c.repo = "%s" AND t.name = "%s"`, repoName, colTagName)
+	q := fmt.Sprintf(`MATCH (c:Repo)-[:HAS_TAG]->(t) WHERE c.repo = "%s" AND t.name = "%s"`, repoName, colTagName)
 	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
 	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)
@@ -83,20 +86,20 @@ func (n Neo) CollectionListingGetByName(ctx context.Context, repoName, colTagNam
 	}
 	col, err = CollectionListingFromResult(res)
 	if err != nil {
-		utils.ErrorHandler(l, span, err, "while executing CollectionListingFromResult")
+		utils.ErrorHandler(l, span, err, errCollListingFromResult)
 		return
 	}
 	msg := fmt.Sprintf("CL > %d / %d", col.ID, col.ColTag.ID)
 	utils.Debug(l, span, msg)
 	// Fill Manifests
-	manis, err := n.ManifestDataGetByCollectionTag(ctx, col.ID, col.ColTag.ID)
+	manis, err := n.ManifestGetByCollectionTag(ctx, col.ID, col.ColTag.ID)
 	if err != nil {
 		utils.ErrorHandler(l, span, err, exeErrMD)
 		return
 	}
 	for _, m := range manis {
 		k := m.Label //fmt.Sprintf("%s/%s:%s@%s-%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag, m.Profile, m.Platform.Arch)
-		utils.Debug(l, span, fmt.Sprintf("Add manifest '%s'", k))
+		utils.Debug(l, span, fmt.Sprintf(msgAddManifest, k))
 		col.Manifests[k] = m
 		col.ManifestCount++
 	}
@@ -105,7 +108,7 @@ func (n Neo) CollectionListingGetByName(ctx context.Context, repoName, colTagNam
 
 func (n Neo) CollectionListingGetByRepoLike(ctx context.Context, repo string) (cols []types.CollectionListing, err error) {
 	l := logrus.WithFields(logrus.Fields{
-		"package": "neo/collection_listing.go",
+		"package": pkgNameCollListing,
 		"func":    "CollectionListingGetByRepoLike",
 		"repo":    repo,
 	})
@@ -114,14 +117,14 @@ func (n Neo) CollectionListingGetByRepoLike(ctx context.Context, repo string) (c
 	span.SetAttributes(
 		attribute.Key("repo").String(repo),
 	)
-	// Only return Collection+Tag pairs that have at least one container-image manifest.
+	// Only return Repo+Tag pairs that have at least one container-image manifest.
 	// This prevents ORAS-only repos from appearing in the collections listing even though
-	// they share a Collection node in the graph.
-	// Note: container image ManifestData uses ORIGINAL/PARSED relationships (not CREATED),
-	// so we match any relationship type between Manifest and ManifestData.
-	q := `MATCH (c:Collection)-[:HAS_TAG]->(t) WHERE c.repo =~ "^%s.*"`
+	// they share a Repo node in the graph.
+	// Note: container image Manifest uses ORIGINAL/PARSED relationships (not CREATED),
+	// so we match any relationship type between Manifest and Manifest.
+	q := `MATCH (c:Repo)-[:HAS_TAG]->(t) WHERE c.repo =~ "^%s.*"`
 	q += ` AND EXISTS {`
-	q += `   MATCH (c)-[:UPSTREAM]->(m)-[]-(md:ManifestData)-[cfgRel]->(cfg:Blob)`
+	q += `   MATCH (c)-[:UPSTREAM]->(m)-[]-(md:Manifest)-[cfgRel]->(cfg:Blob)`
 	q += `   WHERE cfg.type = "config" AND cfg.mediaType IN ` + containerImageConfigFilter()
 	q += ` }`
 	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
@@ -135,18 +138,18 @@ func (n Neo) CollectionListingGetByRepoLike(ctx context.Context, repo string) (c
 	for _, r := range res {
 		col, err := CollectionListingFromResult(r)
 		if err != nil {
-			utils.ErrorHandler(l, span, err, "while executing CollectionListingFromResult")
+			utils.ErrorHandler(l, span, err, errCollListingFromResult)
 			return cols, err
 		}
 		// Fill Manifests
-		manis, e := n.ManifestDataGetByCollectionTag(ctx, col.ID, col.ColTag.ID)
+		manis, e := n.ManifestGetByCollectionTag(ctx, col.ID, col.ColTag.ID)
 		if e != nil {
 			utils.ErrorHandler(l, span, err, exeErrMD)
 			return cols, e
 		}
 		for _, m := range manis {
 			k := fmt.Sprintf("%s/%s:%s-%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag, m.Platform.Arch)
-			utils.Debug(l, span, fmt.Sprintf("Add manifest '%s'", k))
+			utils.Debug(l, span, fmt.Sprintf(msgAddManifest, k))
 			col.Manifests[k] = m
 			col.ManifestCount++
 		}

@@ -25,13 +25,12 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	defer neoC.Terminate(ctx)
-	//jeager
+	// Container cleanup is done explicitly before os.Exit at the end
+	// (defers don't run after os.Exit)
 	jeagerC, err := tracing.SetupJeager(ctx)
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	defer jeagerC.Terminate(ctx)
 	trEnd := fmt.Sprintf("http://%s/api/traces", jeagerC.ThriftURI)
 	logrus.Infof("Tracing endpoint '%s': %s", svcName, trEnd)
 	tr, err := tracing.InitTracer(svcName, trEnd)
@@ -69,12 +68,16 @@ func TestMain(m *testing.M) {
 		logrus.Fatal(err)
 	}
 	code := m.Run()
-	switch code {
-	case 0:
-		logrus.Info("Tests OK")
-	default:
-		logrus.Infof("Tests FAILED with code %d", code)
+	// Shut down the tracer provider to flush spans and stop goroutines.
+	// This prevents the otel batch span processor goroutine leak that
+	// causes exit code 1 even when all tests pass.
+	if err := tracing.Shutdown(ctx); err != nil {
+		logrus.Warnf("tracer shutdown: %v", err)
 	}
+	// Explicitly terminate containers before os.Exit (defers won't run)
+	neoC.Terminate(ctx)
+	jeagerC.Terminate(ctx)
+	os.Exit(code)
 }
 
 func SetupTest(ctx context.Context, bs utils.Bootstrap) (br utils.BootstrapResult, err error) {

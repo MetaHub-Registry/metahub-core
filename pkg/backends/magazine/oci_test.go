@@ -71,7 +71,7 @@ func TestCreateOCIv1PulledByPrf(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	ociManiData, zen3Found, e := mag.ManifestDataGetByID(ctx, ociManiDataID)
+	ociManiData, zen3Found, e := mag.ManifestGetByID(ctx, ociManiDataID)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -190,6 +190,8 @@ func TestOCICreateBaseManifestForGlow(t *testing.T) {
 	if e := mag.Database.RuleEvalAll(ctx); e != nil {
 		t.Fatal(e)
 	}
+	// Path Z task 7.7: D5 invariant canary after every RuleEvalAll.
+	assertRuleShortcutInvariantsOrFatal(t, ctx)
 	// Actual test
 	prf, err := mag.getProfile(ctx, br, "glow#1.5.1-arm64")
 	if err != nil {
@@ -207,7 +209,7 @@ func TestOCICreateBaseManifestForGlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ociManiData, found, e := mag.ManifestDataGetByID(ctx, ociManiDataID); e != nil {
+	if ociManiData, found, e := mag.ManifestGetByID(ctx, ociManiDataID); e != nil {
 		t.Fatal(e)
 	} else if !found {
 		t.Fatal("Did not find OCI manifestdata")

@@ -12,7 +12,7 @@ type CatalogResponse struct {
 }
 
 func (r CatalogResponse) WriteWWW(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(ContentType, "application/json")
 	b, err := r.ToBytes()
 	if err != nil {
 		logrus.Errorf("failed to marshal manifest: %v", err)

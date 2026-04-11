@@ -220,6 +220,13 @@ func TestRuleEvalAllNew(t *testing.T) {
 	if e := db.RuleEvalAnnotationRule(ctx, rl); e != nil {
 		t.Fatal(e)
 	}
+	// Path Z task 7.7: D5 invariant canary. Even though this test
+	// exercises the annotation-rule eval path directly (not RuleEvalAll),
+	// the taxonomy invariant still applies — an anno-null rule must
+	// materialise TRUE edges to :Manifest, an anno eq/ne/re rule to
+	// :Annotation. A regression here would surface as an invariant
+	// violation.
+	assertRuleShortcutInvariantsOrFatal(t, ctx)
 	//
 	prfID, err := br.GetInt64("profile:cpu:generic#id")
 	if err != nil {
@@ -235,16 +242,16 @@ func TestRuleEvalAllNew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	md, found, err := db.ManifestDataGetByID(ctx, maniDataID)
+	md, found, err := db.ManifestGetByID(ctx, maniDataID)
 	if err != nil {
 		t.Fatal(err)
 	} else if !found {
-		t.Fatal("ManifestData not found")
+		t.Fatal("Manifest not found")
 	}
-	if ok, err := db.ManifestDataMatchesProfile(ctx, md, prf); err != nil {
+	if ok, err := db.ManifestMatchesProfile(ctx, md, prf); err != nil {
 		t.Fatal(err)
 	} else if !ok {
-		t.Fatal("ManifestData does not match Profile but should")
+		t.Fatal("Manifest does not match Profile but should")
 	}
 
 }
@@ -277,6 +284,8 @@ func TestRuleEvalAll(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Path Z task 7.7: D5 invariant canary after every RuleEvalAll.
+	assertRuleShortcutInvariantsOrFatal(t, ctx)
 	// Check rules
 	fbR, found, err := db.RuleGetByLabel(ctx, "foo:bar")
 	if err != nil || !found {

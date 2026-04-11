@@ -32,16 +32,16 @@ func (n Neo) Bootstrap_Scenario(ctx context.Context, bs utils.Bootstrap, br *uti
 		_, b, _ = strings.Cut(b, "manifest_")
 		var cfg types.Config
 		var up types.Upstream
-		var md types.ManifestData
+		var md types.Manifest
 		switch b {
 		case "ft_amd64":
 			cfg = types.FTamd64Config()
 			up = types.FTamd64Upstream()
-			md = types.FTamdManifestData()
+			md = types.FTamdManifest()
 		case "ft_arm64":
 			cfg = types.FTarmConfig()
 			up = types.FTarm64Upstream()
-			md = types.FTarmManifestData()
+			md = types.FTarmManifest()
 		default:
 			return fmt.Errorf("unknown scenario manifest '%s'", b)
 		}
@@ -115,7 +115,7 @@ func (n Neo) Bootstrap_Scenario(ctx context.Context, bs utils.Bootstrap, br *uti
 			return fmt.Errorf("unknown scenario manifest '%s'", b)
 		}
 		// bs.AddBootstrap("manifestdata:ft_amd64")
-		if e := n.Setup_ManifestData(ctx, br, md, b); e != nil {
+		if e := n.Setup_Manifest(ctx, br, md, b); e != nil {
 			return errors.Wrapf(e, whileFmrt, "manifestdata", b)
 		}
 
@@ -148,11 +148,11 @@ func (n Neo) Bootstrap_Scenario_OrasCyclonedx(ctx context.Context, bs utils.Boot
 	if e := n.Setup_Manifest_FT_oras_cyclonedx(ctx, br); e != nil {
 		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: manifest")
 	}
-	// ManifestData (links config + upstream; no platform)
-	if e := n.Setup_OrasManifestData(ctx, br, types.FTOrasManifestData(), label); e != nil {
+	// Manifest (links config + upstream; no platform)
+	if e := n.Setup_OrasManifest(ctx, br, types.FTOrasManifest(), label); e != nil {
 		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: manifestdata")
 	}
-	// Collection
+	// Repo
 	if e := n.Setup_Collection_FT_oras_cyclonedx(ctx, br); e != nil {
 		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: collection")
 	}

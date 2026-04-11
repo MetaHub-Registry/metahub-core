@@ -18,10 +18,10 @@ const (
 	failInsMani                     = "failed to insert manifest"
 	failInsManiData                 = "failed to insert manifestData"
 	failGetMani                     = "Failed to get manifest"
-	FailLinkManifestDataToPlatform  = "Failed to link manifestData to platform"
+	FailLinkManifestToPlatform  = "Failed to link manifestData to platform"
 	FailLinkCollectionToPlatform    = "failed to link collection to manifest"
 	FailLinkCollectionTagToPlatform = "failed to link collection tag to manifest"
-	FailLinkProfileToManifestData   = "failed to link profile and manifestdata"
+	FailLinkProfileToManifest   = "failed to link profile and manifestdata"
 	FailUnwind                      = "failed to unwind profile"
 	FailCreateOCIv1Manifest         = "failed to create OCIv1 manifest"
 	FailCacheUpstream               = "failed to cache upstream"
@@ -152,7 +152,7 @@ func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string) (blo
 		if e != nil {
 			return utils.ErrorHandler(l, span, e, "while Minio.PutConfig")
 		}
-		maniData, e := mag.Minio.NewManifestDataFromBytes(ctx, b)
+		maniData, e := mag.Minio.NewManifestFromBytes(ctx, b)
 		if e != nil {
 			return utils.ErrorHandler(l, span, e, "while Minio.NewManifestFromBytes")
 		}
@@ -172,7 +172,7 @@ func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string) (blo
 		if e != nil {
 			return utils.ErrorHandler(l, span, e, FailLinkManifestToPlatform)
 		}
-		// Create Collection
+		// Create Repo
 		col, _, e := mag.Database.CollectionGetCreateByRepoTag(ctx, req.Repo, req.Tag)
 		if e != nil {
 			return utils.ErrorHandler(l, span, e, "failed to get collection")
@@ -194,16 +194,16 @@ func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string) (blo
 			utils.Debug(l, span, "Layer [%d] ID: %d", idx, lID)
 			// TODO: Do we need to pull them here?
 		}
-		maniDataID, e := mag.NeoInsertManifestData(ctx, maniID, maniData, "PULLED_BY")
+		maniDataID, e := mag.NeoInsertManifest(ctx, maniID, maniData, "PULLED_BY")
 		if e != nil {
 			return utils.ErrorHandler(l, span, e, failInsManiData)
 		}
-		l.Warnf("ManifestData ID: %d", maniDataID)
+		l.Warnf("Manifest ID: %d", maniDataID)
 
 		utils.Debug(l, span, "Insert Config %d", cfgID)
-		e = mag.Database.LinkManifestDataToProfile(ctx, maniDataID, prf.ID, "PULLED_BY")
+		e = mag.Database.LinkManifestToProfile(ctx, maniDataID, prf.ID, "PULLED_BY")
 		if e != nil {
-			return utils.ErrorHandler(l, span, e, FailLinkProfileToManifestData)
+			return utils.ErrorHandler(l, span, e, FailLinkProfileToManifest)
 		}
 		// Unwind Profile
 		e = mag.Database.ProfileUnwindRules(ctx, prf.ID, maniDataID)
@@ -211,7 +211,7 @@ func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string) (blo
 			return utils.ErrorHandler(l, span, e, FailUnwind)
 		}
 		// Create OCI Manifest
-		mani, _, e := mag.Database.ManifestGetByIDWithProfile(ctx, maniID, prf.ID)
+		mani, _, e := mag.Database.ManifestWrapperGetByIDWithProfile(ctx, maniID, prf.ID)
 		if e != nil {
 			return utils.ErrorHandler(l, span, e, failGetMani)
 		}
@@ -225,7 +225,7 @@ func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string) (blo
 			return utils.ErrorHandler(l, span, e, FailUnwind)
 		}
 
-		// Compute ManifestList?
+		// Compute Index?
 		e = mag.ComputeManifestlists(ctx)
 		if e != nil {
 			return utils.ErrorHandler(l, span, e, "failed to ComputeManifestlists")
@@ -234,7 +234,7 @@ func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string) (blo
 	}
 */
 
-func (mag Magazine) upstreamBlobInsertGeneric(ctx context.Context, req types.Request, col types.Collection, ups types.Upstream, maniData types.ManifestData) (err error) {
+func (mag Magazine) upstreamBlobInsertGeneric(ctx context.Context, req types.Request, col types.Repo, ups types.Upstream, maniData types.Manifest) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameUp,
 		"func":    "upstreamBlob_InsertGeneric",
@@ -244,72 +244,51 @@ func (mag Magazine) upstreamBlobInsertGeneric(ctx context.Context, req types.Req
 		"digest":  ups.Digest.String(),
 	})
 	defer span.End()
-	// FIXME: Is that correct? I reckon we need to build from ManifestData.Labels?
-	as := maniData.Annotations.ToSlice()
-	// 1. Insert Manifest
-	maniID, e := mag.Database.ManifestGetInsert(ctx, ups, as...)
+	// Phase C3: wrapper :ManifestWrapper creation + Collection/Tag linking removed.
+	// The Manifest was already inserted and linked to Slot in
+	// upstreamInsertGeneric. Here we just link to platform and profile,
+	// then trigger compute.
+
+	// Link Manifest to Platform
+	e := mag.NeoLinkManifestToPlatform(ctx, maniData.ID, maniData.Platform.ID)
 	if e != nil {
-		return utils.ErrorHandler(l, span, e, failInsMani)
-	}
-	// 3. Link Collection to Manifest
-	e = mag.Database.LinkCollectionToManifest(ctx, col.ID, maniID)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, FailLinkCollectionToPlatform)
-	}
-	// 4. Link CollectionTag to Manifest
-	e = mag.Database.LinkCollectionTagToManifest(ctx, col.ColTag.ID, maniID)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, FailLinkCollectionTagToPlatform)
-	}
-	// 5. Insert Manifest Data
-	maniDataID, e := mag.NeoInsertManifestData(ctx, maniID, maniData, maniData.Type)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, failInsManiData)
-	}
-	l.Warnf("ManifestData ID: %d", maniDataID)
-	// 2. Link ManifestData to Platform
-	e = mag.NeoLinkManifestDataToPlatform(ctx, maniDataID, maniData.Platform.ID)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, FailLinkManifestDataToPlatform)
+		return utils.ErrorHandler(l, span, e, FailLinkManifestToPlatform)
 	}
 
-	// 6 Link Manifest Data to generic profile
-	//// 6.1 Get 'generic' profile
-
+	// Get 'generic' profile
 	prf, prfFound, e := mag.Database.ProfileGetByLabel(ctx, prfGenericLabel)
 	if e != nil {
-		return utils.ErrorHandler(l, span, e, "failed to get collection")
+		return utils.ErrorHandler(l, span, e, "failed to get profile")
 	}
 	if !prfFound {
 		return utils.NewError(l, span, "profile '%s' not found", prfGenericLabel)
 	}
 	utils.Debug(l, span, "Found profile '%s'", prfGenericLabel)
-	//// 6.2 Link
-	e = mag.Database.LinkManifestDataToProfile(ctx, maniDataID, prf.ID, "PULLED_BY")
+
+	// Link Manifest to Profile
+	e = mag.Database.LinkManifestToProfile(ctx, maniData.ID, prf.ID, "PULLED_BY")
 	if e != nil {
-		return utils.ErrorHandler(l, span, e, FailLinkProfileToManifestData)
+		return utils.ErrorHandler(l, span, e, FailLinkProfileToManifest)
 	}
-	// Create generic OCI Manifest (no manipulations)
-	mani, maniFound, e := mag.Database.ManifestGetByID(ctx, maniID)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, "Failed to get manifest by ID")
+
+	// Phase C3: pass Manifest annotations directly to OCICreateBaseManifest
+	// (no wrapper read needed — OS annotations are on maniData.Annotations).
+	syntheticMani := types.ManifestWrapper{
+		Upstream:    ups,
+		Manifests:   []types.Manifest{maniData},
+		Annotations: maniData.Annotations,
 	}
-	if !maniFound {
-		return utils.NewError(l, span, "manifest with ID '%d' not found", maniID)
-	}
-	ociManiID, e := mag.OCICreateBaseManifest(ctx, mani, maniData, 0)
+	_, e = mag.OCICreateBaseManifest(ctx, syntheticMani, maniData, 0)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, FailCreateOCIv1Manifest)
 	}
 
-	e = mag.ComputeManifestlistsForManiProfile(ctx, ociManiID, prf.ID)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, "Failed to compute ManifestList manifest by ID")
-	}
+	// Phase C3: trigger compute via the Slot-based path (same as push path)
+	mag.wireSlotOnPush(ctx, l, span, req, maniData.ID)
 	return
 }
 
-func (mag Magazine) upstreamBlobInsertProfile(ctx context.Context, req types.Request, col types.Collection, ups types.Upstream, maniData types.ManifestData) (err error) {
+func (mag Magazine) upstreamBlobInsertProfile(ctx context.Context, req types.Request, col types.Repo, ups types.Upstream, maniData types.Manifest) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameUp,
 		"func":    "upstreamBlobInsertProfile",
@@ -319,78 +298,53 @@ func (mag Magazine) upstreamBlobInsertProfile(ctx context.Context, req types.Req
 		"digest":  ups.Digest.String(),
 	})
 	defer span.End()
+	// Phase C3: wrapper operations removed. Profile lookup and linking
+	// still needed for Slot triple and profile unwind.
 	prf, prfFound, e := mag.Database.ProfileGetByLabel(ctx, req.Profile)
 	if e != nil {
-		return utils.ErrorHandler(l, span, e, "failed to create collection")
+		return utils.ErrorHandler(l, span, e, "failed to get profile")
 	}
 	if !prfFound {
 		return utils.NewError(l, span, "profile '%s' not found", req.Profile)
 	}
-	// 1. Insert Manifest
-	maniID, e := mag.Database.ManifestGetInsert(ctx, ups)
+
+	// Link Manifest to Profile
+	e = mag.Database.LinkManifestToProfile(ctx, maniData.ID, prf.ID, "PULLED_BY")
 	if e != nil {
-		return utils.ErrorHandler(l, span, e, failInsMani)
+		return utils.ErrorHandler(l, span, e, FailLinkProfileToManifest)
 	}
-	// 3. Link Collection to Manifest
-	e = mag.Database.LinkCollectionToManifest(ctx, col.ID, maniID)
+	// Link Manifest to Platform
+	e = mag.NeoLinkManifestToPlatform(ctx, maniData.ID, maniData.Platform.ID)
 	if e != nil {
-		return utils.ErrorHandler(l, span, e, FailLinkCollectionToPlatform)
-	}
-	// 4. Link CollectionTag to Manifest
-	e = mag.Database.LinkCollectionTagToManifest(ctx, col.ColTag.ID, maniID)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, FailLinkCollectionTagToPlatform)
-	}
-	// 5. Insert Manifest Data
-	maniDataID, e := mag.NeoInsertManifestData(ctx, maniID, maniData, "PULLED_BY")
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, failInsManiData)
-	}
-	e = mag.Database.LinkManifestDataToProfile(ctx, maniDataID, prf.ID, "PULLED_BY")
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, FailLinkProfileToManifestData)
-	}
-	// 2. Link Manifest to Platform
-	e = mag.NeoLinkManifestDataToPlatform(ctx, maniDataID, maniData.Platform.ID)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, FailLinkManifestDataToPlatform)
+		return utils.ErrorHandler(l, span, e, FailLinkManifestToPlatform)
 	}
 
-	// TODO: Unwind Profile
-	/*
-		e = mag.Database.ProfileUnwindRules(ctx, prf.ID, maniDataID)
-		if e != nil {
-			err = errors.Wrap(e, FailUnwind)
-			l.Error(err)
-			span.RecordError(err)
-			return
-		}
-	*/
-	// Create OCI Manifest
-	mani, _, e := mag.Database.ManifestGetByIDWithProfile(ctx, maniID, prf.ID)
-	if e != nil {
-		// here!
-		return utils.ErrorHandler(l, span, e, failGetMani)
+	// Create OCI v1 manifest from the upstream manifest. Phase C3:
+	// construct a synthetic ManifestWrapper (wrapper type) from the content-leaf
+	// data so OCICreateBaseManifest can still operate. This shim will be
+	// removed when OCICreateBaseManifest is refactored to accept Slot/Manifest.
+	syntheticMani := types.ManifestWrapper{
+		Upstream:    ups,
+		Manifests:   []types.Manifest{maniData},
+		Annotations: maniData.Annotations,
 	}
-
-	ociDataID, e := mag.CreateOCIv1ForProfile(ctx, mani, maniData, prf)
+	ociDataID, e := mag.CreateOCIv1ForProfile(ctx, syntheticMani, maniData, prf)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, FailCreateOCIv1Manifest)
 	}
+
+	// Profile unwind rules
 	e = mag.Database.ProfileUnwindRules(ctx, prf.ID, ociDataID)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, FailUnwind)
 	}
 
-	// Compute ManifestList?
-	e = mag.ComputeManifestlists(ctx)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, "failed to ComputeManifestlists")
-	}
+	// Phase C3: trigger compute via the Slot-based path
+	mag.wireSlotOnPush(ctx, l, span, req, maniData.ID)
 	return
 }
 
-func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request, dig digest.Digest) (col types.Collection, ups types.Upstream, maniData types.ManifestData, err error) {
+func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request, dig digest.Digest) (col types.Repo, ups types.Upstream, maniData types.Manifest, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameUp,
 		"func":    "upstreamInsertGeneric",
@@ -401,7 +355,9 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 		"digest":  dig.String(),
 	})
 	defer span.End()
-	// Get Collection
+	// Phase C3: keep CollectionGetCreateByRepoTag for backward compat
+	// (the return value is used by callers). The wrapper :ManifestWrapper node
+	// is no longer created — Slot-based attribution replaces it.
 	col, _, e := mag.Database.CollectionGetCreateByRepoTag(ctx, req.Repo, req.Tag)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to get/create collection")
@@ -414,27 +370,16 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 		Digest:  dig,
 		Profile: req.Profile,
 	}
-	// 1. Insert Upstream/Mani into Graph
+	// 1. Insert Upstream into Graph
 	ups.ID, e = mag.NeoInsertUpstream(ctx, ups)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "while inserting upstream")
 		return
 	}
-	maniID, e := mag.Database.ManifestGetInsert(ctx, ups)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to get/insert manifest")
-		return
-	}
-	e = mag.Database.LinkCollectionToManifest(ctx, col.ID, maniID)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to link collection to manifest")
-		return
-	}
-	e = mag.Database.LinkCollectionTagToManifest(ctx, col.ColTag.ID, maniID)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to link collectionTag to manifest")
-		return
-	}
+	// Phase C3: wrapper :ManifestWrapper node creation removed. OS annotations
+	// are now stored on Manifest in-memory and persisted via
+	// ManifestAddAnnotations. OCICreateBaseManifest reads them
+	// from maniData.Annotations passed by the caller.
 	// 2 . Get the Blob
 	maniBytes, maniMeta, e := mag.GetManifestByUpstreamByDigest(ctx, ups)
 	if e != nil {
@@ -481,9 +426,9 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 		err = utils.ErrorHandler(l, span, e, "while putting config in Minio")
 		return
 	}
-	maniData, e = mag.Minio.NewManifestDataFromBytes(ctx, maniBytes)
+	maniData, e = mag.Minio.NewManifestFromBytes(ctx, maniBytes)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "while Minio.NewManifestData_FromBytes")
+		err = utils.ErrorHandler(l, span, e, "while Minio.NewManifest_FromBytes")
 		return
 
 	}
@@ -502,7 +447,7 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 		err = utils.ErrorHandler(l, span, e, "Failed to insert platform")
 		return
 	}
-	e = mag.NeoLinkManifestDataToPlatform(ctx, maniData.ID, maniData.Platform.ID)
+	e = mag.NeoLinkManifestToPlatform(ctx, maniData.ID, maniData.Platform.ID)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "Failed to link manifest to platform")
 		return
@@ -515,28 +460,24 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 		}
 		maniData.Layers[idx].ID = lID
 	}
-	// We need the ManifestDataID
-	maniData.ID, e = mag.Database.ManifestDataInsert(ctx, &maniData)
+	// We need the ManifestID
+	maniData.ID, e = mag.Database.ManifestInsert(ctx, &maniData)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "Failed to insert manifest data")
 		return
 	}
-	if e := mag.Database.ManifestDataLinkToUpstream(ctx, maniData.ID, ups.ID); e != nil {
+	if e := mag.Database.ManifestLinkToUpstream(ctx, maniData.ID, ups.ID); e != nil {
 		err = utils.ErrorHandler(l, span, e, "while linking manifestData to upstream")
 		return
 	}
-	// Layer annotations already present?
-	os, osFound, e := mag.Database.ManifestGetOS(ctx, maniID)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "Failed to get annotations")
-		return
-	}
-
-	e = mag.Database.LinkManifestToManifestData(ctx, maniID, maniData.ID)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "Failed to link manifest to manifest data")
-		return
-	}
+	// Phase C3: wire Slot-based attribution for upstream-pull path
+	mag.wireSlotOnPush(ctx, l, span, req, maniData.ID)
+	// Phase C3: ManifestWrapperGetOS (wrapper annotation read) and
+	// LinkManifestWrapperToManifest (wrapper→content-leaf edge) are removed.
+	// OS annotations are discovered from layer evaluation below and
+	// stored on the content-leaf via ManifestWrapperUpsertOS.
+	var os types.OS
+	osFound := false
 	// Iterate Layer
 	for idx, layer := range maniData.Layers {
 		if idx == 0 {
@@ -558,7 +499,7 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 				return
 			}
 			// Fetch Layer/MD relationship
-			if lyr, found, e := mag.Database.LayerGetByLayerAndManifestDataID(ctx, layer.ID, maniData.ID); e != nil {
+			if lyr, found, e := mag.Database.LayerGetByLayerAndManifestID(ctx, layer.ID, maniData.ID); e != nil {
 				err = utils.ErrorHandler(l, span, e, "failed to get layer by layer and manifest data id")
 				return
 			} else if !found {
@@ -583,10 +524,27 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 					return
 				}
 				osFound = true
-				e := mag.Database.ManifestUpsertOS(ctx, maniID, os)
-				if e != nil {
-					err = utils.ErrorHandler(l, span, e, "failed to upsert os")
-					return
+				// Phase C3: store OS annotations on the Manifest in-memory
+				// instead of writing to the wrapper. These annotations are
+				// passed through to OCICreateBaseManifest which injects them
+				// into the OCI config.
+				const annoOSId = "org.qnib.system.os.id"
+				const annoOSVersion = "org.qnib.system.os.version"
+				if maniData.Annotations.Data == nil {
+					maniData.Annotations = types.NewAnnotations()
+				}
+				if e := maniData.Annotations.AddNewAnnotation(annoOSId, string(os.ID)); e != nil {
+					utils.Debug(l, span, "failed to add OS ID annotation: %v", e)
+				}
+				if e := maniData.Annotations.AddNewAnnotation(annoOSVersion, os.GetVersion()); e != nil {
+					utils.Debug(l, span, "failed to add OS Version annotation: %v", e)
+				}
+				// Also persist to the Manifest node in the graph
+				osAnnotations := types.NewAnnotations()
+				_ = osAnnotations.AddNewAnnotation(annoOSId, string(os.ID))
+				_ = osAnnotations.AddNewAnnotation(annoOSVersion, os.GetVersion())
+				if e := mag.Database.ManifestAddAnnotations(ctx, maniData.ID, &osAnnotations); e != nil {
+					utils.Debug(l, span, "failed to persist OS annotations: %v", e)
 				}
 			default:
 				err = utils.NewError(l, span, "unknown media-type: %s", layer.MediaType)
@@ -673,7 +631,7 @@ func (mag Magazine) UpstreamBlobInsertManifest(ctx context.Context, req types.Re
 		}
 		switch blob.MediaType {
 		case "application/vnd.docker.distribution.manifest.list.v2+json":
-			// TODO: Fetch ManifestList and insert all manifest as upstream
+			// TODO: Fetch Index and insert all manifest as upstream
 			up := upstream.UpstreamTriple{
 				Reg:       req.Host,
 				Repo:      req.Repo,
@@ -688,7 +646,7 @@ func (mag Magazine) UpstreamBlobInsertManifest(ctx context.Context, req types.Re
 				return err
 			}
 			utils.Debug(l, span, "Found Blob %v", blob)
-			var ml manifestlist.ManifestList
+			var ml manifestlist.Index
 			err = json.Unmarshal(b, &ml)
 			if err != nil {
 				l.Error(err.Error())
@@ -753,11 +711,11 @@ func (mag Magazine) CacheUpstream(ctx context.Context, up types.Upstream) (err e
 		return utils.ErrorHandler(l, span, err, "while caching layers")
 	}
 	// Insert Manifest into Graph
-	if _, e := mag.Database.ManifestDataInsert(ctx, &maniData); e != nil {
-		return utils.ErrorHandler(l, span, e, "failed to ManifestDataInsert")
+	if _, e := mag.Database.ManifestInsert(ctx, &maniData); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to ManifestInsert")
 	}
-	if e := mag.Database.ManifestDataLinkToConfig(ctx, maniData.ID, maniData.Config); e != nil {
-		return utils.ErrorHandler(l, span, e, "failed to ManifestDataLinkToConfig")
+	if e := mag.Database.ManifestLinkToConfig(ctx, maniData.ID, maniData.Config); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to ManifestLinkToConfig")
 	}
 	return nil
 }

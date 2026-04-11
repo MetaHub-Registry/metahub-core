@@ -36,6 +36,8 @@ func TestManifestlistCompute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Path Z task 7.7: D5 invariant canary after every RuleEvalAll.
+	assertRuleShortcutInvariantsOrFatal(t, ctx)
 	maniID, err := br.GetInt64("manifest:ft_amd64#id")
 	if err != nil {
 		t.Fatal(err)
@@ -52,7 +54,7 @@ func TestManifestlistCompute(t *testing.T) {
 	}
 	_ = prf
 	t.Logf("Profile ID: %d // ManiID: %d", prfID, maniID)
-	mani, found, err := mag.Database.ManifestGetByID(ctx, maniID)
+	mani, found, err := mag.Database.ManifestWrapperGetByID(ctx, maniID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,10 +71,12 @@ func TestManifestlistCompute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Path Z task 7.7: D5 invariant canary after every RuleEvalAll.
+	assertRuleShortcutInvariantsOrFatal(t, ctx)
 	if e := mag.ComputeManifestlists(ctx); e != nil {
 		t.Fatal(e)
 	}
-	// TODO: Remove Collection w/ Manifestlist
+	// TODO: Remove Repo w/ Manifestlist
 	// req := types.Request{
 	// 	Repo: "qnib/featuretest",
 	// 	Tag:  "generic",
@@ -96,10 +100,10 @@ func TestManifestlistCompute(t *testing.T) {
 	// }
 	// TODO: Re-Enable Manifestlist Check
 	_ = reqUp
-	// if ml, found, err := mag.Database.ManifestListGetByRequest(ctx, reqUp); err != nil {
+	// if ml, found, err := mag.Database.IndexGetByRequest(ctx, reqUp); err != nil {
 	// 	t.Fatal(err)
 	// } else if !found {
-	// 	t.Fatal("ManifestList not found")
+	// 	t.Fatal("Index not found")
 	// 	// } else {
 	// 	// 	assert.Equal(t, 2, len(ml.Manifests))
 	// 	_ = ml
@@ -127,7 +131,7 @@ func TestManifestlistCompute(t *testing.T) {
 // 	bs.AddBootstrap("manipulation:manipulations/layer/glow/1.5.0-arm64.yaml")
 // 	//bs.AddBootstrap("manipulayer:registry:5050/cqnib/metahub-layers/hpc3/glow:1.5.0-arm64#glow150arm64_.*")
 // 	bs.AddBootstrap("profile:profiles/glow/1.5.0-arm64.yaml")
-// 	// Collection
+// 	// Repo
 // 	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
 // 	bs.AddBootstrap("rules:rules/os/linux.yaml")
 // 	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
@@ -196,7 +200,7 @@ func TestManifestlistCompute(t *testing.T) {
 // 		t.Fatal("Profile not found")
 // 	}
 // 	t.Logf("Profile ID: %d // ManiID: %d", prfID, maniID)
-// 	mani, found, err := mag.Database.ManifestGetByID(ctx, maniID)
+// 	mani, found, err := mag.Database.ManifestWrapperGetByID(ctx, maniID)
 // 	if err != nil {
 // 		span.End()
 // 		t.Fatal(err)
@@ -221,12 +225,12 @@ func TestManifestlistCompute(t *testing.T) {
 // 		Profile: "glow#1.5.0-arm64",
 // 	}
 
-// 	if ml, found, err := mag.Database.ManifestListGetByRequest(ctx, req); err != nil {
+// 	if ml, found, err := mag.Database.IndexGetByRequest(ctx, req); err != nil {
 // 		span.End()
 // 		t.Fatal(err)
 // 	} else if !found {
 // 		span.End()
-// 		t.Fatal("ManifestList not found")
+// 		t.Fatal("Index not found")
 // 	} else {
 // 		assert.Equal(t, 1, len(ml.Manifests))
 // 	}

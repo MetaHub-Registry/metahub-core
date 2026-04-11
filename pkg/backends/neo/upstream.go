@@ -99,15 +99,15 @@ func (n Neo) UpstreamGetByRequest(ctx context.Context, req types.Request) (up ty
 	return
 }
 
-func (n Neo) UpstreamGetByManifestDataID(ctx context.Context, maniDataID int64) (up types.Upstream, relType string, found bool, err error) {
+func (n Neo) UpstreamGetByManifestID(ctx context.Context, maniDataID int64) (up types.Upstream, relType string, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNameUp,
-		"func":       "UpstreamGetByManifestDataID",
+		"func":       "UpstreamGetByManifestID",
 		"maniDataID": maniDataID,
 	})
 	_ = ctx
 	defer span.End()
-	q := fmt.Sprintf(`MATCH (md:ManifestData)-[r]->(u:Upstream) WHERE id(md) = %d`, maniDataID)
+	q := fmt.Sprintf(`MATCH (md:Manifest)-[r]->(u:Upstream) WHERE id(md) = %d`, maniDataID)
 	q += ` RETURN type(r) AS relationType,` + UpstreamReturn
 	utils.Debug(l, span, q)
 	res, found, e := n.QueryOne(q)
@@ -136,7 +136,7 @@ func (n Neo) UpstreamGetIDByManifestID(ctx context.Context, maniID int64) (upID 
 	})
 	_ = ctx
 	defer span.End()
-	q := fmt.Sprintf(`MATCH (m:Manifest)-[]->(up:Upstream) WHERE id(m) = %d`, maniID)
+	q := fmt.Sprintf(`MATCH (m:ManifestWrapper)-[]->(up:Upstream) WHERE id(m) = %d`, maniID)
 	q += ` RETURN id(up) AS ID`
 	utils.Debug(l, span, q)
 	if res, found, e := n.QueryOne(q); e != nil {
@@ -156,15 +156,15 @@ func (n Neo) UpstreamGetIDByManifestID(ctx context.Context, maniID int64) (upID 
 	}
 }
 
-func (n Neo) UpstreamGetIDByManifestDataID(ctx context.Context, maniDataID int64) (upID int64, found bool, err error) {
+func (n Neo) UpstreamGetIDByManifestWrapperID(ctx context.Context, maniDataID int64) (upID int64, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNameUp,
-		"func":       "UpstreamGetIDByManifestDataID",
+		"func":       "UpstreamGetIDByManifestID",
 		"maniDataID": maniDataID,
 	})
 	_ = ctx
 	defer span.End()
-	q := fmt.Sprintf(`MATCH (md:ManifestData)-[]->(up:Upstream) WHERE id(md) = %d`, maniDataID)
+	q := fmt.Sprintf(`MATCH (md:Manifest)-[]->(up:Upstream) WHERE id(md) = %d`, maniDataID)
 	q += ` RETURN id(up) AS ID`
 	utils.Debug(l, span, q)
 	if res, found, e := n.QueryOne(q); e != nil {
@@ -248,7 +248,7 @@ func (n Neo) UpstreamCleanupByID(ctx context.Context, upID int64) (err error) {
 	_ = ctx
 	defer span.End()
 	key := "countUpstream"
-	q := fmt.Sprintf(`MATCH (m:Manifest)-[]->(up:Upstream) WHERE id(up) = %d`, upID)
+	q := fmt.Sprintf(`MATCH (m:ManifestWrapper)-[]->(up:Upstream) WHERE id(up) = %d`, upID)
 	q += fmt.Sprintf(` RETURN count(up) AS %s`, key)
 	countUpstream := -1
 	if res, _, e := n.QueryOne(q); e != nil {
@@ -281,7 +281,7 @@ func (n Neo) UpstreamGetByID(ctx context.Context, upID int64) (up types.Upstream
 	utils.Debug(l, span, q)
 	res, err := n.Execute(q)
 	if err != nil {
-		logrus.Errorf("Failed to run query: %s", err)
+		logrus.Errorf(errFailedRunQueryFmt, err)
 		return
 	}
 	if len(res.Strings) == 0 {
@@ -347,7 +347,7 @@ func (n Neo) CreateUpstream(ctx context.Context, up types.Upstream) (upID int64,
 	utils.Debug(l, span, q)
 	res, err := n.Execute(q)
 	if err != nil {
-		err = utils.ErrorHandler(l, span, err, "Failed to run query")
+		err = utils.ErrorHandler(l, span, err, errFailedRunQuery)
 		return
 	}
 	upID, err = res.GetInt64("ID")
@@ -409,7 +409,7 @@ func (n Neo) UpstreamGetByLayerDigest(ctx context.Context, dig string) (up types
 	defer span.End()
 	_ = l
 	_ = ctx
-	q := `MATCH (l:Blob)<-[r]-(md:ManifestData)-[:ORIGINAL]->(u:Upstream)`
+	q := `MATCH (l:Blob)<-[r]-(md:Manifest)-[:ORIGINAL]->(u:Upstream)`
 	q += fmt.Sprintf(` WHERE l.digest = "%s" RETURN l.mediaType AS upstreamMediaType, %s`, dig, UpstreamReturn)
 	if res, found, err := n.QueryOne(q); err != nil {
 		err = utils.ErrorHandler(l, span, err, FailNeoExecute)

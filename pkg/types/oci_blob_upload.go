@@ -11,6 +11,7 @@ import (
 
 const (
 	ContentLength       = "Content-Length"
+	ContentType         = "Content-Type"
 	Location            = "Location"
 	DockerUploadUUID    = "Docker-Upload-UUID"
 	Range               = "Range"

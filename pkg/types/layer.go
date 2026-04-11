@@ -47,9 +47,9 @@ func (l Layer) ToDescriptor() distribution.Descriptor {
 
 func (l Layer) WriteWWWHeader(w http.ResponseWriter) {
 	// FIXME: Not sure if that is stable over time.
-	w.Header().Set("Docker-Content-Digest", l.Digest)
-	if w.Header().Get("Content-Length") == "" {
-		w.Header().Set("Content-Length", "0")
+	w.Header().Set(DockerContentDigest, l.Digest)
+	if w.Header().Get(ContentLength) == "" {
+		w.Header().Set(ContentLength, "0")
 	}
 	w.Header().Set("Docker-Distribution-API-Version", "registry/2.0")
 	w.WriteHeader(http.StatusOK)
@@ -58,9 +58,9 @@ func (l Layer) WriteWWWHeader(w http.ResponseWriter) {
 func (l Layer) WriteWWW(w http.ResponseWriter) {
 	b := l.Data
 	size := len(b)
-	w.Header().Set("Docker-Content-Digest", l.Digest)
-	w.Header().Set("Content-Length", fmt.Sprint(size))
-	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set(DockerContentDigest, l.Digest)
+	w.Header().Set(ContentLength, fmt.Sprint(size))
+	w.Header().Set(ContentType, "application/octet-stream")
 	w.Write(l.Data)
 	w.Header().Set("Docker-Distribution-API-Version", "registry/2.0")
 	w.WriteHeader(http.StatusOK)

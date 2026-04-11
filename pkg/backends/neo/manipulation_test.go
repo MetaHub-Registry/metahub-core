@@ -147,6 +147,8 @@ func TestUpstreamGetByManipuLayerID(t *testing.T) {
 	if err := db.RuleEvalAll(ctx); err != nil {
 		t.Fatal(err)
 	}
+	// Path Z task 7.7: D5 invariant canary after every RuleEvalAll.
+	assertRuleShortcutInvariantsOrFatal(t, ctx)
 	span.End()
 	// Actual tests
 	_, ctx, span = utils.InitLogging(context.Background(), tracer, map[string]any{
