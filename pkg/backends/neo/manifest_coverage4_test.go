@@ -41,7 +41,7 @@ func TestManifestGetIDByDigest(t *testing.T) {
 	mdID, found, err := db.ManifestGetIDByDigest(ctx, mdDigest)
 	require.NoError(t, err)
 	assert.True(t, found)
-	assert.NotEqual(t, int64(0), mdID)
+	assert.GreaterOrEqual(t, mdID, int64(0), "Manifest ID should be a valid neo4j node ID")
 
 	// Not found case
 	_, found, err = db.ManifestGetIDByDigest(ctx, "sha256:0000000000000000000000000000000000000000000000000000000000000000")

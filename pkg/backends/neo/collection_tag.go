@@ -108,7 +108,7 @@ func (n Neo) LinkCollectionTagToManifest(ctx context.Context, colTagID, maniID i
 	})
 	_ = ctx
 	defer span.End()
-	q := `MATCH (t:Tag), (m:ManifestWrapper) WHERE id(t) = %d AND id(m) = %d`
+	q := `MATCH (t:Tag), (m) WHERE id(t) = %d AND id(m) = %d AND (m:ManifestWrapper OR m:Manifest)`
 	q += ` MERGE (t)-[:UPSTREAM]->(m)`
 	query := fmt.Sprintf(q, colTagID, maniID)
 	utils.Debug(l, span, query)
