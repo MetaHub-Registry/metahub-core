@@ -54,7 +54,7 @@ func TestManipulationCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create manipulation: %v", err)
 	}
-	assert.NotEqual(t, int64(0), mpGlow.ID, "Manipulation ID should be 1")
+	assert.GreaterOrEqual(t, mpGlow.ID, int64(0), "Manipulation ID should be a valid neo4j node ID")
 	// Get Manipulation by ID
 	mpGet, found, err := db.ManipulationGetByID(ctx, mpGlow.ID)
 	if err != nil {
@@ -69,7 +69,7 @@ func TestManipulationCRUD(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to create manipulation: %v", err)
 	}
-	assert.Equal(t, mpInsID, mpGlow2.ID, "Manipulation ID should be 1")
+	assert.Equal(t, mpInsID, mpGlow2.ID, "Manipulation ID should match the previously inserted ID")
 	// Delete Manipulation
 	found, err = db.ManipulationDeleteByID(ctx, mpInsID)
 	if err != nil {

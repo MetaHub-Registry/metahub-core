@@ -65,7 +65,7 @@ func (neo Neo) ReferrersGetBySubjectDigest(ctx context.Context, dig string) (ref
 				utils.Debug(l, span, "Adding Manifest to reffers list %s with %d annotation", utils.ShortenDigest(md.Digest), len(md.Annotations.Data))
 				refs.Manifests = append(refs.Manifests, md.ToOCIDescriptor())
 			}
-		case "ManifestList":
+		case "ManifestList", "Index":
 			digest, err := r.GetStr("digest")
 			if err != nil {
 				return refs, utils.ErrorHandler(l, span, err, "while getting manifestlist digest")

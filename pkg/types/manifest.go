@@ -32,6 +32,7 @@ type Manifest struct {
 	MediaType    string      `json:"mediaType"`
 	ArtifactType string      `json:"artifactType,omitempty"`
 	Size         int64       `json:"size,omitempty"`
+	ContentSize  int64       `json:"content_size,omitempty"`
 	Platform     Platform    `json:"platform,omitempty"`
 	Upstream     Upstream    `json:"upstream,omitempty"`
 	Config       Config      `json:"config,omitempty"`
