@@ -126,12 +126,12 @@ func (n Neo) Bootstrap_Scenario(ctx context.Context, bs utils.Bootstrap, br *uti
 	return fmt.Errorf("no Scenario Setup for '%s'", b)
 }
 
-// Bootstrap_Scenario_OrasCyclonedx sets up a minimal ORAS CycloneDX artifact in Neo4j:
+// Bootstrap_Scenario_OrasCyclonedx sets up a minimal ORAS CycloneDX artifact in Neo4j
+// using the Slot-centred graph model:
 //   - upstream (ft_oras_cyclonedx)
-//   - config blob  (ft_oras_cyclonedx, mediaType=application/vnd.cyclonedx)
-//   - manifest     (ft_oras_cyclonedx)
-//   - manifestdata (ft_oras_cyclonedx, linked to config and upstream)
-//   - collection   (qnib/featuretest:cyclonedx, linked to manifest)
+//   - config blob  (ft_oras_cyclonedx, mediaType=application/vnd.cyclonedx, type=config)
+//   - manifest     (ft_oras_cyclonedx, linked to config via USES and upstream via ORIGINAL)
+//   - slot         (qnib/featuretest:cyclonedx:generic, HAS_PUSHED -> manifest)
 //
 // No platform is set up because ORAS artifacts are not platform-specific.
 func (n Neo) Bootstrap_Scenario_OrasCyclonedx(ctx context.Context, bs utils.Bootstrap, br *utils.BootstrapResult) (err error) {
@@ -144,17 +144,45 @@ func (n Neo) Bootstrap_Scenario_OrasCyclonedx(ctx context.Context, bs utils.Boot
 	if e := n.Setup_Config(ctx, br, types.FTOrasConfig(), label); e != nil {
 		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: config")
 	}
-	// Manifest
-	if e := n.Setup_Manifest_FT_oras_cyclonedx(ctx, br); e != nil {
-		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: manifest")
-	}
 	// Manifest (links config + upstream; no platform)
 	if e := n.Setup_OrasManifest(ctx, br, types.FTOrasManifest(), label); e != nil {
 		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: manifestdata")
 	}
-	// Repo
-	if e := n.Setup_Collection_FT_oras_cyclonedx(ctx, br); e != nil {
-		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: collection")
+	// Link Manifest to config blob via USES with type=config
+	orasMani := types.FTOrasManifest()
+	if e := n.ManifestLinkToArtifactConfig(ctx, orasMani.Digest, orasMani.Config.ToDescriptor()); e != nil {
+		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: artifact config link")
+	}
+	// Slot-centred wiring: Slot -> HAS_PUSHED -> Manifest
+	slot, e := n.SlotGetCreate(ctx, "qnib/featuretest", "cyclonedx", "generic")
+	if e != nil {
+		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: slot create")
+	}
+	br.Add("slot:ft_oras_cyclonedx#id", fmt.Sprint(slot.ID))
+	mdID, e := br.GetInt64(fmt.Sprintf("manifestdata:%s#id", label))
+	if e != nil {
+		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: get manifest id")
+	}
+	if e := n.SlotAppendPushedManifest(ctx, slot.ID, mdID); e != nil {
+		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: slot push manifest")
+	}
+	// Add a layer blob with an org.opencontainers.image.title annotation
+	// to exercise the OrasArtifactEnrich layer + annotation fetch path.
+	layerQ := fmt.Sprintf(`MATCH (md:Manifest) WHERE id(md) = %d
+		CREATE (b:Blob {digest: "sha256:a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447", mediaType: "application/vnd.oci.image.layer.v1.tar", size: 12, type: "layer", label: "a948904f2"})
+		CREATE (md)-[:HAS_LAYER {order: 0, mediaType: "application/vnd.oci.image.layer.v1.tar"}]->(b)
+		CREATE (a:Annotation {key: "org.opencontainers.image.title", value: "sbom.cdx.json"})
+		CREATE (b)-[:HAS_ANNOTATION]->(a)
+		RETURN id(b) AS blobID`, mdID)
+	if _, e := n.Execute(layerQ); e != nil {
+		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: layer blob")
+	}
+	// Add a manifest-level annotation
+	annoQ := fmt.Sprintf(`MATCH (md:Manifest) WHERE id(md) = %d
+		CREATE (a:Annotation {key: "org.opencontainers.image.created", value: "2026-04-14T09:00:00Z"})
+		CREATE (md)-[:HAS_ANNOTATION]->(a)`, mdID)
+	if _, e := n.Execute(annoQ); e != nil {
+		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: manifest annotation")
 	}
 	return
 }

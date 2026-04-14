@@ -2503,6 +2503,7 @@ func (n Neo) ManifestLinkToArtifactConfig(ctx context.Context, mdDigest string, 
 	q += ` MERGE (md)-[r:USES]->(b)`
 	q += fmt.Sprintf(` SET r.mediaType = "%s"`, cfg.MediaType)
 	q += fmt.Sprintf(` SET b.mediaType = "%s"`, cfg.MediaType)
+	q += ` SET b.type = "config"`
 	utils.Debug(l, span, q)
 	if _, err = n.Execute(q); err != nil {
 		err = utils.ErrorHandler(l, span, err, FailQueryExec)

@@ -21,8 +21,9 @@ func containerImageConfigFilter() string {
 }
 
 // OrasArtifactGetByRepoLike returns OrasListing entries for all ORAS artifact repos
-// whose path matches the given prefix (regex: ^<repo>.*). Only manifests whose config
-// relationship type is NOT in the container image allowlist are returned.
+// whose path matches the given prefix (regex: ^<repo>.*). Walks the Slot-centred model:
+// Repo <-[:OF_REPO]- Slot -[:HAS_PUSHED]-> Manifest -[:USES]-> Blob.
+// Only manifests whose config blob mediaType is NOT in the container image allowlist are returned.
 func (n Neo) OrasArtifactGetByRepoLike(ctx context.Context, repo string) (listings []types.OrasListing, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgOrasName,
@@ -39,7 +40,7 @@ func (n Neo) OrasArtifactGetByRepoLike(ctx context.Context, repo string) (listin
 		repoPattern = fmt.Sprintf("^%s.*", repoPattern)
 	}
 
-	q := fmt.Sprintf(`MATCH (c:Repo)-[:HAS_TAG]->(t) MATCH (c)-[:UPSTREAM]->(m)-[r]-(md:Manifest) MATCH (md)-[cfgRel]->(cfg:Blob) WHERE cfg.type = "config" AND c.repo =~ "%s" AND NOT cfg.mediaType IN %s RETURN c.repo AS repo, cfg.mediaType AS artifactType, count(md) AS artifactCount`,
+	q := fmt.Sprintf(`MATCH (c:Repo)<-[:OF_REPO]-(s:Slot)-[:HAS_PUSHED]->(md:Manifest)-[:USES]->(cfg:Blob) WHERE cfg.type = "config" AND c.repo =~ "%s" AND NOT cfg.mediaType IN %s RETURN c.repo AS repo, COALESCE(md.artifactType, cfg.mediaType) AS artifactType, count(DISTINCT md) AS artifactCount`,
 		repoPattern, containerImageConfigFilter())
 
 	utils.Debug(l, span, q)
@@ -86,7 +87,7 @@ func (n Neo) OrasArtifactGetByName(ctx context.Context, repo, artifactType strin
 	defer span.End()
 	_ = ctx
 
-	q := fmt.Sprintf(`MATCH (c:Repo)-[:HAS_TAG]->(t) MATCH (c)-[:UPSTREAM]->(m)-[r]-(md:Manifest) MATCH (md)-[cfgRel]->(cfg:Blob) WHERE cfg.type = "config" AND c.repo = "%s" AND cfg.mediaType = "%s" RETURN id(md) AS manifestDataID, md.digest AS manifestDataDigest, md.mediaType AS manifestDataMediaType, c.repo AS repo, cfg.mediaType AS artifactType LIMIT 1`,
+	q := fmt.Sprintf(`MATCH (c:Repo)<-[:OF_REPO]-(s:Slot)-[:HAS_PUSHED]->(md:Manifest)-[:USES]->(cfg:Blob) WHERE cfg.type = "config" AND c.repo = "%s" AND COALESCE(md.artifactType, cfg.mediaType) = "%s" RETURN id(md) AS manifestDataID, md.digest AS manifestDataDigest, md.mediaType AS manifestDataMediaType, c.repo AS repo, COALESCE(md.artifactType, cfg.mediaType) AS artifactType LIMIT 1`,
 		repo, artifactType)
 
 	utils.Debug(l, span, q)
@@ -99,6 +100,13 @@ func (n Neo) OrasArtifactGetByName(ctx context.Context, repo, artifactType strin
 	}
 
 	artifact, err = orasArtifactFromResult(res)
+	if err != nil {
+		return artifact, err
+	}
+	if err = n.OrasArtifactEnrich(ctx, artifact.ID, &artifact); err != nil {
+		utils.Warn(l, span, "OrasArtifactEnrich failed (non-fatal): %v", err)
+		err = nil // enrichment failure is non-fatal — return basic artifact
+	}
 	return
 }
 
@@ -112,7 +120,7 @@ func (n Neo) OrasArtifactGetByID(ctx context.Context, manifestID int64) (artifac
 	defer span.End()
 	_ = ctx
 
-	q := fmt.Sprintf(`MATCH (c:Repo)-[:HAS_TAG]->(t) MATCH (c)-[:UPSTREAM]->(m)-[r]-(md:Manifest) MATCH (md)-[cfgRel]->(cfg:Blob) WHERE cfg.type = "config" AND id(md) = %d AND NOT cfg.mediaType IN %s RETURN id(md) AS manifestDataID, md.digest AS manifestDataDigest, md.mediaType AS manifestDataMediaType, c.repo AS repo, cfg.mediaType AS artifactType LIMIT 1`,
+	q := fmt.Sprintf(`MATCH (c:Repo)<-[:OF_REPO]-(s:Slot)-[:HAS_PUSHED]->(md:Manifest)-[:USES]->(cfg:Blob) WHERE cfg.type = "config" AND id(md) = %d AND NOT cfg.mediaType IN %s RETURN id(md) AS manifestDataID, md.digest AS manifestDataDigest, md.mediaType AS manifestDataMediaType, c.repo AS repo, COALESCE(md.artifactType, cfg.mediaType) AS artifactType LIMIT 1`,
 		manifestID, containerImageConfigFilter())
 
 	utils.Debug(l, span, q)
@@ -125,6 +133,13 @@ func (n Neo) OrasArtifactGetByID(ctx context.Context, manifestID int64) (artifac
 	}
 
 	artifact, err = orasArtifactFromResult(res)
+	if err != nil {
+		return artifact, err
+	}
+	if err = n.OrasArtifactEnrich(ctx, artifact.ID, &artifact); err != nil {
+		utils.Warn(l, span, "OrasArtifactEnrich failed (non-fatal): %v", err)
+		err = nil
+	}
 	return
 }
 
@@ -156,7 +171,106 @@ func orasArtifactFromResult(res types.Result) (a types.OrasArtifact, err error) 
 		a.Annotations = map[string]string{}
 	}
 	if a.Blobs == nil {
-		a.Blobs = []types.Manifest{}
+		a.Blobs = []types.OrasBlob{}
 	}
 	return
+}
+
+// OrasArtifactEnrich populates the Blobs and Annotations fields of an
+// OrasArtifact by querying existing graph data. No graph writes occur.
+func (n Neo) OrasArtifactEnrich(ctx context.Context, manifestID int64, artifact *types.OrasArtifact) error {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":    pkgOrasName,
+		"func":       "OrasArtifactEnrich",
+		"manifestID": manifestID,
+	})
+	defer span.End()
+
+	// 1. Fetch manifest-level annotations
+	qAnnotations := fmt.Sprintf(
+		`MATCH (md:Manifest)-[:HAS_ANNOTATION]->(a:Annotation) WHERE id(md) = %d RETURN a.key AS key, a.value AS value`,
+		manifestID,
+	)
+	utils.Debug(l, span, qAnnotations)
+	annoResults, err := n.Query(qAnnotations)
+	if err != nil {
+		return fmt.Errorf("OrasArtifactEnrich: manifest annotations: %w", err)
+	}
+	if artifact.Annotations == nil {
+		artifact.Annotations = map[string]string{}
+	}
+	for _, r := range annoResults {
+		key, _ := r.GetStr("key")
+		value, _ := r.GetStr("value")
+		if key != "" {
+			artifact.Annotations[key] = value
+		}
+	}
+
+	// 2. Fetch layer blobs
+	qLayers := fmt.Sprintf(
+		`MATCH (md:Manifest)-[r:HAS_LAYER]->(b:Blob) WHERE id(md) = %d AND b.type = "layer" RETURN id(b) AS blobID, b.digest AS digest, b.mediaType AS mediaType, b.size AS size ORDER BY r.order`,
+		manifestID,
+	)
+	utils.Debug(l, span, qLayers)
+	layerResults, err := n.Query(qLayers)
+	if err != nil {
+		return fmt.Errorf("OrasArtifactEnrich: layers: %w", err)
+	}
+
+	type blobEntry struct {
+		idx    int
+		blobID int64
+	}
+	var blobEntries []blobEntry
+	artifact.Blobs = make([]types.OrasBlob, 0, len(layerResults))
+	for _, r := range layerResults {
+		blob := types.OrasBlob{
+			Annotations: map[string]string{},
+		}
+		blob.Digest, _ = r.GetStr("digest")
+		blob.MediaType, _ = r.GetStr("mediaType")
+		blob.Size, _ = r.GetInt64("size")
+		blobID, _ := r.GetInt64("blobID")
+		blobEntries = append(blobEntries, blobEntry{idx: len(artifact.Blobs), blobID: blobID})
+		artifact.Blobs = append(artifact.Blobs, blob)
+	}
+
+	// 3. Fetch annotations for all layer blobs in one query
+	if len(blobEntries) > 0 {
+		ids := ""
+		for i, be := range blobEntries {
+			if i > 0 {
+				ids += ", "
+			}
+			ids += fmt.Sprintf("%d", be.blobID)
+		}
+		qBlobAnnos := fmt.Sprintf(
+			`MATCH (b:Blob)-[:HAS_ANNOTATION]->(a:Annotation) WHERE id(b) IN [%s] RETURN id(b) AS blobID, a.key AS key, a.value AS value`,
+			ids,
+		)
+		utils.Debug(l, span, qBlobAnnos)
+		blobAnnoResults, err := n.Query(qBlobAnnos)
+		if err != nil {
+			return fmt.Errorf("OrasArtifactEnrich: blob annotations: %w", err)
+		}
+		idxMap := map[int64]int{}
+		for _, be := range blobEntries {
+			idxMap[be.blobID] = be.idx
+		}
+		for _, r := range blobAnnoResults {
+			blobID, _ := r.GetInt64("blobID")
+			key, _ := r.GetStr("key")
+			value, _ := r.GetStr("value")
+			if idx, ok := idxMap[blobID]; ok && key != "" {
+				artifact.Blobs[idx].Annotations[key] = value
+				if key == "org.opencontainers.image.title" {
+					artifact.Blobs[idx].Title = value
+				}
+			}
+		}
+	}
+
+	utils.Debug(l, span, "Enriched artifact with %d annotations and %d blobs", len(artifact.Annotations), len(artifact.Blobs))
+	return nil
 }

@@ -89,10 +89,24 @@ func (mag Magazine) HeadManistNotFoundForProfile(ctx context.Context, req types.
 	}
 	utils.Debug(l, span, "found manifestData: %s", utils.ShortenDigest(maniData.Digest))
 	//// 2. Create a new Manifest for the profile
+	// Try label first, then tag as fallback (docker login sends tag only).
 	prf, prfFound, e := mag.Database.ProfileGetByLabel(ctx, req.Profile)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "error getting profile '%s'", req.Profile)
 		return md, false, err
+	}
+	if !prfFound {
+		prfs, prfErr := mag.Database.ProfileGetAll(ctx)
+		if prfErr == nil {
+			for _, candidate := range prfs {
+				if candidate.Tag == req.Profile {
+					prf = candidate
+					prfFound = true
+					utils.Info(l, span, "resolved profile tag '%s' to label '%s'", req.Profile, prf.Label)
+					break
+				}
+			}
+		}
 	}
 	if !prfFound {
 		err = utils.NewError(l, span, "profile '%s' not found", req.Profile)

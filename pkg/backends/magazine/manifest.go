@@ -13,6 +13,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	ycfg "github.com/metahub-registry/metahub-core/pkg/yaml/config"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -292,14 +293,29 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 		}
 		lyrs = append(lyrs, lyr)
 	}
-	// Profile lookup
+	// Profile lookup — first by label, then by tag as fallback.
+	// The profile field from docker login may contain only the tag portion
+	// (e.g. "zen2" instead of "cpu#zen2").
 	prf, found, e := mag.Database.ProfileGetByLabel(ctx, req.Profile)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to get profile '%s' from database", prf.Label)
+		err = utils.ErrorHandler(l, span, e, "failed to get profile '%s' from database", req.Profile)
 		return
 	}
 	if !found {
-		err = utils.NewError(l, span, "profile '%s' not found", prf.Label)
+		prfs, prfErr := mag.Database.ProfileGetAll(ctx)
+		if prfErr == nil {
+			for _, candidate := range prfs {
+				if candidate.Tag == req.Profile {
+					prf = candidate
+					found = true
+					utils.Info(l, span, "resolved profile tag '%s' to label '%s'", req.Profile, prf.Label)
+					break
+				}
+			}
+		}
+	}
+	if !found {
+		err = utils.NewError(l, span, "profile '%s' not found", req.Profile)
 		return
 	}
 	// De-duplicate: check if a manifest was already pushed for this profile
@@ -353,7 +369,32 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 	// Phase C3: wrapper links (LinkManifestToManifest, ManifestWrapperLinkToUpstream)
 	// fully removed. Content-leaf is linked to Upstream via :ORIGINAL edge
 	// in createManifest. Slot attribution via wireSlotOnPush in caller.
+
+	// Back-fill blob sizes from the manifest descriptor. Blob nodes created
+	// during chunked upload have size=-1 because Content-Length is 0 for
+	// chunked transfers. The manifest JSON contains the authoritative sizes.
+	mag.backfillBlobSizes(ctx, l, span, ociMani)
 	return
+}
+
+// backfillBlobSizes updates Blob node sizes from the manifest descriptor
+// when the current size is negative (placeholder from chunked upload).
+// Non-fatal: errors are logged but do not fail the push.
+func (mag Magazine) backfillBlobSizes(ctx context.Context, l *logrus.Entry, span trace.Span, ociMani types.OCIManifest) {
+	// Config blob
+	if ociMani.Config.Digest != "" && ociMani.Config.Size > 0 {
+		if err := mag.Database.BlobUpdateSizeByDigest(ctx, ociMani.Config.Digest.String(), ociMani.Config.Size); err != nil {
+			utils.Debug(l, span, "backfillBlobSizes: config blob update failed (non-fatal): %v", err)
+		}
+	}
+	// Layer blobs
+	for _, lyr := range ociMani.Layers {
+		if lyr.Digest != "" && lyr.Size > 0 {
+			if err := mag.Database.BlobUpdateSizeByDigest(ctx, lyr.Digest.String(), lyr.Size); err != nil {
+				utils.Debug(l, span, "backfillBlobSizes: layer blob update failed (non-fatal): %v", err)
+			}
+		}
+	}
 }
 
 func (mag Magazine) RemoveManifestByRequest(ctx context.Context, req types.Request) (found bool, err error) {

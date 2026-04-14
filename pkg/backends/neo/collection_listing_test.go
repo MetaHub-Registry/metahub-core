@@ -176,4 +176,21 @@ func TestCollectionListingAll(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("GetByRepoLikeForProfile_emptyProfileFallback", func(t *testing.T) {
+		// Empty profile should fall back to unfiltered
+		cols, err := db.CollectionListingGetByRepoLikeForProfile(ctx, "qnib", "")
+		require.NoError(t, err)
+		unfilteredCols, err := db.CollectionListingGetByRepoLike(ctx, "qnib")
+		require.NoError(t, err)
+		assert.Equal(t, len(unfilteredCols), len(cols),
+			"empty profile should return same results as unfiltered")
+	})
+
+	t.Run("GetByRepoLikeForProfile_unknownProfileEmpty", func(t *testing.T) {
+		// A profile that doesn't exist should return empty
+		cols, err := db.CollectionListingGetByRepoLikeForProfile(ctx, "qnib", "cpu#nonexistent")
+		require.NoError(t, err)
+		assert.Empty(t, cols)
+	})
 }

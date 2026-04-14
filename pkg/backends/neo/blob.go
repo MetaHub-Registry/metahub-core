@@ -216,3 +216,15 @@ func (n Neo) BlobDeleteByDigest(ctx context.Context, dig string) (err error) {
 	}
 	return err
 }
+
+// BlobUpdateSizeByDigest sets the size of a Blob node identified by its digest,
+// but only when the current size is negative (placeholder). This prevents
+// overwriting a previously correct value.
+func (n Neo) BlobUpdateSizeByDigest(ctx context.Context, digest string, size int64) error {
+	q := fmt.Sprintf(
+		`MATCH (b:Blob {digest: "%s"}) WHERE b.size < 0 SET b.size = %d RETURN id(b) AS blobID`,
+		digest, size,
+	)
+	_, err := n.Execute(q)
+	return err
+}
