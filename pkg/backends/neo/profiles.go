@@ -95,6 +95,79 @@ func (n Neo) ProfileGetByLabel(ctx context.Context, label string) (p types.Profi
 	return
 }
 
+// ProfileGetByLabelWithStats returns a single profile by label together with
+// the count of distinct Slots (≈ collections) and distinct Manifests served
+// under it, computed from the Slot→Index→Manifest graph path.
+func (n Neo) ProfileGetByLabelWithStats(ctx context.Context, label string) (ps types.ProfileStats, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameProfile,
+		"func":    "ProfileGetByLabelWithStats",
+		"label":   label,
+	})
+	defer span.End()
+
+	// First get the profile itself.
+	prf, prfFound, e := n.ProfileGetByLabel(ctx, label)
+	if e != nil {
+		err = e
+		utils.ErrorHandler(l, span, err, "ProfileGetByLabel failed")
+		return
+	}
+	if !prfFound {
+		return
+	}
+	found = true
+	ps.Profile = prf
+
+	// Fetch linked rules for this profile.
+	rq := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule) WHERE id(prf) = %d RETURN %s`, prf.ID, ruleReturn)
+	rres, e := n.Query(rq)
+	if e != nil {
+		utils.ErrorHandler(l, span, e, "while fetching rules for profile")
+		// Non-fatal: leave Rules nil.
+	} else {
+		ps.Rules = make([]types.ProfileRule, 0, len(rres))
+		for _, rr := range rres {
+			rule, re := RuleFromResult(rr)
+			if re != nil {
+				logrus.Warnf("ProfileGetByLabelWithStats: skipping malformed rule: %v", re)
+				continue
+			}
+			ps.Rules = append(ps.Rules, types.ProfileRule{
+				ID:    rule.ID,
+				Type:  rule.Type,
+				Op:    rule.Op,
+				Key:   rule.Key,
+				Value: rule.Value,
+			})
+		}
+	}
+
+	// Count distinct Slots and Manifests via the Slot→Index→Manifest path.
+	statsQ := fmt.Sprintf(
+		`MATCH (p:Profile) WHERE id(p) = %d `+
+			`OPTIONAL MATCH (p)<-[:OF_PROFILE]-(s:Slot)-[:POINTS_TO]->(i:Index)-[:REFERENCES]->(m:Manifest) `+
+			`RETURN count(DISTINCT s) AS slotCount, count(DISTINCT m) AS manifestCount`,
+		prf.ID,
+	)
+	utils.Debug(l, span, statsQ)
+	statsRes, statsFound, qErr := n.QueryOne(statsQ)
+	if qErr != nil {
+		utils.ErrorHandler(l, span, qErr, "while fetching profile stats")
+		// Non-fatal: leave counts at zero.
+		return
+	}
+	if statsFound {
+		if sc, ok := statsRes.Int64s["slotCount"]; ok {
+			ps.CollectionCount = sc
+		}
+		if mc, ok := statsRes.Int64s["manifestCount"]; ok {
+			ps.ManifestCount = mc
+		}
+	}
+	return
+}
+
 func (n Neo) ProfileGetByNameTag(ctx context.Context, name, tag string) (p types.Profile, found bool, err error) {
 	q := fmt.Sprintf(`MATCH (prf:Profile) WHERE prf.name = "%s" AND prf.tag = "%s"`, name, tag)
 	q += fmt.Sprintf(` RETURN %s`, returnStatementProfile)
@@ -676,14 +749,27 @@ func (n Neo) ProfileAuthorizedPushHandler(ctx context.Context, req types.Request
 	ctx, span := tracer.Start(ctx, "ProfileAuthorizedPushHandler")
 	defer span.End()
 
-	// check if profile already has a manifest uploaded
+	// Check if profile exists — first by label, then by tag as fallback.
+	// The profile field from docker login may contain only the tag portion
+	// (e.g. "zen2" instead of "cpu#zen2").
 	prf, found, e := n.ProfileGetByLabel(ctx, req.Profile)
-
 	if e != nil {
 		err = errors.Wrapf(e, "failed to get profile '%s'", req.Profile)
 		span.RecordError(err)
 		return
-
+	}
+	if !found {
+		// Try matching by tag
+		prfs, prfErr := n.ProfileGetAll(ctx)
+		if prfErr == nil {
+			for _, candidate := range prfs {
+				if candidate.Tag == req.Profile {
+					prf = candidate
+					found = true
+					break
+				}
+			}
+		}
 	}
 	if !found {
 		err = fmt.Errorf("profile '%s' not found", req.Profile)

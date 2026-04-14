@@ -362,6 +362,17 @@ func (n Neo) CollectionGetCreateByRepoTag(ctx context.Context, repo, tag string)
 	return
 }
 
+// RepoLinkTag ensures a Repo -[:HAS_TAG]-> Tag edge exists. Both nodes are
+// MERGEd first so the function is safe to call even before any other path
+// has created them. Idempotent — calling it twice is a no-op.
+func (n Neo) RepoLinkTag(ctx context.Context, repo, tag string) error {
+	q := fmt.Sprintf(`MERGE (c:Repo {repo: "%s"}) MERGE (t:Tag {name: "%s"}) MERGE (c)-[:HAS_TAG]->(t)`, repo, tag)
+	if _, err := n.Execute(q); err != nil {
+		return fmt.Errorf("RepoLinkTag: %w", err)
+	}
+	return nil
+}
+
 func (n Neo) CollectionGetCreateByRepo(ctx context.Context, repo string) (c types.Repo, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameCol,

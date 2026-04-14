@@ -18,10 +18,10 @@ const (
 	failInsMani                     = "failed to insert manifest"
 	failInsManiData                 = "failed to insert manifestData"
 	failGetMani                     = "Failed to get manifest"
-	FailLinkManifestToPlatform  = "Failed to link manifestData to platform"
+	FailLinkManifestToPlatform      = "Failed to link manifestData to platform"
 	FailLinkCollectionToPlatform    = "failed to link collection to manifest"
 	FailLinkCollectionTagToPlatform = "failed to link collection tag to manifest"
-	FailLinkProfileToManifest   = "failed to link profile and manifestdata"
+	FailLinkProfileToManifest       = "failed to link profile and manifestdata"
 	FailUnwind                      = "failed to unwind profile"
 	FailCreateOCIv1Manifest         = "failed to create OCIv1 manifest"
 	FailCacheUpstream               = "failed to cache upstream"
@@ -300,9 +300,23 @@ func (mag Magazine) upstreamBlobInsertProfile(ctx context.Context, req types.Req
 	defer span.End()
 	// Phase C3: wrapper operations removed. Profile lookup and linking
 	// still needed for Slot triple and profile unwind.
+	// Try label first, then tag as fallback (docker login sends tag only).
 	prf, prfFound, e := mag.Database.ProfileGetByLabel(ctx, req.Profile)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, "failed to get profile")
+	}
+	if !prfFound {
+		prfs, prfErr := mag.Database.ProfileGetAll(ctx)
+		if prfErr == nil {
+			for _, candidate := range prfs {
+				if candidate.Tag == req.Profile {
+					prf = candidate
+					prfFound = true
+					utils.Info(l, span, "resolved profile tag '%s' to label '%s'", req.Profile, prf.Label)
+					break
+				}
+			}
+		}
 	}
 	if !prfFound {
 		return utils.NewError(l, span, "profile '%s' not found", req.Profile)

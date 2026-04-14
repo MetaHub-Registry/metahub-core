@@ -252,20 +252,18 @@ func (mag Magazine) StoreManifestArtifactUpload(ctx context.Context, req types.R
 	if !found {
 		utils.Debug(l, span, "Artifact Manifest not found, creating new one for digest: %s", utils.ShortenDigest(req.Digest))
 	}
+	// Propagate ArtifactType from the parsed OCI manifest so callers can
+	// detect artifacts without re-parsing the raw bytes.
+	md.ArtifactType = ociMani.ArtifactType
 
-	b, err := ociMani.ToBytes()
-	if err != nil {
-		err = utils.ErrorHandler(l, span, err, "failed to OCIManifest.ToBytes")
-		return md, err
-	}
-	fmt.Println(string(b))
-	utils.Debug(l, span, "TODO: 1. Link Manifest w/ Config Blob: %s", utils.ShortenDigest(ociMani.Config.Digest.String()))
+	utils.Debug(l, span, "Link Manifest w/ Config Blob: %s", utils.ShortenDigest(ociMani.Config.Digest.String()))
 	if err := mag.Database.ManifestLinkToArtifactConfig(ctx, req.Digest, ociMani.Config); err != nil {
 		err = utils.ErrorHandler(l, span, err, "failed to ManifestLinkToArtifactConfig")
 		return md, err
 	}
-	utils.Debug(l, span, "TODO: 3. Fetch Subject/Reference relationship and update them")
-	// Create Manifest
+	// Wire Slot so the artifact is reachable via the Slot-centred graph model
+	mag.wireSlotOnPush(ctx, l, span, req, md.ID)
+	// Handle subject/referrer relationship
 	if ociMani.Subject != nil {
 		utils.Debug(l, span, "Artifact Manifest has Subject: %s", utils.ShortenDigest(ociMani.Subject.Digest.String()))
 		sub := types.ManifestFromOciDescriptor(*ociMani.Subject)
@@ -408,6 +406,11 @@ func (mag Magazine) wireSlotOnPush(ctx context.Context, l *logrus.Entry, span tr
 	if slotErr != nil {
 		utils.Debug(l, span, "SlotGetCreate failed (non-fatal, legacy path still persisted): %v", slotErr)
 		return
+	}
+	// Ensure the Repo -[:HAS_TAG]-> Tag edge exists so OCI manifest GET
+	// (ManifestExistsContent) can resolve tags after a push.
+	if tagErr := mag.Database.RepoLinkTag(ctx, req.Repo, req.Tag); tagErr != nil {
+		utils.Debug(l, span, "RepoLinkTag failed (non-fatal): %v", tagErr)
 	}
 	if pushErr := mag.Database.SlotAppendPushedManifest(ctx, slot.ID, manifestDataID); pushErr != nil {
 		utils.Debug(l, span, "SlotAppendPushedManifest failed (non-fatal, Slot node still created): %v", pushErr)

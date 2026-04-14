@@ -168,3 +168,70 @@ func (n Neo) CollectionListingGetByRepoLike(ctx context.Context, repo string) (c
 	}
 	return
 }
+
+// CollectionListingGetByRepoLikeForProfile returns collection listings
+// matching a repo prefix, filtered to only collections that have at least one
+// Slot for the given profile. When profileLabel is empty it delegates to
+// CollectionListingGetByRepoLike (unfiltered).
+func (n Neo) CollectionListingGetByRepoLikeForProfile(ctx context.Context, repo string, profileLabel string) ([]types.CollectionListing, error) {
+	if profileLabel == "" {
+		return n.CollectionListingGetByRepoLike(ctx, repo)
+	}
+
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":      pkgNameCollListing,
+		"func":         "CollectionListingGetByRepoLikeForProfile",
+		"repo":         repo,
+		"profileLabel": profileLabel,
+	})
+	defer span.End()
+
+	// Join through Slot→OF_PROFILE→Profile to filter by profile, and also
+	// require that the Repo has container-image manifests (same filter as
+	// the unfiltered query).
+	cfgFilter := containerImageConfigFilter()
+	q := `MATCH (p:Profile {label: "%s"})<-[:OF_PROFILE]-(s:Slot)-[:OF_REPO]->(c:Repo)-[:HAS_TAG]->(t)`
+	q += ` WHERE c.repo =~ "^%s.*"`
+	q += ` AND (`
+	q += `   EXISTS {`
+	q += `     MATCH (c)-[:UPSTREAM]->(m:ManifestWrapper)-[]-(md:Manifest)-[]->(cfg:Blob)`
+	q += `     WHERE cfg.type = "config" AND cfg.mediaType IN ` + cfgFilter
+	q += `   } OR EXISTS {`
+	q += `     MATCH (c)-[:UPSTREAM]->(md:Manifest)-[]->(cfg:Blob)`
+	q += `     WHERE cfg.type = "config" AND cfg.mediaType IN ` + cfgFilter
+	q += `   } OR EXISTS {`
+	q += `     MATCH (c)-[:HAS_TAG]->()-[:REF]->(:Index)-[:REFERENCES]->(md:Manifest)-[]->(cfg:Blob)`
+	q += `     WHERE cfg.type = "config" AND cfg.mediaType IN ` + cfgFilter
+	q += `   }`
+	q += ` )`
+	q += ` RETURN DISTINCT id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
+	query := fmt.Sprintf(q, profileLabel, repo)
+	utils.Debug(l, span, query)
+	res, err := n.Query(query)
+	if err != nil {
+		utils.ErrorHandler(l, span, err, "while executing Query")
+		return nil, err
+	}
+	var cols []types.CollectionListing
+	for _, r := range res {
+		col, e := CollectionListingFromResult(r)
+		if e != nil {
+			utils.ErrorHandler(l, span, e, errCollListingFromResult)
+			return cols, e
+		}
+		// Fill Manifests
+		manis, e := n.ManifestGetByCollectionTag(ctx, col.ID, col.ColTag.ID)
+		if e != nil {
+			utils.ErrorHandler(l, span, e, exeErrMD)
+			return cols, e
+		}
+		for _, m := range manis {
+			k := fmt.Sprintf("%s/%s:%s-%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag, m.Platform.Arch)
+			utils.Debug(l, span, fmt.Sprintf(msgAddManifest, k))
+			col.Manifests[k] = m
+			col.ManifestCount++
+		}
+		cols = append(cols, col)
+	}
+	return cols, nil
+}

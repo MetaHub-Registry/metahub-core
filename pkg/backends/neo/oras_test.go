@@ -126,6 +126,16 @@ func TestOrasAll(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "qnib/featuretest", artifact.Repo)
 		assert.Equal(t, "application/vnd.cyclonedx", artifact.ArtifactType)
+		// Verify enrichment: manifest annotations
+		assert.NotEmpty(t, artifact.Annotations, "expected non-empty manifest annotations")
+		assert.Equal(t, "2026-04-14T09:00:00Z", artifact.Annotations["org.opencontainers.image.created"])
+		// Verify enrichment: layer blobs
+		require.Len(t, artifact.Blobs, 1, "expected one layer blob")
+		assert.Equal(t, "sha256:a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447", artifact.Blobs[0].Digest)
+		assert.Equal(t, "application/vnd.oci.image.layer.v1.tar", artifact.Blobs[0].MediaType)
+		assert.Equal(t, int64(12), artifact.Blobs[0].Size)
+		assert.Equal(t, "sbom.cdx.json", artifact.Blobs[0].Title)
+		assert.Equal(t, "sbom.cdx.json", artifact.Blobs[0].Annotations["org.opencontainers.image.title"])
 	})
 
 	t.Run("GetByName_notFound", func(t *testing.T) {

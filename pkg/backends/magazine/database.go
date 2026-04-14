@@ -178,7 +178,7 @@ type Database interface {
 	/********* Links **********/
 	LinkCollectionTagToManifest(ctx context.Context, colTagID, maniID int64) error // Connects a collection tag to a manifest to indicate it is servered by that collection
 	LinkCollectionToManifest(ctx context.Context, colID, maniID int64) error       // Connects a collection to a manifest to indicate it is servered by that collection
-	ManifestWrapperLinkToUpstream(ctx context.Context, maniID, upID int64) error        // Connects a manifest to an upstream
+	ManifestWrapperLinkToUpstream(ctx context.Context, maniID, upID int64) error   // Connects a manifest to an upstream
 	ManifestLinkToConfig(ctx context.Context, maniID int64, cfg types.Config) error
 	LinkManifestListToCollection(mlID, colID int64) (err error)
 	LinkManifestListToCollectionTag(mlID, colTagID int64) (err error)
@@ -203,6 +203,9 @@ type Database interface {
 	UploadChunkCreate(ctx context.Context, bu *types.OCIBlobUpload, startByte, lenBytes int64) (bc types.BlobChunk, err error)
 	BlobUploadGetByBlobDigest(ctx context.Context, dig string) (bu types.OCIBlobUpload, found bool, err error)
 	CreateBlobFromChunk(ctx context.Context, bu *types.OCIBlobUpload, chunk types.BlobChunk) (err error)
+	// BlobUpdateSizeByDigest sets blob size from manifest descriptor when the
+	// current size is negative (placeholder from chunked upload).
+	BlobUpdateSizeByDigest(ctx context.Context, digest string, size int64) error
 	/****** Profiles ********/
 	GetProfiles(ctx context.Context) (ps []types.Profile, err error)
 	ProfileGetInsert(ctx context.Context, p *types.Profile) (err error)
@@ -262,6 +265,19 @@ type Database interface {
 	OrasArtifactGetByID(ctx context.Context, manifestID int64) (types.OrasArtifact, error)
 	/**** Profiles (all with rules) ********/
 	ProfileGetAll(ctx context.Context) ([]types.Profile, error)
+	// ProfileGetByLabelWithStats returns a single profile by label together
+	// with the count of distinct collections (Slots) and manifests served
+	// under it. found is false when no profile with that label exists.
+	ProfileGetByLabelWithStats(ctx context.Context, label string) (ps types.ProfileStats, found bool, err error)
+	// ManifestGetProfileLabels resolves which profile(s) serve each manifest
+	// in the given digest list. Returns a map of digest → profile labels.
+	ManifestGetProfileLabels(ctx context.Context, digests []string) (map[string][]string, error)
+	// CollectionListingGetByRepoLikeForProfile filters collection listings
+	// by repo prefix AND profile label. When profileLabel is empty it falls
+	// back to CollectionListingGetByRepoLike.
+	CollectionListingGetByRepoLikeForProfile(ctx context.Context, repo string, profileLabel string) ([]types.CollectionListing, error)
+	// RepoLinkTag ensures a Repo -[:HAS_TAG]-> Tag edge exists. Idempotent.
+	RepoLinkTag(ctx context.Context, repo, tag string) error
 	/******* Slot (Path Z slot-centred model) ********/
 	// SlotGetCreate MERGEs a Slot for the given triple and its three join
 	// edges to Repo/Tag/Profile. Idempotent on the compound (repo, tag,
