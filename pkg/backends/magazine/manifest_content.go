@@ -38,17 +38,20 @@ func (mag Magazine) cacheManifestByUpstream(ctx context.Context, up types.Upstre
 			err = utils.ErrorHandler(l, span, err, "failed to get upstream by ID")
 			return
 		}
-		// TODO: 2021-04-05 we need an option to invalidate the cached upstream objects
+		// Try the MinIO cache first. If the manifest bytes exist but the
+		// config blob they reference is missing (stale/incomplete cache),
+		// fall through to the upstream fetch path instead of failing.
 		maniData, isCached, e := mag.Minio.GetCachedManifest(ctx, up.Digest)
+		if e == nil && isCached {
+			maniData.Upstream = up
+			return maniData, nil
+		}
 		if e != nil {
-			err = utils.ErrorHandler(l, span, e, "failed to get cached manifest")
-			return maniData, err
+			utils.Warn(l, span, "cached manifest incomplete (config missing?), will re-fetch from upstream: %v", e)
+		} else {
+			utils.Warn(l, span, "manifest not cached in MinIO, will fetch from upstream")
 		}
-		if !isCached {
-			err = utils.NewError(l, span, "manifest is not cached")
-		}
-		maniData.Upstream = up
-		return maniData, err
+		// Fall through to the upstream fetch path below
 	}
 	utils.Debug(l, span, "Caching manifest for %-101s -> %t", up.GetLabel(), found)
 	if !found {
