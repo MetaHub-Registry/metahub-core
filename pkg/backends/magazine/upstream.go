@@ -434,18 +434,27 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 	// are now stored on Manifest in-memory and persisted via
 	// ManifestAddAnnotations. OCICreateBaseManifest reads them
 	// from maniData.Annotations passed by the caller.
-	// 2 . Get the Blob
-	maniBytes, maniMeta, e := mag.GetManifestByUpstreamByDigest(ctx, ups)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "while getting manifest")
-		return
-	}
-	utils.Debug(l, span, "Found manifest upstream: %s", utils.ShortenDigest(maniMeta.Digest.String()))
-	// Put Manifest in Minio
-	e = mag.Minio.PutManifestByUpstream(ctx, maniBytes, ups)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "Failed to get put manifest in minio")
-		return
+	// 2. Get the manifest — check MinIO first, fetch from upstream only if missing.
+	var maniBytes []byte
+	var maniMeta types.BlobMeta
+	cachedMani, cacheErr := mag.Minio.ManifestGetObj(ctx, ups.Digest.String())
+	if cacheErr == nil && len(cachedMani.Data) > 0 {
+		utils.Info(l, span, "manifest %s already in MinIO, skipping upstream fetch", utils.ShortenDigest(ups.Digest.String()))
+		maniBytes = cachedMani.Data
+		maniMeta = types.BlobMeta{Digest: digest.Digest(cachedMani.Digest), Size: int64(len(cachedMani.Data)), MediaType: cachedMani.MediaType}
+	} else {
+		maniBytes, maniMeta, e = mag.GetManifestByUpstreamByDigest(ctx, ups)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "while getting manifest")
+			return
+		}
+		utils.Debug(l, span, "Found manifest upstream: %s", utils.ShortenDigest(maniMeta.Digest.String()))
+		// Put Manifest in Minio
+		e = mag.Minio.PutManifestByUpstream(ctx, maniBytes, ups)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "Failed to get put manifest in minio")
+			return
+		}
 	}
 	rawMani, e := minio.RawManifestFromBlob(maniBytes)
 	if e != nil {
@@ -469,16 +478,22 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 	default:
 		l.Fatalf("Unknown media type: %s", maniMeta.MediaType)
 	}
-	cfgByte, cfgBlob, e := mag.GetBlobByUpstreamTriple(ctx, configUpt)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to get config via GetBlobByUpstreamTriple")
-		return
-	}
-	utils.Debug(l, span, "Found config upstream: %s", utils.ShortenDigest(cfgBlob.Digest.String()))
-	e = mag.Minio.PutBlob(ctx, cfgByte, cfgBlob.Digest.String())
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "while putting config in Minio")
-		return
+	// Check if config blob already exists in MinIO before fetching from upstream
+	_, cfgStatErr := mag.Minio.BlobStatObj(ctx, configUpt.Digest.String())
+	if cfgStatErr == nil {
+		utils.Info(l, span, "config blob %s already in MinIO, skipping upstream fetch", utils.ShortenDigest(configUpt.Digest.String()))
+	} else {
+		cfgByte, cfgBlob, e := mag.GetBlobByUpstreamTriple(ctx, configUpt)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to get config via GetBlobByUpstreamTriple")
+			return
+		}
+		utils.Debug(l, span, "Found config upstream: %s", utils.ShortenDigest(cfgBlob.Digest.String()))
+		e = mag.Minio.PutBlob(ctx, cfgByte, cfgBlob.Digest.String())
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "while putting config in Minio")
+			return
+		}
 	}
 	maniData, e = mag.Minio.NewManifestFromBytes(ctx, maniBytes)
 	if e != nil {
