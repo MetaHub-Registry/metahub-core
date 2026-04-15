@@ -38,7 +38,7 @@ func FindManipulations(ctx context.Context, cacheDir string) (mps []Manipulation
 	// Parse each filter file
 	for _, ffile := range files {
 		mp, e := LoadManipulation(ctx, ffile)
-		if err != nil {
+		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "error parsing rule file %s", ffile)
 			return
 		}

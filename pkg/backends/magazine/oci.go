@@ -386,10 +386,10 @@ func (mag Magazine) OCIApplyManipulations(ctx context.Context, mani types.Manife
 		"prfID":       prfID,
 	})
 	defer span.End()
-	if ok, err := mag.Database.ManinpulationCheckRules(ctx, prfID, mani.ID); err != nil {
-		return v1Cfg, false, utils.ErrorHandler(l, span, err, "failing ManinpulationCheckRules")
+	if ok, err := mag.Database.ManipulationCheckRules(ctx, prfID, mani.ID); err != nil {
+		return v1Cfg, false, utils.ErrorHandler(l, span, err, "failing ManipulationCheckRules")
 	} else if !ok {
-		utils.Warn(l, span, "ManinpulationCheckRules reports that the manifest does not match the profile to apply manipulations")
+		utils.Warn(l, span, "ManipulationCheckRules reports that the manifest does not match the profile to apply manipulations")
 		return v1Cfg, false, nil
 	}
 

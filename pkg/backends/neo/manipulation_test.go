@@ -2,6 +2,7 @@ package neo
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -174,7 +175,7 @@ func TestUpstreamGetByManipuLayerID(t *testing.T) {
 	} else {
 		assert.Equal(t, 1, len(rls.Rules), "ManipuLayer should have 1 rules")
 	}
-	// Test ManinpulationCheckRules
+	// Test ManipulationCheckRules
 	prfId, err := br.GetInt64("profile:glow:1.5.0-arm64#id")
 	if err != nil {
 		span.End()
@@ -186,7 +187,7 @@ func TestUpstreamGetByManipuLayerID(t *testing.T) {
 		span.End()
 		t.Fatal(err)
 	}
-	if ok, err := db.ManinpulationCheckRules(ctx, prfId, maniArm64ID); err != nil {
+	if ok, err := db.ManipulationCheckRules(ctx, prfId, maniArm64ID); err != nil {
 		span.End()
 		t.Fatal(err)
 	} else {
@@ -198,7 +199,7 @@ func TestUpstreamGetByManipuLayerID(t *testing.T) {
 		span.End()
 		t.Fatal(err)
 	}
-	if ok, err := db.ManinpulationCheckRules(ctx, prfId, maniAmd64ID); err != nil {
+	if ok, err := db.ManipulationCheckRules(ctx, prfId, maniAmd64ID); err != nil {
 		span.End()
 		t.Fatal(err)
 	} else {
@@ -294,4 +295,70 @@ func TestManipulationFromYAML(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, "layer/glow#1.5.0-arm64", mp.Label)
+}
+
+func TestManifestLinkManipulatedFrom(t *testing.T) {
+	ctx := context.Background()
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("rules:rules/platform/arch/arm64.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	// Original manifest
+	bs.AddBootstrap("upstream:ft_arm64")
+	bs.AddBootstrap("config:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_arm64")
+	bs.AddBootstrap("layer:1:ft_arm64")
+	bs.AddBootstrap("manifest:ft_arm64")
+	bs.AddBootstrap("manifestdata:ft_arm64")
+	// Manipulation upstream manifest (glow)
+	bs.AddBootstrap("upstream:glow150arm64")
+	bs.AddBootstrap("config:glow150arm64")
+	bs.AddBootstrap("layer:0:glow150arm64_2660")
+	bs.AddBootstrap("layer:1:glow150arm64_3571")
+	bs.AddBootstrap("layer:2:glow150arm64_d54e")
+	bs.AddBootstrap("manifestdata:glow150arm64")
+	bs.SetEmptyAll()
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := SetupTest(ctx, bs)
+	if err != nil {
+		db.TeardownTest(bs, br)
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs, br)
+
+	// Get the IDs of both manifests (manifestdata bootstrap stores IDs with this key pattern)
+	origID, err := br.GetInt64("manifestdata:ft_arm64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	glowID, err := br.GetInt64("manifestdata:glow150arm64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Link glow as manipulated from original
+	err = db.ManifestLinkManipulatedFrom(ctx, glowID, origID)
+	assert.NoError(t, err, "ManifestLinkManipulatedFrom should not error")
+
+	// Idempotent — linking again should not error
+	err = db.ManifestLinkManipulatedFrom(ctx, glowID, origID)
+	assert.NoError(t, err, "ManifestLinkManipulatedFrom should be idempotent")
+
+	// Verify the edge exists by querying with cypher
+	q := fmt.Sprintf(`MATCH (m1:Manifest)-[:MANIPULATED_FROM]->(m2:Manifest) WHERE id(m1) = %d AND id(m2) = %d RETURN count(*) AS cnt`, glowID, origID)
+	if res, e := db.Execute(q); e != nil {
+		t.Fatal(e)
+	} else {
+		cnt, _ := res.GetInt64("cnt")
+		assert.Equal(t, int64(1), cnt, "Should have exactly one MANIPULATED_FROM edge")
+	}
+
+	// Search for a non-existent manipulation label should return not-found
+	_, notFound, err := db.ManifestGetManipulatedByOriginalAndLabel(ctx, "sha256:nonexistent", "nonexistent")
+	assert.NoError(t, err)
+	assert.False(t, notFound, "Should not find a manipulation with nonexistent label")
 }

@@ -251,9 +251,11 @@ type Database interface {
 	ManipulationsGetByProfileID(ctx context.Context, prfID int64) (mps []types.Manipulation, err error)
 	ManipuLayerFromConfigYAML(ctx context.Context, cmpl yamlCfg.ManipuLayer) (mpl types.ManipuLayer, err error)
 	ManipulationFromYAML(ctx context.Context, cmp yamlCfg.Manipulation) (mp types.Manipulation, err error)
-	ManinpulationCheckRules(ctx context.Context, prfID, maniID int64) (ok bool, err error)
+	ManipulationCheckRules(ctx context.Context, prfID, maniID int64) (ok bool, err error)
 	ManipuCmdsGetByManipulayerID(ctx context.Context, mplyrID int64) (mpcs []types.ManipuCmd, err error)
 	ManipuEnvsGetByManipulayerID(ctx context.Context, mplyrID int64) (mpes []types.ManipuEnv, err error)
+	ManifestLinkManipulatedFrom(ctx context.Context, manipulatedID, originalID int64) (err error)
+	ManifestGetManipulatedByOriginalAndLabel(ctx context.Context, originalDigest, manipulationLabel string) (md types.Manifest, found bool, err error)
 	/**** Artefact ********/
 	ManifestLinkToArtifactConfig(ctx context.Context, mdDigest string, cfg v1.Descriptor) (err error)
 	LinkManifestToSubject(ctx context.Context, mdDigest string, subId int64) (err error)

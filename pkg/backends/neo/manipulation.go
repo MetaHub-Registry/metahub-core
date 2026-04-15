@@ -257,10 +257,10 @@ func (n Neo) ManipulationFromConfigManipulation(ctx context.Context, m config.Ma
 	return mp, nil
 }
 
-func (n Neo) ManinpulationCheckRules(ctx context.Context, prfID, maniID int64) (ok bool, err error) {
+func (n Neo) ManipulationCheckRules(ctx context.Context, prfID, maniID int64) (ok bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameManipulation,
-		"func":    "ManinpulationCheckRules",
+		"func":    "ManipulationCheckRules",
 		"prfID":   prfID,
 		"maniID":  maniID,
 	})
@@ -287,16 +287,15 @@ func (n Neo) ManinpulationCheckRules(ctx context.Context, prfID, maniID int64) (
 		for _, mpl := range mp.ManipuLayers {
 			rls, err := n.RulesGetByManipuLayerID(ctx, mpl.ID)
 			if err != nil {
-				return ok, utils.ErrorHandler(l, span, err, FailRulesGetByManipuLayerID)
+				return false, utils.ErrorHandler(l, span, err, FailRulesGetByManipuLayerID)
 			}
 			if rls.SatisfiedBy(ctx, maniRls) {
-				utils.Warn(l, span, "Manipulation %d (ManipuLayers: %d) is satisfied by Manifest %d", mp.ID, len(mp.ManipuLayers), maniID)
-				ok = true
-				// FIXME: multiple manipulayers are going to fail here.
+				utils.Warn(l, span, "Manipulation %d, ManipuLayer %d is satisfied by Manifest %d", mp.ID, mpl.ID, maniID)
+				return true, nil
 			}
 		}
 	}
-	return ok, nil
+	return false, nil
 }
 
 func (n Neo) ManipulationFromYAML(ctx context.Context, cmp config.Manipulation) (mp types.Manipulation, err error) {

@@ -711,22 +711,23 @@ func (mag Magazine) CacheUpstream(ctx context.Context, up types.Upstream) (err e
 	})
 	defer span.End()
 	_ = l
-	// TODO: Get Manifest
 	utils.Debug(l, span, "attempt to cacheManifestByUpstream %d", up.ID)
 	maniData, err := mag.cacheManifestByUpstream(ctx, up)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "while caching manifest")
 	}
 	utils.Debug(l, span, "Manifest: %v", maniData.Label)
-	// CONFIG
-	///
 	/// Cache Layers
 	if err := mag.CacheLayers(ctx, maniData); err != nil {
 		return utils.ErrorHandler(l, span, err, "while caching layers")
 	}
-	// Insert Manifest into Graph
-	if _, e := mag.Database.ManifestInsert(ctx, &maniData); e != nil {
-		return utils.ErrorHandler(l, span, e, "failed to ManifestInsert")
+	// Ensure config, layers, and manifest exist in the graph.
+	// cacheManifestByUpstream may return from MinIO cache without inserting
+	// into Neo4j (e.g. after --empty-graph=keep-upstream wipes nodes but
+	// MinIO still has the blobs). ManifestUpsertBackends is idempotent and
+	// handles the get-or-create for config, layers, and the manifest node.
+	if e := mag.ManifestUpsertBackends(ctx, &maniData); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to ManifestUpsertBackends")
 	}
 	if e := mag.Database.ManifestLinkToConfig(ctx, maniData.ID, maniData.Config); e != nil {
 		return utils.ErrorHandler(l, span, e, "failed to ManifestLinkToConfig")
