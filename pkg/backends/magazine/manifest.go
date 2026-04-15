@@ -245,6 +245,23 @@ func (mag Magazine) storeManifestUploadOCIManifest(ctx context.Context, req type
 		return md, ociMani, err
 	}
 	utils.Debug(l, span, "unmarshal ociMani: %v", ociMani)
+	// Fix config descriptor size: some Docker clients send manifests with
+	// config.size == 0. Look up the actual blob size from MinIO/storage
+	// and patch the manifest JSON before persisting.
+	if ociMani.Config.Size == 0 && ociMani.Config.Digest != "" {
+		blobInfo, statErr := mag.Minio.BlobStatObj(ctx, ociMani.Config.Digest.String())
+		if statErr == nil && blobInfo.Size > 0 {
+			blobSize := blobInfo.Size
+			utils.Info(l, span, "patching config descriptor size from 0 to %d for %s", blobSize, ociMani.Config.Digest.String())
+			ociMani.Config.Size = blobSize
+			patched, marshalErr := json.Marshal(ociMani)
+			if marshalErr == nil {
+				buf = patched
+			} else {
+				utils.Warn(l, span, "failed to re-marshal manifest after config size patch: %v", marshalErr)
+			}
+		}
+	}
 	dig := digest.FromBytes(buf)
 	req.Digest = dig.String()
 	if req.Digest != "" && req.Digest != dig.String() {
