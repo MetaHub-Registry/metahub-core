@@ -333,10 +333,23 @@ func (mag Magazine) createManipulatedManifest(ctx context.Context, orig types.Ma
 		return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to get original config from MinIO %s", origCfg.Digest)
 	}
 	if origV1Cfg == nil {
-		return types.Manifest{}, utils.NewError(l, span, "original config blob %s not found in MinIO", origCfg.Digest)
+		// Config blob missing — try to pull the original image from upstream
+		utils.Info(l, span, "original config blob %s not in MinIO, attempting on-demand pull for manifest %d", origCfg.Digest, orig.ID)
+		up, _, upFound, upErr := mag.Database.UpstreamGetByManifestID(ctx, orig.ID)
+		if upErr == nil && upFound {
+			if cacheErr := mag.CacheUpstream(ctx, up); cacheErr == nil {
+				origV1Cfg, e = mag.Minio.GetConfig(ctx, origCfg.Digest)
+			}
+		}
+		if origV1Cfg == nil {
+			return types.Manifest{}, utils.NewError(l, span, "original config blob %s not found in MinIO (pull also failed)", origCfg.Digest)
+		}
 	}
 
-	// 4. Get ManipuLayer image config from MinIO to read DiffIDs
+	// 4. Get ManipuLayer image config from MinIO to read DiffIDs.
+	// If the config blob is missing, attempt to pull the ManipuLayer image
+	// from its upstream registry on-demand (the image reference is stored
+	// as an :ORIGINAL edge from the ManipuLayer's Manifest to an Upstream node).
 	mplCfg, mplCfgFound, e := mag.Database.ConfigGetByManiDataID(ctx, mpl.Image.ID)
 	if e != nil || !mplCfgFound {
 		return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to get config for ManipuLayer image %d", mpl.Image.ID)
@@ -346,7 +359,25 @@ func (mag Magazine) createManipulatedManifest(ctx context.Context, orig types.Ma
 		return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to get ManipuLayer config from MinIO %s", mplCfg.Digest)
 	}
 	if mplV1Cfg == nil {
-		return types.Manifest{}, utils.NewError(l, span, "ManipuLayer config blob %s not found in MinIO", mplCfg.Digest)
+		// Config blob missing from MinIO — try to pull the ManipuLayer image from upstream
+		utils.Info(l, span, "ManipuLayer config blob %s not in MinIO, attempting on-demand pull for image %d", mplCfg.Digest, mpl.Image.ID)
+		up, _, upFound, upErr := mag.Database.UpstreamGetByManifestID(ctx, mpl.Image.ID)
+		if upErr != nil || !upFound {
+			return types.Manifest{}, utils.NewError(l, span, "ManipuLayer config blob %s not found in MinIO and no upstream available for image %d", mplCfg.Digest, mpl.Image.ID)
+		}
+		utils.Info(l, span, "Pulling ManipuLayer image from %s/%s:%s", up.Reg, up.Repo, up.Tag)
+		if cacheErr := mag.CacheUpstream(ctx, up); cacheErr != nil {
+			return types.Manifest{}, utils.ErrorHandler(l, span, cacheErr, "failed to pull ManipuLayer image from upstream %s/%s:%s", up.Reg, up.Repo, up.Tag)
+		}
+		// Retry config fetch after pull
+		mplV1Cfg, e = mag.Minio.GetConfig(ctx, mplCfg.Digest)
+		if e != nil {
+			return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to get ManipuLayer config from MinIO after pull %s", mplCfg.Digest)
+		}
+		if mplV1Cfg == nil {
+			return types.Manifest{}, utils.NewError(l, span, "ManipuLayer config blob %s still not found in MinIO after pull", mplCfg.Digest)
+		}
+		utils.Info(l, span, "ManipuLayer image pulled successfully, config now available")
 	}
 
 	// 5. Build new v1 config: copy original and append ManipuLayer DiffIDs
