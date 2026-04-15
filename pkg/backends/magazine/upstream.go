@@ -54,7 +54,11 @@ func (mag Magazine) NeoInsertUpstream(ctx context.Context, up types.Upstream) (u
 	return
 }
 
-func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string) (blob types.BlobMeta, registry string, found bool, err error) {
+// DiscoverUpstream tries to find a manifest for repo:tag in upstream registries.
+// When targetReg is provided, only that specific registry is tried (it must be
+// present in MagConfig.Registries). When targetReg is empty, all configured
+// registries are iterated in order (existing behavior).
+func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string, targetReg ...string) (blob types.BlobMeta, registry string, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameUp,
 		"func":    "DiscoverUpstream",
@@ -62,13 +66,42 @@ func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string) (blo
 		"tag":     tag,
 	})
 	defer span.End()
-	reg, ok := mag.GetConfig("registries")
-	if !ok {
-		err = utils.NewError(l, span, "Failed to get 'registries' from config, please check your config")
-		return
+
+	// Build the list of registries to try
+	var regList []string
+	if len(targetReg) > 0 && targetReg[0] != "" {
+		target := targetReg[0]
+		// Validate that the target registry is configured
+		configured := false
+		for _, reg := range mag.Config.Registries {
+			if reg.Hostname == target {
+				configured = true
+				break
+			}
+		}
+		if !configured {
+			err = utils.NewError(l, span, "target registry '%s' is not configured", target)
+			return
+		}
+		regList = []string{target}
+		utils.Info(l, span, "Using targeted registry: %s", target)
+	} else {
+		// No target — use all configured registries (fallback to Args for backward compat)
+		if len(mag.Config.Registries) > 0 {
+			for _, reg := range mag.Config.Registries {
+				regList = append(regList, reg.Hostname)
+			}
+		} else {
+			reg, ok := mag.GetConfig("registries")
+			if !ok {
+				err = utils.NewError(l, span, "Failed to get 'registries' from config, please check your config")
+				return
+			}
+			regList = strings.Split(reg, ",")
+		}
+		utils.Info(l, span, "Using registries: %v", regList)
 	}
-	utils.Info(l, span, "Using registries: %s", reg)
-	regList := strings.Split(reg, ",")
+
 	for _, reg := range regList {
 		regCtx, regSpan := tracer.Start(ctx, fmt.Sprintf("DiscoverUpstream_%s", reg))
 		defer regSpan.End()
@@ -735,18 +768,18 @@ func (mag Magazine) CacheUpstream(ctx context.Context, up types.Upstream) (err e
 	return nil
 }
 
+// AllowsUnauthorizedPull checks whether the upstream registry allows anonymous
+// blob pulls by looking up the registry hostname in MagConfig.Registries.
+// Unknown registries default to denied. The TEST_REGISTRY override is preserved
+// for integration tests.
 func (mag Magazine) AllowsUnauthorizedPull(up types.Upstream) bool {
 	if _, ok := mag.Config.Args["TEST_REGISTRY"]; ok {
 		return true
 	}
-	switch up.Reg {
-	case "registry-1.docker.io", "docker.io":
-		return false
-	case "quay.io":
-		return true
-	case "registry:5050":
-		return true
-	default:
-		return false
+	for _, reg := range mag.Config.Registries {
+		if reg.Hostname == up.Reg {
+			return reg.AllowAnon
+		}
 	}
+	return false
 }

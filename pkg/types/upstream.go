@@ -77,6 +77,11 @@ func (up Upstream) GetBlobUrl(dig ...string) string {
 	return base + "/" + dig[0]
 }
 
+// AllowsUnauthorizedPull returns a static default for this registry.
+//
+// Deprecated: This method uses a hardcoded registry list. Callers should
+// prefer Magazine.AllowsUnauthorizedPull which uses the structured
+// RegistryConfig from MagConfig.Registries for config-driven lookups.
 func (up Upstream) AllowsUnauthorizedPull() bool {
 	switch up.Reg {
 	case "registry-1.docker.io", "docker.io":
