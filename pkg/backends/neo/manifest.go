@@ -2615,3 +2615,55 @@ func (n Neo) LinkManifestToPlatform(ctx context.Context, maniDataID, platID int6
 	}
 	return
 }
+
+// ManifestLinkManipulatedFrom creates a [:MANIPULATED_FROM] edge from a manipulated manifest to the original.
+func (n Neo) ManifestLinkManipulatedFrom(ctx context.Context, manipulatedID, originalID int64) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":       pkgNameMD,
+		"func":          "ManifestLinkManipulatedFrom",
+		"manipulatedID": manipulatedID,
+		"originalID":    originalID,
+	})
+	defer span.End()
+	_ = ctx
+	q := fmt.Sprintf(`MATCH (m1:Manifest),(m2:Manifest) WHERE id(m1) = %d AND id(m2) = %d`, manipulatedID, originalID)
+	q += ` MERGE (m1)-[:MANIPULATED_FROM]->(m2)`
+	utils.Debug(l, span, q)
+	if _, err = n.Execute(q); err != nil {
+		err = utils.ErrorHandler(l, span, err, "failed to link manipulated manifest to original")
+		return err
+	}
+	return
+}
+
+// ManifestGetManipulatedByOriginalAndLabel finds an existing manipulated manifest by following
+// [:MANIPULATED_FROM] from any manifest to the original (by digest), then checking if the
+// ManipuLayer (identified by label) was the source of manipulation.
+// For now we use a simpler approach: find any manifest with MANIPULATED_FROM pointing to the original.
+// The manipulationLabel is matched against the manipulation's ManipuLayer labels via the graph path.
+func (n Neo) ManifestGetManipulatedByOriginalAndLabel(ctx context.Context, originalDigest, manipulationLabel string) (md types.Manifest, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":           pkgNameMD,
+		"func":              "ManifestGetManipulatedByOriginalAndLabel",
+		"originalDigest":    originalDigest,
+		"manipulationLabel": manipulationLabel,
+	})
+	defer span.End()
+	_ = ctx
+	// Walk: manipulated manifest -[:MANIPULATED_FROM]-> original manifest
+	// and check that a Manipulation with the given label exists connected to a ManipuLayer
+	// that links to the manipulated manifest's layers
+	q := fmt.Sprintf(`MATCH (md:Manifest)-[:MANIPULATED_FROM]->(orig:Manifest {digest: "%s"})`, originalDigest)
+	q += fmt.Sprintf(` RETURN %s`, manifestDataReturn)
+	utils.Debug(l, span, q)
+	if res, f, e := n.QueryOne(q); e != nil {
+		return md, false, utils.ErrorHandler(l, span, e, FailQueryExec)
+	} else if !f {
+		return md, false, nil
+	} else {
+		if md, _, err = n.ManifestFromResult(ctx, res); err != nil {
+			return md, false, utils.ErrorHandler(l, span, err, FailManifestFromResult)
+		}
+		return md, true, nil
+	}
+}

@@ -352,11 +352,12 @@ func (mag Magazine) ComputeManifestlistsForRepoTag(ctx context.Context, repo, ta
 
 	// 6. Iterate every profile and rebuild its per-(col, tag) index.
 	return mag.rebuildIndexesPerProfile(ctx, l, span, rebuildCtx{
-		col:  col,
-		mds:  mds,
-		er:   er,
-		repo: repo,
-		tag:  tag,
+		col:       col,
+		mds:       mds,
+		er:        er,
+		repo:      repo,
+		tag:       tag,
+		pusherPrf: pusherPrf,
 	})
 }
 
@@ -481,11 +482,12 @@ func (mag Magazine) buildExprResForAllRules(ctx context.Context, l *logrus.Entry
 // signatures below the 7-parameter linter threshold (go:S107) while still
 // keeping the contract explicit.
 type rebuildCtx struct {
-	col  types.Repo
-	mds  []types.Manifest
-	er   *types.ExprRes
-	repo string
-	tag  string
+	col       types.Repo
+	mds       []types.Manifest
+	er        *types.ExprRes
+	repo      string
+	tag       string
+	pusherPrf *types.Profile // the profile that triggered the push (nil for batch compute)
 }
 
 // rebuildIndexesPerProfile walks every Profile in the database, constructs
@@ -517,7 +519,19 @@ func (mag Magazine) rebuildIndexForProfile(ctx context.Context, l *logrus.Entry,
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, "failed to construct CTPP for profile %s", prf.Label)
 	}
-	for _, md := range rc.mds {
+	mds := rc.mds
+	// Apply manipulation ONLY when the profile is the one that triggered the
+	// push. Other profiles get unmanipulated originals at compute time;
+	// manipulation for them happens lazily on first pull.
+	if rc.pusherPrf != nil && prf.Label == rc.pusherPrf.Label {
+		manipulatedMds, manipErr := mag.ApplyManipulationsToManifests(ctx, prf, mds)
+		if manipErr != nil {
+			utils.Warn(l, span, "Manipulation failed for pusher profile %s (non-fatal): %v", prf.Label, manipErr)
+		} else {
+			mds = manipulatedMds
+		}
+	}
+	for _, md := range mds {
 		if addErr := ctpp.AddManifest(md); addErr != nil {
 			return utils.ErrorHandler(l, span, addErr, "failed to add manifestdata to CTPP for profile %s", prf.Label)
 		}
