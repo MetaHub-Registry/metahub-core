@@ -321,8 +321,15 @@ func (mag Magazine) upstreamBlobInsertGeneric(ctx context.Context, req types.Req
 
 	// Compute the per-profile Index for this (repo, tag) so the image shows
 	// up in frontend listings and is served via the Index-based pull path.
-	// This mirrors what happens at the end of a normal push.
-	if e := mag.ComputeManifestlistsForRepoTag(ctx, req.Repo, req.Tag, nil); e != nil {
+	// Pass the requesting profile so manipulation-only profiles (like glow)
+	// get their manipulated Index computed at this point.
+	var reqPrf *types.Profile
+	if req.Profile != "" && req.Profile != prfGenericLabel {
+		if prf, prfFound, prfErr := mag.Database.ProfileGetByLabel(ctx, req.Profile); prfErr == nil && prfFound {
+			reqPrf = &prf
+		}
+	}
+	if e := mag.ComputeManifestlistsForRepoTag(ctx, req.Repo, req.Tag, reqPrf); e != nil {
 		utils.Warn(l, span, "ComputeManifestlistsForRepoTag failed (non-fatal, pullthrough still stored): %v", e)
 	}
 	return
