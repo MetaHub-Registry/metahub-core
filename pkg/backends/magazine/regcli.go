@@ -52,9 +52,29 @@ func (mag Magazine) NewRegClient(ctx context.Context, reg string) (rc *regclient
 		utils.Info(l, span, "Testregistry configured: '%s'", testReg)
 		reg = testReg
 		tlsEnabled = false
-	case strings.HasPrefix(reg, "localhost") || reg == "registry:5050" || strings.HasPrefix(reg, "172."):
-		utils.Info(l, span, "Disabling TLS for: '%s'", reg)
-		tlsEnabled = false
+	default:
+		// Check RegistryConfig for TLS setting — this is the config-driven
+		// path that replaces the old hardcoded hostname checks.
+		found := false
+		for _, regCfg := range mag.Config.Registries {
+			if regCfg.Hostname == reg {
+				tlsEnabled = regCfg.TLS
+				found = true
+				if !tlsEnabled {
+					utils.Info(l, span, "TLS disabled for '%s' (from registry config)", reg)
+				}
+				break
+			}
+		}
+		// Fallback for registries not in config (e.g. upstream discovery
+		// before config was populated): use hardcoded heuristics.
+		if !found {
+			switch {
+			case strings.HasPrefix(reg, "localhost") || reg == "registry:5050" || strings.HasPrefix(reg, "172."):
+				utils.Info(l, span, "Disabling TLS for: '%s' (heuristic)", reg)
+				tlsEnabled = false
+			}
+		}
 	}
 	utils.Info(l, span, "Create new regclient")
 	rc = regclient.New()
