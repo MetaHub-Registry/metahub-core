@@ -332,6 +332,9 @@ func (mag Magazine) createManipulatedManifest(ctx context.Context, orig types.Ma
 	if e != nil {
 		return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to get original config from MinIO %s", origCfg.Digest)
 	}
+	if origV1Cfg == nil {
+		return types.Manifest{}, utils.NewError(l, span, "original config blob %s not found in MinIO", origCfg.Digest)
+	}
 
 	// 4. Get ManipuLayer image config from MinIO to read DiffIDs
 	mplCfg, mplCfgFound, e := mag.Database.ConfigGetByManiDataID(ctx, mpl.Image.ID)
@@ -341,6 +344,9 @@ func (mag Magazine) createManipulatedManifest(ctx context.Context, orig types.Ma
 	mplV1Cfg, e := mag.Minio.GetConfig(ctx, mplCfg.Digest)
 	if e != nil {
 		return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to get ManipuLayer config from MinIO %s", mplCfg.Digest)
+	}
+	if mplV1Cfg == nil {
+		return types.Manifest{}, utils.NewError(l, span, "ManipuLayer config blob %s not found in MinIO", mplCfg.Digest)
 	}
 
 	// 5. Build new v1 config: copy original and append ManipuLayer DiffIDs
