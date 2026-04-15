@@ -318,6 +318,13 @@ func (mag Magazine) upstreamBlobInsertGeneric(ctx context.Context, req types.Req
 
 	// Phase C3: trigger compute via the Slot-based path (same as push path)
 	mag.wireSlotOnPush(ctx, l, span, req, maniData.ID)
+
+	// Compute the per-profile Index for this (repo, tag) so the image shows
+	// up in frontend listings and is served via the Index-based pull path.
+	// This mirrors what happens at the end of a normal push.
+	if e := mag.ComputeManifestlistsForRepoTag(ctx, req.Repo, req.Tag, nil); e != nil {
+		utils.Warn(l, span, "ComputeManifestlistsForRepoTag failed (non-fatal, pullthrough still stored): %v", e)
+	}
 	return
 }
 
