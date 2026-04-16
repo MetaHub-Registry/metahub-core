@@ -177,10 +177,18 @@ func (m Minio) NewManifestFromBytes(ctx context.Context, b []byte) (mani types.M
 	// TODO: Is deriving digest from byte safe?
 	maniDig := digest.FromBytes(b)
 
+	// Manifest.Size is the size of the manifest bytes themselves
+	// (what an OCI descriptor for the manifest should carry). It must
+	// NOT be confused with Config.Size (which is bInfo.Size — the size
+	// of the config blob the manifest references). Computed Indexes
+	// emit descriptors whose {digest, size} pair must point at the
+	// referenced manifest bytes, so swapping these two produces indexes
+	// that fail verification with 'failed to read expected number of
+	// bytes: unexpected EOF' in OCI clients like manifest-tool/containerd.
 	mani = types.Manifest{
 		MediaType: mt,
 		Digest:    maniDig.String(),
-		Size:      bInfo.Size,
+		Size:      int64(len(b)),
 		Data:      b,
 	}
 	mani.Config = types.Config{
