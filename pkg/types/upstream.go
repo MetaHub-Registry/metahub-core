@@ -69,6 +69,12 @@ func NewUpstreamFromRequest(req Request) (up Upstream, err error) {
 	return up, nil
 }
 
+// GetBlobUrl returns an https:// URL for the blob.
+//
+// Deprecated: This method hardcodes https:// and ignores registry TLS
+// configuration. Use Magazine.GetBlobRedirectURL for client-facing blob
+// redirects so the scheme follows RegistryConfig.TLS. This remains for
+// non-redirect callers (logging, debug) where the scheme is cosmetic.
 func (up Upstream) GetBlobUrl(dig ...string) string {
 	base := fmt.Sprintf("https://%s/v2/%s/blobs", up.Reg, up.Repo)
 	if len(dig) == 0 {

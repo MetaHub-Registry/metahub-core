@@ -54,10 +54,12 @@ func (mag Magazine) NewRegClient(ctx context.Context, reg string) (rc *regclient
 		tlsEnabled = false
 	default:
 		// Check RegistryConfig for TLS setting — this is the config-driven
-		// path that replaces the old hardcoded hostname checks.
+		// path that replaces the old hardcoded hostname checks. Match on
+		// EffectiveURL (network endpoint) which is what reg contains at
+		// this point. Also match EffectiveName for legacy compat.
 		found := false
 		for _, regCfg := range mag.Config.Registries {
-			if regCfg.Hostname == reg {
+			if regCfg.EffectiveURL() == reg || regCfg.EffectiveName() == reg {
 				tlsEnabled = regCfg.TLS
 				found = true
 				if !tlsEnabled {
@@ -586,4 +588,32 @@ func (mag Magazine) HeadManifestByRegRepoTag(ctx context.Context, reg, repo, tag
 
 	}
 	return blob, false, nil
+}
+
+// GetBlobRedirectURL builds the absolute upstream URL to which a client's
+// blob GET should be redirected. The scheme is derived from the matching
+// RegistryConfig.TLS flag: configured registries with TLS=false produce
+// http:// URLs, everything else produces https://. Unknown registries
+// default to https:// (safe for public upstreams like docker.io).
+//
+// Match on both EffectiveURL (primary — Upstream.Reg stores the URL) and
+// EffectiveName (legacy data where Reg was the slug/hostname).
+//
+// When digest is non-empty it overrides up.Digest in the URL. Pass ""
+// to use up.Digest (mirrors the variadic Upstream.GetBlobUrl contract).
+func (mag Magazine) GetBlobRedirectURL(up mhTypes.Upstream, digest string) string {
+	scheme := "https"
+	for _, reg := range mag.Config.Registries {
+		if reg.EffectiveURL() == up.Reg || reg.EffectiveName() == up.Reg {
+			if !reg.TLS {
+				scheme = "http"
+			}
+			break
+		}
+	}
+	dig := digest
+	if dig == "" {
+		dig = up.Digest.String()
+	}
+	return fmt.Sprintf("%s://%s/v2/%s/blobs/%s", scheme, up.Reg, up.Repo, dig)
 }

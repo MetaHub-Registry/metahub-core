@@ -95,11 +95,11 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 			case map[interface{}]interface{}:
 				rc := registryConfigFromMap(entry)
 				yamlRegistries = append(yamlRegistries, rc)
-				regList = append(regList, rc.Hostname)
+				regList = append(regList, rc.EffectiveURL())
 			case map[string]interface{}:
 				rc := registryConfigFromStringMap(entry)
 				yamlRegistries = append(yamlRegistries, rc)
-				regList = append(regList, rc.Hostname)
+				regList = append(regList, rc.EffectiveURL())
 			case string:
 				if entry != "" {
 					regList = append(regList, entry)
@@ -114,6 +114,14 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 		// No registries configured
 	default:
 		logrus.Warnf("unexpected registries config type %T, ignoring", rawRegs)
+	}
+	// Fail-fast: reject entries with empty hostnames (common with unquoted
+	// colon-bearing YAML values like "hostname: registry:5050").
+	if errs := ValidateRegistries(yamlRegistries); len(errs) > 0 {
+		for _, e := range errs {
+			logrus.Errorf("invalid registry config: %v", e)
+		}
+		logrus.Fatal("aborting: fix the registries block in the config file (quote hostnames containing colons)")
 	}
 	// CORS
 	corsEnabled := viper.GetBool("cors.enabled")
