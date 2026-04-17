@@ -317,3 +317,17 @@ func (m Minio) ManifestRemoveObj(ctx context.Context, object string) (err error)
 func (m Minio) GetManifestsBucketName() string {
 	return m.BucketConfig[manifestsBucketKey].Bucket
 }
+
+// ManifestsGetRawBytes returns the raw bytes stored in the manifests bucket at
+// the given path (typically a digest string). Unlike ManifestGetObj, this does
+// not attempt to parse the content — it is suitable for serving persisted
+// Indexes or any other raw manifest content directly to clients.
+func (m Minio) ManifestsGetRawBytes(ctx context.Context, path string) ([]byte, error) {
+	cli := m.BucketConfig[manifestsBucketKey].Client
+	obj, err := cli.GetObject(ctx, m.GetManifestsBucketName(), path, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer obj.Close()
+	return io.ReadAll(obj)
+}
