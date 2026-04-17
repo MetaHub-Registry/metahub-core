@@ -177,10 +177,18 @@ func (m Minio) NewManifestFromBytes(ctx context.Context, b []byte) (mani types.M
 	// TODO: Is deriving digest from byte safe?
 	maniDig := digest.FromBytes(b)
 
+	// Manifest.Size is the size of the manifest bytes themselves
+	// (what an OCI descriptor for the manifest should carry). It must
+	// NOT be confused with Config.Size (which is bInfo.Size — the size
+	// of the config blob the manifest references). Computed Indexes
+	// emit descriptors whose {digest, size} pair must point at the
+	// referenced manifest bytes, so swapping these two produces indexes
+	// that fail verification with 'failed to read expected number of
+	// bytes: unexpected EOF' in OCI clients like manifest-tool/containerd.
 	mani = types.Manifest{
 		MediaType: mt,
 		Digest:    maniDig.String(),
-		Size:      bInfo.Size,
+		Size:      int64(len(b)),
 		Data:      b,
 	}
 	mani.Config = types.Config{
@@ -308,4 +316,18 @@ func (m Minio) ManifestRemoveObj(ctx context.Context, object string) (err error)
 
 func (m Minio) GetManifestsBucketName() string {
 	return m.BucketConfig[manifestsBucketKey].Bucket
+}
+
+// ManifestsGetRawBytes returns the raw bytes stored in the manifests bucket at
+// the given path (typically a digest string). Unlike ManifestGetObj, this does
+// not attempt to parse the content — it is suitable for serving persisted
+// Indexes or any other raw manifest content directly to clients.
+func (m Minio) ManifestsGetRawBytes(ctx context.Context, path string) ([]byte, error) {
+	cli := m.BucketConfig[manifestsBucketKey].Client
+	obj, err := cli.GetObject(ctx, m.GetManifestsBucketName(), path, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer obj.Close()
+	return io.ReadAll(obj)
 }

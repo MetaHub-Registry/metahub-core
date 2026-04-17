@@ -70,12 +70,58 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 	fr := viper.GetString("frontend.redirect")
 	logrus.Infof("Redirect frontend to: %s", fr)
 	au := viper.GetString("auth.url")
+	// Parse registries from YAML config — supports both legacy string and structured list
 	var regList []string
-	regs := viper.GetString("registries")
-	if regs != "" {
-		logrus.Infof("add pull-through registries from config: %s", regs)
-		regList = append(regList, strings.Split(regs, ",")...)
-
+	var yamlRegistries []RegistryConfig
+	rawRegs := viper.Get("registries")
+	switch v := rawRegs.(type) {
+	case string:
+		// Legacy format: "zot.example.com,docker.io"
+		if v != "" {
+			logrus.Infof("add pull-through registries from config (string): %s", v)
+			for _, h := range strings.Split(v, ",") {
+				h = strings.TrimSpace(h)
+				if h == "" {
+					continue
+				}
+				regList = append(regList, h)
+				yamlRegistries = append(yamlRegistries, RegistryConfigFromHostname(h))
+			}
+		}
+	case []interface{}:
+		// Structured format: list of objects or list of strings
+		for _, item := range v {
+			switch entry := item.(type) {
+			case map[interface{}]interface{}:
+				rc := registryConfigFromMap(entry)
+				yamlRegistries = append(yamlRegistries, rc)
+				regList = append(regList, rc.EffectiveURL())
+			case map[string]interface{}:
+				rc := registryConfigFromStringMap(entry)
+				yamlRegistries = append(yamlRegistries, rc)
+				regList = append(regList, rc.EffectiveURL())
+			case string:
+				if entry != "" {
+					regList = append(regList, entry)
+					yamlRegistries = append(yamlRegistries, RegistryConfigFromHostname(entry))
+				}
+			}
+		}
+		if len(yamlRegistries) > 0 {
+			logrus.Infof("add pull-through registries from config (structured): %d entries", len(yamlRegistries))
+		}
+	case nil:
+		// No registries configured
+	default:
+		logrus.Warnf("unexpected registries config type %T, ignoring", rawRegs)
+	}
+	// Fail-fast: reject entries with empty hostnames (common with unquoted
+	// colon-bearing YAML values like "hostname: registry:5050").
+	if errs := ValidateRegistries(yamlRegistries); len(errs) > 0 {
+		for _, e := range errs {
+			logrus.Errorf("invalid registry config: %v", e)
+		}
+		logrus.Fatal("aborting: fix the registries block in the config file (quote hostnames containing colons)")
 	}
 	// CORS
 	corsEnabled := viper.GetBool("cors.enabled")
@@ -83,7 +129,7 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 	cors := CORS{
 		Enabled: corsEnabled,
 	}
-	cfg := parseFlags(cmd, regList)
+	cfg := parseFlags(cmd, regList, yamlRegistries)
 	cfg.CORS = cors
 	cfg.AuthURL = au
 	cfg.RedirectDoc = fr
@@ -191,25 +237,37 @@ func (mag Magazine) SetupTest(ctx context.Context, bs utils.Bootstrap) (br utils
 	return
 }
 
-func parseFlags(cmd *cobra.Command, regList []string) (cfg MagConfig) {
+func parseFlags(cmd *cobra.Command, regList []string, yamlRegistries []RegistryConfig) (cfg MagConfig) {
 	// Flags
 	profileRegex, _ := cmd.Flags().GetString("profile")
 	repoRegex, _ := cmd.Flags().GetString("repo")
 	tagRegex, _ := cmd.Flags().GetString("tag")
 	manifest, _ := cmd.Flags().GetString("manifest")
 	flagReg, _ := cmd.Flags().GetString("registries")
+	// Build structured registries: YAML entries first, then CLI flag entries appended
+	var registries []RegistryConfig
+	registries = append(registries, yamlRegistries...)
 	if flagReg != "" {
-		logrus.Infof("prepend pull-through registries from flags: %s", flagReg)
-		regList = append(strings.Split(flagReg, ","), regList...)
+		logrus.Infof("append pull-through registries from flags: %s", flagReg)
+		for _, h := range strings.Split(flagReg, ",") {
+			h = strings.TrimSpace(h)
+			if h == "" {
+				continue
+			}
+			regList = append(regList, h)
+			registries = append(registries, RegistryConfigFromHostname(h))
+		}
 	}
 	return MagConfig{
-		Tracing: TraceCfg{Enabled: false},
+		Tracing:    TraceCfg{Enabled: false},
+		Registries: registries,
 		Args: map[string]string{
 			"profileRegex": profileRegex,
 			"repoRegex":    repoRegex,
 			"tagRegex":     tagRegex,
 			"manifest":     manifest,
-			"registries":   strings.Join(regList, ","),
+			// Backward compat: keep flat string for any code reading Args["registries"]
+			"registries": strings.Join(regList, ","),
 		},
 	}
 }

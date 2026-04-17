@@ -54,7 +54,11 @@ func (mag Magazine) NeoInsertUpstream(ctx context.Context, up types.Upstream) (u
 	return
 }
 
-func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string) (blob types.BlobMeta, registry string, found bool, err error) {
+// DiscoverUpstream tries to find a manifest for repo:tag in upstream registries.
+// When targetReg is provided, only that specific registry is tried (it must be
+// present in MagConfig.Registries). When targetReg is empty, all configured
+// registries are iterated in order (existing behavior).
+func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string, targetReg ...string) (blob types.BlobMeta, registry string, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameUp,
 		"func":    "DiscoverUpstream",
@@ -62,17 +66,58 @@ func (mag Magazine) DiscoverUpstream(ctx context.Context, repo, tag string) (blo
 		"tag":     tag,
 	})
 	defer span.End()
-	reg, ok := mag.GetConfig("registries")
-	if !ok {
-		err = utils.NewError(l, span, "Failed to get 'registries' from config, please check your config")
-		return
+
+	// Build the list of registries to try.
+	// upstreamRepo is the repo path as the upstream registry knows it — it may
+	// differ from repo when the caller uses a prefix-preserving local alias
+	// (D5/D6). For example, repo="registry:5050/os/alpine" → upstreamRepo="os/alpine".
+	upstreamRepo := repo
+	var regList []string
+	if len(targetReg) > 0 && targetReg[0] != "" {
+		target := targetReg[0]
+		// Validate that the target registry is configured. The target may be
+		// either a Name (slug) or a URL (endpoint) depending on how the caller
+		// resolved it. Match on both.
+		var matchedURL string
+		for _, reg := range mag.Config.Registries {
+			if reg.EffectiveName() == target || reg.EffectiveURL() == target {
+				matchedURL = reg.EffectiveURL()
+				break
+			}
+		}
+		if matchedURL == "" {
+			err = utils.NewError(l, span, "target registry '%s' is not configured", target)
+			return
+		}
+		regList = []string{matchedURL}
+		// Strip the registry prefix from the repo path so that the upstream
+		// reference is well-formed (e.g. "os/alpine" not "registry:5050/os/alpine").
+		if _, stripped, ok := mag.ResolveUpstreamRegistry(repo); ok {
+			upstreamRepo = stripped
+			utils.Debug(l, span, "stripped registry prefix for upstream query: %s -> %s", repo, upstreamRepo)
+		}
+		utils.Info(l, span, "Using targeted registry: %s (upstreamRepo: %s)", target, upstreamRepo)
+	} else {
+		// No target — use all configured registries (fallback to Args for backward compat)
+		if len(mag.Config.Registries) > 0 {
+			for _, reg := range mag.Config.Registries {
+				regList = append(regList, reg.EffectiveURL())
+			}
+		} else {
+			reg, ok := mag.GetConfig("registries")
+			if !ok {
+				err = utils.NewError(l, span, "Failed to get 'registries' from config, please check your config")
+				return
+			}
+			regList = strings.Split(reg, ",")
+		}
+		utils.Info(l, span, "Using registries: %v", regList)
 	}
-	utils.Info(l, span, "Using registries: %s", reg)
-	regList := strings.Split(reg, ",")
+
 	for _, reg := range regList {
 		regCtx, regSpan := tracer.Start(ctx, fmt.Sprintf("DiscoverUpstream_%s", reg))
 		defer regSpan.End()
-		b, regFound, e := mag.HeadManifestByRegRepoTag(regCtx, reg, repo, tag)
+		b, regFound, e := mag.HeadManifestByRegRepoTag(regCtx, reg, upstreamRepo, tag)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to HeadManifestByRegRepoTag")
 			continue
@@ -285,6 +330,20 @@ func (mag Magazine) upstreamBlobInsertGeneric(ctx context.Context, req types.Req
 
 	// Phase C3: trigger compute via the Slot-based path (same as push path)
 	mag.wireSlotOnPush(ctx, l, span, req, maniData.ID)
+
+	// Compute the per-profile Index for this (repo, tag) so the image shows
+	// up in frontend listings and is served via the Index-based pull path.
+	// Pass the requesting profile so manipulation-only profiles (like glow)
+	// get their manipulated Index computed at this point.
+	var reqPrf *types.Profile
+	if req.Profile != "" && req.Profile != prfGenericLabel {
+		if prf, prfFound, prfErr := mag.Database.ProfileGetByLabel(ctx, req.Profile); prfErr == nil && prfFound {
+			reqPrf = &prf
+		}
+	}
+	if e := mag.ComputeManifestlistsForRepoTag(ctx, req.Repo, req.Tag, reqPrf); e != nil {
+		utils.Warn(l, span, "ComputeManifestlistsForRepoTag failed (non-fatal, pullthrough still stored): %v", e)
+	}
 	return
 }
 
@@ -377,9 +436,18 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 		err = utils.ErrorHandler(l, span, e, "failed to get/create collection")
 		return
 	}
+	// For prefix-preserving pullthrough (D5/D6), req.Repo is the local alias
+	// (e.g. "registry:5050/os/alpine") while the Upstream node must store the
+	// repo path as the upstream registry knows it (e.g. "os/alpine"). This
+	// ensures GetBlobUrl() and manifest-fetch-by-digest construct valid refs.
+	upstreamRepo := req.Repo
+	if _, stripped, ok := mag.ResolveUpstreamRegistry(req.Repo); ok {
+		upstreamRepo = stripped
+		utils.Debug(l, span, "stripped registry prefix for upstream record: %s -> %s", req.Repo, upstreamRepo)
+	}
 	ups = types.Upstream{
 		Reg:     req.Host,
-		Repo:    req.Repo,
+		Repo:    upstreamRepo,
 		Tag:     req.Tag,
 		Digest:  dig,
 		Profile: req.Profile,
@@ -394,28 +462,38 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 	// are now stored on Manifest in-memory and persisted via
 	// ManifestAddAnnotations. OCICreateBaseManifest reads them
 	// from maniData.Annotations passed by the caller.
-	// 2 . Get the Blob
-	maniBytes, maniMeta, e := mag.GetManifestByUpstreamByDigest(ctx, ups)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "while getting manifest")
-		return
-	}
-	utils.Debug(l, span, "Found manifest upstream: %s", utils.ShortenDigest(maniMeta.Digest.String()))
-	// Put Manifest in Minio
-	e = mag.Minio.PutManifestByUpstream(ctx, maniBytes, ups)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "Failed to get put manifest in minio")
-		return
+	// 2. Get the manifest — check MinIO first, fetch from upstream only if missing.
+	var maniBytes []byte
+	var maniMeta types.BlobMeta
+	cachedMani, cacheErr := mag.Minio.ManifestGetObj(ctx, ups.Digest.String())
+	if cacheErr == nil && len(cachedMani.Data) > 0 {
+		utils.Info(l, span, "manifest %s already in MinIO, skipping upstream fetch", utils.ShortenDigest(ups.Digest.String()))
+		maniBytes = cachedMani.Data
+		maniMeta = types.BlobMeta{Digest: digest.Digest(cachedMani.Digest), Size: int64(len(cachedMani.Data)), MediaType: cachedMani.MediaType}
+	} else {
+		maniBytes, maniMeta, e = mag.GetManifestByUpstreamByDigest(ctx, ups)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "while getting manifest")
+			return
+		}
+		utils.Debug(l, span, "Found manifest upstream: %s", utils.ShortenDigest(maniMeta.Digest.String()))
+		// Put Manifest in Minio
+		e = mag.Minio.PutManifestByUpstream(ctx, maniBytes, ups)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "Failed to get put manifest in minio")
+			return
+		}
 	}
 	rawMani, e := minio.RawManifestFromBlob(maniBytes)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to RawManifestFromBlob")
 		return
 	}
-	// Fetch Upstream Config
+	// Fetch Upstream Config — use upstreamRepo (stripped) to ensure the
+	// reference targets the real upstream path, not the prefix-preserved alias.
 	configUpt := upstream.UpstreamTriple{
 		Reg:     req.Host,
-		Repo:    req.Repo,
+		Repo:    upstreamRepo,
 		Tag:     req.Tag,
 		Digest:  dig,
 		Profile: req.Profile,
@@ -429,16 +507,22 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 	default:
 		l.Fatalf("Unknown media type: %s", maniMeta.MediaType)
 	}
-	cfgByte, cfgBlob, e := mag.GetBlobByUpstreamTriple(ctx, configUpt)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to get config via GetBlobByUpstreamTriple")
-		return
-	}
-	utils.Debug(l, span, "Found config upstream: %s", utils.ShortenDigest(cfgBlob.Digest.String()))
-	e = mag.Minio.PutBlob(ctx, cfgByte, cfgBlob.Digest.String())
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "while putting config in Minio")
-		return
+	// Check if config blob already exists in MinIO before fetching from upstream
+	_, cfgStatErr := mag.Minio.BlobStatObj(ctx, configUpt.Digest.String())
+	if cfgStatErr == nil {
+		utils.Info(l, span, "config blob %s already in MinIO, skipping upstream fetch", utils.ShortenDigest(configUpt.Digest.String()))
+	} else {
+		cfgByte, cfgBlob, e := mag.GetBlobByUpstreamTriple(ctx, configUpt)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to get config via GetBlobByUpstreamTriple")
+			return
+		}
+		utils.Debug(l, span, "Found config upstream: %s", utils.ShortenDigest(cfgBlob.Digest.String()))
+		e = mag.Minio.PutBlob(ctx, cfgByte, cfgBlob.Digest.String())
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, "while putting config in Minio")
+			return
+		}
 	}
 	maniData, e = mag.Minio.NewManifestFromBytes(ctx, maniBytes)
 	if e != nil {
@@ -499,7 +583,7 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 			up := upstream.UpstreamTriple{
 				MediaType: layer.MediaType,
 				Reg:       req.Host,
-				Repo:      req.Repo,
+				Repo:      upstreamRepo,
 				Tag:       req.Tag,
 				Digest:    digest.Digest(layer.Digest),
 			}
@@ -735,18 +819,20 @@ func (mag Magazine) CacheUpstream(ctx context.Context, up types.Upstream) (err e
 	return nil
 }
 
+// AllowsUnauthorizedPull checks whether the upstream registry allows anonymous
+// blob pulls by looking up the registry in MagConfig.Registries. Matches on
+// both EffectiveURL and EffectiveName (the Upstream node stores EffectiveURL
+// as Reg, but legacy data may use the slug name).
+// Unknown registries default to denied. The TEST_REGISTRY override is preserved
+// for integration tests.
 func (mag Magazine) AllowsUnauthorizedPull(up types.Upstream) bool {
 	if _, ok := mag.Config.Args["TEST_REGISTRY"]; ok {
 		return true
 	}
-	switch up.Reg {
-	case "registry-1.docker.io", "docker.io":
-		return false
-	case "quay.io":
-		return true
-	case "registry:5050":
-		return true
-	default:
-		return false
+	for _, reg := range mag.Config.Registries {
+		if reg.EffectiveURL() == up.Reg || reg.EffectiveName() == up.Reg {
+			return reg.AllowAnon
+		}
 	}
+	return false
 }

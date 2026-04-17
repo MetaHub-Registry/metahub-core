@@ -2650,11 +2650,12 @@ func (n Neo) ManifestGetManipulatedByOriginalAndLabel(ctx context.Context, origi
 	})
 	defer span.End()
 	_ = ctx
-	// Walk: manipulated manifest -[:MANIPULATED_FROM]-> original manifest
-	// and check that a Manipulation with the given label exists connected to a ManipuLayer
-	// that links to the manipulated manifest's layers
+	// Walk: manipulated manifest -[:MANIPULATED_FROM]-> original manifest.
+	// Include HAS_PLATFORM so the returned Manifest carries the correct
+	// platform descriptor (needed for Index serialisation).
 	q := fmt.Sprintf(`MATCH (md:Manifest)-[:MANIPULATED_FROM]->(orig:Manifest {digest: "%s"})`, originalDigest)
-	q += fmt.Sprintf(` RETURN %s`, manifestDataReturn)
+	q += ` OPTIONAL MATCH (md)-[:HAS_PLATFORM]->(p:Platform)`
+	q += fmt.Sprintf(` RETURN %s, id(p) as platformID, p.os as platformOS, p.arch as platformArch, p.variant as platformVariant`, manifestDataReturn)
 	utils.Debug(l, span, q)
 	if res, f, e := n.QueryOne(q); e != nil {
 		return md, false, utils.ErrorHandler(l, span, e, FailQueryExec)
@@ -2663,6 +2664,9 @@ func (n Neo) ManifestGetManipulatedByOriginalAndLabel(ctx context.Context, origi
 	} else {
 		if md, _, err = n.ManifestFromResult(ctx, res); err != nil {
 			return md, false, utils.ErrorHandler(l, span, err, FailManifestFromResult)
+		}
+		if p, pErr := PlatformFromResult(res); pErr == nil {
+			md.Platform = p
 		}
 		return md, true, nil
 	}

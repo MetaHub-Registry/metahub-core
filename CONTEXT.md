@@ -100,3 +100,23 @@ use the dev environment).
 - 19 legacy functions still use ManifestWrapper/UPSTREAM patterns
 - `compute manifestlists` doesn't produce `:Index` for CE-parsed data
 - `artifactType` not populated in referrers response descriptors
+
+## 2026-04-17 Continuation
+
+### What changed
+- **RegistryConfig Name/URL split**: New `Name`, `URL` fields with `EffectiveName()`/`EffectiveURL()` helpers. Legacy `Hostname` field retained for backward compat. `normalize()` bridges Name<->Hostname. `ValidateRegistries()` fail-fast check at config load time.
+- **Magazine.GetBlobRedirectURL**: TLS-aware blob redirect URL builder. Consults `RegistryConfig.TLS` to emit `http://` or `https://`. Matches on both `EffectiveURL` and `EffectiveName`. `Upstream.GetBlobUrl` deprecated but retained.
+- **DiscoverUpstream prefix stripping**: When `targetReg` is set, strips the slug prefix from the repo path for upstream HEAD calls. `upstreamInsertGeneric` stores the stripped repo on Upstream nodes.
+- **ManifestGetManipulatedByOriginalAndLabel platform hydration**: Added `OPTIONAL MATCH (md)-[:HAS_PLATFORM]->(p:Platform)` to the dedup query so returned manipulated manifests carry correct platform fields. Without this, Docker refused to pull ("no matching manifest for linux/arm64/v8").
+
+### Key files
+- `pkg/backends/magazine/magconfig.go` — Name/URL/EffectiveName/EffectiveURL/ValidateRegistries
+- `pkg/backends/magazine/magconfig_test.go` — 30+ tests covering all config scenarios + GetBlobRedirectURL
+- `pkg/backends/magazine/regcli.go` — GetBlobRedirectURL, NewRegClient TLS lookup updated
+- `pkg/backends/magazine/upstream.go` — DiscoverUpstream prefix stripping, AllowsUnauthorizedPull dual-match
+- `pkg/backends/neo/manifest.go` — ManifestGetManipulatedByOriginalAndLabel platform fix
+- `pkg/types/upstream.go` — GetBlobUrl deprecated with doc comment
+
+### Gotchas
+- `ResolveUpstreamRegistry` returns `EffectiveURL()` (not the slug Name) — callers like `resolveUpstreamTarget` get the network endpoint
+- Upstream nodes store the stripped repo (e.g. `os/alpine317`) not the full prefix alias (`local-reg/os/alpine317`) — this is by design for correct GetBlobUrl/GetManifestByUpstreamByDigest construction

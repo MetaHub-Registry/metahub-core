@@ -56,7 +56,10 @@ func (mag Magazine) RemoveCollectionByRequest(ctx context.Context, req types.Req
 	return mag.Database.CollectionRemove(ctx, c)
 }
 
-func (mag Magazine) HeadManistNotFoundForProfile(ctx context.Context, req types.Request) (md string, found bool, err error) {
+// HeadManistNotFoundForProfile looks up a manifest for the requested profile.
+// The optional targetReg parameter, when provided, is forwarded to
+// DiscoverUpstream so that only a specific upstream registry is tried.
+func (mag Magazine) HeadManistNotFoundForProfile(ctx context.Context, req types.Request, targetReg ...string) (md string, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgName,
 		"func":    "mag.HeadManistNotFoundForProfile",
@@ -128,7 +131,11 @@ func (mag Magazine) HeadManistNotFoundForProfile(ctx context.Context, req types.
 	return md, found, err
 }
 
-func (mag Magazine) HeadManifestNotFound(ctx context.Context, req types.Request) (md string, found bool, err error) {
+// HeadManifestNotFound is called when a manifest HEAD by tag finds no local
+// manifest. It discovers the image from configured upstream registries.
+// The optional targetReg parameter, when provided, restricts discovery to a
+// single upstream registry (used when the request path includes a registry prefix).
+func (mag Magazine) HeadManifestNotFound(ctx context.Context, req types.Request, targetReg ...string) (md string, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgName,
 		"func":    "mag.HeadManifestNotFound",
@@ -146,8 +153,8 @@ func (mag Magazine) HeadManifestNotFound(ctx context.Context, req types.Request)
 		err = utils.NewError(l, span, "collection for repo '%s' and tag '%s' not found", req.Repo, req.Tag)
 		return
 	}
-	// DONE: Discover Upstream image
-	blob, reg, found, e := mag.DiscoverUpstream(ctx, req.Repo, req.Tag)
+	// Discover Upstream image — forward targetReg if provided
+	blob, reg, found, e := mag.DiscoverUpstream(ctx, req.Repo, req.Tag, targetReg...)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to discover upstream")
 		return

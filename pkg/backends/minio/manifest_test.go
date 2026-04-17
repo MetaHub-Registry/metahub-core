@@ -28,6 +28,22 @@ func TestManifestFromBlob(t *testing.T) {
 	assert.Equal(t, 2, len(mani.Layers))
 	assert.Equal(t, "amd64", mani.Platform.Arch)
 	assert.Equal(t, "linux", mani.Platform.OS)
+	// Regression guard: Manifest.Size MUST be the size of the manifest
+	// bytes themselves (what an OCI descriptor points at), NOT the
+	// size of the config blob it references. Before the fix in
+	// NewManifestFromBytes, this was erroneously set to the config's
+	// size (bInfo.Size) — which caused computed Indexes to emit
+	// descriptors with the wrong size, breaking manifest-tool /
+	// containerd pulls with 'failed to read expected number of bytes'.
+	// The manifest bytes are the canonical source of truth here.
+	assert.Equal(t, int64(len(featureTestGenericMani)), mani.Size,
+		"Manifest.Size must equal len(manifest bytes), not Config.Size")
+	// Sanity: Config.Size must NOT equal Manifest.Size for this fixture
+	// (they are genuinely different — the manifest is ~hundreds of
+	// bytes; the config is larger). If these ever become equal for a
+	// fixture, pick a different fixture to preserve the test's value.
+	assert.NotEqual(t, mani.Size, mani.Config.Size,
+		"test fixture must have distinct Manifest.Size and Config.Size so the regression guard is meaningful")
 }
 
 func TestManifestPutStatRemove(t *testing.T) {
