@@ -35,6 +35,7 @@ type Database interface {
 	UpstreamGet(ctx context.Context, up types.Upstream) (upID int64, success bool, err error)
 	UpstreamGetByID(ctx context.Context, upID int64) (up types.Upstream, found bool, err error)
 	UpstreamGetByLayerDigest(ctx context.Context, dig string) (up types.Upstream, found bool, err error)
+	UpstreamGetByManifestID(ctx context.Context, maniDataID int64) (up types.Upstream, relType string, found bool, err error)
 	/********* Annotation/Labels *********/
 	ConfigAddLabels(ctx context.Context, cfgID int64, a *types.Annotations) (err error)
 	// ManifestAddAnnotation / ManifestAddAnnotations were dead wrapper-era
