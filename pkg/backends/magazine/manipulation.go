@@ -369,43 +369,72 @@ func cloneManipuConfig(cfg types.ManipuConfig) types.ManipuConfig {
 // variant-only entries). Entrypoint / Cmd from the variant
 // replace the default wholesale when present.
 func mergeManipuConfig(base *types.ManipuConfig, variant types.ManipuConfig) {
+	mergeScalars(base, variant)
+	mergeEnv(base, variant.Env)
+	base.Volumes = mergeVolumes(base.Volumes, variant.Volumes)
+	if cmd := cloneCommandIfPresent(variant.Entrypoint); cmd != nil {
+		base.Entrypoint = cmd
+	}
+	if cmd := cloneCommandIfPresent(variant.Cmd); cmd != nil {
+		base.Cmd = cmd
+	}
+}
+
+// mergeScalars applies variant's non-empty scalar fields to base.
+func mergeScalars(base *types.ManipuConfig, variant types.ManipuConfig) {
 	if variant.Workdir != "" {
 		base.Workdir = variant.Workdir
 	}
 	if variant.User != "" {
 		base.User = variant.User
 	}
-	if len(variant.Env) > 0 {
-		if base.Env == nil {
-			base.Env = make(map[string]string, len(variant.Env))
-		}
-		for k, v := range variant.Env {
-			base.Env[k] = v
-		}
+}
+
+// mergeEnv merges variant env entries into base.Env, allocating the
+// map on demand. Variant values override defaults on duplicate keys.
+func mergeEnv(base *types.ManipuConfig, variantEnv map[string]string) {
+	if len(variantEnv) == 0 {
+		return
 	}
-	if len(variant.Volumes) > 0 {
-		seen := make(map[string]struct{}, len(base.Volumes))
-		for _, v := range base.Volumes {
-			seen[v] = struct{}{}
+	if base.Env == nil {
+		base.Env = make(map[string]string, len(variantEnv))
+	}
+	for k, v := range variantEnv {
+		base.Env[k] = v
+	}
+}
+
+// mergeVolumes union-merges `variant` into `base`, preserving the
+// original ordering of base and appending variant-only entries.
+func mergeVolumes(base, variant []string) []string {
+	if len(variant) == 0 {
+		return base
+	}
+	seen := make(map[string]struct{}, len(base))
+	for _, v := range base {
+		seen[v] = struct{}{}
+	}
+	for _, v := range variant {
+		if _, dup := seen[v]; dup {
+			continue
 		}
-		for _, v := range variant.Volumes {
-			if _, dup := seen[v]; dup {
-				continue
-			}
-			seen[v] = struct{}{}
-			base.Volumes = append(base.Volumes, v)
-		}
+		seen[v] = struct{}{}
+		base = append(base, v)
 	}
-	if variant.Entrypoint != nil && !variant.Entrypoint.IsZero() {
-		cp := *variant.Entrypoint
-		cp.Value = append([]string(nil), variant.Entrypoint.Value...)
-		base.Entrypoint = &cp
+	return base
+}
+
+// cloneCommandIfPresent returns a deep copy of cmd when it is non-nil
+// and non-zero, otherwise nil. Callers use the returned value to
+// replace an existing Entrypoint or Cmd only when the variant
+// actually provides one.
+func cloneCommandIfPresent(cmd *types.ManipuCommand) *types.ManipuCommand {
+	if cmd == nil || cmd.IsZero() {
+		return nil
 	}
-	if variant.Cmd != nil && !variant.Cmd.IsZero() {
-		cp := *variant.Cmd
-		cp.Value = append([]string(nil), variant.Cmd.Value...)
-		base.Cmd = &cp
-	}
+	cp := *cmd
+	cp.Value = append([]string(nil), cmd.Value...)
+	return &cp
 }
 
 // applyManipuConfigToV1 mutates a v1.Image config in place by applying
@@ -555,163 +584,21 @@ func (mag Magazine) createManipulatedManifest(ctx context.Context, orig types.Ma
 	defer span.End()
 
 	manipLabel := fmt.Sprintf("%s#%s", orig.Label, mpLabel)
-
-	// Check if a manipulated manifest already exists for this original+manipulation (dedup)
-	existing, found, e := mag.Database.ManifestGetManipulatedByOriginalAndLabel(ctx, orig.Digest, mpLabel)
-	if e != nil {
-		utils.Warn(l, span, "ManifestGetManipulatedByOriginalAndLabel check failed (non-fatal): %v", e)
-	} else if found {
-		utils.Info(l, span, "Reusing existing manipulated manifest %d (digest %s) for %s", existing.ID, existing.Digest, manipLabel)
+	if existing, hit := mag.reuseExistingManipulated(ctx, l, span, orig.Digest, mpLabel, manipLabel); hit {
 		return existing, nil
 	}
-	_ = manipLabel // Used for logging
-
-	// 1. Get original's layers
-	origLayers, e := mag.Database.GetLayersForManifestID(ctx, orig.ID)
-	if e != nil {
-		return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to get layers for original manifest %d", orig.ID)
+	parts, err := mag.gatherManipulationParts(ctx, l, span, orig, mpl)
+	if err != nil {
+		return types.Manifest{}, err
 	}
-
-	// 2. Get ManipuLayer image's layers
-	mplLayers := mpl.Image.Layers
-	if len(mplLayers) == 0 {
-		// Fetch from graph if not populated
-		mplLayers, e = mag.Database.GetLayersForManifestID(ctx, mpl.Image.ID)
-		if e != nil {
-			return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to get layers for ManipuLayer image %d", mpl.Image.ID)
-		}
+	newCfgType, err := mag.buildAndStoreManipulatedConfig(ctx, l, span, parts, cfg)
+	if err != nil {
+		return types.Manifest{}, err
 	}
-	utils.Info(l, span, "Original has %d layers, ManipuLayer adds %d layers", len(origLayers), len(mplLayers))
-
-	// 3. Get original config from MinIO to read DiffIDs
-	origCfg, origCfgFound, e := mag.Database.ConfigGetByManiDataID(ctx, orig.ID)
-	if e != nil || !origCfgFound {
-		return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to get config for original manifest %d", orig.ID)
+	maniBytes, maniDigest, allLayers, err := mag.buildAndStoreManipulatedManifestBlob(ctx, l, span, parts, newCfgType)
+	if err != nil {
+		return types.Manifest{}, err
 	}
-	origV1Cfg, e := mag.Minio.GetConfig(ctx, origCfg.Digest)
-	if e != nil {
-		return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to get original config from MinIO %s", origCfg.Digest)
-	}
-	if origV1Cfg == nil {
-		// Config blob missing — try to pull the original image from upstream
-		utils.Info(l, span, "original config blob %s not in MinIO, attempting on-demand pull for manifest %d", origCfg.Digest, orig.ID)
-		up, _, upFound, upErr := mag.Database.UpstreamGetByManifestID(ctx, orig.ID)
-		if upErr == nil && upFound {
-			if cacheErr := mag.CacheUpstream(ctx, up); cacheErr == nil {
-				origV1Cfg, e = mag.Minio.GetConfig(ctx, origCfg.Digest)
-			}
-		}
-		if origV1Cfg == nil {
-			return types.Manifest{}, utils.NewError(l, span, "original config blob %s not found in MinIO (pull also failed)", origCfg.Digest)
-		}
-	}
-
-	// 4. Get ManipuLayer image config from MinIO to read DiffIDs.
-	// If the config blob is missing, attempt to pull the ManipuLayer image
-	// from its upstream registry on-demand (the image reference is stored
-	// as an :ORIGINAL edge from the ManipuLayer's Manifest to an Upstream node).
-	mplCfg, mplCfgFound, e := mag.Database.ConfigGetByManiDataID(ctx, mpl.Image.ID)
-	if e != nil || !mplCfgFound {
-		return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to get config for ManipuLayer image %d", mpl.Image.ID)
-	}
-	mplV1Cfg, e := mag.Minio.GetConfig(ctx, mplCfg.Digest)
-	if e != nil {
-		return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to get ManipuLayer config from MinIO %s", mplCfg.Digest)
-	}
-	if mplV1Cfg == nil {
-		// Config blob missing from MinIO — try to pull the ManipuLayer image from upstream
-		utils.Info(l, span, "ManipuLayer config blob %s not in MinIO, attempting on-demand pull for image %d", mplCfg.Digest, mpl.Image.ID)
-		up, _, upFound, upErr := mag.Database.UpstreamGetByManifestID(ctx, mpl.Image.ID)
-		if upErr != nil || !upFound {
-			return types.Manifest{}, utils.NewError(l, span, "ManipuLayer config blob %s not found in MinIO and no upstream available for image %d", mplCfg.Digest, mpl.Image.ID)
-		}
-		utils.Info(l, span, "Pulling ManipuLayer image from %s/%s:%s", up.Reg, up.Repo, up.Tag)
-		if cacheErr := mag.CacheUpstream(ctx, up); cacheErr != nil {
-			return types.Manifest{}, utils.ErrorHandler(l, span, cacheErr, "failed to pull ManipuLayer image from upstream %s/%s:%s", up.Reg, up.Repo, up.Tag)
-		}
-		// Retry config fetch after pull
-		mplV1Cfg, e = mag.Minio.GetConfig(ctx, mplCfg.Digest)
-		if e != nil {
-			return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to get ManipuLayer config from MinIO after pull %s", mplCfg.Digest)
-		}
-		if mplV1Cfg == nil {
-			return types.Manifest{}, utils.NewError(l, span, "ManipuLayer config blob %s still not found in MinIO after pull", mplCfg.Digest)
-		}
-		utils.Info(l, span, "ManipuLayer image pulled successfully, config now available")
-	}
-
-	// 5. Build new v1 config: copy original and append ManipuLayer DiffIDs
-	newV1Cfg := *origV1Cfg
-	for _, diffID := range mplV1Cfg.RootFS.DiffIDs {
-		newV1Cfg.RootFS.DiffIDs = append(newV1Cfg.RootFS.DiffIDs, diffID)
-	}
-	// Apply the manipulation's OCI config mutations (env / workdir /
-	// user / volumes / entrypoint / cmd) when the new-schema path has
-	// produced a non-zero cfg. Legacy-form manipulations get a zero
-	// cfg here; their env / cmd are applied via the separate legacy
-	// ApplyManipulationToConfig path at push time.
-	applyManipuConfigToV1(cfg, &newV1Cfg)
-
-	// 6. Serialize and store new config blob in MinIO
-	cfgBytes, e := json.Marshal(newV1Cfg)
-	if e != nil {
-		return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to marshal new config")
-	}
-	cfgDigest := digest.FromBytes(cfgBytes)
-	if e := mag.Minio.PutBlob(ctx, cfgBytes, cfgDigest.String()); e != nil {
-		return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to store new config in MinIO")
-	}
-
-	// 7. Insert config into graph
-	newCfgType := types.Config{
-		Digest:    cfgDigest.String(),
-		MediaType: v1.MediaTypeImageConfig,
-		Size:      int64(len(cfgBytes)),
-	}
-	cfgID, e := mag.Database.ConfigInsert(ctx, newCfgType)
-	if e != nil {
-		return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to insert new config into graph")
-	}
-	newCfgType.ID = cfgID
-
-	// 8. Build the OCI v1 manifest with all layers (original + manipulation)
-	allLayers := make([]types.Layer, 0, len(origLayers)+len(mplLayers))
-	allLayers = append(allLayers, origLayers...)
-	allLayers = append(allLayers, mplLayers...)
-
-	ociLayers := make([]v1.Descriptor, 0, len(allLayers))
-	for _, lyr := range allLayers {
-		ociLayers = append(ociLayers, v1.Descriptor{
-			MediaType: lyr.MediaType,
-			Size:      lyr.Size,
-			Digest:    digest.Digest(lyr.Digest),
-		})
-	}
-
-	ociMani := v1.Manifest{
-		Versioned: specs.Versioned{SchemaVersion: 2},
-		MediaType: v1.MediaTypeImageManifest,
-		Config: v1.Descriptor{
-			MediaType: v1.MediaTypeImageConfig,
-			Size:      int64(len(cfgBytes)),
-			Digest:    cfgDigest,
-		},
-		Layers: ociLayers,
-	}
-
-	// 9. Serialize OCI manifest and compute digest
-	maniBytes, e := json.Marshal(ociMani)
-	if e != nil {
-		return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to marshal manipulated OCI manifest")
-	}
-	maniDigest := digest.FromBytes(maniBytes)
-
-	// 10. Store in MinIO
-	if e := mag.Minio.ManifestsPutObj(ctx, maniDigest.String(), maniBytes); e != nil {
-		return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to store manipulated manifest in MinIO")
-	}
-
-	// 11. Create :Manifest node in graph
 	manipMd := types.Manifest{
 		Digest:    maniDigest.String(),
 		MediaType: v1.MediaTypeImageManifest,
@@ -721,34 +608,206 @@ func (mag Magazine) createManipulatedManifest(ctx context.Context, orig types.Ma
 		Config:    newCfgType,
 		Layers:    allLayers,
 	}
-	if e := mag.Database.ManifestGetInsert(ctx, &manipMd); e != nil {
-		return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to insert manipulated manifest into graph")
+	if err := mag.persistManipulatedManifestGraph(ctx, l, span, &manipMd, orig, allLayers); err != nil {
+		return types.Manifest{}, err
 	}
-
-	// 12. Link config
-	if e := mag.Database.ManifestLinkToConfig(ctx, manipMd.ID, newCfgType); e != nil {
-		return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to link manipulated manifest to config")
-	}
-
-	// 13. Link layers
-	for idx, lyr := range allLayers {
-		if e := mag.Database.ManifestLinkToLayer(ctx, manipMd.ID, lyr, idx); e != nil {
-			return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to link manipulated manifest to layer %d", idx)
-		}
-	}
-
-	// 14. Link platform (same as original)
-	if orig.Platform.ID > 0 {
-		if e := mag.Database.LinkManifestToPlatform(ctx, manipMd.ID, orig.Platform.ID); e != nil {
-			return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to link manipulated manifest to platform")
-		}
-	}
-
-	// 15. Link MANIPULATED_FROM
-	if e := mag.Database.ManifestLinkManipulatedFrom(ctx, manipMd.ID, orig.ID); e != nil {
-		return types.Manifest{}, utils.ErrorHandler(l, span, e, "failed to link MANIPULATED_FROM")
-	}
-
 	utils.Info(l, span, "Created manipulated manifest %d (%s) with %d layers from original %d", manipMd.ID, maniDigest.String(), len(allLayers), orig.ID)
 	return manipMd, nil
+}
+
+// reuseExistingManipulated returns an already-persisted manipulated
+// manifest for the (origDigest, manipulationLabel) pair when one
+// exists, so repeat pulls don't regenerate identical blobs.
+func (mag Magazine) reuseExistingManipulated(ctx context.Context, l *logrus.Entry, span trace.Span, origDigest, mpLabel, manipLabel string) (types.Manifest, bool) {
+	existing, found, err := mag.Database.ManifestGetManipulatedByOriginalAndLabel(ctx, origDigest, mpLabel)
+	if err != nil {
+		utils.Warn(l, span, "ManifestGetManipulatedByOriginalAndLabel check failed (non-fatal): %v", err)
+		return types.Manifest{}, false
+	}
+	if !found {
+		return types.Manifest{}, false
+	}
+	utils.Info(l, span, "Reusing existing manipulated manifest %d (digest %s) for %s", existing.ID, existing.Digest, manipLabel)
+	return existing, true
+}
+
+// manipulationParts bundles the original + ManipuLayer layers and
+// configs that createManipulatedManifest needs across its stages.
+type manipulationParts struct {
+	origLayers []types.Layer
+	mplLayers  []types.Layer
+	origV1Cfg  *v1.Image
+	mplV1Cfg   *v1.Image
+}
+
+// gatherManipulationParts loads the original manifest's layers + config
+// and the ManipuLayer image's layers + config, pulling upstreams
+// on-demand when blobs are missing from MinIO.
+func (mag Magazine) gatherManipulationParts(ctx context.Context, l *logrus.Entry, span trace.Span, orig types.Manifest, mpl types.ManipuLayer) (manipulationParts, error) {
+	origLayers, err := mag.Database.GetLayersForManifestID(ctx, orig.ID)
+	if err != nil {
+		return manipulationParts{}, utils.ErrorHandler(l, span, err, "failed to get layers for original manifest %d", orig.ID)
+	}
+	mplLayers, err := mag.loadManipuLayerLayers(ctx, l, span, mpl)
+	if err != nil {
+		return manipulationParts{}, err
+	}
+	utils.Info(l, span, "Original has %d layers, ManipuLayer adds %d layers", len(origLayers), len(mplLayers))
+	origV1Cfg, err := mag.loadOrPullManifestConfig(ctx, l, span, orig.ID, "original")
+	if err != nil {
+		return manipulationParts{}, err
+	}
+	mplV1Cfg, err := mag.loadOrPullManifestConfig(ctx, l, span, mpl.Image.ID, "ManipuLayer")
+	if err != nil {
+		return manipulationParts{}, err
+	}
+	return manipulationParts{
+		origLayers: origLayers,
+		mplLayers:  mplLayers,
+		origV1Cfg:  origV1Cfg,
+		mplV1Cfg:   mplV1Cfg,
+	}, nil
+}
+
+// loadManipuLayerLayers returns the ManipuLayer image's layer slice,
+// preferring the pre-populated `mpl.Image.Layers` and falling back to
+// a graph query when the slice is empty.
+func (mag Magazine) loadManipuLayerLayers(ctx context.Context, l *logrus.Entry, span trace.Span, mpl types.ManipuLayer) ([]types.Layer, error) {
+	if len(mpl.Image.Layers) > 0 {
+		return mpl.Image.Layers, nil
+	}
+	mplLayers, err := mag.Database.GetLayersForManifestID(ctx, mpl.Image.ID)
+	if err != nil {
+		return nil, utils.ErrorHandler(l, span, err, "failed to get layers for ManipuLayer image %d", mpl.Image.ID)
+	}
+	return mplLayers, nil
+}
+
+// loadOrPullManifestConfig fetches the config blob for a manifest from
+// MinIO. When the blob is absent the helper issues a best-effort
+// CacheUpstream and retries once. `kind` is used in log messages to
+// distinguish original vs ManipuLayer callers.
+func (mag Magazine) loadOrPullManifestConfig(ctx context.Context, l *logrus.Entry, span trace.Span, maniID int64, kind string) (*v1.Image, error) {
+	cfg, cfgFound, err := mag.Database.ConfigGetByManiDataID(ctx, maniID)
+	if err != nil || !cfgFound {
+		return nil, utils.ErrorHandler(l, span, err, "failed to get config for %s manifest %d", kind, maniID)
+	}
+	v1Cfg, err := mag.Minio.GetConfig(ctx, cfg.Digest)
+	if err != nil {
+		return nil, utils.ErrorHandler(l, span, err, "failed to get %s config from MinIO %s", kind, cfg.Digest)
+	}
+	if v1Cfg != nil {
+		return v1Cfg, nil
+	}
+	utils.Info(l, span, "%s config blob %s not in MinIO, attempting on-demand pull for manifest %d", kind, cfg.Digest, maniID)
+	up, _, upFound, upErr := mag.Database.UpstreamGetByManifestID(ctx, maniID)
+	if upErr != nil || !upFound {
+		return nil, utils.NewError(l, span, "%s config blob %s not found in MinIO and no upstream available for manifest %d", kind, cfg.Digest, maniID)
+	}
+	if cacheErr := mag.CacheUpstream(ctx, up); cacheErr != nil {
+		return nil, utils.ErrorHandler(l, span, cacheErr, "failed to pull %s image from upstream %s/%s:%s", kind, up.Reg, up.Repo, up.Tag)
+	}
+	v1Cfg, err = mag.Minio.GetConfig(ctx, cfg.Digest)
+	if err != nil || v1Cfg == nil {
+		return nil, utils.NewError(l, span, "%s config blob %s still not found in MinIO after pull", kind, cfg.Digest)
+	}
+	return v1Cfg, nil
+}
+
+// buildAndStoreManipulatedConfig assembles the manipulated v1 config
+// (origV1Cfg + ManipuLayer DiffIDs + OCI config mutation), stores the
+// resulting blob in MinIO, and inserts the :Blob node into the graph.
+func (mag Magazine) buildAndStoreManipulatedConfig(ctx context.Context, l *logrus.Entry, span trace.Span, parts manipulationParts, cfg types.ManipuConfig) (types.Config, error) {
+	newV1Cfg := *parts.origV1Cfg
+	for _, diffID := range parts.mplV1Cfg.RootFS.DiffIDs {
+		newV1Cfg.RootFS.DiffIDs = append(newV1Cfg.RootFS.DiffIDs, diffID)
+	}
+	// Apply the manipulation's OCI config mutations (env / workdir /
+	// user / volumes / entrypoint / cmd) when the new-schema path has
+	// produced a non-zero cfg. Legacy-form manipulations get a zero
+	// cfg here; their env / cmd are applied via the separate legacy
+	// ApplyManipulationToConfig path at push time.
+	applyManipuConfigToV1(cfg, &newV1Cfg)
+	cfgBytes, err := json.Marshal(newV1Cfg)
+	if err != nil {
+		return types.Config{}, utils.ErrorHandler(l, span, err, "failed to marshal new config")
+	}
+	cfgDigest := digest.FromBytes(cfgBytes)
+	if err := mag.Minio.PutBlob(ctx, cfgBytes, cfgDigest.String()); err != nil {
+		return types.Config{}, utils.ErrorHandler(l, span, err, "failed to store new config in MinIO")
+	}
+	newCfgType := types.Config{
+		Digest:    cfgDigest.String(),
+		MediaType: v1.MediaTypeImageConfig,
+		Size:      int64(len(cfgBytes)),
+	}
+	cfgID, err := mag.Database.ConfigInsert(ctx, newCfgType)
+	if err != nil {
+		return types.Config{}, utils.ErrorHandler(l, span, err, "failed to insert new config into graph")
+	}
+	newCfgType.ID = cfgID
+	return newCfgType, nil
+}
+
+// buildAndStoreManipulatedManifestBlob serialises the OCI v1 manifest
+// that points at the concatenated layer set, stores it in MinIO and
+// returns the bytes / digest along with the flat layer slice. The
+// caller owns the subsequent graph-linking step.
+func (mag Magazine) buildAndStoreManipulatedManifestBlob(ctx context.Context, l *logrus.Entry, span trace.Span, parts manipulationParts, newCfgType types.Config) ([]byte, digest.Digest, []types.Layer, error) {
+	allLayers := make([]types.Layer, 0, len(parts.origLayers)+len(parts.mplLayers))
+	allLayers = append(allLayers, parts.origLayers...)
+	allLayers = append(allLayers, parts.mplLayers...)
+	ociLayers := make([]v1.Descriptor, 0, len(allLayers))
+	for _, lyr := range allLayers {
+		ociLayers = append(ociLayers, v1.Descriptor{
+			MediaType: lyr.MediaType,
+			Size:      lyr.Size,
+			Digest:    digest.Digest(lyr.Digest),
+		})
+	}
+	ociMani := v1.Manifest{
+		Versioned: specs.Versioned{SchemaVersion: 2},
+		MediaType: v1.MediaTypeImageManifest,
+		Config: v1.Descriptor{
+			MediaType: v1.MediaTypeImageConfig,
+			Size:      newCfgType.Size,
+			Digest:    digest.Digest(newCfgType.Digest),
+		},
+		Layers: ociLayers,
+	}
+	maniBytes, err := json.Marshal(ociMani)
+	if err != nil {
+		return nil, "", nil, utils.ErrorHandler(l, span, err, "failed to marshal manipulated OCI manifest")
+	}
+	maniDigest := digest.FromBytes(maniBytes)
+	if err := mag.Minio.ManifestsPutObj(ctx, maniDigest.String(), maniBytes); err != nil {
+		return nil, "", nil, utils.ErrorHandler(l, span, err, "failed to store manipulated manifest in MinIO")
+	}
+	return maniBytes, maniDigest, allLayers, nil
+}
+
+// persistManipulatedManifestGraph creates the :Manifest node for the
+// manipulated manifest and links it to its config, layers, platform
+// and [:MANIPULATED_FROM] origin. manipMd.ID is populated in place.
+func (mag Magazine) persistManipulatedManifestGraph(ctx context.Context, l *logrus.Entry, span trace.Span, manipMd *types.Manifest, orig types.Manifest, allLayers []types.Layer) error {
+	if err := mag.Database.ManifestGetInsert(ctx, manipMd); err != nil {
+		return utils.ErrorHandler(l, span, err, "failed to insert manipulated manifest into graph")
+	}
+	if err := mag.Database.ManifestLinkToConfig(ctx, manipMd.ID, manipMd.Config); err != nil {
+		return utils.ErrorHandler(l, span, err, "failed to link manipulated manifest to config")
+	}
+	for idx, lyr := range allLayers {
+		if err := mag.Database.ManifestLinkToLayer(ctx, manipMd.ID, lyr, idx); err != nil {
+			return utils.ErrorHandler(l, span, err, "failed to link manipulated manifest to layer %d", idx)
+		}
+	}
+	if orig.Platform.ID > 0 {
+		if err := mag.Database.LinkManifestToPlatform(ctx, manipMd.ID, orig.Platform.ID); err != nil {
+			return utils.ErrorHandler(l, span, err, "failed to link manipulated manifest to platform")
+		}
+	}
+	if err := mag.Database.ManifestLinkManipulatedFrom(ctx, manipMd.ID, orig.ID); err != nil {
+		return utils.ErrorHandler(l, span, err, "failed to link MANIPULATED_FROM")
+	}
+	return nil
 }
