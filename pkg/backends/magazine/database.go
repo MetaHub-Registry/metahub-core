@@ -260,6 +260,10 @@ type Database interface {
 	ManipuCmdsGetByManipulayerID(ctx context.Context, mplyrID int64) (mpcs []types.ManipuCmd, err error)
 	ManipuEnvsGetByManipulayerID(ctx context.Context, mplyrID int64) (mpes []types.ManipuEnv, err error)
 	ManifestLinkManipulatedFrom(ctx context.Context, manipulatedID, originalID int64) (err error)
+	// ManifestGetManipulatedFrom returns the ID of the original :Manifest
+	// a manipulated :Manifest was derived from. Returns (0, false, nil)
+	// when manipulatedID has no outgoing [:MANIPULATED_FROM] edge.
+	ManifestGetManipulatedFrom(ctx context.Context, manipulatedID int64) (origID int64, found bool, err error)
 	ManifestGetManipulatedByOriginalAndLabel(ctx context.Context, originalDigest, manipulationLabel string) (md types.Manifest, found bool, err error)
 	/**** Artefact ********/
 	ManifestLinkToArtifactConfig(ctx context.Context, mdDigest string, cfg v1.Descriptor) (err error)

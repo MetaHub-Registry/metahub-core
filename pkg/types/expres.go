@@ -31,6 +31,38 @@ func (r *ExprRes) IsEmpty() bool {
 	return len(r.Expr) == 0
 }
 
+// Clone returns a deep-enough copy of the ExprRes so the returned
+// instance can be augmented with additional rule→manifest matches
+// without mutating the original. Manifest values themselves are
+// shallow-copied since they are treated as immutable once constructed.
+func (r *ExprRes) Clone() *ExprRes {
+	if r == nil {
+		return NewExprRes()
+	}
+	clone := NewExprRes()
+	for expr := range r.Expr {
+		clone.Expr.Add(expr)
+	}
+	for id, md := range r.ManiMap {
+		clone.ManiMap[id] = md
+	}
+	for rule, ids := range r.RuleManiMap {
+		c := set.NewStringSet()
+		for id := range ids {
+			c.Add(id)
+		}
+		clone.RuleManiMap[rule] = c
+	}
+	for id, rules := range r.Data {
+		inner := make(map[string]Manifest, len(rules))
+		for rule, md := range rules {
+			inner[rule] = md
+		}
+		clone.Data[id] = inner
+	}
+	return clone
+}
+
 func (r *ExprRes) Add(rule string, md Manifest) {
 	r.Expr.Add(rule)
 	if _, ok := r.ManiMap[md.ID]; !ok {

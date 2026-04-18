@@ -2616,6 +2616,34 @@ func (n Neo) LinkManifestToPlatform(ctx context.Context, maniDataID, platID int6
 	return
 }
 
+// ManifestGetManipulatedFrom returns the ID of the original :Manifest a
+// manipulated :Manifest was derived from. The result is (0, false, nil)
+// when `manipulatedID` has no outgoing [:MANIPULATED_FROM] edge — i.e.
+// when the manifest is itself an original rather than a manipulation.
+func (n Neo) ManifestGetManipulatedFrom(ctx context.Context, manipulatedID int64) (origID int64, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":       pkgNameMD,
+		"func":          "ManifestGetManipulatedFrom",
+		"manipulatedID": manipulatedID,
+	})
+	defer span.End()
+	_ = ctx
+	q := fmt.Sprintf(`MATCH (m1:Manifest)-[:MANIPULATED_FROM]->(m2:Manifest) WHERE id(m1) = %d RETURN id(m2) AS originalID`, manipulatedID)
+	utils.Debug(l, span, q)
+	res, found, err := n.QueryOne(q)
+	if err != nil {
+		return 0, false, utils.ErrorHandler(l, span, err, FailQueryExec)
+	}
+	if !found {
+		return 0, false, nil
+	}
+	origID, err = res.GetInt64("originalID")
+	if err != nil {
+		return 0, false, utils.ErrorHandler(l, span, err, "failed to decode originalID")
+	}
+	return origID, true, nil
+}
+
 // ManifestLinkManipulatedFrom creates a [:MANIPULATED_FROM] edge from a manipulated manifest to the original.
 func (n Neo) ManifestLinkManipulatedFrom(ctx context.Context, manipulatedID, originalID int64) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{

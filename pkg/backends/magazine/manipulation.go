@@ -294,14 +294,26 @@ func tryApplyManipulation(ctx context.Context, mag Magazine, l *logrus.Entry, sp
 }
 
 // flattenManipuLayers returns every ManipuLayer reachable from the
-// manipulation tree. Legacy flat layers come first (in declaration
-// order), then the default block's layers (rule is empty → matches
-// every platform), then each variant's layers with the variant's rule
-// propagated onto the `Rule` field of the flattened entry so
+// manipulation tree. When the manipulation uses the new schema
+// (Default or Variants populated), the legacy flat `mp.ManipuLayers`
+// slice is ignored because it is a compatibility mirror of the
+// variant layers (wired via the `:HAS` edge for old tooling) and
+// re-including it would produce duplicate entries with empty rules,
+// which the matcher would spuriously pick before the rule-keyed
+// variant entries.
+//
+// Order: legacy-only manipulations → legacy flat layers first.
+// New-schema manipulations → default block's layers (rule inherited
+// as-is, typically empty), then each variant's layers with the
+// variant's rule string copied onto the `Rule` field so
 // `manipuLayerMatchesPlatform` can match on it.
 func flattenManipuLayers(mp *types.Manipulation) []types.ManipuLayer {
+	hasExtended := !mp.Default.IsZero() || len(mp.Variants) > 0
 	out := make([]types.ManipuLayer, 0, len(mp.ManipuLayers))
-	out = append(out, mp.ManipuLayers...)
+	if !hasExtended {
+		out = append(out, mp.ManipuLayers...)
+		return out
+	}
 	for _, lyr := range mp.Default.Layers {
 		out = append(out, lyr) // rule stays as-is (typically empty)
 	}

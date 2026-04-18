@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 )
 
@@ -63,6 +64,36 @@ func TestFlattenManipuLayers_Empty(t *testing.T) {
 	out := flattenManipuLayers(mp)
 	assert.NotNil(t, out)
 	assert.Len(t, out, 0)
+}
+
+// TestFlattenManipuLayers_ExtendedSkipsLegacyMirror verifies that when
+// the manipulation uses the new schema (Default or Variants populated)
+// the legacy `ManipuLayers` slice is skipped. Otherwise the compat-wired
+// `:HAS` edge would re-expose the same layers with empty rules, and the
+// matcher would pick the first one for every platform regardless of the
+// variant rule.
+func TestFlattenManipuLayers_ExtendedSkipsLegacyMirror(t *testing.T) {
+	mp := &types.Manipulation{
+		// Legacy slice is a duplicate (no rule) of what's under Variants.
+		// It exists because writeManipuConfig also writes :HAS for
+		// backward-compat tooling (see metalib neo/manipuconfig.go).
+		ManipuLayers: []types.ManipuLayer{
+			{Label: "arm64-duplicate"},
+			{Label: "amd64-duplicate"},
+		},
+		Variants: []types.ManipuVariant{
+			{Rule: "arch:arm64=true", Config: types.ManipuConfig{Layers: []types.ManipuLayer{{Label: "arm64-variant"}}}},
+			{Rule: "arch:amd64=true", Config: types.ManipuConfig{Layers: []types.ManipuLayer{{Label: "amd64-variant"}}}},
+		},
+	}
+	out := flattenManipuLayers(mp)
+	// Only the variant layers — legacy duplicates skipped.
+	require.Len(t, out, 2)
+	for _, lyr := range out {
+		assert.NotContains(t, lyr.Label, "duplicate",
+			"legacy mirror layers must be excluded when extended form is present")
+		assert.NotEmpty(t, lyr.Rule, "variant layers must carry a rule")
+	}
 }
 
 // TestManipuLayerMatchesPlatform verifies rule parsing for the various

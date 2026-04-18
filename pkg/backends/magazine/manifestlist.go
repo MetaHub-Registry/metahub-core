@@ -523,12 +523,26 @@ func (mag Magazine) rebuildIndexForProfile(ctx context.Context, l *logrus.Entry,
 	// Apply manipulation ONLY when the profile is the one that triggered the
 	// push. Other profiles get unmanipulated originals at compute time;
 	// manipulation for them happens lazily on first pull.
+	er := rc.er
 	if rc.pusherPrf != nil && prf.Label == rc.pusherPrf.Label {
 		manipulatedMds, manipErr := mag.ApplyManipulationsToManifests(ctx, prf, mds)
 		if manipErr != nil {
 			utils.Warn(l, span, "Manipulation failed for pusher profile %s (non-fatal): %v", prf.Label, manipErr)
 		} else {
 			mds = manipulatedMds
+			// Augment ExprRes with any newly-created manipulated
+			// manifests so FilterByCTPP's rule-index intersection
+			// includes them. Rule evaluation for the manipulated
+			// manifest runs inline here — rule → true → platform
+			// edges are inherited via HAS_PLATFORM from the original,
+			// so a platform rule that matched the original matches
+			// the manipulated one too. Annotation rules are not yet
+			// copied (manipulated manifests have no annotations).
+			if augmented, augErr := mag.augmentExprResWithManipulated(ctx, l, span, rc.er, manipulatedMds); augErr != nil {
+				utils.Warn(l, span, "augmentExprResWithManipulated failed for profile %s (non-fatal): %v", prf.Label, augErr)
+			} else {
+				er = augmented
+			}
 		}
 	}
 	for _, md := range mds {
@@ -536,10 +550,53 @@ func (mag Magazine) rebuildIndexForProfile(ctx context.Context, l *logrus.Entry,
 			return utils.ErrorHandler(l, span, addErr, "failed to add manifestdata to CTPP for profile %s", prf.Label)
 		}
 	}
-	if computeErr := mag.ComputeManifestlistForCTTP(ctx, rc.er, ctpp); computeErr != nil {
+	if computeErr := mag.ComputeManifestlistForCTTP(ctx, er, ctpp); computeErr != nil {
 		utils.Warn(l, span, "ComputeManifestlistForCTTP failed for profile %s: %v", prf.Label, computeErr)
 	}
 	return nil
+}
+
+// augmentExprResWithManipulated appends manipulated manifests to a
+// copy of the shared ExprRes so FilterByCTPP's rule-index intersection
+// includes them. The approach is "by lineage": for every manipulated
+// manifest we look up its MANIPULATED_FROM parent(s) and copy every
+// rule the parent already matches onto the manipulated manifest.
+// Rule semantics are preserved — a manipulated manifest is a superset
+// of its origin (more layers, optionally mutated config) so any rule
+// the origin satisfies remains satisfied by the manipulated variant.
+//
+// The original ExprRes is never mutated so other profiles (iterated in
+// the same rebuildIndexesPerProfile loop) still see the untouched
+// rule→manifest mapping.
+func (mag Magazine) augmentExprResWithManipulated(ctx context.Context, l *logrus.Entry, span trace.Span, er *types.ExprRes, manipulatedMds []types.Manifest) (*types.ExprRes, error) {
+	if len(manipulatedMds) == 0 {
+		return er, nil
+	}
+	augmented := er.Clone()
+	for _, manipMd := range manipulatedMds {
+		origID, ok, err := mag.Database.ManifestGetManipulatedFrom(ctx, manipMd.ID)
+		if err != nil {
+			utils.Warn(l, span, "ManifestGetManipulatedFrom(%d) failed during augmentation: %v", manipMd.ID, err)
+			continue
+		}
+		if !ok {
+			// Not manipulated (the ApplyManipulationsToManifests call
+			// left it unchanged). Nothing to augment.
+			continue
+		}
+		// Every rule the origin matched is inherited by the manipulated
+		// manifest. Walk every rule key in the base ExprRes to find
+		// which ones contain the origin and record the manipulated ID
+		// under the same keys.
+		origIDStr := fmt.Sprintf("%d", origID)
+		for rule, ids := range er.RuleManiMap {
+			if !ids.Contains(origIDStr) {
+				continue
+			}
+			augmented.Add(rule, manipMd)
+		}
+	}
+	return augmented, nil
 }
 
 // ComputeManifestlistsForManiProfile computes manifestlists for a given Manifest and Profile
