@@ -608,7 +608,7 @@ func (mag Magazine) createManipulatedManifest(ctx context.Context, orig types.Ma
 		Config:    newCfgType,
 		Layers:    allLayers,
 	}
-	if err := mag.persistManipulatedManifestGraph(ctx, l, span, &manipMd, orig, allLayers); err != nil {
+	if err := mag.persistManipulatedManifestGraph(ctx, l, span, &manipMd, orig, allLayers, mpLabel); err != nil {
 		return types.Manifest{}, err
 	}
 	utils.Info(l, span, "Created manipulated manifest %d (%s) with %d layers from original %d", manipMd.ID, maniDigest.String(), len(allLayers), orig.ID)
@@ -788,8 +788,14 @@ func (mag Magazine) buildAndStoreManipulatedManifestBlob(ctx context.Context, l 
 
 // persistManipulatedManifestGraph creates the :Manifest node for the
 // manipulated manifest and links it to its config, layers, platform
-// and [:MANIPULATED_FROM] origin. manipMd.ID is populated in place.
-func (mag Magazine) persistManipulatedManifestGraph(ctx context.Context, l *logrus.Entry, span trace.Span, manipMd *types.Manifest, orig types.Manifest, allLayers []types.Layer) error {
+// and [:MANIPULATED_FROM {mpLabel}] origin. manipMd.ID is populated
+// in place.
+//
+// mpLabel is the manipulation label (e.g. "layer/glow-extended#1.5.0")
+// that gets written onto the MANIPULATED_FROM edge so the dedup
+// lookup in reuseExistingManipulated can distinguish manipulations
+// that share the same origin but produce different outputs.
+func (mag Magazine) persistManipulatedManifestGraph(ctx context.Context, l *logrus.Entry, span trace.Span, manipMd *types.Manifest, orig types.Manifest, allLayers []types.Layer, mpLabel string) error {
 	if err := mag.Database.ManifestGetInsert(ctx, manipMd); err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to insert manipulated manifest into graph")
 	}
@@ -806,7 +812,7 @@ func (mag Magazine) persistManipulatedManifestGraph(ctx context.Context, l *logr
 			return utils.ErrorHandler(l, span, err, "failed to link manipulated manifest to platform")
 		}
 	}
-	if err := mag.Database.ManifestLinkManipulatedFrom(ctx, manipMd.ID, orig.ID); err != nil {
+	if err := mag.Database.ManifestLinkManipulatedFromWithLabel(ctx, manipMd.ID, orig.ID, mpLabel); err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to link MANIPULATED_FROM")
 	}
 	return nil

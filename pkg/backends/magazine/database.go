@@ -260,6 +260,12 @@ type Database interface {
 	ManipuCmdsGetByManipulayerID(ctx context.Context, mplyrID int64) (mpcs []types.ManipuCmd, err error)
 	ManipuEnvsGetByManipulayerID(ctx context.Context, mplyrID int64) (mpes []types.ManipuEnv, err error)
 	ManifestLinkManipulatedFrom(ctx context.Context, manipulatedID, originalID int64) (err error)
+	// ManifestLinkManipulatedFromWithLabel creates the same edge as
+	// ManifestLinkManipulatedFrom but carries the manipulation label
+	// (e.g. "layer/glow-extended#1.5.0") on the edge as `mpLabel`.
+	// Used by the dedup path so two different manipulations sharing
+	// the same origin produce distinct cache entries.
+	ManifestLinkManipulatedFromWithLabel(ctx context.Context, manipulatedID, originalID int64, mpLabel string) (err error)
 	// ManifestGetManipulatedFrom returns the ID of the original :Manifest
 	// a manipulated :Manifest was derived from. Returns (0, false, nil)
 	// when manipulatedID has no outgoing [:MANIPULATED_FROM] edge.

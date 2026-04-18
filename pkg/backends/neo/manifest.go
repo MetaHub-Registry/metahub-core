@@ -2646,16 +2646,35 @@ func (n Neo) ManifestGetManipulatedFrom(ctx context.Context, manipulatedID int64
 
 // ManifestLinkManipulatedFrom creates a [:MANIPULATED_FROM] edge from a manipulated manifest to the original.
 func (n Neo) ManifestLinkManipulatedFrom(ctx context.Context, manipulatedID, originalID int64) (err error) {
+	return n.ManifestLinkManipulatedFromWithLabel(ctx, manipulatedID, originalID, "")
+}
+
+// ManifestLinkManipulatedFromWithLabel creates a
+// `(manipulated)-[:MANIPULATED_FROM {mpLabel}]->(original)` edge
+// carrying the manipulation label (e.g. "layer/glow-extended#1.5.0")
+// on the edge property. The label is what
+// ManifestGetManipulatedByOriginalAndLabel filters on so two
+// different manipulations sharing the same origin get distinct
+// cache entries instead of colliding.
+//
+// The legacy ManifestLinkManipulatedFrom defers here with an empty
+// label to preserve backward compatibility with callers that only
+// care about the edge existing.
+func (n Neo) ManifestLinkManipulatedFromWithLabel(ctx context.Context, manipulatedID, originalID int64, mpLabel string) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":       pkgNameMD,
-		"func":          "ManifestLinkManipulatedFrom",
+		"func":          "ManifestLinkManipulatedFromWithLabel",
 		"manipulatedID": manipulatedID,
 		"originalID":    originalID,
+		"mpLabel":       mpLabel,
 	})
 	defer span.End()
 	_ = ctx
-	q := fmt.Sprintf(`MATCH (m1:Manifest),(m2:Manifest) WHERE id(m1) = %d AND id(m2) = %d`, manipulatedID, originalID)
-	q += ` MERGE (m1)-[:MANIPULATED_FROM]->(m2)`
+	escapedLabel := strings.ReplaceAll(mpLabel, `"`, `\"`)
+	q := fmt.Sprintf(
+		`MATCH (m1:Manifest),(m2:Manifest) WHERE id(m1) = %d AND id(m2) = %d MERGE (m1)-[r:MANIPULATED_FROM]->(m2) ON CREATE SET r.mpLabel = "%s" ON MATCH SET r.mpLabel = "%s"`,
+		manipulatedID, originalID, escapedLabel, escapedLabel,
+	)
 	utils.Debug(l, span, q)
 	if _, err = n.Execute(q); err != nil {
 		err = utils.ErrorHandler(l, span, err, "failed to link manipulated manifest to original")
@@ -2678,10 +2697,20 @@ func (n Neo) ManifestGetManipulatedByOriginalAndLabel(ctx context.Context, origi
 	})
 	defer span.End()
 	_ = ctx
-	// Walk: manipulated manifest -[:MANIPULATED_FROM]-> original manifest.
+	// Walk: manipulated manifest -[:MANIPULATED_FROM {mpLabel}]-> original.
+	// We filter on the edge property `mpLabel` so two different
+	// manipulations sharing the same origin (e.g. glow#1.5.0 vs
+	// glow-extended#1.5.0 over the same alpine manifest) get distinct
+	// cache entries. The mpLabel property is written by
+	// ManifestLinkManipulatedFromWithLabel at manipulation time.
+	//
 	// Include HAS_PLATFORM so the returned Manifest carries the correct
 	// platform descriptor (needed for Index serialisation).
-	q := fmt.Sprintf(`MATCH (md:Manifest)-[:MANIPULATED_FROM]->(orig:Manifest {digest: "%s"})`, originalDigest)
+	escapedLabel := strings.ReplaceAll(manipulationLabel, `"`, `\"`)
+	q := fmt.Sprintf(
+		`MATCH (md:Manifest)-[r:MANIPULATED_FROM]->(orig:Manifest {digest: "%s"}) WHERE r.mpLabel = "%s"`,
+		originalDigest, escapedLabel,
+	)
 	q += ` OPTIONAL MATCH (md)-[:HAS_PLATFORM]->(p:Platform)`
 	q += fmt.Sprintf(` RETURN %s, id(p) as platformID, p.os as platformOS, p.arch as platformArch, p.variant as platformVariant`, manifestDataReturn)
 	utils.Debug(l, span, q)
