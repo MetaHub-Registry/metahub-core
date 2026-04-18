@@ -9,9 +9,11 @@ import (
 	"github.com/opencontainers/go-digest"
 	specs "github.com/opencontainers/image-spec/specs-go"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/backends/neo"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -238,8 +240,10 @@ func (mag Magazine) ApplyManipulationsToManifests(ctx context.Context, prf types
 	})
 	defer span.End()
 
-	// Fetch manipulations for this profile
-	mps, err := mag.Database.ManipulationsGetByProfileID(ctx, prf.ID)
+	// Fetch manipulations for this profile, hydrated with Default + Variants
+	// so both legacy (flat ManipuLayers) and new (defaults + variants) forms
+	// are fully represented.
+	mps, err := mag.Database.ManipulationsWithConfigByProfileID(ctx, prf.ID)
 	if err != nil {
 		return candidates, utils.ErrorHandler(l, span, err, neo.FailManipulationsGetByProfileID)
 	}
@@ -253,22 +257,8 @@ func (mag Magazine) ApplyManipulationsToManifests(ctx context.Context, prf types
 	for _, md := range candidates {
 		manipulated := false
 		for _, mp := range mps {
-			for _, mpl := range mp.ManipuLayers {
-				if manipuLayerMatchesPlatform(mpl, md.Platform) {
-					utils.Info(l, span, "ManipuLayer %s matches manifest %s (platform %s)", mpl.Label, md.Digest, md.Platform.GetLabel())
-					manipulatedMd, e := mag.createManipulatedManifest(ctx, md, mpl, mp.Label)
-					if e != nil {
-						// Non-fatal: if manipulation fails (e.g. upstream not cached),
-						// warn and keep the original manifest instead of failing the push.
-						utils.Warn(l, span, "Manipulation failed for %s (non-fatal, using original): %v", md.Digest, e)
-						break
-					}
-					result = append(result, manipulatedMd)
-					manipulated = true
-					break // Only apply the first matching ManipuLayer per manipulation
-				}
-			}
-			if manipulated {
+			if tryApplyManipulation(ctx, mag, l, span, &mp, &md, &result) {
+				manipulated = true
 				break // Only apply the first matching manipulation per manifest
 			}
 		}
@@ -279,6 +269,52 @@ func (mag Magazine) ApplyManipulationsToManifests(ctx context.Context, prf types
 	}
 	utils.Info(l, span, "Manipulation complete: %d candidates → %d results", len(candidates), len(result))
 	return result, nil
+}
+
+// tryApplyManipulation iterates every ManipuLayer reachable from the
+// manipulation (legacy flat slice + Default + each variant) and applies
+// the first one that matches the given manifest's platform. Returns true
+// when a manipulated manifest was appended to `result`.
+func tryApplyManipulation(ctx context.Context, mag Magazine, l *logrus.Entry, span trace.Span, mp *types.Manipulation, md *types.Manifest, result *[]types.Manifest) bool {
+	for _, item := range flattenManipuLayers(mp) {
+		if !manipuLayerMatchesPlatform(item, md.Platform) {
+			continue
+		}
+		utils.Info(l, span, "ManipuLayer %s matches manifest %s (platform %s, rule=%q)", item.Label, md.Digest, md.Platform.GetLabel(), item.Rule)
+		manipulatedMd, e := mag.createManipulatedManifest(ctx, *md, item, mp.Label)
+		if e != nil {
+			// Non-fatal: keep the original manifest.
+			utils.Warn(l, span, "Manipulation failed for %s (non-fatal, using original): %v", md.Digest, e)
+			return false
+		}
+		*result = append(*result, manipulatedMd)
+		return true
+	}
+	return false
+}
+
+// flattenManipuLayers returns every ManipuLayer reachable from the
+// manipulation tree. Legacy flat layers come first (in declaration
+// order), then the default block's layers (rule is empty → matches
+// every platform), then each variant's layers with the variant's rule
+// propagated onto the `Rule` field of the flattened entry so
+// `manipuLayerMatchesPlatform` can match on it.
+func flattenManipuLayers(mp *types.Manipulation) []types.ManipuLayer {
+	out := make([]types.ManipuLayer, 0, len(mp.ManipuLayers))
+	out = append(out, mp.ManipuLayers...)
+	for _, lyr := range mp.Default.Layers {
+		out = append(out, lyr) // rule stays as-is (typically empty)
+	}
+	for _, v := range mp.Variants {
+		for _, lyr := range v.Config.Layers {
+			// The variant key IS the rule that selects this layer; copy
+			// it onto the layer so the matcher has it.
+			lyrCopy := lyr
+			lyrCopy.Rule = v.Rule
+			out = append(out, lyrCopy)
+		}
+	}
+	return out
 }
 
 // createManipulatedManifest creates a new :Manifest node that is a copy of the original

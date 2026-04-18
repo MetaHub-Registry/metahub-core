@@ -1,0 +1,87 @@
+package magazine
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/metahub-registry/metahub-core/pkg/types"
+)
+
+// TestFlattenManipuLayers_Legacy confirms that the legacy flat
+// `ManipuLayers` slice flattens as-is with rules preserved.
+func TestFlattenManipuLayers_Legacy(t *testing.T) {
+	mp := &types.Manipulation{
+		ManipuLayers: []types.ManipuLayer{
+			{Label: "a", Rule: "arch:arm64=true"},
+			{Label: "b", Rule: "arch:amd64=true"},
+		},
+	}
+	out := flattenManipuLayers(mp)
+	assert.Len(t, out, 2)
+	assert.Equal(t, "a", out[0].Label)
+	assert.Equal(t, "arch:arm64=true", out[0].Rule)
+	assert.Equal(t, "arch:amd64=true", out[1].Rule)
+}
+
+// TestFlattenManipuLayers_DefaultAndVariants verifies that default-block
+// layers come first (with their rule unchanged) and then every variant's
+// layers get the variant's rule propagated onto the layer entries.
+func TestFlattenManipuLayers_DefaultAndVariants(t *testing.T) {
+	mp := &types.Manipulation{
+		Default: types.ManipuConfig{
+			Layers: []types.ManipuLayer{{Label: "default-1"}},
+		},
+		Variants: []types.ManipuVariant{
+			{
+				Rule:   "arch:arm64=true",
+				Config: types.ManipuConfig{Layers: []types.ManipuLayer{{Label: "arm64-1"}, {Label: "arm64-2"}}},
+			},
+			{
+				Rule:   "arch:amd64=true",
+				Config: types.ManipuConfig{Layers: []types.ManipuLayer{{Label: "amd64-1"}}},
+			},
+		},
+	}
+	out := flattenManipuLayers(mp)
+	assert.Len(t, out, 4)
+	// Default first, rule stays empty.
+	assert.Equal(t, "default-1", out[0].Label)
+	assert.Equal(t, "", out[0].Rule)
+	// Variant rule propagated onto each variant's layers.
+	assert.Equal(t, "arm64-1", out[1].Label)
+	assert.Equal(t, "arch:arm64=true", out[1].Rule)
+	assert.Equal(t, "arm64-2", out[2].Label)
+	assert.Equal(t, "arch:arm64=true", out[2].Rule)
+	assert.Equal(t, "amd64-1", out[3].Label)
+	assert.Equal(t, "arch:amd64=true", out[3].Rule)
+}
+
+// TestFlattenManipuLayers_Empty ensures a manipulation with no layers
+// anywhere returns an empty slice (never nil).
+func TestFlattenManipuLayers_Empty(t *testing.T) {
+	mp := &types.Manipulation{}
+	out := flattenManipuLayers(mp)
+	assert.NotNil(t, out)
+	assert.Len(t, out, 0)
+}
+
+// TestManipuLayerMatchesPlatform verifies rule parsing for the various
+// shapes the pull-through path produces.
+func TestManipuLayerMatchesPlatform(t *testing.T) {
+	plat := types.Platform{OS: "linux", Arch: "arm64"}
+
+	// Empty rule matches anything (default-block layers).
+	assert.True(t, manipuLayerMatchesPlatform(types.ManipuLayer{}, plat))
+
+	// Arch match: arm64 hits, amd64 misses.
+	assert.True(t, manipuLayerMatchesPlatform(types.ManipuLayer{Rule: "arch:arm64=true"}, plat))
+	assert.False(t, manipuLayerMatchesPlatform(types.ManipuLayer{Rule: "arch:amd64=true"}, plat))
+
+	// OS match: linux hits.
+	assert.True(t, manipuLayerMatchesPlatform(types.ManipuLayer{Rule: "os:linux=true"}, plat))
+	assert.False(t, manipuLayerMatchesPlatform(types.ManipuLayer{Rule: "os:darwin=true"}, plat))
+
+	// Malformed rules don't match.
+	assert.False(t, manipuLayerMatchesPlatform(types.ManipuLayer{Rule: "notakey"}, plat))
+	assert.False(t, manipuLayerMatchesPlatform(types.ManipuLayer{Rule: "unknown:foo=true"}, plat))
+}
