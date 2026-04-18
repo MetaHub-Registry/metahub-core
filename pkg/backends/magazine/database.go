@@ -250,6 +250,10 @@ type Database interface {
 	/***** Manipulations *****/
 	ManipulationGetCreate(ctx context.Context, mp *types.Manipulation) (err error)
 	ManipulationsGetByProfileID(ctx context.Context, prfID int64) (mps []types.Manipulation, err error)
+	// ManipulationsWithConfigByProfileID returns every manipulation linked
+	// to the given Profile with both the legacy flat ManipuLayers and the
+	// extended Default/Variants model fully hydrated.
+	ManipulationsWithConfigByProfileID(ctx context.Context, prfID int64) (mps []types.Manipulation, err error)
 	ManipuLayerFromConfigYAML(ctx context.Context, cmpl yamlCfg.ManipuLayer) (mpl types.ManipuLayer, err error)
 	ManipulationFromYAML(ctx context.Context, cmp yamlCfg.Manipulation) (mp types.Manipulation, err error)
 	ManipulationCheckRules(ctx context.Context, prfID, maniID int64) (ok bool, err error)

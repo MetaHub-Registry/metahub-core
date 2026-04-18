@@ -1,0 +1,8 @@
+label: layer/example-minimal#1.0.0
+variants:
+  "arch:arm64=true":
+    layers:
+      - image: registry:5050/cqnib/metahub-layers/example-minimal:1.0.0-arm64
+  "arch:amd64=true":
+    layers:
+      - image: registry:5050/cqnib/metahub-layers/example-minimal:1.0.0-amd64

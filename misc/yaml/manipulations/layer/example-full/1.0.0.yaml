@@ -1,0 +1,32 @@
+label: layer/example-full#1.0.0
+env:
+  GLOW_HOME: /opt/glow
+  GLOW_LOG: /var/log/glow.log
+workdir: /opt/glow
+user: "1000:1000"
+volumes:
+  - /data
+  - /var/log/glow
+entrypoint:
+  op: replace
+  value:
+    - /opt/glow/bin/entrypoint.sh
+cmd:
+  op: append
+  value:
+    - "--verbose"
+layers:
+  - image: registry:5050/cqnib/metahub-layers/example-full/config:1.0.0
+variants:
+  "arch:arm64=true":
+    layers:
+      - image: registry:5050/cqnib/metahub-layers/example-full/bin:1.0.0-arm64
+  "arch:amd64=true && cpu:x86_64_v3=true":
+    layers:
+      - image: registry:5050/cqnib/metahub-layers/example-full/bin:1.0.0-amd64-v3
+    env:
+      GLOW_SIMD: avx2
+    cmd:
+      op: append
+      value:
+        - "--simd=avx2"

@@ -72,30 +72,79 @@ func (n Neo) ManipulationCreate(ctx context.Context, mp *types.Manipulation) (er
 		"func":    "ManipulationCreate",
 	})
 	defer span.End()
-	_ = ctx
 	key := "mpID"
 	q := fmt.Sprintf(`CREATE (mp:Manipulation {label: "%s"}) RETURN id(mp) AS %s`, mp.Label, key)
 	utils.Debug(l, span, q)
-	if res, err := n.Execute(q); err != nil {
+	res, err := n.Execute(q)
+	if err != nil {
 		return utils.ErrorHandler(l, span, err, FailNeoExecute)
-	} else {
-		if mpID, err := res.GetInt64(key); err != nil {
-			return utils.ErrorHandler(l, span, err, types.FailBrGet, key)
-		} else {
-			mp.ID = mpID
-		}
 	}
-	utils.Debug(l, span, "Manipulation has %d layers", len(mp.ManipuLayers))
+	mpID, err := res.GetInt64(key)
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, types.FailBrGet, key)
+	}
+	mp.ID = mpID
+
+	// Legacy flat ManipuLayers: still written the old way. The new
+	// default/variants path below is additive.
+	utils.Debug(l, span, "Manipulation has %d flat ManipuLayers", len(mp.ManipuLayers))
 	for _, mpl := range mp.ManipuLayers {
 		if err := n.ManipuLayerGetCreate(ctx, &mpl); err != nil {
 			return utils.ErrorHandler(l, span, err, FailManipuLayerGetCreate)
-		} else {
-			if err := n.ManipulationLinkToManipuLayer(ctx, mp.ID, mpl.ID); err != nil {
-				return utils.ErrorHandler(l, span, err, FailManipulationLinkToManipuLayer)
-			}
+		}
+		if err := n.ManipulationLinkToManipuLayer(ctx, mp.ID, mpl.ID); err != nil {
+			return utils.ErrorHandler(l, span, err, FailManipulationLinkToManipuLayer)
 		}
 	}
 
+	// New default block.
+	if !mp.Default.IsZero() {
+		if err := n.writeManipuConfig(ctx, mp.ID, relHasDefault, "", &mp.Default); err != nil {
+			return utils.ErrorHandler(l, span, err, FailManipuConfigCreate)
+		}
+	}
+
+	// Variants.
+	for i := range mp.Variants {
+		v := &mp.Variants[i]
+		if err := n.writeManipuConfig(ctx, mp.ID, relHasVariant, v.Rule, &v.Config); err != nil {
+			return utils.ErrorHandler(l, span, err, FailManipuConfigCreate)
+		}
+	}
+	return nil
+}
+
+// writeManipuConfig persists a ManipuConfig node, links it to the owning
+// Manipulation via the given relationship, and links each contained
+// ManipuLayer by order. Layers are expected to have their ID populated
+// (either pre-existing or freshly created by the caller).
+func (n Neo) writeManipuConfig(ctx context.Context, mpID int64, rel, ruleKey string, cfg *types.ManipuConfig) error {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameManipuConfig,
+		"func":    "writeManipuConfig",
+		"mpID":    mpID,
+		"rel":     rel,
+		"rule":    ruleKey,
+	})
+	defer span.End()
+	if err := n.manipuConfigCreate(ctx, cfg); err != nil {
+		return utils.ErrorHandler(l, span, err, FailManipuConfigCreate)
+	}
+	if err := n.manipuConfigLink(ctx, mpID, cfg.ID, rel, ruleKey); err != nil {
+		return utils.ErrorHandler(l, span, err, FailManipuConfigLink)
+	}
+	for i := range cfg.Layers {
+		lyr := &cfg.Layers[i]
+		if lyr.ID == 0 {
+			// Skip — the caller is responsible for pre-linking layers
+			// that were already persisted via ManipuLayerGetCreate.
+			utils.Debug(l, span, "skipping layer link for zero-id layer %q", lyr.Label)
+			continue
+		}
+		if err := n.manipuConfigLinkLayer(ctx, cfg.ID, lyr.ID, i); err != nil {
+			return utils.ErrorHandler(l, span, err, FailManipuConfigCmdLinkFailed)
+		}
+	}
 	return nil
 }
 
@@ -162,6 +211,15 @@ func (n Neo) ManipulationGetByID(ctx context.Context, mpID int64) (mp types.Mani
 	}
 }
 
+// ManipulationsWithConfigByProfileID returns every manipulation linked
+// to a profile with Default + Variants fully hydrated from the graph.
+// It is a convenience wrapper over `ManipulationsGetByProfileID`
+// documenting that the hydration is already performed by
+// `ManipulationFromResult`.
+func (n Neo) ManipulationsWithConfigByProfileID(ctx context.Context, prfID int64) ([]types.Manipulation, error) {
+	return n.ManipulationsGetByProfileID(ctx, prfID)
+}
+
 func (n Neo) ManipulationsGetByProfileID(ctx context.Context, prfID int64) (mps []types.Manipulation, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameManipulation,
@@ -204,16 +262,34 @@ func (n Neo) ManipulationFromResult(ctx context.Context, res types.Result) (mp t
 		ID:           id,
 		Label:        label,
 		ManipuLayers: make([]types.ManipuLayer, 0),
+		Variants:     make([]types.ManipuVariant, 0),
 	}
 	if mpl, e := n.ManipuLayersGetByManipulationID(ctx, mp.ID); e != nil {
 		return mp, utils.ErrorHandler(l, span, e, FailManipuLayersGetByManipulationID)
 	} else {
 		mp.ManipuLayers = mpl
 	}
+	// Hydrate the default / variant configs when present.
+	links, e := n.manipuConfigsByManipulationID(ctx, mp.ID)
+	if e != nil {
+		return mp, utils.ErrorHandler(l, span, e, FailManipuConfigGetByManipID)
+	}
+	for _, lnk := range links {
+		cfg, ce := n.manipuConfigHydrate(ctx, lnk.CfgID)
+		if ce != nil {
+			return mp, utils.ErrorHandler(l, span, ce, FailManipuConfigFromResult)
+		}
+		switch lnk.Rel {
+		case relHasDefault:
+			mp.Default = cfg
+		case relHasVariant:
+			mp.Variants = append(mp.Variants, types.ManipuVariant{Rule: lnk.Rule, Config: cfg})
+		}
+	}
 	return mp, nil
 }
 
-func (n Neo) ManipulationFromConfigManipulation(ctx context.Context, m config.Manipulation) (mpl types.Manipulation, err error) {
+func (n Neo) ManipulationFromConfigManipulation(ctx context.Context, m config.Manipulation) (types.Manipulation, error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameManipulation,
 		"func":    "ManipulationFromConfigManipulation",
@@ -222,39 +298,106 @@ func (n Neo) ManipulationFromConfigManipulation(ctx context.Context, m config.Ma
 	mp := types.Manipulation{
 		Label:        m.Label,
 		ManipuLayers: make([]types.ManipuLayer, 0),
+		Variants:     make([]types.ManipuVariant, 0),
 	}
+	// New extended schema path.
+	if m.Variants != nil || !m.DefaultConfig().IsZero() {
+		if err := n.populateExtendedManipulation(ctx, &mp, m); err != nil {
+			return mp, utils.ErrorHandler(l, span, err, FailManipuConfigCreate)
+		}
+		return mp, nil
+	}
+	// Legacy flat layers: preserve old behaviour for backward compatibility.
 	for _, cfgMppl := range m.ManipuLayers {
-		utils.Debug(l, span, "ManipuLayer: %s (%d Cmds, %d Envs)", cfgMppl.Image, len(cfgMppl.Cmd), len(cfgMppl.Environment))
-		up, e := types.NewUpstreamByName(cfgMppl.Image)
-		if e != nil {
-			return mp, utils.ErrorHandler(l, span, e, types.FailNewUpstreamByName)
-		}
-		if mpl, err := n.ManipuLayerFromUpstream(ctx, up, cfgMppl); err != nil {
+		mpl, err := n.buildLegacyManipuLayer(ctx, cfgMppl)
+		if err != nil {
 			return mp, utils.ErrorHandler(l, span, err, FailManipuLayerFromUpstream)
-		} else {
-			utils.Debug(l, span, "Add Env and Cmd to ManipuLayer")
-			mpl.Environment = make([]types.ManipuEnv, 0)
-			for _, cfgEnv := range cfgMppl.Environment {
-				mpe := types.ManipuEnv{
-					Key:  cfgEnv.Key,
-					Rule: cfgEnv.Rule,
-				}
-				utils.Debug(l, span, "Adding %s", mpe.ToString())
-				mpl.Environment = append(mpl.Environment, mpe)
-			}
-			mpl.Cmd = make([]types.ManipuCmd, 0)
-			for _, cfgCmd := range cfgMppl.Cmd {
-				mpc := types.ManipuCmd{
-					Cmd:  cfgCmd.Value,
-					Rule: cfgCmd.Rule,
-				}
-				utils.Debug(l, span, "Adding %s", mpc.ToString())
-				mpl.Cmd = append(mpl.Cmd, mpc)
-			}
-			mp.ManipuLayers = append(mp.ManipuLayers, mpl)
 		}
+		mp.ManipuLayers = append(mp.ManipuLayers, mpl)
 	}
 	return mp, nil
+}
+
+// populateExtendedManipulation fills mp.Default and mp.Variants from the
+// config-level manipulation.
+func (n Neo) populateExtendedManipulation(ctx context.Context, mp *types.Manipulation, m config.Manipulation) error {
+	defCfg, err := n.buildTypesConfigFromYAML(ctx, m.DefaultConfig())
+	if err != nil {
+		return err
+	}
+	mp.Default = defCfg
+	for rule, cfgIn := range m.Variants {
+		cfg, e := n.buildTypesConfigFromYAML(ctx, cfgIn)
+		if e != nil {
+			return e
+		}
+		mp.Variants = append(mp.Variants, types.ManipuVariant{Rule: rule, Config: cfg})
+	}
+	return nil
+}
+
+// buildLegacyManipuLayer walks a single config.ManipuLayer entry (legacy
+// flat form) through the Upstream+Manifest pipeline and attaches
+// Environment + Cmd entries.
+func (n Neo) buildLegacyManipuLayer(ctx context.Context, cfgMppl config.ManipuLayer) (types.ManipuLayer, error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameManipulation,
+		"func":    "buildLegacyManipuLayer",
+	})
+	defer span.End()
+	utils.Debug(l, span, "ManipuLayer: %s (%d Cmds, %d Envs)", cfgMppl.Image, len(cfgMppl.Cmd), len(cfgMppl.Environment))
+	up, err := types.NewUpstreamByName(cfgMppl.Image)
+	if err != nil {
+		return types.ManipuLayer{}, utils.ErrorHandler(l, span, err, types.FailNewUpstreamByName)
+	}
+	mpl, err := n.ManipuLayerFromUpstream(ctx, up, cfgMppl)
+	if err != nil {
+		return types.ManipuLayer{}, utils.ErrorHandler(l, span, err, FailManipuLayerFromUpstream)
+	}
+	mpl.Environment = make([]types.ManipuEnv, 0, len(cfgMppl.Environment))
+	for _, cfgEnv := range cfgMppl.Environment {
+		mpl.Environment = append(mpl.Environment, types.ManipuEnv{Key: cfgEnv.Key, Rule: cfgEnv.Rule})
+	}
+	mpl.Cmd = make([]types.ManipuCmd, 0, len(cfgMppl.Cmd))
+	for _, cfgCmd := range cfgMppl.Cmd {
+		mpl.Cmd = append(mpl.Cmd, types.ManipuCmd{Cmd: cfgCmd.Value, Rule: cfgCmd.Rule})
+	}
+	return mpl, nil
+}
+
+// buildTypesConfigFromYAML converts a config.ManipuConfig into its
+// types.ManipuConfig equivalent, resolving each `Layers` entry through
+// the existing ManipuLayer pipeline so the graph linkage (Upstream,
+// Manifest, Rule) is established.
+func (n Neo) buildTypesConfigFromYAML(ctx context.Context, cfgIn config.ManipuConfig) (types.ManipuConfig, error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameManipulation,
+		"func":    "buildTypesConfigFromYAML",
+	})
+	defer span.End()
+	out := cfgIn.ToTypesManipuConfig()
+	if len(cfgIn.Layers) == 0 {
+		return out, nil
+	}
+	layers := make([]types.ManipuLayer, 0, len(cfgIn.Layers))
+	for _, cfgMppl := range cfgIn.Layers {
+		if cfgMppl.Image == "" {
+			// A rule-only layer with no image — skip, not supported yet.
+			utils.Debug(l, span, "skipping image-less layer rule=%q", cfgMppl.Rule)
+			continue
+		}
+		up, e := types.NewUpstreamByName(cfgMppl.Image)
+		if e != nil {
+			return out, utils.ErrorHandler(l, span, e, types.FailNewUpstreamByName)
+		}
+		mpl, e := n.ManipuLayerFromUpstream(ctx, up, cfgMppl)
+		if e != nil {
+			return out, utils.ErrorHandler(l, span, e, FailManipuLayerFromUpstream)
+		}
+		layers = append(layers, mpl)
+	}
+	out.Layers = layers
+	return out, nil
 }
 
 func (n Neo) ManipulationCheckRules(ctx context.Context, prfID, maniID int64) (ok bool, err error) {
