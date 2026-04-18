@@ -223,6 +223,30 @@ func (n Neo) manipuConfigLinkLayer(ctx context.Context, cfgID, mplID int64, orde
 	return nil
 }
 
+// manipulationLinkToManipuLayerLegacy writes the legacy
+// `(:Manipulation)-[:HAS]->(:ManipuLayer)` edge even for layers that
+// originated from the new defaults + variants schema. Keeping this
+// edge preserves backward compatibility with older tooling (e.g. the
+// GoCD e2e-dev verify-ce pipeline) and any Cypher query that hard-codes
+// the `[:HAS]` relationship.
+func (n Neo) manipulationLinkToManipuLayerLegacy(ctx context.Context, mpID, mplID int64) error {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameManipuConfig,
+		"func":    "manipulationLinkToManipuLayerLegacy",
+	})
+	defer span.End()
+	_ = ctx
+	q := fmt.Sprintf(
+		`MATCH (mp:Manipulation), (mpl:ManipuLayer) WHERE id(mp) = %d AND id(mpl) = %d MERGE (mp)-[:HAS]->(mpl)`,
+		mpID, mplID,
+	)
+	utils.Debug(l, span, q)
+	if _, err := n.Execute(q); err != nil {
+		return utils.ErrorHandler(l, span, err, FailNeoExecute)
+	}
+	return nil
+}
+
 // manipuConfigsByManipulationID returns every ManipuConfig linked from the
 // given Manipulation node, distinguishing HAS_DEFAULT vs HAS_VARIANT and
 // carrying the variant rule when present.

@@ -144,6 +144,12 @@ func (n Neo) writeManipuConfig(ctx context.Context, mpID int64, rel, ruleKey str
 		if err := n.manipuConfigLinkLayer(ctx, cfg.ID, lyr.ID, i); err != nil {
 			return utils.ErrorHandler(l, span, err, FailManipuConfigCmdLinkFailed)
 		}
+		// Also write the legacy (:Manipulation)-[:HAS]->(:ManipuLayer)
+		// edge for backward compatibility with tooling that queries
+		// it directly (e.g. GoCD e2e-dev verify-ce).
+		if err := n.manipulationLinkToManipuLayerLegacy(ctx, mpID, lyr.ID); err != nil {
+			return utils.ErrorHandler(l, span, err, FailManipulationLinkToManipuLayer)
+		}
 	}
 	return nil
 }
