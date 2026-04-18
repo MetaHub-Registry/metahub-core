@@ -138,6 +138,71 @@ func (n Neo) manipuConfigLink(ctx context.Context, mpID, cfgID int64, rel string
 	return nil
 }
 
+// manipuLayerCreateForConfig creates a bare `:ManipuLayer` node linked to
+// its Upstream + Manifest but *not* to a Rule. Variant layers inherit
+// their rule from the `HAS_VARIANT {rule}` edge on the owning
+// `ManipuConfig`, so there is no per-layer Rule linkage to establish.
+//
+// The returned layer has its `ID` populated so the caller can link it
+// via `manipuConfigLinkLayer`.
+func (n Neo) manipuLayerCreateForConfig(ctx context.Context, up types.Upstream) (types.ManipuLayer, error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameManipuConfig,
+		"func":    "manipuLayerCreateForConfig",
+		"image":   up.Reg + "/" + up.Repo + ":" + up.Tag,
+	})
+	defer span.End()
+
+	// Resolve the existing Upstream to its ID.
+	upID, found, err := n.UpstreamGet(ctx, up)
+	if err != nil {
+		return types.ManipuLayer{}, utils.ErrorHandler(l, span, err, FailUpstreamGet)
+	}
+	if !found {
+		return types.ManipuLayer{}, utils.NewError(l, span, FailUpstreamNotFound)
+	}
+	up.ID = upID
+	md, found, err := n.ManifestGetByUpstream(ctx, up)
+	if err != nil {
+		return types.ManipuLayer{}, utils.ErrorHandler(l, span, err, FailManifestGetByUpstream)
+	}
+	if !found {
+		return types.ManipuLayer{}, utils.NewError(l, span, FailManifestNotFound)
+	}
+
+	label := up.GetLabel()
+	// ManipuLayer uniqueness is (label, rule). Variant layers use empty
+	// rule because the rule lives on the variant edge.
+	if existing, found, gErr := n.ManipuLayerGetByLabel(ctx, label); gErr == nil && found {
+		return existing, nil
+	}
+	q := fmt.Sprintf(
+		`CREATE (mpl:ManipuLayer {label: %s, rule: ""}) RETURN id(mpl) AS mplID`,
+		cypherQuote(label),
+	)
+	utils.Debug(l, span, q)
+	res, err := n.Execute(q)
+	if err != nil {
+		return types.ManipuLayer{}, utils.ErrorHandler(l, span, err, FailNeoExecute)
+	}
+	mplID, err := res.GetInt64("mplID")
+	if err != nil {
+		return types.ManipuLayer{}, utils.ErrorHandler(l, span, err, types.FailBrGet, "mplID")
+	}
+	// Link to Manifest + Upstream.
+	if err := n.ManifestLinkToManipulayer(ctx, md.ID, mplID); err != nil {
+		return types.ManipuLayer{}, utils.ErrorHandler(l, span, err, FailManipuLayerLinkToManifest)
+	}
+	if err := n.ManipuLayerLinkToUpstream(ctx, mplID, upID); err != nil {
+		return types.ManipuLayer{}, utils.ErrorHandler(l, span, err, FailManipuLayerLinkToUpstream)
+	}
+	return types.ManipuLayer{
+		ID:    mplID,
+		Label: label,
+		Image: md,
+	}, nil
+}
+
 // manipuConfigLinkLayer links a ManipuLayer to a ManipuConfig while
 // preserving the layer's order within the config's layer list.
 func (n Neo) manipuConfigLinkLayer(ctx context.Context, cfgID, mplID int64, order int) error {
@@ -334,6 +399,11 @@ func (n Neo) manipuConfigLayers(ctx context.Context, cfgID int64) ([]types.Manip
 		mpl, e := n.ManipuLayerFromResult(ctx, r)
 		if e != nil {
 			return nil, utils.ErrorHandler(l, span, e, FailManipuLayerFromResult)
+		}
+		// Attach the ManipuLayer's Upstream onto its Image so the UI
+		// can render the source image URL without a separate lookup.
+		if up, found, uErr := n.UpstreamGetByManipuLayerID(ctx, mpl.ID); uErr == nil && found {
+			mpl.Image.Upstream = up
 		}
 		layers = append(layers, mpl)
 	}

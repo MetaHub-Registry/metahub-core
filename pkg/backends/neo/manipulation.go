@@ -366,9 +366,12 @@ func (n Neo) buildLegacyManipuLayer(ctx context.Context, cfgMppl config.ManipuLa
 }
 
 // buildTypesConfigFromYAML converts a config.ManipuConfig into its
-// types.ManipuConfig equivalent, resolving each `Layers` entry through
-// the existing ManipuLayer pipeline so the graph linkage (Upstream,
-// Manifest, Rule) is established.
+// types.ManipuConfig equivalent, resolving each `Layers` entry into a
+// graph-persisted ManipuLayer node linked to its Upstream and Manifest.
+//
+// Unlike the legacy `ManipuLayerFromUpstream` pipeline, this helper does
+// NOT expect a per-layer `rule:` — variant layers inherit their rule
+// from the `HAS_VARIANT {rule}` edge on their owning ManipuConfig.
 func (n Neo) buildTypesConfigFromYAML(ctx context.Context, cfgIn config.ManipuConfig) (types.ManipuConfig, error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameManipulation,
@@ -382,7 +385,6 @@ func (n Neo) buildTypesConfigFromYAML(ctx context.Context, cfgIn config.ManipuCo
 	layers := make([]types.ManipuLayer, 0, len(cfgIn.Layers))
 	for _, cfgMppl := range cfgIn.Layers {
 		if cfgMppl.Image == "" {
-			// A rule-only layer with no image — skip, not supported yet.
 			utils.Debug(l, span, "skipping image-less layer rule=%q", cfgMppl.Rule)
 			continue
 		}
@@ -390,7 +392,7 @@ func (n Neo) buildTypesConfigFromYAML(ctx context.Context, cfgIn config.ManipuCo
 		if e != nil {
 			return out, utils.ErrorHandler(l, span, e, types.FailNewUpstreamByName)
 		}
-		mpl, e := n.ManipuLayerFromUpstream(ctx, up, cfgMppl)
+		mpl, e := n.manipuLayerCreateForConfig(ctx, up)
 		if e != nil {
 			return out, utils.ErrorHandler(l, span, e, FailManipuLayerFromUpstream)
 		}
@@ -449,14 +451,25 @@ func (n Neo) ManipulationFromYAML(ctx context.Context, cmp config.Manipulation) 
 	})
 	defer span.End()
 	mp = types.Manipulation{
-		Label: cmp.Label,
+		Label:    cmp.Label,
+		Variants: make([]types.ManipuVariant, 0),
 	}
-	for _, layer := range cmp.ManipuLayers {
-		if tl, e := n.ManipuLayerFromConfigYAML(ctx, layer); e != nil {
-			return mp, utils.ErrorHandler(l, span, e, FailManipuLayerFromConfigYAML)
-		} else {
-			mp.ManipuLayers = append(mp.ManipuLayers, tl)
+	// New extended schema path: transcribe defaults + variants. Layers
+	// inside any config block are created via the existing ManipuLayer
+	// pipeline so upstream/manifest linkage is established.
+	if cmp.Variants != nil || !cmp.DefaultConfig().IsZero() {
+		if err = n.populateExtendedManipulation(ctx, &mp, cmp); err != nil {
+			return mp, utils.ErrorHandler(l, span, err, FailManipuConfigCreate)
 		}
+		return
+	}
+	// Legacy flat layers form.
+	for _, layer := range cmp.ManipuLayers {
+		tl, e := n.ManipuLayerFromConfigYAML(ctx, layer)
+		if e != nil {
+			return mp, utils.ErrorHandler(l, span, e, FailManipuLayerFromConfigYAML)
+		}
+		mp.ManipuLayers = append(mp.ManipuLayers, tl)
 	}
 	return
 }
