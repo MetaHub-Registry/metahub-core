@@ -154,13 +154,22 @@ use the dev environment).
   driver + `types.Result`; env and volumes are stored as JSON strings
   instead of native map/list types.
 - `manipuConfigLayers` calls `ManipuLayerFromResult` which in turn
-  requires an attached Manifest + Rule; direct tests that bypass the
-  Upstream pipeline must use a raw Cypher check to verify the edge.
-- `ManipuLayerFromUpstream` still runs the legacy linkage pipeline
-  inside `buildTypesConfigFromYAML` so each layer in a default/variant
-  block needs an existing Upstream + Manifest in the graph — the CE
-  fixture leaves the layer image fields empty to avoid this during
-  parser-only tests.
+  requires an attached Manifest; the helper augments the returned
+  layer's `Image.Upstream` via `UpstreamGetByManipuLayerID` so the UI
+  DTO can render an image URL.
+- **Variant layers skip the legacy Rule linkage**. `ManipuLayer`
+  uniqueness is `(label, rule)` and the old `ManipuLayerFromUpstream`
+  pipeline linked each layer to a `:Rule` node by label. Variant
+  layers carry their rule on the `HAS_VARIANT` edge instead, so they
+  use the new `manipuLayerCreateForConfig` helper (bare ManipuLayer
+  + UPSTREAM + Manifest link, no Rule node).
+- **Apply-time flatten matters**. `ApplyManipulationsToManifests`
+  used to iterate only `mp.ManipuLayers` which is empty under the new
+  schema. `flattenManipuLayers` now walks legacy flat layers +
+  Default.Layers + each variant's layers, copying the variant's rule
+  string onto each variant layer for platform matching. Without this
+  flatten the compose-stack glow pull-through returns the base image
+  unmodified.
 
 ## 2026-04-17 Continuation
 
