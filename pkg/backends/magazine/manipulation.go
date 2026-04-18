@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/opencontainers/go-digest"
@@ -275,13 +276,21 @@ func (mag Magazine) ApplyManipulationsToManifests(ctx context.Context, prf types
 // manipulation (legacy flat slice + Default + each variant) and applies
 // the first one that matches the given manifest's platform. Returns true
 // when a manipulated manifest was appended to `result`.
+//
+// For new-schema manipulations the effective OCI config mutation is
+// computed by merging `mp.Default` with the matching variant's config
+// (variant values override defaults). Legacy-form manipulations
+// produce an empty ManipuConfig because env/cmd live on the legacy
+// ManipuEnv/ManipuCmd nodes which are handled by the legacy
+// `ApplyManipulationToConfig` path for pushed manifests.
 func tryApplyManipulation(ctx context.Context, mag Magazine, l *logrus.Entry, span trace.Span, mp *types.Manipulation, md *types.Manifest, result *[]types.Manifest) bool {
 	for _, item := range flattenManipuLayers(mp) {
 		if !manipuLayerMatchesPlatform(item, md.Platform) {
 			continue
 		}
 		utils.Info(l, span, "ManipuLayer %s matches manifest %s (platform %s, rule=%q)", item.Label, md.Digest, md.Platform.GetLabel(), item.Rule)
-		manipulatedMd, e := mag.createManipulatedManifest(ctx, *md, item, mp.Label)
+		cfg := effectiveConfigForLayer(mp, item)
+		manipulatedMd, e := mag.createManipulatedManifest(ctx, *md, item, mp.Label, cfg)
 		if e != nil {
 			// Non-fatal: keep the original manifest.
 			utils.Warn(l, span, "Manipulation failed for %s (non-fatal, using original): %v", md.Digest, e)
@@ -291,6 +300,204 @@ func tryApplyManipulation(ctx context.Context, mag Magazine, l *logrus.Entry, sp
 		return true
 	}
 	return false
+}
+
+// effectiveConfigForLayer builds the OCI config mutation that should be
+// applied when `layer` is the matched variant layer for `mp`. Merges
+// `mp.Default` with the matching variant's `Config` so variant values
+// override defaults. Env maps are union-merged; scalar fields
+// (workdir, user) use variant-first-then-default; volumes are unioned.
+// Entrypoint and Cmd are variant-first (variant commands replace
+// defaults wholesale because they carry their own op).
+//
+// Returns a zero ManipuConfig when the manipulation has no Default or
+// Variants (legacy flat form) so the caller can short-circuit the
+// config-mutation step.
+func effectiveConfigForLayer(mp *types.Manipulation, layer types.ManipuLayer) types.ManipuConfig {
+	if mp.Default.IsZero() && len(mp.Variants) == 0 {
+		return types.ManipuConfig{}
+	}
+	merged := cloneManipuConfig(mp.Default)
+	// Find the variant whose rule matches the layer's Rule field
+	// (flattenManipuLayers copied the variant rule onto the layer).
+	for _, v := range mp.Variants {
+		if v.Rule != layer.Rule {
+			continue
+		}
+		mergeManipuConfig(&merged, v.Config)
+		break
+	}
+	return merged
+}
+
+// cloneManipuConfig returns a deep-enough copy of cfg so that
+// merge operations don't mutate the source manipulation tree.
+// Layers are NOT copied — the caller only needs the scalar-shaped
+// fields (env/workdir/user/volumes/entrypoint/cmd) for config
+// application; layers are applied via the flatten path.
+func cloneManipuConfig(cfg types.ManipuConfig) types.ManipuConfig {
+	out := types.ManipuConfig{
+		Workdir: cfg.Workdir,
+		User:    cfg.User,
+	}
+	if len(cfg.Env) > 0 {
+		out.Env = make(map[string]string, len(cfg.Env))
+		for k, v := range cfg.Env {
+			out.Env[k] = v
+		}
+	}
+	if len(cfg.Volumes) > 0 {
+		out.Volumes = append([]string(nil), cfg.Volumes...)
+	}
+	if cfg.Entrypoint != nil && !cfg.Entrypoint.IsZero() {
+		cp := *cfg.Entrypoint
+		cp.Value = append([]string(nil), cfg.Entrypoint.Value...)
+		out.Entrypoint = &cp
+	}
+	if cfg.Cmd != nil && !cfg.Cmd.IsZero() {
+		cp := *cfg.Cmd
+		cp.Value = append([]string(nil), cfg.Cmd.Value...)
+		out.Cmd = &cp
+	}
+	return out
+}
+
+// mergeManipuConfig merges `variant` into `base` in-place. Variant
+// values override defaults for scalars (workdir, user). Env maps
+// are merged key-wise (variant wins on duplicate keys). Volumes
+// are union-merged preserving order (defaults first, then
+// variant-only entries). Entrypoint / Cmd from the variant
+// replace the default wholesale when present.
+func mergeManipuConfig(base *types.ManipuConfig, variant types.ManipuConfig) {
+	if variant.Workdir != "" {
+		base.Workdir = variant.Workdir
+	}
+	if variant.User != "" {
+		base.User = variant.User
+	}
+	if len(variant.Env) > 0 {
+		if base.Env == nil {
+			base.Env = make(map[string]string, len(variant.Env))
+		}
+		for k, v := range variant.Env {
+			base.Env[k] = v
+		}
+	}
+	if len(variant.Volumes) > 0 {
+		seen := make(map[string]struct{}, len(base.Volumes))
+		for _, v := range base.Volumes {
+			seen[v] = struct{}{}
+		}
+		for _, v := range variant.Volumes {
+			if _, dup := seen[v]; dup {
+				continue
+			}
+			seen[v] = struct{}{}
+			base.Volumes = append(base.Volumes, v)
+		}
+	}
+	if variant.Entrypoint != nil && !variant.Entrypoint.IsZero() {
+		cp := *variant.Entrypoint
+		cp.Value = append([]string(nil), variant.Entrypoint.Value...)
+		base.Entrypoint = &cp
+	}
+	if variant.Cmd != nil && !variant.Cmd.IsZero() {
+		cp := *variant.Cmd
+		cp.Value = append([]string(nil), variant.Cmd.Value...)
+		base.Cmd = &cp
+	}
+}
+
+// applyManipuConfigToV1 mutates a v1.Image config in place by applying
+// the env / workdir / user / volumes / entrypoint / cmd from the given
+// ManipuConfig. Env keys are upserted into the Env slice. Entrypoint
+// and Cmd respect the `Op` field (replace / prepend / append). Volumes
+// are union-merged into the Volumes map. Zero-valued fields are skipped.
+func applyManipuConfigToV1(cfg types.ManipuConfig, v1Cfg *v1.Image) {
+	if v1Cfg == nil || cfg.IsZero() {
+		return
+	}
+	if cfg.Workdir != "" {
+		v1Cfg.Config.WorkingDir = cfg.Workdir
+	}
+	if cfg.User != "" {
+		v1Cfg.Config.User = cfg.User
+	}
+	if len(cfg.Env) > 0 {
+		v1Cfg.Config.Env = upsertEnv(v1Cfg.Config.Env, cfg.Env)
+	}
+	if len(cfg.Volumes) > 0 {
+		if v1Cfg.Config.Volumes == nil {
+			v1Cfg.Config.Volumes = make(map[string]struct{}, len(cfg.Volumes))
+		}
+		for _, v := range cfg.Volumes {
+			v1Cfg.Config.Volumes[v] = struct{}{}
+		}
+	}
+	if cfg.Entrypoint != nil && !cfg.Entrypoint.IsZero() {
+		v1Cfg.Config.Entrypoint = applyManipuCommand(v1Cfg.Config.Entrypoint, cfg.Entrypoint)
+	}
+	if cfg.Cmd != nil && !cfg.Cmd.IsZero() {
+		v1Cfg.Config.Cmd = applyManipuCommand(v1Cfg.Config.Cmd, cfg.Cmd)
+	}
+}
+
+// upsertEnv merges `add` into the existing KEY=VALUE slice `base`,
+// overriding any existing entry with the same key. The order of
+// existing keys is preserved; newly-added keys are appended.
+func upsertEnv(base []string, add map[string]string) []string {
+	// Index existing entries by key so lookups during the merge are O(1).
+	idx := make(map[string]int, len(base))
+	for i, kv := range base {
+		eq := strings.IndexByte(kv, '=')
+		if eq < 0 {
+			continue
+		}
+		idx[kv[:eq]] = i
+	}
+	// Deterministic iteration: sort keys so the emitted slice stays
+	// stable across parses. Without this the manipulated manifest's
+	// digest would flap every rebuild.
+	keys := make([]string, 0, len(add))
+	for k := range add {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := append([]string(nil), base...)
+	for _, k := range keys {
+		entry := k + "=" + add[k]
+		if i, ok := idx[k]; ok {
+			out[i] = entry
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+// applyManipuCommand returns the result of applying a ManipuCommand
+// to an existing string-slice value. Replace overwrites the slice,
+// prepend inserts the command value at the start, append at the end.
+// Unknown ops fall back to the identity (i.e. leave existing unchanged).
+func applyManipuCommand(existing []string, cmd *types.ManipuCommand) []string {
+	if cmd == nil || cmd.IsZero() {
+		return existing
+	}
+	switch cmd.Op {
+	case types.ManipuCmdOpReplace:
+		out := append([]string(nil), cmd.Value...)
+		return out
+	case types.ManipuCmdOpPrepend:
+		out := append([]string(nil), cmd.Value...)
+		out = append(out, existing...)
+		return out
+	case types.ManipuCmdOpAppend:
+		out := append([]string(nil), existing...)
+		out = append(out, cmd.Value...)
+		return out
+	default:
+		return existing
+	}
 }
 
 // flattenManipuLayers returns every ManipuLayer reachable from the
@@ -332,7 +539,12 @@ func flattenManipuLayers(mp *types.Manipulation) []types.ManipuLayer {
 // createManipulatedManifest creates a new :Manifest node that is a copy of the original
 // with the ManipuLayer's image layers appended. The new manifest is stored in MinIO and
 // linked in the graph with proper edges including [:MANIPULATED_FROM].
-func (mag Magazine) createManipulatedManifest(ctx context.Context, orig types.Manifest, mpl types.ManipuLayer, mpLabel string) (types.Manifest, error) {
+//
+// cfg carries the OCI config mutation (env / workdir / user / volumes /
+// entrypoint / cmd) to apply to the rebuilt v1.Image config. Pass a
+// zero ManipuConfig to skip config mutation — only layers will be
+// appended in that case.
+func (mag Magazine) createManipulatedManifest(ctx context.Context, orig types.Manifest, mpl types.ManipuLayer, mpLabel string, cfg types.ManipuConfig) (types.Manifest, error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":  pkgNameManipulation,
 		"func":     "createManipulatedManifest",
@@ -433,6 +645,12 @@ func (mag Magazine) createManipulatedManifest(ctx context.Context, orig types.Ma
 	for _, diffID := range mplV1Cfg.RootFS.DiffIDs {
 		newV1Cfg.RootFS.DiffIDs = append(newV1Cfg.RootFS.DiffIDs, diffID)
 	}
+	// Apply the manipulation's OCI config mutations (env / workdir /
+	// user / volumes / entrypoint / cmd) when the new-schema path has
+	// produced a non-zero cfg. Legacy-form manipulations get a zero
+	// cfg here; their env / cmd are applied via the separate legacy
+	// ApplyManipulationToConfig path at push time.
+	applyManipuConfigToV1(cfg, &newV1Cfg)
 
 	// 6. Serialize and store new config blob in MinIO
 	cfgBytes, e := json.Marshal(newV1Cfg)
