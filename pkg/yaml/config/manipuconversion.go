@@ -36,13 +36,14 @@ func (c ManipuConfig) ToTypesManipuConfig() types.ManipuConfig {
 	if len(c.Layers) != 0 {
 		layers = make([]types.ManipuLayer, 0, len(c.Layers))
 		for _, lyr := range c.Layers {
+			// Propagate Select alongside Rule so the apply-time
+			// slicing code in pkg/backends/magazine sees the
+			// requested subset. Image lives on the Upstream; caller
+			// resolves via NewUpstreamByName.
 			layers = append(layers, types.ManipuLayer{
-				Rule: lyr.Rule,
-				// Image lives on the Upstream; caller resolves via NewUpstreamByName.
+				Rule:   lyr.Rule,
+				Select: lyr.Select,
 			})
-			// The caller is responsible for populating the remaining ManipuLayer
-			// fields (Image upstream, Cmd, Env). We only copy the rule and leave
-			// a placeholder so order is preserved.
 		}
 	}
 	return types.ManipuConfig{

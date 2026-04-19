@@ -143,13 +143,19 @@ func (n Neo) manipuConfigLink(ctx context.Context, mpID, cfgID int64, rel string
 // their rule from the `HAS_VARIANT {rule}` edge on the owning
 // `ManipuConfig`, so there is no per-layer Rule linkage to establish.
 //
+// `sel` is the raw slice expression from the YAML (e.g. "[1:]") that
+// trims which of the source image's layers are appended at apply
+// time. Empty string means "all layers" and keeps pre-change
+// behaviour.
+//
 // The returned layer has its `ID` populated so the caller can link it
 // via `manipuConfigLinkLayer`.
-func (n Neo) manipuLayerCreateForConfig(ctx context.Context, up types.Upstream) (types.ManipuLayer, error) {
+func (n Neo) manipuLayerCreateForConfig(ctx context.Context, up types.Upstream, sel string) (types.ManipuLayer, error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameManipuConfig,
 		"func":    "manipuLayerCreateForConfig",
 		"image":   up.Reg + "/" + up.Repo + ":" + up.Tag,
+		"select":  sel,
 	})
 	defer span.End()
 
@@ -174,11 +180,22 @@ func (n Neo) manipuLayerCreateForConfig(ctx context.Context, up types.Upstream) 
 	// ManipuLayer uniqueness is (label, rule). Variant layers use empty
 	// rule because the rule lives on the variant edge.
 	if existing, found, gErr := n.ManipuLayerGetByLabel(ctx, label); gErr == nil && found {
+		// Cache hit — return as-is. Updating `select` on re-parse
+		// could surprise operators who don't realise the slice is
+		// graph-persisted; we deliberately keep the first-seen value
+		// and log when they disagree so operators can manually
+		// reset the graph if needed.
+		if existing.Select != sel {
+			utils.Warn(l, span,
+				"ManipuLayer %s already exists with select=%q; new parse requested %q — keeping stored value",
+				label, existing.Select, sel,
+			)
+		}
 		return existing, nil
 	}
 	q := fmt.Sprintf(
-		`CREATE (mpl:ManipuLayer {label: %s, rule: ""}) RETURN id(mpl) AS mplID`,
-		cypherQuote(label),
+		`CREATE (mpl:ManipuLayer {label: %s, rule: "", select: %s}) RETURN id(mpl) AS mplID`,
+		cypherQuote(label), cypherQuote(sel),
 	)
 	utils.Debug(l, span, q)
 	res, err := n.Execute(q)
@@ -197,9 +214,10 @@ func (n Neo) manipuLayerCreateForConfig(ctx context.Context, up types.Upstream) 
 		return types.ManipuLayer{}, utils.ErrorHandler(l, span, err, FailManipuLayerLinkToUpstream)
 	}
 	return types.ManipuLayer{
-		ID:    mplID,
-		Label: label,
-		Image: md,
+		ID:     mplID,
+		Label:  label,
+		Select: sel,
+		Image:  md,
 	}, nil
 }
 

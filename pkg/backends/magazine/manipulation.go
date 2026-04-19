@@ -633,11 +633,21 @@ func (mag Magazine) reuseExistingManipulated(ctx context.Context, l *logrus.Entr
 
 // manipulationParts bundles the original + ManipuLayer layers and
 // configs that createManipulatedManifest needs across its stages.
+//
+// `mplSelectedIdx` carries the indices chosen by the ManipuLayer's
+// `select` slice expression (see add-manipulayer-select openspec
+// change). It is nil for identity selections — callers treat nil as
+// "use mplLayers as-is" so the happy path stays a pure copy. When
+// non-nil, both the layer descriptor slice and the DiffIDs in
+// `mplV1Cfg.RootFS.DiffIDs` MUST be projected through the same
+// indices at apply time, or docker's diff check will reject the
+// manipulated manifest.
 type manipulationParts struct {
-	origLayers []types.Layer
-	mplLayers  []types.Layer
-	origV1Cfg  *v1.Image
-	mplV1Cfg   *v1.Image
+	origLayers     []types.Layer
+	mplLayers      []types.Layer
+	origV1Cfg      *v1.Image
+	mplV1Cfg       *v1.Image
+	mplSelectedIdx []int
 }
 
 // gatherManipulationParts loads the original manifest's layers + config
@@ -648,11 +658,18 @@ func (mag Magazine) gatherManipulationParts(ctx context.Context, l *logrus.Entry
 	if err != nil {
 		return manipulationParts{}, utils.ErrorHandler(l, span, err, "failed to get layers for original manifest %d", orig.ID)
 	}
-	mplLayers, err := mag.loadManipuLayerLayers(ctx, l, span, mpl)
+	mplLayersFull, err := mag.loadManipuLayerLayers(ctx, l, span, mpl)
 	if err != nil {
 		return manipulationParts{}, err
 	}
-	utils.Info(l, span, "Original has %d layers, ManipuLayer adds %d layers", len(origLayers), len(mplLayers))
+	// Apply the ManipuLayer.Select slice (if any). Resolving here —
+	// before loading the V1 config — means an out-of-range slice
+	// surfaces before we do the expensive minio fetch.
+	mplLayers, selectedIdx, err := applyManipuLayerSelect(l, span, mpl, mplLayersFull)
+	if err != nil {
+		return manipulationParts{}, err
+	}
+	utils.Info(l, span, "Original has %d layers, ManipuLayer adds %d (of %d) layers", len(origLayers), len(mplLayers), len(mplLayersFull))
 	origV1Cfg, err := mag.loadOrPullManifestConfig(ctx, l, span, orig.ID, "original")
 	if err != nil {
 		return manipulationParts{}, err
@@ -662,11 +679,62 @@ func (mag Magazine) gatherManipulationParts(ctx context.Context, l *logrus.Entry
 		return manipulationParts{}, err
 	}
 	return manipulationParts{
-		origLayers: origLayers,
-		mplLayers:  mplLayers,
-		origV1Cfg:  origV1Cfg,
-		mplV1Cfg:   mplV1Cfg,
+		origLayers:     origLayers,
+		mplLayers:      mplLayers,
+		origV1Cfg:      origV1Cfg,
+		mplV1Cfg:       mplV1Cfg,
+		mplSelectedIdx: selectedIdx,
 	}, nil
+}
+
+// applyManipuLayerSelect parses and applies the ManipuLayer's slice
+// expression. Returns the selected layers plus the indices used, so
+// buildAndStoreManipulatedConfig can project the DiffIDs through the
+// same projection. An identity select (empty / "[:]") returns the
+// input slice and a nil index slice so downstream code can
+// short-circuit on `selectedIdx == nil`.
+func applyManipuLayerSelect(l *logrus.Entry, span trace.Span, mpl types.ManipuLayer, layers []types.Layer) ([]types.Layer, []int, error) {
+	if mpl.Select == "" {
+		return layers, nil, nil
+	}
+	ls, err := utils.ParseLayerSlice(mpl.Select)
+	if err != nil {
+		return nil, nil, utils.ErrorHandler(l, span, err, "ManipuLayer %q: invalid select expression", mpl.Label)
+	}
+	if ls.IsIdentity() {
+		return layers, nil, nil
+	}
+	idx, err := ls.ApplyIndices(len(layers))
+	if err != nil {
+		return nil, nil, utils.ErrorHandler(l, span, err, "ManipuLayer %q: select %q against %d layers", mpl.Label, mpl.Select, len(layers))
+	}
+	out := make([]types.Layer, 0, len(idx))
+	for _, i := range idx {
+		out = append(out, layers[i])
+	}
+	utils.Info(l, span, "ManipuLayer %q select=%q kept %d/%d layers", mpl.Label, mpl.Select, len(out), len(layers))
+	return out, idx, nil
+}
+
+// projectDiffIDs returns the subset of `in` at the indices `idx`. A
+// nil `idx` means "no projection" and the input is returned
+// unchanged. When the source config has fewer diffIDs than the
+// layer descriptor list (malformed image), the function returns an
+// error naming the mismatch so the operator sees the real problem
+// rather than a confusing "diffID count != layer count" docker pull
+// failure downstream.
+func projectDiffIDs(in []digest.Digest, idx []int) ([]digest.Digest, error) {
+	if idx == nil {
+		return in, nil
+	}
+	out := make([]digest.Digest, 0, len(idx))
+	for _, i := range idx {
+		if i < 0 || i >= len(in) {
+			return nil, fmt.Errorf("DiffID projection: index %d out of range for %d diffIDs (image layers and config DiffIDs likely disagree)", i, len(in))
+		}
+		out = append(out, in[i])
+	}
+	return out, nil
 }
 
 // loadManipuLayerLayers returns the ManipuLayer image's layer slice,
@@ -719,9 +787,14 @@ func (mag Magazine) loadOrPullManifestConfig(ctx context.Context, l *logrus.Entr
 // resulting blob in MinIO, and inserts the :Blob node into the graph.
 func (mag Magazine) buildAndStoreManipulatedConfig(ctx context.Context, l *logrus.Entry, span trace.Span, parts manipulationParts, cfg types.ManipuConfig) (types.Config, error) {
 	newV1Cfg := *parts.origV1Cfg
-	for _, diffID := range parts.mplV1Cfg.RootFS.DiffIDs {
-		newV1Cfg.RootFS.DiffIDs = append(newV1Cfg.RootFS.DiffIDs, diffID)
+	// DiffIDs follow exactly the same projection as the layer
+	// descriptors. Keep them in lockstep or docker refuses the pull
+	// with a "layer digest doesn't match config diffID" error.
+	mplDiffIDs, err := projectDiffIDs(parts.mplV1Cfg.RootFS.DiffIDs, parts.mplSelectedIdx)
+	if err != nil {
+		return types.Config{}, utils.ErrorHandler(l, span, err, "ManipuLayer select projection against DiffIDs")
 	}
+	newV1Cfg.RootFS.DiffIDs = append(newV1Cfg.RootFS.DiffIDs, mplDiffIDs...)
 	// Apply the manipulation's OCI config mutations (env / workdir /
 	// user / volumes / entrypoint / cmd) when the new-schema path has
 	// produced a non-zero cfg. Legacy-form manipulations get a zero

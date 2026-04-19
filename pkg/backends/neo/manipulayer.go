@@ -13,7 +13,11 @@ import (
 const (
 	FailManipuLayerFromResult           = "fail to create ManipuLayer from result"
 	pkgNameManipuLayer                  = "neo/manipulayer.go"
-	ManipuLayerReturn                   = "id(mpl) AS mplID, mpl.label AS mplLabel, mpl.rule AS mplRule"
+	// ManipuLayerReturn is the column alias set used by every
+	// ManipuLayer-returning query. `mplSelect` is coalesced to ""
+	// so queries against older nodes (which predate the `select`
+	// property) keep working.
+	ManipuLayerReturn = "id(mpl) AS mplID, mpl.label AS mplLabel, mpl.rule AS mplRule, coalesce(mpl.select, \"\") AS mplSelect"
 	FailManipuLayerGetByLabel           = "fail to get ManipuLayer by label"
 	FailManipuLayerGetCreate            = "fail to get or create ManipuLayer"
 	FailManipuLayerFromUpstream         = "fail to create ManipuLayer from upstream"
@@ -32,7 +36,15 @@ func (n Neo) ManipuLayerCreate(ctx context.Context, mpl *types.ManipuLayer) (err
 	defer span.End()
 	_ = ctx
 	key := "mplID"
-	q := fmt.Sprintf(`CREATE (mpl:ManipuLayer {label: "%s", rule: "%s"}) RETURN id(mpl) AS %s`, mpl.Label, mpl.Rule, key)
+	// Escape the slice expression defensively — users can put
+	// literal "[" and ":" etc. in there, and while the current
+	// ParseLayerSlice grammar rejects quotes, persisting raw avoids
+	// any future surprise if the grammar broadens.
+	selectEsc := strings.ReplaceAll(mpl.Select, `"`, `\"`)
+	q := fmt.Sprintf(
+		`CREATE (mpl:ManipuLayer {label: "%s", rule: "%s", select: "%s"}) RETURN id(mpl) AS %s`,
+		mpl.Label, mpl.Rule, selectEsc, key,
+	)
 	utils.Debug(l, span, q)
 	if res, err := n.Execute(q); err != nil {
 		return utils.ErrorHandler(l, span, err, FailNeoExecute)
@@ -161,6 +173,10 @@ func (n Neo) ManipuLayerFromResult(ctx context.Context, res types.Result) (mpl t
 	id, _ := res.GetInt64("mplID")
 	label, _ := res.GetStr("mplLabel")
 	rule, _ := res.GetStr("mplRule")
+	// `mplSelect` is optional so older nodes (pre add-manipulayer-select)
+	// still round-trip — missing key is handled by CheckKeys above so
+	// we can read it safely without another CheckKeys call.
+	sel, _ := res.GetStr("mplSelect")
 	md, err := n.ManifestForManipuLayerID(ctx, id)
 	if err != nil {
 		return mpl, utils.ErrorHandler(l, span, err, FailGetLayersForManipuLayerID)
@@ -178,6 +194,7 @@ func (n Neo) ManipuLayerFromResult(ctx context.Context, res types.Result) (mpl t
 		ID:          id,
 		Label:       label,
 		Rule:        rule,
+		Select:      sel,
 		Image:       md,
 		Cmd:         mpcs,
 		Environment: mpes,
@@ -270,6 +287,7 @@ func (n Neo) ManipuLayerFromUpstream(ctx context.Context, up types.Upstream, cfg
 	mpl = types.ManipuLayer{
 		Label:       up.GetLabel(),
 		Rule:        cfgMpl.Rule,
+		Select:      cfgMpl.Select,
 		Image:       md,
 		Environment: mpes,
 		Cmd:         mpcs,

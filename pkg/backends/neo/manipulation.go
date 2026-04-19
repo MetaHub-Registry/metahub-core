@@ -398,7 +398,7 @@ func (n Neo) buildTypesConfigFromYAML(ctx context.Context, cfgIn config.ManipuCo
 		if e != nil {
 			return out, utils.ErrorHandler(l, span, e, types.FailNewUpstreamByName)
 		}
-		mpl, e := n.manipuLayerCreateForConfig(ctx, up)
+		mpl, e := n.manipuLayerCreateForConfig(ctx, up, cfgMppl.Select)
 		if e != nil {
 			return out, utils.ErrorHandler(l, span, e, FailManipuLayerFromUpstream)
 		}

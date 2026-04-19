@@ -1,0 +1,20 @@
+label: layer/example-select#1.0.0
+# Demonstrates the `select:` slice expression on ManipuLayer entries.
+# Each variant pulls its overlay from a different source image (here
+# both are registry:5050 mirrors of the same base) and picks exactly
+# which source layers are applied on top of the target manifest.
+#
+# Use-case: the arm64 overlay is itself `FROM alpine`. When the
+# manipulation runs on a target image that is ALSO alpine-based, we
+# don't want the alpine layer duplicated — so `[1:]` skips the base
+# layer and applies only the overlay's additions.
+variants:
+  "arch:arm64=true":
+    layers:
+      - image: registry:5050/cqnib/metahub-layers/hpc3/glow:1.5.0-arm64
+        select: "[1:]"
+  "arch:amd64=true":
+    layers:
+      - image: registry:5050/cqnib/metahub-layers/hpc3/glow:1.5.0-amd64
+        # `[-1]` picks only the last layer from the source image.
+        select: "[-1]"
