@@ -250,12 +250,26 @@ type Database interface {
 	/***** Manipulations *****/
 	ManipulationGetCreate(ctx context.Context, mp *types.Manipulation) (err error)
 	ManipulationsGetByProfileID(ctx context.Context, prfID int64) (mps []types.Manipulation, err error)
+	// ManipulationsWithConfigByProfileID returns every manipulation linked
+	// to the given Profile with both the legacy flat ManipuLayers and the
+	// extended Default/Variants model fully hydrated.
+	ManipulationsWithConfigByProfileID(ctx context.Context, prfID int64) (mps []types.Manipulation, err error)
 	ManipuLayerFromConfigYAML(ctx context.Context, cmpl yamlCfg.ManipuLayer) (mpl types.ManipuLayer, err error)
 	ManipulationFromYAML(ctx context.Context, cmp yamlCfg.Manipulation) (mp types.Manipulation, err error)
 	ManipulationCheckRules(ctx context.Context, prfID, maniID int64) (ok bool, err error)
 	ManipuCmdsGetByManipulayerID(ctx context.Context, mplyrID int64) (mpcs []types.ManipuCmd, err error)
 	ManipuEnvsGetByManipulayerID(ctx context.Context, mplyrID int64) (mpes []types.ManipuEnv, err error)
 	ManifestLinkManipulatedFrom(ctx context.Context, manipulatedID, originalID int64) (err error)
+	// ManifestLinkManipulatedFromWithLabel creates the same edge as
+	// ManifestLinkManipulatedFrom but carries the manipulation label
+	// (e.g. "layer/glow-extended#1.5.0") on the edge as `mpLabel`.
+	// Used by the dedup path so two different manipulations sharing
+	// the same origin produce distinct cache entries.
+	ManifestLinkManipulatedFromWithLabel(ctx context.Context, manipulatedID, originalID int64, mpLabel string) (err error)
+	// ManifestGetManipulatedFrom returns the ID of the original :Manifest
+	// a manipulated :Manifest was derived from. Returns (0, false, nil)
+	// when manipulatedID has no outgoing [:MANIPULATED_FROM] edge.
+	ManifestGetManipulatedFrom(ctx context.Context, manipulatedID int64) (origID int64, found bool, err error)
 	ManifestGetManipulatedByOriginalAndLabel(ctx context.Context, originalDigest, manipulationLabel string) (md types.Manifest, found bool, err error)
 	/**** Artefact ********/
 	ManifestLinkToArtifactConfig(ctx context.Context, mdDigest string, cfg v1.Descriptor) (err error)

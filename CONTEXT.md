@@ -101,6 +101,76 @@ use the dev environment).
 - `compute manifestlists` doesn't produce `:Index` for CE-parsed data
 - `artifactType` not populated in referrers response descriptors
 
+## 2026-04-18 (ui-and-manipulation session)
+
+### What changed
+- **Extended manipulation schema** (`extend-manipulation-schema`):
+  - New types: `ManipuConfig`, `ManipuCommand` (op=`replace|prepend|append`
+    + `value []string`), `ManipuVariant`.
+  - `Manipulation` now carries `Default` and `Variants` in addition to
+    the legacy `ManipuLayers` slice.
+  - YAML parser at `pkg/yaml/config/manipulation.go` detects legacy vs
+    new form and rejects mixed use. Legacy form still parses with a
+    deprecation warning and is internally rewritten to variants keyed
+    by each layer's rule.
+  - Neo4j backend: `(:Manipulation)-[:HAS_DEFAULT|HAS_VARIANT {rule}]->(:ManipuConfig)`
+    with `HAS_ENTRYPOINT`/`HAS_CMD` → `(:ManipuCommand)` and
+    `HAS_LAYER {order}` → `(:ManipuLayer)`. Env + Volumes + command
+    Value are stored as JSON strings so they round-trip through the
+    existing `types.Result` scalar helper.
+  - New `Database.ManipulationsWithConfigByProfileID` returns the
+    fully-hydrated tree for downstream UI exposure.
+- **Fixtures**: `misc/yaml/manipulations/layer/example-full/1.0.0.yaml`
+  (every new field) and `example-minimal/1.0.0.yaml` (variants-only).
+- **CE compatibility tests**: `pkg/yaml/config/manipulation_ce_test.go`
+  loads the migrated community-edition YAMLs to verify the parser keeps
+  working on shipped data.
+- **Drive-by**: `pkg/backends/neo/repo_coverage_test.go` tolerates
+  Neo4j node ID `0` (legitimate for the first node in a freshly emptied
+  graph).
+
+### Key files
+- `pkg/yaml/config/manipulation.go` — extended parser + validator
+- `pkg/yaml/config/manipuconfig.go`, `manipucommand.go`,
+  `manipuconversion.go` — new schema + config↔types converters
+- `pkg/types/manipuconfig.go`, `manipucommand.go`, `manipuvariant.go`
+- `pkg/backends/neo/manipuconfig.go` — ManipuConfig / ManipuCommand
+  CRUD helpers
+- `pkg/backends/neo/manipulation.go` — extended
+  `ManipulationCreate`, `ManipulationFromResult`,
+  `ManipulationFromConfigManipulation`; added
+  `ManipulationsWithConfigByProfileID`
+- `pkg/backends/magazine/database.go` — new interface method
+- Tests: `manipulation_extended_test.go`,
+  `manipuconfig_test.go`, `manipuconfig_extended_test.go`,
+  `manipuconfig_test.go` (types), `manipuconversion_test.go`,
+  `manipulation_ce_test.go`
+
+### Gotchas
+- `ProfileGetInsert` early-returns when `p.Rule == ""`, which means a
+  profile with no rule string will never link to its manipulations.
+  Test fixtures must include a parseable rule.
+- Neo4j map properties are awkward to read back through the current
+  driver + `types.Result`; env and volumes are stored as JSON strings
+  instead of native map/list types.
+- `manipuConfigLayers` calls `ManipuLayerFromResult` which in turn
+  requires an attached Manifest; the helper augments the returned
+  layer's `Image.Upstream` via `UpstreamGetByManipuLayerID` so the UI
+  DTO can render an image URL.
+- **Variant layers skip the legacy Rule linkage**. `ManipuLayer`
+  uniqueness is `(label, rule)` and the old `ManipuLayerFromUpstream`
+  pipeline linked each layer to a `:Rule` node by label. Variant
+  layers carry their rule on the `HAS_VARIANT` edge instead, so they
+  use the new `manipuLayerCreateForConfig` helper (bare ManipuLayer
+  + UPSTREAM + Manifest link, no Rule node).
+- **Apply-time flatten matters**. `ApplyManipulationsToManifests`
+  used to iterate only `mp.ManipuLayers` which is empty under the new
+  schema. `flattenManipuLayers` now walks legacy flat layers +
+  Default.Layers + each variant's layers, copying the variant's rule
+  string onto each variant layer for platform matching. Without this
+  flatten the compose-stack glow pull-through returns the base image
+  unmodified.
+
 ## 2026-04-17 Continuation
 
 ### What changed

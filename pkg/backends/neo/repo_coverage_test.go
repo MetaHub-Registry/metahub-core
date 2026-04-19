@@ -40,11 +40,12 @@ func TestCollectionYamlCRUD(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, found)
 
-	// Create
+	// Create — Neo4j node IDs can legitimately be 0 for the first node
+	// in a freshly emptied graph.
 	colID, tagID, err := db.CreateCollection(ctx, yaml)
 	require.NoError(t, err)
-	assert.NotZero(t, colID)
-	assert.NotZero(t, tagID)
+	assert.GreaterOrEqual(t, colID, int64(0))
+	assert.GreaterOrEqual(t, tagID, int64(0))
 
 	// Now found
 	col, found, err := db.GetCollection(ctx, yaml)
