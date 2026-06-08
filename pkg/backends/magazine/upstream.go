@@ -570,10 +570,9 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 	}
 	// Phase C3: wire Slot-based attribution for upstream-pull path
 	mag.wireSlotOnPush(ctx, l, span, req, maniData.ID)
-	// Phase C3: ManifestWrapperGetOS (wrapper annotation read) and
-	// LinkManifestWrapperToManifest (wrapper→content-leaf edge) are removed.
-	// OS annotations are discovered from layer evaluation below and
-	// stored on the content-leaf via ManifestWrapperUpsertOS.
+	// The wrapper annotation read/write helpers are removed. OS
+	// annotations are discovered from layer evaluation below and stored
+	// on the content-leaf via ManifestAddAnnotations.
 	var os types.OS
 	osFound := false
 	// Iterate Layer

@@ -33,7 +33,14 @@ import (
 //    flow and test fixtures) but ManifestGet is wrapper-only and
 //    deleted in the same commit.
 
-func TestManifestWrapperUpsertOS(t *testing.T) {
+// TestManifestLeafOSAnnotations asserts that OS id + version annotations
+// resolve from the content-leaf :Manifest node. This replaces the
+// wrapper-era TestManifestWrapperUpsertOS: the ManifestWrapperUpsertOS /
+// ManifestWrapperGetAllSystemAnnos family was deleted because OS
+// annotations now live on the content-leaf (written via
+// ManifestAddAnnotations in the upstream-pull flow, read via
+// GetAnnotationsByManifestID).
+func TestManifestLeafOSAnnotations(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
 	debug := 0
@@ -68,62 +75,40 @@ func TestManifestWrapperUpsertOS(t *testing.T) {
 
 	}
 	defer db.TeardownTest(bs, br)
-	// Actual test
-	maniID, err := br.GetInt64("manifest:ft_zen3#id")
+	// Actual test: write OS annotations to the content-leaf and read
+	// them back, asserting OS id + version resolve from the leaf.
+	// NOTE: the content-leaf :Manifest node is keyed "manifestdata:...#id"
+	// (inserted via ManifestGetInsert). "manifest:...#id" is the legacy
+	// wrapper node and must NOT be used here.
+	maniID, err := br.GetInt64("manifestdata:ft_zen3#id")
 	if err != nil {
 		t.Fatal(err)
 	}
-	as, err := db.ManifestWrapperGetAllSystemAnnos(ctx, maniID)
+	osAnnos := types.NewAnnotations()
+	if e := osAnnos.AddNewAnnotation(AnnoOSId, "ubuntu"); e != nil {
+		t.Fatal(e)
+	}
+	if e := osAnnos.AddNewAnnotation(AnnoOSVersion, "22.4.1"); e != nil {
+		t.Fatal(e)
+	}
+	if e := db.ManifestAddAnnotations(ctx, maniID, &osAnnos); e != nil {
+		t.Fatal(e)
+	}
+	as, err := db.GetAnnotationsByManifestID(ctx, maniID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(as.Keys) != 0 {
-		t.Errorf("Expected 0 annotations, but got %d", len(as.Keys))
-	}
-	// Insert OS Annotation
-	u2204 := types.OS{
-		ID:    "ubuntu",
-		Major: 22,
-		Minor: 4,
-		Patch: 0,
-	}
-	err = db.ManifestWrapperUpsertOS(ctx, maniID, u2204)
-	if err != nil {
-		t.Fatal(err)
-	}
-	as, err = db.ManifestWrapperGetAllSystemAnnos(ctx, maniID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(as.Keys) != 2 {
-		t.Errorf("Expected 2 annotations, but got %d", len(as.Keys))
-	}
-	ku22041 := types.OS{
-		ID:    "kubuntu",
-		Major: 22,
-		Minor: 4,
-		Patch: 1,
-	}
-	err = db.ManifestWrapperUpsertOS(ctx, maniID, ku22041)
-	if err != nil {
-		t.Fatal(err)
-	}
-	as, err = db.ManifestWrapperGetAllSystemAnnos(ctx, maniID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	var gotID, gotVersion string
 	for _, a := range as.ToSlice() {
-		if a.Key == AnnoOSVersion {
-			if a.Value != "22.4.1" {
-				t.Errorf("Expected 22.4.1, but got %s", a.Value)
-			}
-		}
-		if a.Key == AnnoOSId {
-			if a.Value != "kubuntu" {
-				t.Errorf("Expected kubuntu, but got %s", a.Value)
-			}
+		switch a.Key {
+		case AnnoOSId:
+			gotID = a.Value
+		case AnnoOSVersion:
+			gotVersion = a.Value
 		}
 	}
+	assert.Equal(t, "ubuntu", gotID, "OS id should resolve from content-leaf")
+	assert.Equal(t, "22.4.1", gotVersion, "OS version should resolve from content-leaf")
 }
 
 func TestManifestGetByLabel(t *testing.T) {
