@@ -114,26 +114,11 @@ func (n Neo) ManifestV1GetInsert(ctx context.Context, maniSiID int64, maniDataV1
 		utils.Info(l, span, "Found existing Manifest.ID: %d for Manifest.ID: %d", maniDataID, maniSiID)
 	}
 
-	// Phase C3: wrapper link + upstream link are skipped when maniSiID <= 0
-	// (no wrapper :ManifestWrapper node exists for Slot-based flows).
-	if maniSiID > 0 {
-		NodeRel := "CREATED"
-		q := `MATCH (md:Manifest), (m:ManifestWrapper) WHERE id(md) = %d AND id(m) = %d`
-		q += fmt.Sprintf(` MERGE (m)-[:%s]->(md)`, NodeRel)
-		query := fmt.Sprintf(q, maniDataID, maniSiID)
-		_, err = n.Execute(query)
-		if err != nil {
-			err = utils.ErrorHandler(l, span, err, "failed to create (m)-[:%s]->(md)", NodeRel)
-			return
-		}
-		if upID, upFound, e := n.UpstreamGetIDByManifestID(ctx, maniSiID); e != nil {
-			utils.Debug(l, span, "UpstreamGetIDByManifestID failed (non-fatal): %v", e)
-		} else if upFound {
-			if e := n.ManifestWrapperLinkToUpstream(ctx, maniDataID, upID); e != nil {
-				utils.Debug(l, span, "ManifestWrapperLinkToUpstream failed (non-fatal): %v", e)
-			}
-		}
-	}
+	// Phase 4 (deprecate-manifest-wrapper): the runtime-dead `maniSiID > 0`
+	// wrapper-MERGE block was removed. :ManifestWrapper nodes are no longer
+	// created, so maniSiID is always <= 0 for Slot-based flows. The maniSiID
+	// parameter is retained for interface compatibility but is now ignored.
+	_ = maniSiID
 	// Link new Manifest w/ Platform (skip when no platform info is present)
 	if maniDataV1.Platform != nil {
 		plat := types.Platform{
@@ -183,27 +168,50 @@ func (n Neo) ManifestV1Get(ctx context.Context, maniDataV1 v1.Descriptor) (maniD
 	return
 }
 
+// ManifestGetByProfileMediaType reports whether a content-leaf :Manifest of
+// one of the given mediaTypes is linked to the named profile. As of
+// deprecate-manifest-wrapper Phase 4 the parameter `mID` is the content-leaf
+// :Manifest id (no longer a :ManifestWrapper id): the query walks the leaf
+// directly and its Slot/Index siblings instead of through the wrapper node.
+//
+// It returns the first matching content-leaf reachable from the leaf's Slot —
+// either the leaf itself or a manifest the Slot POINTS_TO via its Index — that
+// is linked to the profile and carries one of the requested mediaTypes.
 func (n Neo) ManifestGetByProfileMediaType(ctx context.Context, mID, prfID int64, mediaTypes []string) (mdID int64, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNameMD,
 		"func":       "ManifestGetByProfileMediaType",
 		"prfID":      prfID,
-		"maniID":     mID,
+		"leafID":     mID,
 		"mediaTypes": strings.Join(mediaTypes, ","),
 	})
 	defer span.End()
 	_ = ctx
-	q := `MATCH (prf:Profile)<-[]-(md:Manifest)-[]-(m:ManifestWrapper)`
-	q += fmt.Sprintf(` WHERE id(m) = %d AND id(prf) = %d AND md.mediaType IN ["%s"]`, mID, prfID, strings.Join(mediaTypes, `","`))
-	q += ` RETURN id(md) AS manifestDataID`
+	mtList := strings.Join(mediaTypes, `","`)
+	// 1. The leaf itself is linked to the profile and carries the mediaType.
+	q := fmt.Sprintf(`MATCH (prf:Profile)<-[]-(md:Manifest) WHERE id(md) = %d AND id(prf) = %d AND md.mediaType IN ["%s"] RETURN id(md) AS manifestDataID`, mID, prfID, mtList)
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String(attrLogSeverity, attrSevDebug),
 		attribute.String(attrLogQuery, q),
 	))
 	l.Debug(q)
 	res, found, err := n.QueryOne(q)
+	if err != nil {
+		return
+	}
+	if found {
+		mdID, err = res.GetInt64("manifestDataID")
+		l.Debugf(msgQueryManiID, q, mdID)
+		return
+	}
+	// 2. A Slot sibling (the Index the leaf's Slot POINTS_TO references) is
+	//    linked to the profile and carries the mediaType.
+	q = fmt.Sprintf(`MATCH (orig:Manifest)<-[:HAS_PUSHED]-(s:Slot)-[:POINTS_TO]->(:Index)-[:REFERENCES]->(md:Manifest)-[]->(prf:Profile)`+
+		` WHERE id(orig) = %d AND id(prf) = %d AND md.mediaType IN ["%s"] RETURN id(md) AS manifestDataID`, mID, prfID, mtList)
+	l.Debug(q)
+	res, found, err = n.QueryOne(q)
 	if err != nil || !found {
-		l.Warn("Not able to find manifestData for manifestDataID: ", mID)
+		l.Warn("Not able to find manifestData for leaf id: ", mID)
 		return
 	}
 	mdID, err = res.GetInt64("manifestDataID")
@@ -243,26 +251,31 @@ func (n Neo) ManifestGetParsedNodeRelByMediaType(ctx context.Context, msID int64
 	return
 }
 
+// ManifestGetRelIDByMediaType reports whether a content-leaf :Manifest of one
+// of the given mediaTypes — reached through the Slot/Index of the original
+// content-leaf `msID` and connected by an incoming `relType` edge — already
+// exists. As of deprecate-manifest-wrapper Phase 4, `msID` is the content-leaf
+// :Manifest id (no longer a :ManifestWrapper id); the query walks the leaf's
+// Slot/Index siblings rather than the wrapper node.
 func (n Neo) ManifestGetRelIDByMediaType(ctx context.Context, msID int64, mediaTypes []string, relType string) (maniID int64, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNameMD,
 		"func":       "ManifestGetRelIDByMediaType",
-		"maniID":     msID,
+		"leafID":     msID,
 		"mediaTypes": strings.Join(mediaTypes, ","),
 		"relType":    relType,
 	})
 	defer span.End()
 	_ = ctx
-	q := fmt.Sprintf(`MATCH (md:Manifest)-[:%s]-(m:ManifestWrapper) WHERE id(m) = %d AND md.mediaType IN ["%s"]`, relType, msID, strings.Join(mediaTypes, `","`))
+	q := fmt.Sprintf(`MATCH (orig:Manifest)<-[:HAS_PUSHED]-(s:Slot)-[:POINTS_TO]->(:Index)-[:REFERENCES]->(md:Manifest)<-[:%s]-()`+
+		` WHERE id(orig) = %d AND md.mediaType IN ["%s"]`, relType, msID, strings.Join(mediaTypes, `","`))
 	q += ` RETURN id(md) AS manifestDataID`
 	utils.Debug(l, span, q)
 	res, found, err := n.QueryOne(q)
 	if err != nil || !found {
-		l.Warn(q)
-		l.Warn("Not able to found manifestData for manifestDataID: ", msID)
+		l.Debug("Not able to find manifestData for leaf id: ", msID)
 		return
 	}
-	l.Warn(q)
 	maniID, err = res.GetInt64("manifestDataID")
 	if err != nil {
 		err = errors.Wrap(err, "failed to get manifestDataID from result while getting manifest by digest and mediaType")
@@ -365,18 +378,33 @@ func (n Neo) ManifestGetAll(ctx context.Context) (manis []types.Manifest, err er
 	return
 }
 
+// ManifestGetAllByManifestID returns the content-leaf :Manifest identified by
+// `msID` together with the Slot/Index siblings reachable from its Slot, each
+// hydrated with config, layers and annotations. As of
+// deprecate-manifest-wrapper Phase 4 `msID` is the content-leaf id (no longer a
+// :ManifestWrapper id): the query walks the leaf and its Slot's
+// POINTS_TO→Index→REFERENCES siblings instead of the wrapper's children.
+//
+// The synthesized `manifestDataRelType` is the type of the manifest's outgoing
+// edge to its Upstream (e.g. ORIGINAL) so downstream filters that skip
+// "CREATED" manifests continue to behave.
 func (n Neo) ManifestGetAllByManifestID(ctx context.Context, msID int64) (manis []types.Manifest, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMD,
 		"func":    "ManifestGetAllByManifestID",
-		"maniID":  msID,
+		"leafID":  msID,
 	})
 	defer span.End()
-	q := fmt.Sprintf(`MATCH (m:ManifestWrapper)-[r]->(md:Manifest) WHERE id(m) = %d`, msID)
+	// Walk the leaf itself and any Slot/Index siblings; require a config blob.
+	q := fmt.Sprintf(`MATCH (md:Manifest) WHERE id(md) = %d`, msID)
+	q += ` OPTIONAL MATCH (md)<-[:HAS_PUSHED]-(s:Slot)-[:POINTS_TO]->(:Index)-[:REFERENCES]->(sib:Manifest)`
+	q += ` WITH collect(DISTINCT md) + collect(DISTINCT sib) AS mds`
+	q += ` UNWIND mds AS md WITH DISTINCT md WHERE md IS NOT NULL`
 	q += ` MATCH (md)-[cfgRel]-(cfg:Blob) WHERE cfg.type = "config"`
+	q += ` OPTIONAL MATCH (md)-[origRel:ORIGINAL]->(:Upstream)`
 	q += ` RETURN DISTINCT ` + manifestDataReturn + `,`
 	q += ` id(cfg) AS configID, cfg.digest AS configDigest, TYPE(cfgRel) AS configMediaType, cfg.size AS configSize,`
-	q += ` type(r) AS manifestDataRelType`
+	q += ` coalesce(type(origRel), "ORIGINAL") AS manifestDataRelType`
 	utils.Debug(l, span, q)
 	res, err := n.Query(q)
 	if err != nil {
@@ -1483,28 +1511,17 @@ func (n Neo) ManifestGetByUpstream(ctx context.Context, up types.Upstream) (m ty
 	return
 }
 
-// manifestQueryByRepoTag queries for a Manifest by repo+tag, first via
-// the direct (Manifest)-[:ORIGINAL]->(Upstream) path, then via the
-// legacy (ManifestWrapper)-[]->(Upstream) wrapper path.
+// manifestQueryByRepoTag queries for a Manifest by repo+tag via the direct
+// (Manifest)-[:ORIGINAL]->(Upstream) path. The legacy
+// (ManifestWrapper)-[]->(Upstream) fallback was removed in
+// deprecate-manifest-wrapper Phase 4 — :ManifestWrapper nodes are no longer
+// created and the content-leaf :Manifest carries the :ORIGINAL edge directly.
 func (n Neo) manifestQueryByRepoTag(l *logrus.Entry, span trace.Span, repo, tag string) (res types.Result, found bool, err error) {
 	q := `MATCH (md:Manifest)-[r]->(u:Upstream)`
 	q += fmt.Sprintf(` WHERE u.repo = "%s" AND u.tag = "%s"`, repo, tag)
 	q += ` RETURN ` + manifestDataReturn + `, ` + UpstreamReturn + `, type(r) AS manifestDataRelType`
 	utils.Debug(l, span, q)
 	res, found, e := n.QueryOne(q)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, errFailedRunQuery)
-		return
-	}
-	if found {
-		return
-	}
-	// Fallback: try via ManifestWrapper.
-	q = `MATCH (md:Manifest)<-[r]-(m:ManifestWrapper)-[]->(u:Upstream)`
-	q += fmt.Sprintf(` WHERE u.repo = "%s" AND u.tag = "%s"`, repo, tag)
-	q += ` RETURN ` + manifestDataReturn + `, ` + UpstreamReturn + `, type(r) AS manifestDataRelType`
-	utils.Debug(l, span, q)
-	res, found, e = n.QueryOne(q)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, errFailedRunQuery)
 		return
@@ -2057,14 +2074,17 @@ func (n Neo) ManifestGetByManifestList(ctx context.Context, mlID int64) (manifes
 	_ = l
 	ctx, span := tracer.Start(ctx, "ManifestGetByManifestList")
 	defer span.End()
-	// TODO: We'll get different types of Manifest per Manifest - do we need to filter out the default (OCI manifest)
-	//       - create a map afterwards based on collection name and type
-	q := `MATCH (ml:Index)-[:REFERENCES]-(m:ManifestWrapper)-[:HAS_PLATFORM]->(p:Platform) WHERE id(ml) = %d`
-	q += ` MATCH (cfg:Blob)<-[:USES]-(md:Manifest)-[r]-(m)-[:UPSTREAM]->(u:Upstream) WHERE cfg.type = "config"`
-	q += ` RETURN type(r) AS manifestDataRelType,`
+	// Phase 4 (deprecate-manifest-wrapper): the Index references the
+	// content-leaf :Manifest directly; config is reached via :USES, platform
+	// via :HAS_PLATFORM, and upstream via :ORIGINAL — all on the content leaf,
+	// not through the legacy :ManifestWrapper wrapper node.
+	q := `MATCH (ml:Index)-[:REFERENCES]->(md:Manifest)-[:HAS_PLATFORM]->(p:Platform) WHERE id(ml) = %d`
+	q += ` MATCH (cfg:Blob)<-[:USES]-(md) WHERE cfg.type = "config"`
+	q += ` OPTIONAL MATCH (md)-[origRel:ORIGINAL]->(u:Upstream)`
+	q += ` RETURN coalesce(type(origRel), "REFERENCES") AS manifestDataRelType,`
 	q += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
 	q += ` ` + manifestDataReturn + `,`
-	q += ` ` + UpstreamReturn + `,`
+	q += ` coalesce(id(u), 0) AS upstreamID, coalesce(u.reg, "") AS upstreamReg, coalesce(u.repo, "") AS upstreamRepo, coalesce(u.tag, "") AS upstreamTag, coalesce(u.digest, md.digest) AS upstreamDigest,`
 	q += ` id(cfg) AS configID, cfg.digest AS configDigest, cfg.mediaType AS configMediaType, cfg.size AS configSize`
 	input := map[string]interface{}{}
 	query := fmt.Sprintf(q, mlID)

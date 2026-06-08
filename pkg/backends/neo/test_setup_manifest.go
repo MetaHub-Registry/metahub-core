@@ -5,348 +5,60 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
-	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
+// Bootstrap_ManifestWrapper handles the legacy "manifest:<label>" bootstrap
+// cases. As of deprecate-manifest-wrapper Phase 4 these no longer create a
+// :ManifestWrapper node — the content-leaf :Manifest (created via the
+// "manifestdata:<label>" bootstrap and Setup_Manifest) is the canonical node.
+//
+// To keep the ~36 test sites that read "manifest:<label>#id" working without
+// churn, these helpers alias "manifest:<label>#id" to the content-leaf id
+// ("manifestdata:<label>#id") when it is already present. When the content
+// leaf has not been set up yet (the "manifest:" bootstrap commonly precedes
+// "manifestdata:"), Setup_Manifest / Setup_OrasManifest will populate the
+// alias once the leaf exists. The Upstream (:ORIGINAL) and Platform
+// (:HAS_PLATFORM) edges are wired by the content-leaf setup, so there is
+// nothing to create here.
 func (n Neo) Bootstrap_ManifestWrapper(ctx context.Context, bs utils.Bootstrap, br *utils.BootstrapResult, b string) (err error) {
 	switch b {
-	case "ft_arm64":
-		err = n.Setup_Manifest_FT_arm64(br)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
-	case "ft_zen":
-		err = n.SetupManifestFTZen(br)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
-	case "ft_zen3":
-		err = n.Setup_Manifest_FT_zen3(br)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
-	case "ft_amd64":
-		err = n.Setup_Manifest_FT_amd64(ctx, br)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
-	case "ft_mpich_amd64":
-		err = n.Setup_Manifest_FT_mpich_amd64(br)
-		if err != nil {
-			br.PrintDict()
-			return errors.Wrapf(err, whileFmrt, b)
-		}
-	case "ft_oras_cyclonedx":
-		err = n.Setup_Manifest_FT_oras_cyclonedx(ctx, br)
-		if err != nil {
-			return errors.Wrapf(err, whileFmrt, b)
-		}
+	case "ft_arm64", "ft_zen", "ft_zen3", "ft_amd64", "ft_mpich_amd64", "ft_oras_cyclonedx":
+		n.aliasManifestToLeaf(ctx, br, manifestLabelForWrapper(b))
 	default:
 		return fmt.Errorf("no Manifest Setup for '%s'", b)
 	}
 	return
 }
 
-// Setup_Manifest_FT_oras_cyclonedx sets up a Manifest node for the ORAS CycloneDX artifact
-// and links it to its Upstream. Unlike container-image manifests, ORAS artifacts have no platform.
+// manifestLabelForWrapper maps a wrapper-bootstrap key to the content-leaf
+// label used by the "manifestdata:<label>" bootstrap. The mpich case has no
+// dedicated content-leaf fixture, so it maps to itself (alias remains unset
+// until/unless a matching leaf appears, which is fine for the tests that use
+// it).
+func manifestLabelForWrapper(b string) string {
+	switch b {
+	case "ft_mpich_amd64":
+		return "ft_mpich_amd64"
+	default:
+		return b
+	}
+}
+
+// aliasManifestToLeaf sets "manifest:<label>#id" to the content-leaf id
+// recorded under "manifestdata:<label>#id" when the latter is present. It is a
+// no-op (non-fatal) when the content leaf has not been created yet — the
+// content-leaf setup will populate the alias.
+func (n Neo) aliasManifestToLeaf(ctx context.Context, br *utils.BootstrapResult, label string) {
+	if leafID, e := br.GetInt64(fmt.Sprintf("manifestdata:%s#id", label)); e == nil {
+		br.Add(fmt.Sprintf("manifest:%s#id", label), fmt.Sprint(leafID))
+	}
+}
+
+// Setup_Manifest_FT_oras_cyclonedx is retained as an explicit no-op shim for
+// backward compatibility. Wrapper-node creation has been removed; the ORAS
+// content-leaf is created by Setup_OrasManifest and attached to a Slot.
 func (n Neo) Setup_Manifest_FT_oras_cyclonedx(ctx context.Context, br *utils.BootstrapResult) (err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"func": "Setup_Manifest_FT_oras_cyclonedx",
-	})
-	defer span.End()
-	// Already present?
-	if _, e := br.GetInt64("manifest:ft_oras_cyclonedx#id"); e == nil {
-		utils.Debug(l, span, "Manifest ft_oras_cyclonedx already present, skipping setup")
-		return
-	}
-	upID, err := br.GetInt64("upstream:ft_oras_cyclonedx#id")
-	if err != nil {
-		return utils.ErrorHandler(l, span, err, "failed to get upstream id from BR")
-	}
-	up, _, err := n.UpstreamGetByID(ctx, upID)
-	if err != nil {
-		return utils.ErrorHandler(l, span, err, "failed to get upstream by id")
-	}
-	as := types.NewAnnotations()
-	m := types.ManifestWrapper{
-		Upstream:    up,
-		Annotations: as,
-	}
-	maniID, err := n.ManifestWrapperGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
-	if err != nil {
-		return utils.ErrorHandler(l, span, err, "failed to insert manifest")
-	}
-	utils.Debug(l, span, "Inserted ORAS Manifest with ID: %d", maniID)
-	br.Add("manifest:ft_oras_cyclonedx#id", fmt.Sprint(maniID))
-	err = n.ManifestWrapperLinkToUpstream(ctx, maniID, upID)
-	if err != nil {
-		return utils.ErrorHandler(l, span, err, "failed to link manifest to upstream")
-	}
-	// Link Manifest if already present. Use "CREATED" so ORAS queries that match
-	// (m)-[:CREATED]-(md:Manifest) can find this artifact.
-	if maniDataID, e := br.GetInt64("manifestdata:ft_oras_cyclonedx#id"); e == nil {
-		if e := n.LinkManifestWrapperToManifest(ctx, maniID, maniDataID, "CREATED"); e != nil {
-			utils.Warn(l, span, "LinkManifestWrapperToManifest failed for manifest %d", maniID)
-		}
-	}
-	return
-}
-
-func (n Neo) Setup_Manifest_FT_amd64(ctx context.Context, br *utils.BootstrapResult) (err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"func": "Setup_Manifest_FT_amd64",
-	})
-	defer span.End()
-	// Already present?
-	_, err = br.GetInt64("manifest:ft_amd64#id")
-	if err == nil {
-		utils.Debug(l, span, "Manifest ft_amd64 already present, skipping setup")
-		return
-	}
-	// Add Upstream
-	upID, err := br.GetInt64("upstream:ft_amd64#id")
-	if err != nil {
-		return err
-	}
-	utils.Debug(l, span, "Get Upstream w/ ID: %d", upID)
-	up, _, err := n.UpstreamGetByID(ctx, upID)
-	if err != nil {
-		return utils.ErrorHandler(l, span, err, "failed to get upstream id from BR")
-	}
-	/// Get Platform
-	plaID, err := br.GetInt64("platform:linux/amd64#id")
-	if err != nil {
-		return utils.ErrorHandler(l, span, err, "failed to get platform id from BR")
-	}
-	utils.Debug(l, span, "Get Platform w/ ID: %d", plaID)
-	plat, found, err := n.PlatformGetByID(plaID)
-	if err != nil {
-		return utils.ErrorHandler(l, span, err, "failed to get platform by id")
-	}
-	if !found {
-		return utils.NewError(l, span, "platformID '%d' not found", plaID)
-	}
-	utils.Debug(l, span, "Get Platform: %s/%s/%s", plat.OS, plat.Arch, plat.Variant)
-	as := types.NewAnnotations()
-	m := types.ManifestWrapper{
-		Upstream:    up,
-		Annotations: as,
-	}
-	maniID, err := n.ManifestWrapperGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
-	if err != nil {
-		return utils.ErrorHandler(l, span, err, "failed to insert manifest")
-	}
-	utils.Debug(l, span, "Inserted Manifest with ID: %d", maniID)
-	br.Add("manifest:ft_amd64#id", fmt.Sprint(maniID))
-	err = n.ManifestWrapperLinkToUpstream(ctx, maniID, upID)
-	if err != nil {
-		return utils.ErrorHandler(l, span, err, "failed to link manifest to upstream")
-	}
-	// Link Config
-	// config_id, err := br.GetInt64("config:ft_amd64#id")
-	// if err != nil {
-	// 	return utils.ErrorHandler(l, span, err, "failed to get config id from BR")
-	// }
-	// config, found, err := n.ConfigGetByID(ctx, config_id)
-	// if err != nil {
-	// 	return utils.ErrorHandler(l, span, err, "failed to get config by id")
-	// }
-	// if !found {
-	// 	err = fmt.Errorf("config not found")
-	// 	return
-	// }
-	// config.MediaType, err = br.Get("config:ft_amd64#mediaType")
-	// if err != nil {
-	// 	return utils.ErrorHandler(l, span, err, "failed to get config mediaType from BR")
-	// }
-	// Manifest
-	maniDataID, e := br.GetInt64("manifestdata:ft_amd64#id")
-	if e != nil {
-		utils.Warn(l, span, "Manifest seems not to be present, skipping linking manifest to it. Trust that this will be done later eventually. :)")
-	} else {
-		err = n.LinkManifestWrapperToManifest(ctx, maniID, maniDataID, "ORIGINAL")
-		if err != nil {
-			return utils.ErrorHandler(l, span, err, "failed to link manifest to config")
-		}
-	}
-	err = n.LinkManifestToPlatform(ctx, maniDataID, plaID)
-	if err != nil {
-		return utils.ErrorHandler(l, span, err, "failed to link manifestData to platform")
-	}
-	return
-}
-
-func (n Neo) Setup_Manifest_FT_arm64(br *utils.BootstrapResult) (err error) {
-	ctx := context.Background()
-	// Add Manifest
-	/// Get Upstream
-	upID, err := br.GetInt64("upstream:ft_arm64#id")
-	if err != nil {
-		return err
-	}
-	up, _, err := n.UpstreamGetByID(ctx, upID)
-	if err != nil {
-		return err
-	}
-	m := types.ManifestWrapper{
-		Upstream: up,
-	}
-	maniID, err := n.ManifestWrapperGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
-	br.Add("manifest:ft_arm64#id", fmt.Sprint(maniID))
-	if err != nil {
-		return err
-	}
-	err = n.ManifestWrapperLinkToUpstream(ctx, maniID, upID)
-	if err != nil {
-		return err
-	}
-	// Link Platform
-	/*
-		// Link Config
-		arm_config_id, err := br.GetInt64(fmt.Sprintf("config:ft_%s#id", m.Platform.Arch))
-		if err != nil {
-			logrus.Error(err)
-			return err
-		}
-		arm_config, found, err := n.ConfigGetByID(ctx, arm_config_id)
-		if err != nil {
-			logrus.Error(err)
-			return err
-		}
-		if !found {
-			err = fmt.Errorf("config not found")
-			return
-		}
-		arm_config.MediaType, err = br.Get(fmt.Sprintf("config:ft_%s#mediaType", m.Platform.Arch))
-		if err != nil {
-			logrus.Error(err)
-			return err
-		}
-		err = n.ManifestLinkToConfig(ctx, maniID, arm_config)
-		if err != nil {
-			logrus.Error(err)
-			return err
-		}
-	*/
-	return
-}
-func (n Neo) SetupManifestFTZen(br *utils.BootstrapResult) (err error) {
-	ctx := context.Background()
-	// Add Manifest
-	/// Get Upstream
-	upID, err := br.GetInt64("upstream:ft_zen#id")
-	if err != nil {
-		return err
-	}
-	up, _, err := n.UpstreamGetByID(ctx, upID)
-	if err != nil {
-		return err
-	}
-	// Annotations
-	as := types.NewAnnotations()
-	z3 := types.NewAnnotation("org.supercontainers.hardware.cpu.target.microarch", "zen")
-	as.AddAnnotation(z3)
-	m := types.ManifestWrapper{
-		Upstream:    up,
-		Annotations: as,
-	}
-	// Manifest
-	maniID, err := n.ManifestWrapperGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
-	br.Add("manifest:ft_zen#id", fmt.Sprint(maniID))
-	if err != nil {
-		return err
-	}
-	// Link Platform
-	// Link Config
-	config_id, err := br.GetInt64("config:ft_zen#id")
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	config, found, err := n.ConfigGetByID(ctx, config_id)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	if !found {
-		err = fmt.Errorf("config not found")
-		return
-	}
-	config.MediaType, err = br.Get("config:ft_zen#mediaType")
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	err = n.ManifestLinkToConfig(ctx, maniID, config)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	return
-}
-
-func (n Neo) Setup_Manifest_FT_zen3(br *utils.BootstrapResult) (err error) {
-	ctx := context.Background()
-	// Add Manifest
-	/// Get Upstream
-	upID, err := br.GetInt64("upstream:ft_zen3#id")
-	if err != nil {
-		return err
-	}
-	up, _, err := n.UpstreamGetByID(ctx, upID)
-	if err != nil {
-		return err
-	}
-	// /// Get Platform
-	// plaID, err := br.GetInt64("platform:linux/amd64#id")
-	// if err != nil {
-	// 	return err
-	// }
-	// Annotations
-	as := types.NewAnnotations()
-	z3 := types.NewAnnotation("org.supercontainers.hardware.cpu.target.microarch", "zen3")
-	as.AddAnnotation(z3)
-	m := types.ManifestWrapper{
-		Upstream: up,
-
-		Annotations: as,
-	}
-	// Manifest
-	maniID, err := n.ManifestWrapperGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
-	br.Add("manifest:ft_zen3#id", fmt.Sprint(maniID))
-	if err != nil {
-		return err
-	}
-	err = n.ManifestWrapperLinkToUpstream(ctx, maniID, upID)
-	if err != nil {
-		return err
-	}
-	// Link Config
-	config_id, err := br.GetInt64("config:ft_zen3#id")
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	config, found, err := n.ConfigGetByID(ctx, config_id)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	if !found {
-		err = fmt.Errorf("config not found")
-		return
-	}
-	config.MediaType, err = br.Get("config:ft_zen3#mediaType")
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	err = n.ManifestLinkToConfig(ctx, maniID, config)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	return
+	n.aliasManifestToLeaf(ctx, br, "ft_oras_cyclonedx")
+	return errors.WithStack(err)
 }

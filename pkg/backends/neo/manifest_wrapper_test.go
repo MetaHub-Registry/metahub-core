@@ -146,15 +146,21 @@ func TestManifestGetByLabel(t *testing.T) {
 
 	}
 	defer db.TeardownTest(bs, br)
-	// Actual test
-	m, found, e := db.ManifestWrapperGetByLabel(ctx, "registry:5050/qnib-pub-containers/qnib/plain-featuretest:3-17-3-amd64-cpu_zen3")
+	// Phase 4 (deprecate-manifest-wrapper): :ManifestWrapper nodes are no longer
+	// created, so the wrapper-by-label lookup is obsolete. Assert instead that
+	// the content-leaf :Manifest resolves by its digest — the Slot-centred
+	// canonical lookup that replaced the wrapper-by-label walk.
+	mdDigest, err := br.Get("manifestdata:ft_zen3#digest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, found, e := db.ManifestGetByDigest(ctx, mdDigest)
 	if e != nil {
 		t.Log(e)
 		t.Fatal(e)
 	}
 	if !found {
-		t.Fatal("Manifest not found")
+		t.Fatal("content-leaf Manifest not found by digest")
 	}
-	assert.Equal(t, 1, len(m.Manifests))
-
+	assert.Equal(t, mdDigest, m.Digest)
 }

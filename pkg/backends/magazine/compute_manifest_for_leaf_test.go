@@ -30,19 +30,36 @@ type ociResult struct {
 }
 
 // wrapperReshape returns a reshapeFn that drives the wrapper-typed
-// ComputeManifest for the wrapper behind manifest:<wrapperLabel>#id.
+// ComputeManifest. As of deprecate-manifest-wrapper Phase 4 no :ManifestWrapper
+// node exists, so the shim is built from the content-leaf (manifest:<label>#id
+// now aliases the content-leaf id) — exactly mirroring what
+// ComputeManifestForLeaf does internally. This keeps the characterization test
+// meaningful: both entrypoints must produce identical OCI v1 output.
 func wrapperReshape(wrapperLabel string) reshapeFn {
 	return func(ctx context.Context, br *utils.BootstrapResult) error {
 		mID, e := br.GetInt64(fmt.Sprintf("manifest:%s#id", wrapperLabel))
 		if e != nil {
 			return e
 		}
-		mani, found, e := mag.Database.ManifestWrapperGetByID(ctx, mID)
+		md, found, e := mag.Database.ManifestGetByID(ctx, mID)
 		if e != nil {
 			return e
 		}
 		if !found {
-			return fmt.Errorf("wrapper not found for id %d", mID)
+			return fmt.Errorf("content-leaf not found for id %d", mID)
+		}
+		annos := md.Annotations
+		if annos.Data == nil {
+			annos = types.NewAnnotations()
+		}
+		if md.Type == "" {
+			md.Type = "ORIGINAL"
+		}
+		mani := types.ManifestWrapper{
+			ID:          md.ID,
+			Upstream:    md.Upstream,
+			Annotations: annos,
+			Manifests:   []types.Manifest{md},
 		}
 		return mag.ComputeManifest(ctx, mani)
 	}

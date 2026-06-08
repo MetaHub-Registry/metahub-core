@@ -284,23 +284,20 @@ func TestComputeManifest(t *testing.T) {
 	if e := mag.Database.LinkCollectionToManifest(ctx, colID, maniID); e != nil {
 		t.Fatalf("Failed to LinkCollectionToManifest: %v", e)
 	}
-	// Actual test
-	mID, err := br.GetInt64("manifest:ft_arm64#id")
-	if err != nil {
-		t.Fatalf("Failed to get manifest:ft_arm64#id: %v", err)
-	}
-	mani, found, err := mag.Database.ManifestWrapperGetByID(ctx, mID)
-	if err != nil {
-		t.Fatalf("Failed to ManifestWrapperGetByID: %v", err)
-	} else if !found {
-		t.Fatalf("Failed to ManifestWrapperGetByID: not found")
-	}
-	if e := mag.ComputeManifest(ctx, mani); e != nil {
-		t.Fatalf("Failed to ComputeAllManifests: %v", e)
-	}
+	// Actual test. Phase 4 (deprecate-manifest-wrapper): no :ManifestWrapper
+	// node — reshape via the leaf-keyed ComputeManifestForLeaf entrypoint.
 	mdID, err := br.GetInt64("manifestdata:ft_arm64#id")
 	if err != nil {
 		t.Fatalf("Failed to get manifestdata:ft_arm64#id: %v", err)
+	}
+	leafMD, found, err := mag.Database.ManifestGetByID(ctx, mdID)
+	if err != nil {
+		t.Fatalf("Failed to ManifestGetByID: %v", err)
+	} else if !found {
+		t.Fatalf("Failed to ManifestGetByID: not found")
+	}
+	if e := mag.ComputeManifestForLeaf(ctx, leafMD); e != nil {
+		t.Fatalf("Failed to ComputeManifestForLeaf: %v", e)
 	}
 	// Fetch Manifest with manipulation
 	q := fmt.Sprintf(`MATCH (oci:Manifest)-[]->(:Blob) WHERE oci.mediaType IN ["%s"] AND id(oci) = %d`, strings.Join([]string{MediaTypeDockerManifestV2, v1.MediaTypeImageManifest}, `", "`), mdID)

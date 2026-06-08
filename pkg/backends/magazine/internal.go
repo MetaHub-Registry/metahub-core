@@ -12,6 +12,11 @@ const (
 	pkgNameInternal = "magazine/internal.go"
 )
 
+// getMani builds a leaf-keyed types.ManifestWrapper shim for the content-leaf
+// behind "<label>#id". Phase 4 (deprecate-manifest-wrapper): :ManifestWrapper
+// nodes are gone, so the test helper hydrates the content-leaf
+// (label aliases the content-leaf id) and wraps it — mirroring what
+// ComputeManifestForLeaf does internally.
 func (mag Magazine) getMani(ctx context.Context, br utils.BootstrapResult, label string) (mani types.ManifestWrapper, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameInternal,
@@ -23,12 +28,25 @@ func (mag Magazine) getMani(ctx context.Context, br utils.BootstrapResult, label
 	if e != nil {
 		return mani, e
 	}
-	mani, maniFound, err := mag.Database.ManifestWrapperGetByID(ctx, maniID)
+	md, maniFound, err := mag.Database.ManifestGetByID(ctx, maniID)
 	if err != nil {
 		return mani, err
 	}
 	if !maniFound {
 		return mani, fmt.Errorf("did not find manifest with ID %d", maniID)
+	}
+	annos := md.Annotations
+	if annos.Data == nil {
+		annos = types.NewAnnotations()
+	}
+	if md.Type == "" {
+		md.Type = "ORIGINAL"
+	}
+	mani = types.ManifestWrapper{
+		ID:          md.ID,
+		Upstream:    md.Upstream,
+		Annotations: annos,
+		Manifests:   []types.Manifest{md},
 	}
 	return mani, nil
 }

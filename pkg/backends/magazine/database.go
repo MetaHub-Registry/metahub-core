@@ -87,11 +87,11 @@ type Database interface {
 	// Phase C3 step 2. ManifestWrapperGetInsertWithUpstream in particular was a
 	// no-op stub returning (0, nil) from before the wrapper refactor.
 	ManifestWrapperGetInsertWithDesc(ctx context.Context, up types.Upstream, maniIn manifestlist.ManifestDescriptor) (maniID int64, err error)
-	// ManifestWrapperGetIDByManifestID resolves the wrapper node id from a
-	// content-leaf Manifest id. Used by the Slot/leaf-based reshape entrypoint
-	// (ComputeManifestForLeaf) to resolve wrapper identity internally; removed
-	// in Phase 4 once profile/manipulation evaluation is rekeyed onto Slot/leaf.
-	ManifestWrapperGetIDByManifestID(ctx context.Context, maniDataID int64) (maniID int64, found bool, err error)
+	// ManifestWrapperGetIDByManifestID was removed from this interface in
+	// deprecate-manifest-wrapper Phase 4: ComputeManifestForLeaf no longer
+	// resolves wrapper identity internally (it builds a leaf-keyed shim). The
+	// concrete neo method is retained in manifest_wrapper_deprecated.go until
+	// Phase 5.
 	ManifestWrapperGetByID(ctx context.Context, maniID int64) (mani types.ManifestWrapper, found bool, err error)
 	ManifestWrapperGetByIDWithProfile(ctx context.Context, maniID, prfID int64) (mani types.ManifestWrapper, found bool, err error)
 	// ManifestExists and ManifestExistsForTagProfile are Slot-agnostic

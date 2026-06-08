@@ -12,12 +12,12 @@ import (
 
 // TestFixturesAreSlotCentred asserts that the manifest test fixtures wire the
 // Slot-centred graph model: setting up a repo/tag/profile fixture creates a
-// :Slot and a content-leaf :Manifest connected by a :HAS_PUSHED edge.
+// :Slot and a content-leaf :Manifest connected by a :HAS_PUSHED edge, and that
+// NO legacy :ManifestWrapper node is created.
 //
-// NOTE (deprecate-manifest-wrapper §2): wrapper-node creation is retained for
-// now because ~36 read-sites still walk :ManifestWrapper; those readers (and
-// the assertion that NO :ManifestWrapper node is created) are migrated in Phase
-// 4 (§6). This test pins the additive Slot wiring introduced in §2.
+// deprecate-manifest-wrapper Phase 4: the read-side Cypher has been migrated
+// off :ManifestWrapper, so fixtures no longer create wrapper nodes and this
+// test pins the "zero wrapper nodes" invariant.
 func TestFixturesAreSlotCentred(t *testing.T) {
 	ctx := context.Background()
 	bs := utils.NewBootstrap()
@@ -80,4 +80,14 @@ func TestFixturesAreSlotCentred(t *testing.T) {
 	cEdge, err := res.GetInt("c")
 	require.NoError(t, err)
 	assert.Equal(t, 1, cEdge, "Slot should be linked to content-leaf Manifest via :HAS_PUSHED")
+
+	// deprecate-manifest-wrapper Phase 4: fixtures must NOT create any
+	// :ManifestWrapper node — the content-leaf :Manifest is the canonical node.
+	wrapperQ := `MATCH (m:ManifestWrapper) RETURN count(m) AS c`
+	res, found, err = db.QueryOne(wrapperQ)
+	require.NoError(t, err)
+	require.True(t, found)
+	cWrapper, err := res.GetInt("c")
+	require.NoError(t, err)
+	assert.Equal(t, 0, cWrapper, "no :ManifestWrapper node should exist after fixture setup")
 }

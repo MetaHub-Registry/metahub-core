@@ -53,17 +53,12 @@ func (mag Magazine) ComputeAllManifests(ctx context.Context) (err error) {
 // returned by StoreManifestUpload; this severs the last cross-repo wrapper
 // coupling.
 //
-// Behaviour is identical to the wrapper-typed ComputeManifest: the wrapper
-// identity is resolved internally from the content-leaf (via
-// ManifestWrapperGetIDByManifestID + ManifestWrapperGetByID) and reshaping is
-// delegated to ComputeManifest. The internal wrapper resolution is an
-// implementation detail scheduled for removal in Phase 4 once the read-side
-// Cypher (profile/manipulation evaluation) is rekeyed onto the Slot/leaf; the
-// public contract here is leaf-only and will not change.
-//
-// If the leaf has no associated wrapper identity (e.g. nothing was actually
-// stored), reshaping is skipped — matching the prior `found` guard at the call
-// site.
+// As of deprecate-manifest-wrapper Phase 4 there is no :ManifestWrapper node to
+// resolve. ComputeManifestForLeaf builds a thin in-memory types.ManifestWrapper
+// shim keyed on the content-leaf id (mani.ID == md.ID) and delegates to
+// ComputeManifest. All downstream reshape queries are leaf-keyed, so the
+// wrapper shim is purely a transport for the leaf id, upstream and annotations
+// — no graph wrapper read/write happens.
 func (mag Magazine) ComputeManifestForLeaf(ctx context.Context, md types.Manifest) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameCompMani,
@@ -72,21 +67,35 @@ func (mag Magazine) ComputeManifestForLeaf(ctx context.Context, md types.Manifes
 		"digest":  md.Digest,
 	})
 	defer span.End()
-	maniID, found, e := mag.Database.ManifestWrapperGetIDByManifestID(ctx, md.ID)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, "while resolving wrapper id for content-leaf %d", md.ID)
-	}
-	if !found {
-		utils.Debug(l, span, "no wrapper identity for content-leaf %d; skipping reshape", md.ID)
+	if md.ID <= 0 {
+		utils.Debug(l, span, "no content-leaf id (%d); skipping reshape", md.ID)
 		return nil
 	}
-	mani, found, e := mag.Database.ManifestWrapperGetByID(ctx, maniID)
-	if e != nil {
-		return utils.ErrorHandler(l, span, e, "while fetching wrapper %d for content-leaf %d", maniID, md.ID)
-	}
-	if !found {
-		utils.Debug(l, span, "wrapper %d not found for content-leaf %d; skipping reshape", maniID, md.ID)
+	// Skip when the content-leaf does not actually exist in the graph (e.g.
+	// nothing was stored). This preserves the prior `found` guard at the
+	// metahub-api call site so reshape is a safe no-op.
+	if _, found, e := mag.Database.ManifestGetByID(ctx, md.ID); e != nil {
+		return utils.ErrorHandler(l, span, e, "while checking content-leaf %d", md.ID)
+	} else if !found {
+		utils.Debug(l, span, "content-leaf %d not found; skipping reshape", md.ID)
 		return nil
+	}
+	annos := md.Annotations
+	if annos.Data == nil {
+		annos = types.NewAnnotations()
+	}
+	// The reshape switch (CreateOCIv1) keys on the manifest Type. A pushed
+	// content-leaf attaches to Upstream via :ORIGINAL, so when the caller did
+	// not set a Type we treat the leaf as an ORIGINAL to be reshaped (mirroring
+	// the PARSED/ORIGINAL grouping in CreateOCIv1ForProfile).
+	if md.Type == "" {
+		md.Type = "ORIGINAL"
+	}
+	mani := types.ManifestWrapper{
+		ID:          md.ID,
+		Upstream:    md.Upstream,
+		Annotations: annos,
+		Manifests:   []types.Manifest{md},
 	}
 	return mag.ComputeManifest(ctx, mani)
 }

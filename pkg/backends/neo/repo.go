@@ -480,7 +480,7 @@ func (n Neo) LinkCollectionToManifest(ctx context.Context, colID, maniID int64) 
 		attribute.Key("colID").Int64(colID),
 		attribute.Key("maniID").Int64(maniID),
 	)
-	q := `MATCH (c:Repo), (m) WHERE id(c) = %d AND id(m) = %d AND (m:ManifestWrapper OR m:Manifest)`
+	q := `MATCH (c:Repo), (m:Manifest) WHERE id(c) = %d AND id(m) = %d`
 	q += ` MERGE (c)-[:UPSTREAM]->(m)`
 	query := fmt.Sprintf(q, colID, maniID)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})

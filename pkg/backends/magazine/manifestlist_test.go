@@ -54,12 +54,11 @@ func TestManifestlistCompute(t *testing.T) {
 	}
 	_ = prf
 	t.Logf("Profile ID: %d // ManiID: %d", prfID, maniID)
-	mani, found, err := mag.Database.ManifestWrapperGetByID(ctx, maniID)
+	// Phase 4 (deprecate-manifest-wrapper): build a leaf-keyed shim instead of
+	// fetching a :ManifestWrapper node.
+	mani, err := mag.getMani(ctx, br, "manifest:ft_amd64")
 	if err != nil {
 		t.Fatal(err)
-	}
-	if !found {
-		t.Fatal("Manifest not found")
 	}
 	_ = mani
 	// Actual test

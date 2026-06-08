@@ -71,18 +71,10 @@ func (n Neo) Setup_OrasManifest(ctx context.Context, br *utils.BootstrapResult, 
 	utils.Debug(l, span, "ORAS Manifest '%s#id' inserted: %d", label, maniData.ID)
 	br.Add(fmt.Sprintf("manifestdata:%s#mediaType", label), maniData.MediaType)
 	utils.Debug(l, span, "ORAS Manifest '%s#mediaType' inserted: %s", label, maniData.MediaType)
-	// Check if manifest with the same label is already in BR — link it if present.
-	// Use "CREATED" so ORAS queries that match (m)-[:CREATED]-(md:Manifest) can find it.
-	key := fmt.Sprintf("manifest:%s#id", label)
-	mID, e := br.GetInt64(key)
-	if e != nil {
-		utils.NewError(l, span, "Manifest not yet present, linking will happen later")
-	} else {
-		utils.Warn(l, span, "Found manifest with ID: %d", mID)
-		if e := n.LinkManifestWrapperToManifest(ctx, mID, maniData.ID, "CREATED"); e != nil {
-			utils.Warn(l, span, "LinkManifestWrapperToManifest failed for manifest %d", mID)
-		}
-	}
+	// Phase 4 (deprecate-manifest-wrapper): the content-leaf :Manifest is the
+	// canonical node. Alias "manifest:<label>#id" to the content-leaf id so the
+	// legacy test sites that read it keep working.
+	br.Add(fmt.Sprintf("manifest:%s#id", label), fmt.Sprint(maniData.ID))
 	// Link from Manifest to Upstream
 	if upID, found, e := n.UpstreamGetIDByDigest(ctx, maniData.Upstream.Digest.String()); e != nil {
 		return e
@@ -155,19 +147,10 @@ func (n Neo) Setup_Manifest(ctx context.Context, br *utils.BootstrapResult, mani
 	utils.Debug(l, span, "Manifest '%s#id' inserted: %d", label, maniData.ID)
 	br.Add(fmt.Sprintf("manifestdata:%s#mediaType", label), maniData.MediaType)
 	utils.Debug(l, span, "Manifest '%s#mediaType' inserted: %s", label, maniData.MediaType)
-	// Check if manifest with the same label is already in DB
-	key := fmt.Sprintf("manifest:%s#id", label)
-	mID, e := br.GetInt64(key)
-	if e != nil {
-		utils.NewError(l, span, "Manifest seems not to be present, skipping linking manifestdata to it. Trust that this will be done later eventually. :)")
-	} else {
-		utils.Warn(l, span, "Found manifest with ID :%d", mID)
-		// Link Manifest to Manifest
-		e := n.LinkManifestWrapperToManifest(ctx, mID, maniData.ID, maniData.Type)
-		if e != nil {
-			utils.Warn(l, span, "LinkManifestWrapperToManifest failed - even though we found a manifest (%d). :/", mID)
-		}
-	}
+	// Phase 4 (deprecate-manifest-wrapper): the content-leaf :Manifest is the
+	// canonical node. Alias "manifest:<label>#id" to the content-leaf id so the
+	// legacy test sites that read it keep working.
+	br.Add(fmt.Sprintf("manifest:%s#id", label), fmt.Sprint(maniData.ID))
 	// Link from Manifest to Upstream
 	if upID, found, e := n.UpstreamGetIDByDigest(ctx, maniData.Upstream.Digest.String()); e != nil {
 		return e

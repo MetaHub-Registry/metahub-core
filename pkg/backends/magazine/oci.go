@@ -341,7 +341,11 @@ func (mag Magazine) CreateOCIv1(ctx context.Context, mani types.ManifestWrapper,
 	))
 	l.Debug(msg)
 	switch origMani.Type {
-	case "PARSED":
+	case "PARSED", "ORIGINAL":
+		// Phase 4 (deprecate-manifest-wrapper): the content-leaf attaches to
+		// Upstream via :ORIGINAL, so a leaf-keyed reshape sees Type "ORIGINAL".
+		// Treat it like "PARSED" (CreateOCIv1ParsedManifest already accepts
+		// both), mirroring CreateOCIv1ForProfile's PARSED/ORIGINAL grouping.
 		mdID, success, e := mag.CreateOCIv1ParsedManifest(ctx, mani, origMani)
 		if e != nil {
 			err = errors.Wrapf(e, "failed to create OCIv1 manifest for parsed Manifest.ID: %d", mani.ID)

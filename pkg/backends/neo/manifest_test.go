@@ -55,15 +55,8 @@ func TestManifestCRUD(t *testing.T) {
 	}
 	assert.True(t, found)
 	assert.Equal(t, arm_mani_id, arm_mani_id_got1)
-	// Link Manifest to Manifest
-	maniID, err := br.GetInt64("manifest:ft_arm64#id")
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = db.LinkManifestWrapperToManifest(ctx, maniID, arm_mani_id_got1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Phase 4 (deprecate-manifest-wrapper): no :ManifestWrapper node — operate
+	// on the content-leaf created above directly.
 	// ManifestGet_ByDigest
 	arm_mani_got3, found, err := db.ManifestGetByDigest(ctx, arm_mani.Digest)
 	if err != nil {
@@ -118,31 +111,19 @@ func TestManifestLinks(t *testing.T) {
 	}
 	defer db.TeardownTest(bs, br)
 	// Actual Test
-	maniID, err := br.GetInt64("manifest:ft_arm64#id")
-	if err != nil {
-		t.Fatal(err)
-	}
 	aPlatGenID, err := br.GetInt64("annotation:platform:generic#id")
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.ManifestWrapperLinkToAnnotation(ctx, maniID, aPlatGenID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = db.ManifestLinkToAnnotation(ctx, maniID, aPlatGenID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Actual test
+	// Phase 4 (deprecate-manifest-wrapper): annotations attach to the
+	// content-leaf :Manifest, not a wrapper node.
 	arm_mani := types.FTarmManifest()
 	arm_mani_id, err := db.createManifest(ctx, arm_mani)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.NotNil(t, arm_mani_id)
-	// Manifest Link To Manifest
-	err = db.LinkManifestWrapperToManifest(ctx, maniID, arm_mani_id)
+	err = db.ManifestLinkToAnnotation(ctx, arm_mani_id, aPlatGenID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,12 +143,14 @@ func TestManifestLinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Query all links?
-	manis, err := db.ManifestGetAll(ctx)
+	// Phase 4 (deprecate-manifest-wrapper): assert the content-leaf exists
+	// directly instead of via the wrapper-only ManifestGetAll.
+	m, found, err := db.ManifestGetByID(ctx, arm_mani_id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, 1, len(manis))
+	assert.True(t, found)
+	assert.Equal(t, arm_mani_id, m.ID)
 	// Add Layers
 	arm_layer0_id, err := br.GetInt64("layer:0:ft_arm64#id")
 	if err != nil {
@@ -230,30 +213,17 @@ func TestManifestRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.TeardownTest(bs, br)
-	maniID, err := br.GetInt64("manifest:ft_arm64#id")
-	if err != nil {
-		t.Fatal(err)
-	}
 	aPlatGenID, err := br.GetInt64("annotation:org.supercontainers.hardware.cpu.target:platform#id")
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.ManifestWrapperLinkToAnnotation(ctx, maniID, aPlatGenID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Actual test
+	// Phase 4 (deprecate-manifest-wrapper): operate on the content-leaf.
 	arm_mani := types.FTarmManifest()
 	arm_mani_id, err := db.createManifest(ctx, arm_mani)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.NotNil(t, arm_mani_id)
-	// Manifest Link To Manifest
-	err = db.LinkManifestWrapperToManifest(ctx, maniID, arm_mani_id)
-	if err != nil {
-		t.Fatal(err)
-	}
 	// Link Config
 	arm_config_id, err := br.GetInt64("config:ft_arm64#id")
 	if err != nil {
@@ -270,12 +240,13 @@ func TestManifestRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Query all links?
-	manis, err := db.ManifestGetAll(ctx)
-	if err != nil {
-		t.Fatal(err)
+	// Phase 4 (deprecate-manifest-wrapper): assert the content-leaf exists
+	// directly instead of via the wrapper-only ManifestGetAll.
+	if _, found, e := db.ManifestGetByID(ctx, arm_mani_id); e != nil {
+		t.Fatal(e)
+	} else {
+		assert.True(t, found)
 	}
-	assert.Equal(t, 1, len(manis))
 	// Add Layers
 	arm_layer0_id, err := br.GetInt64("layer:0:ft_arm64#id")
 	if err != nil {
@@ -557,21 +528,16 @@ func TestManifestGetPulledByRepoTag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	q := `MATCH (col:Repo),(m:ManifestWrapper),(t:Tag)`
-	q += fmt.Sprintf(` WHERE id(col) = %d AND id(t) = %d AND id(m) = %d`, colID, tagID, maniID)
-	q += ` CREATE (col)-[:UPSTREAM]->(m)<-[:UPSTREAM]-(t)`
-	if _, e := db.Execute(q); e != nil {
+	_ = maniID
+	// Phase 4 (deprecate-manifest-wrapper): wrapper-node linking removed.
+	// ManifestGetPulledByRepoTag walks via Slot instead of wrapper, so link
+	// the content-leaf to Repo/Tag and wire a Slot+HAS_PUSHED edge.
+	if e := db.LinkCollectionToManifest(ctx, colID, mdID); e != nil {
 		t.Fatal(e)
 	}
-	q = `MATCH (m:ManifestWrapper),(md:Manifest)`
-	q += fmt.Sprintf(` WHERE id(md) = %d AND id(m) = %d`, mdID, maniID)
-	q += ` MERGE (m)-[:PULLED_BY]->(md)`
-	t.Log(q)
-	if _, e := db.Execute(q); e != nil {
+	if e := db.LinkCollectionTagToManifest(ctx, tagID, mdID); e != nil {
 		t.Fatal(e)
 	}
-	// Phase C3: ManifestGetPulledByRepoTag was rewritten to walk via
-	// Slot instead of wrapper. Create a Slot+HAS_PUSHED edge for the test.
 	slot, e := db.SlotGetCreate(ctx, "qnib/featuretest", "amd64", "cpu#generic")
 	if e != nil {
 		t.Fatal(e)
@@ -1064,11 +1030,11 @@ func TestManifestV1GetInsert(t *testing.T) {
 	} else if maniDataID != expManiDataID {
 		t.Fatalf("ID do not match got:%d != %d:exp", maniDataID, expManiDataID)
 	}
-	// Zen3 insert (not found)
-	maniZen3ID, err := br.GetInt64("manifest:ft_zen3#id")
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Zen3 insert (not found). Phase 4 (deprecate-manifest-wrapper): the
+	// maniSiID parameter is ignored (no wrapper node), so a sentinel id is fine
+	// — the zen3 content leaf is intentionally not set up, so the insert path
+	// must report the manifest as not-yet-present.
+	maniZen3ID := int64(0)
 	mdZen3 := types.ManifestAmd64Zen
 	zen3Desc := v1.Descriptor{
 		Digest:    digest.Digest(mdZen3.Digest),
