@@ -2313,13 +2313,10 @@ func (n Neo) ManifestDelete(ctx context.Context, md types.Manifest) (err error) 
 			return utils.ErrorHandler(l, span, e, types.FailManifestUnlinkConfig)
 		}
 	}
-	// Path Z Phase C3: wrapper cleanup is optional — the wrapper :Manifest
-	// node may not exist for manifests pushed after Phase C3 landed.
-	maniID, maniFound, e := n.ManifestWrapperGetIDByManifestID(ctx, md.ID)
-	if e != nil {
-		utils.Debug(l, span, "wrapper lookup failed (non-fatal): %v", e)
-	}
-	// Remove content-leaf Manifest
+	// Remove content-leaf Manifest. Wrapper cleanup is now a no-op:
+	// :ManifestWrapper nodes are no longer created (deprecate-manifest-wrapper
+	// Phase 3), so there is nothing to clean up. Any stale wrapper nodes in
+	// pre-existing databases are purged by the one-time migration (Phase 5).
 	q := fmt.Sprintf(`MATCH (md:Manifest) WHERE id(md) = %d DETACH DELETE md`, md.ID)
 	span.AddEvent("log", trace.WithAttributes(
 		attribute.String(attrLogSeverity, attrSevDebug),
@@ -2330,12 +2327,6 @@ func (n Neo) ManifestDelete(ctx context.Context, md types.Manifest) (err error) 
 		err = errors.Wrap(err, "failed to delete manifest data")
 		span.RecordError(err)
 		return
-	}
-	// Clean up wrapper :ManifestWrapper if it exists and has no remaining linked Manifest
-	if maniFound {
-		if e := n.ManifestWrapperCleanUpByID(ctx, maniID); e != nil {
-			utils.Debug(l, span, "wrapper cleanup failed (non-fatal): %v", e)
-		}
 	}
 	return
 }

@@ -757,11 +757,18 @@ func (n Neo) CollectionGetCreateUpstreamTriple(ctx context.Context, ups types.Up
 		span.RecordError(err)
 		return
 	}
-	maniID, e = n.ManifestWrapperGetInsertWithDesc(ctx, ups, maniIn)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, failInsMani)
-		return
-	}
+	// deprecate-manifest-wrapper Phase 3: the legacy wrapper creation
+	// (ManifestWrapperGetInsertWithDesc → CREATE (:ManifestWrapper)) is removed.
+	// This entrypoint now resolves only Upstream + Profile; the content-leaf
+	// :Manifest (carrying the descriptor's platform) and its Slot are wired at
+	// ingest time via wireSlotOnPush, not here. We deliberately do NOT MERGE a
+	// :Repo/:Slot in this resolver so the caller's later
+	// CollectionGetCreateByRepoTag keeps its create-vs-find semantics.
+	//
+	// `maniID` is left zero: its sole production caller
+	// (upstreamBlobInsertManifestDesc) is disabled, and no caller (incl. the
+	// CollectionGetCreateUpstreamTriple test) consumes it.
+	_ = maniIn
 	return
 
 }
