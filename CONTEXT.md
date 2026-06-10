@@ -190,3 +190,115 @@ use the dev environment).
 ### Gotchas
 - `ResolveUpstreamRegistry` returns `EffectiveURL()` (not the slug Name) — callers like `resolveUpstreamTarget` get the network endpoint
 - Upstream nodes store the stripped repo (e.g. `os/alpine317`) not the full prefix alias (`local-reg/os/alpine317`) — this is by design for correct GetBlobUrl/GetManifestByUpstreamByDigest construction
+
+## 2026-06-08 deprecate-manifest-wrapper (milestone: Phases 1–3)
+
+### What changed
+- **Dead/test-only `ManifestWrapper*` surface removed** (no behaviour change):
+  `HeadManistNotFoundForProfile` + `ManifestWrapperGetByRepoTag`; the OS-annotation
+  family (`ManifestWrapperGetOS`/`UpsertOS`/`UpsertOSVersion`/`UpsertOSID`/
+  `GetAllSystemAnnos`) from impl + `magazine.Database` interface;
+  `ProfileFromManifestWrapperIDViaAnnotations`/`ViaPlatform`. OS annotations
+  already live on the content-leaf (`ManifestAddAnnotations` /
+  `GetAnnotationsByManifestID`).
+- **New Slot/leaf reshape entrypoint** `Magazine.ComputeManifestForLeaf(ctx,
+  types.Manifest)` (`compute_manifest.go`): reshapes a pushed Docker v2 manifest
+  into OCI v1 per profile **without a caller-supplied wrapper**. It resolves the
+  wrapper identity internally from the content-leaf
+  (`ManifestWrapperGetIDByManifestID` → `ManifestWrapperGetByID`) and delegates to
+  the existing `ComputeManifest` — byte-identical output. This severs the
+  metahub-api ↔ wrapper coupling.
+- **Stopped creating `:ManifestWrapper` nodes** in live paths:
+  `CollectionGetCreateUpstreamTriple` (`repo.go`) no longer calls
+  `ManifestWrapperGetInsertWithDesc`; `ManifestDelete` (`manifest.go`) wrapper
+  cleanup is a no-op. (The descriptor-ingest path was already production-dead —
+  its only caller `upstreamBlobInsertManifestDesc` is commented out.)
+- **Slot-centred fixture wiring** (`setupSlotForLeaf` in
+  `test_setup_manifest_content.go`): MERGEs a `:Slot` for `(repo,tag,profile)` +
+  `:HAS_PUSHED` to the content-leaf. Additive — wrapper-node creation in fixtures
+  is retained until the read-Cypher migration.
+
+### Key files
+- `pkg/backends/magazine/compute_manifest.go` — `ComputeManifestForLeaf`
+- `pkg/backends/magazine/database.go` — interface: +`ManifestWrapperGetIDByManifestID`, −OS family
+- `pkg/backends/neo/manifest_wrapper_deprecated.go` — dead surface removed (still present; full deletion is Phase 5)
+- `pkg/backends/neo/{profiles,collection,repo,manifest}.go` — dead methods removed / wrapper creation stopped
+- `pkg/backends/neo/test_setup_manifest_content.go` — `setupSlotForLeaf`
+- `pkg/backends/{magazine/compute_manifest_for_leaf_test.go, neo/test_setup_slot_test.go, neo/upstream_triple_slot_test.go}` — new tests
+
+### Deferred (separate OpenSpec changes)
+- **`migrate-wrapper-read-cypher`** (proposed): migrate remaining `:ManifestWrapper`
+  read Cypher to Slot/leaf walks; re-point fixtures off wrapper attachment; drop
+  `ComputeManifestForLeaf`'s internal wrapper resolution. Carries a LIVE/DEAD
+  reachability audit. **Must land atomically** — a partial attempt this session
+  cascaded 8+ test failures and was reverted.
+- **Phase 5** (not yet a change): delete `manifest_wrapper_deprecated.go` +
+  `types.ManifestWrapper` + interface entries; one-time `DETACH DELETE` migration.
+
+### Gotchas
+- **Fixture key trap**: `manifest:<label>#id` = legacy **wrapper** node id;
+  content-leaf `:Manifest` = `manifestdata:<label>#id`. Linking a Repo/Tag to the
+  wrapper id breaks listing once `LinkCollection*ToManifest` is tightened to
+  `(m:Manifest)`.
+- **neo4j id 0**: first node in an emptied graph gets internal id 0.
+- **`ComputeManifest` rejects type `ORIGINAL`** (only PARSED/UPLOADED_BY/
+  MANIFEST_DERIVED_FROM reshape) — relevant when choosing multi-arch fixtures.
+- sonar (`sonar.example.com`) and VictoriaLogs unreachable off-network.
+
+---
+
+## Phase 4 — `migrate-wrapper-read-cypher` (COMPLETE)
+
+Removed all LIVE `:ManifestWrapper` graph reads; the Slot/content-leaf model is
+now the only path exercised by production code and fixtures. `./test.sh` is
+green (EXIT 0). Sonar skipped (off-network).
+
+### What changed
+- **Fixtures (`test_setup*.go`)**: stopped creating `:ManifestWrapper` nodes.
+  `Bootstrap_ManifestWrapper` now just aliases `manifest:<label>#id` to the
+  content-leaf id. `Setup_Manifest`/`Setup_OrasManifest` set both
+  `manifestdata:<label>#id` and the `manifest:<label>#id` alias and no longer
+  call `LinkManifestWrapperToManifest`. `Setup_Collection_FT_*` link Repo/Tag to
+  the content-leaf via the new tolerant `linkCollectionToLeaves` helper
+  (skips/defer-links when `collection:` is bootstrapped before `manifestdata:`).
+  Scenario setup reordered to create the content-leaf before the collection.
+- **Dual-path queries tightened to `(m:Manifest)`**: `repo.go LinkCollectionToManifest`,
+  `collection_tag.go LinkCollectionTagToManifest`, `manifest.go manifestQueryByRepoTag`
+  (wrapper fallback dropped), `collection_listing.go` (wrapper EXISTS branch dropped),
+  `manifest.go ManifestV1GetInsert` (`maniSiID>0` MERGE block removed; param now ignored).
+- **6 LIVE wrapper-only queries rekeyed onto the content-leaf id** (walk via
+  `:ORIGINAL`/`:HAS_PUSHED`/`:POINTS_TO`/`:REFERENCES`/`:HAS_PLATFORM`):
+  `ManifestGetByProfileMediaType`, `ManifestGetRelIDByMediaType`,
+  `ManifestGetAllByManifestID`, `ManifestGetByManifestList` (manifest.go),
+  `RulesGetByManifestID` (rule.go), `LayerGetUpstream` (layer.go).
+- **Magazine**: `ComputeManifestForLeaf` builds a leaf-keyed `types.ManifestWrapper`
+  shim (`mani.ID == leaf.ID`) instead of resolving a wrapper node; defaults empty
+  `Type` to `ORIGINAL` and skips when the leaf is absent. `CreateOCIv1` now reshapes
+  `ORIGINAL` (grouped with `PARSED`). Synthetic wrappers in `upstream.go` keyed on
+  the content-leaf id. `ManifestWrapperGetIDByManifestID` removed from the
+  `magazine.Database` interface.
+- **Tests**: wrapper-era tests converted to the leaf model (manifest_test.go CRUD/
+  Links/Rules, manifest_wrapper_test.go GetByLabel→GetByDigest, index_test.go,
+  manifest_coverage5_test.go, magazine compute/oci/manifestlist tests now drive the
+  leaf shim / `ComputeManifestForLeaf`). `TestFixturesAreSlotCentred` asserts zero
+  `:ManifestWrapper` nodes after setup.
+
+### Known residue (intentional — Phase 5)
+The final `grep ":ManifestWrapper"` over prod (non-test, non-deprecated-file)
+still shows query strings in **DEAD** functions (no live caller; all references
+are inside `manifest_wrapper_deprecated.go` or interface decls):
+`ManifestGetParsedNodeRelByMediaType`, `ManifestGetIDByMediaType`,
+`ManifestGetAll`, `ManifestGetAllByManifestIDWithProfile`,
+`ManifestExistsForTagProfileContent`, `CollectionExists`,
+`GetCollectionFilterPairs*`, `ProfileManifestType`, `UpstreamGetIDByManifestID`,
+`UpstreamCleanupByID`, `CollectionTagGetIDByManifestID`,
+`GetAnnotationsByManifestWrapperID`, `annotations.go`. Per the change scope these
+are left for Phase 5 deletion, not rewritten.
+
+### Gotcha discovered
+- The computed OCI manifest has **no graph edge back to the original content-leaf**
+  (the wrapper `CREATED` edge that linked them is gone). Leaf-keyed "already
+  present?" checks therefore rely on the Slot/Index sibling walk or the
+  profile linkage (`CREATED_BY`/`UPLOADED_BY`), not a direct leaf→OCI edge. Tests
+  that verified "a new OCI manifest exists for profile X" were switched to walk
+  `(:Manifest)-[:CREATED_BY]->(:Profile)` directly.

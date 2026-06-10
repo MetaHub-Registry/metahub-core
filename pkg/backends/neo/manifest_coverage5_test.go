@@ -250,9 +250,12 @@ func TestManifestGetAll_FullGraph(t *testing.T) {
 	defer cleanup()
 	_ = br
 
+	// Phase 4 (deprecate-manifest-wrapper): ManifestGetAll is a wrapper-only
+	// (now dead) query — :ManifestWrapper nodes are no longer created, so it
+	// returns no rows. We only exercise the code path here; any returned row
+	// must still be well-formed.
 	manis, err := db.ManifestGetAll(ctx)
 	require.NoError(t, err)
-	assert.GreaterOrEqual(t, len(manis), 1)
 	for _, m := range manis {
 		assert.NotEmpty(t, m.Digest)
 	}

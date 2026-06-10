@@ -46,6 +46,60 @@ func (mag Magazine) ComputeAllManifests(ctx context.Context) (err error) {
 	return
 }
 
+// ComputeManifestForLeaf is the Slot/leaf-based push-reshape entrypoint. It
+// reshapes a pushed Docker v2 manifest into OCI v1 per profile WITHOUT
+// requiring the caller to fetch a types.ManifestWrapper first. The caller
+// (notably metahub-api's push handler) passes the content-leaf types.Manifest
+// returned by StoreManifestUpload; this severs the last cross-repo wrapper
+// coupling.
+//
+// As of deprecate-manifest-wrapper Phase 4 there is no :ManifestWrapper node to
+// resolve. ComputeManifestForLeaf builds a thin in-memory types.ManifestWrapper
+// shim keyed on the content-leaf id (mani.ID == md.ID) and delegates to
+// ComputeManifest. All downstream reshape queries are leaf-keyed, so the
+// wrapper shim is purely a transport for the leaf id, upstream and annotations
+// — no graph wrapper read/write happens.
+func (mag Magazine) ComputeManifestForLeaf(ctx context.Context, md types.Manifest) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameCompMani,
+		"func":    "ComputeManifestForLeaf",
+		"leaf.ID": md.ID,
+		"digest":  md.Digest,
+	})
+	defer span.End()
+	if md.ID <= 0 {
+		utils.Debug(l, span, "no content-leaf id (%d); skipping reshape", md.ID)
+		return nil
+	}
+	// Skip when the content-leaf does not actually exist in the graph (e.g.
+	// nothing was stored). This preserves the prior `found` guard at the
+	// metahub-api call site so reshape is a safe no-op.
+	if _, found, e := mag.Database.ManifestGetByID(ctx, md.ID); e != nil {
+		return utils.ErrorHandler(l, span, e, "while checking content-leaf %d", md.ID)
+	} else if !found {
+		utils.Debug(l, span, "content-leaf %d not found; skipping reshape", md.ID)
+		return nil
+	}
+	annos := md.Annotations
+	if annos.Data == nil {
+		annos = types.NewAnnotations()
+	}
+	// The reshape switch (CreateOCIv1) keys on the manifest Type. A pushed
+	// content-leaf attaches to Upstream via :ORIGINAL, so when the caller did
+	// not set a Type we treat the leaf as an ORIGINAL to be reshaped (mirroring
+	// the PARSED/ORIGINAL grouping in CreateOCIv1ForProfile).
+	if md.Type == "" {
+		md.Type = "ORIGINAL"
+	}
+	mani := types.ManifestWrapper{
+		ID:          md.ID,
+		Upstream:    md.Upstream,
+		Annotations: annos,
+		Manifests:   []types.Manifest{md},
+	}
+	return mag.ComputeManifest(ctx, mani)
+}
+
 // ComputeManifests looks for changes to a manifest (e.g. new annotations), creates new config blobs and subsequently updates the manifest.
 func (mag Magazine) ComputeManifest(ctx context.Context, mani types.ManifestWrapper) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{

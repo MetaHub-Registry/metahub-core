@@ -339,80 +339,6 @@ func (n Neo) Setup_Upstream(br *utils.BootstrapResult, up types.Upstream, label 
 	return
 }
 
-func (n Neo) Setup_Manifest_FT_mpich_amd64(br *utils.BootstrapResult) (err error) {
-	ctx := context.Background()
-	// Add Upstream
-	upID, err := br.GetInt64("upstream:ft_amd64#id")
-	if err != nil {
-		return err
-	}
-	up, _, err := n.UpstreamGetByID(ctx, upID)
-	if err != nil {
-		return err
-	}
-	as := types.NewAnnotations()
-	if err = as.AddNewAnnotation("org.supercontainers.mpi.implementation", "mpich"); err != nil {
-		return err
-	}
-	m := types.ManifestWrapper{
-		Upstream:    up,
-		Annotations: as,
-	}
-	maniID, err := n.ManifestWrapperGetInsert(ctx, m.Upstream, m.Annotations.ToSlice()...)
-	br.Add("manifest:ft_mpich_amd64#id", fmt.Sprint(maniID))
-	if err != nil {
-		return err
-	}
-	err = n.ManifestWrapperLinkToUpstream(ctx, maniID, upID)
-	if err != nil {
-		return err
-	}
-	// /// Get Platform
-	// plaID, err := br.GetInt64("platform:linux/amd64#id")
-	// if err != nil {
-	// 	return err
-	// }
-	// plat, found, err := n.PlatformGetByID(plaID)
-	// if err != nil {
-	// 	return err
-	// }
-	// if !found {
-	// 	return fmt.Errorf("platformID '%d' not found", plaID)
-	// }
-
-	// err = n.LinkManifestToPlatform(ctx, maniID, plaID)
-	// if err != nil {
-	// 	logrus.Error(err)
-	// 	return err
-	// }
-	// Link Config
-	config_id, err := br.GetInt64(fmt.Sprintf("config:ft_%s#id", m.Upstream.Platform.Architecture))
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	config, found, err := n.ConfigGetByID(ctx, config_id)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	if !found {
-		err = fmt.Errorf("config not found")
-		return
-	}
-	config.MediaType, err = br.Get(fmt.Sprintf("config:ft_%s#mediaType", m.Upstream.Platform.Architecture))
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	err = n.ManifestLinkToConfig(ctx, maniID, config)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	return
-}
-
 func (n Neo) Setup_Collection_FT_amd64(ctx context.Context, br *utils.BootstrapResult) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"func": "Setup_Collection_FT_amd64",
@@ -427,18 +353,26 @@ func (n Neo) Setup_Collection_FT_amd64(ctx context.Context, br *utils.BootstrapR
 	}
 	br.Add("collection:ft#id", fmt.Sprint(colID))
 	br.Add("tag:amd64#id", fmt.Sprint(colTagID))
-	// Link Repo To Manifest
-	for _, mani := range []string{"manifest:ft_amd64#id"} {
-		maniID, err := br.GetInt64(mani)
-		if err != nil {
+	// Link Repo To content-leaf Manifest (Phase 4: wrapper node removed)
+	return n.linkCollectionToLeaves(ctx, br, colID, colTagID, "manifestdata:ft_amd64#id")
+}
+
+// linkCollectionToLeaves links the given Repo + Tag to each content-leaf
+// :Manifest identified by the supplied BootstrapResult keys. Linking is
+// skipped (non-fatal) for keys whose content-leaf is not yet present — some
+// fixtures bootstrap "collection:" before "manifestdata:" and perform their
+// own linking afterwards.
+func (n Neo) linkCollectionToLeaves(ctx context.Context, br *utils.BootstrapResult, colID, colTagID int64, keys ...string) (err error) {
+	for _, key := range keys {
+		maniID, e := br.GetInt64(key)
+		if e != nil {
+			logrus.Warnf("linkCollectionToLeaves: content-leaf %q not present yet, skipping link (non-fatal)", key)
+			continue
+		}
+		if err = n.LinkCollectionToManifest(ctx, colID, maniID); err != nil {
 			return err
 		}
-		err = n.LinkCollectionToManifest(ctx, colID, maniID)
-		if err != nil {
-			return err
-		}
-		err = n.LinkCollectionTagToManifest(ctx, colTagID, maniID)
-		if err != nil {
+		if err = n.LinkCollectionTagToManifest(ctx, colTagID, maniID); err != nil {
 			return err
 		}
 	}
@@ -459,22 +393,8 @@ func (n Neo) Setup_Collection_FT_arm64(ctx context.Context, br *utils.BootstrapR
 	}
 	br.Add("collection:ft#id", fmt.Sprint(colID))
 	br.Add("tag:arm64#id", fmt.Sprint(colTagID))
-	// Link Repo To Manifest
-	for _, mani := range []string{"manifest:ft_arm64#id"} {
-		maniID, err := br.GetInt64(mani)
-		if err != nil {
-			return err
-		}
-		err = n.LinkCollectionToManifest(ctx, colID, maniID)
-		if err != nil {
-			return err
-		}
-		err = n.LinkCollectionTagToManifest(ctx, colTagID, maniID)
-		if err != nil {
-			return err
-		}
-	}
-	return
+	// Link Repo To content-leaf Manifest (Phase 4: wrapper node removed)
+	return n.linkCollectionToLeaves(ctx, br, colID, colTagID, "manifestdata:ft_arm64#id")
 }
 
 func (n Neo) Setup_Collection_FT_generic(ctx context.Context, br *utils.BootstrapResult) (err error) {
@@ -491,22 +411,8 @@ func (n Neo) Setup_Collection_FT_generic(ctx context.Context, br *utils.Bootstra
 	}
 	br.Add("collection:ft#id", fmt.Sprint(colID))
 	br.Add("tag:generic#id", fmt.Sprint(colTagID))
-	// Link Repo To Manifest
-	for _, mani := range []string{"manifest:ft_arm64#id", "manifest:ft_amd64#id"} {
-		maniID, err := br.GetInt64(mani)
-		if err != nil {
-			return err
-		}
-		err = n.LinkCollectionToManifest(ctx, colID, maniID)
-		if err != nil {
-			return err
-		}
-		err = n.LinkCollectionTagToManifest(ctx, colTagID, maniID)
-		if err != nil {
-			return err
-		}
-	}
-	return
+	// Link Repo To content-leaf Manifest (Phase 4: wrapper node removed)
+	return n.linkCollectionToLeaves(ctx, br, colID, colTagID, "manifestdata:ft_arm64#id", "manifestdata:ft_amd64#id")
 }
 
 func (n Neo) Setup_Collection_FT_oras_cyclonedx(ctx context.Context, br *utils.BootstrapResult) (err error) {
@@ -522,20 +428,8 @@ func (n Neo) Setup_Collection_FT_oras_cyclonedx(ctx context.Context, br *utils.B
 	}
 	br.Add("collection:ft_oras#id", fmt.Sprint(colID))
 	br.Add("tag:cyclonedx#id", fmt.Sprint(colTagID))
-	// Link Repo to ORAS Manifest
-	maniID, err := br.GetInt64("manifest:ft_oras_cyclonedx#id")
-	if err != nil {
-		return err
-	}
-	err = n.LinkCollectionToManifest(ctx, colID, maniID)
-	if err != nil {
-		return err
-	}
-	err = n.LinkCollectionTagToManifest(ctx, colTagID, maniID)
-	if err != nil {
-		return err
-	}
-	return
+	// Link Repo to ORAS content-leaf Manifest (Phase 4: wrapper node removed)
+	return n.linkCollectionToLeaves(ctx, br, colID, colTagID, "manifestdata:ft_oras_cyclonedx#id")
 }
 
 func (n Neo) Setup_Collection_FT_zen3(ctx context.Context, br *utils.BootstrapResult) (err error) {
@@ -553,22 +447,8 @@ func (n Neo) Setup_Collection_FT_zen3(ctx context.Context, br *utils.BootstrapRe
 	br.Add("collection:ft#id", fmt.Sprint(colID))
 	br.Add("tag:zen3#id", fmt.Sprint(colTagID))
 
-	// Link Repo To Manifest
-	for _, mani := range []string{"manifest:ft_zen3#id"} {
-		maniID, err := br.GetInt64(mani)
-		if err != nil {
-			return err
-		}
-		err = n.LinkCollectionToManifest(ctx, colID, maniID)
-		if err != nil {
-			return err
-		}
-		err = n.LinkCollectionTagToManifest(ctx, colTagID, maniID)
-		if err != nil {
-			return err
-		}
-	}
-	return
+	// Link Repo To content-leaf Manifest (Phase 4: wrapper node removed)
+	return n.linkCollectionToLeaves(ctx, br, colID, colTagID, "manifestdata:ft_zen3#id")
 }
 
 func (n Neo) Setup_ManifestList_FT_generic(br *utils.BootstrapResult) (err error) {

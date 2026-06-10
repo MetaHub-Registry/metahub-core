@@ -91,32 +91,25 @@ func (n Neo) Bootstrap_Scenario(ctx context.Context, bs utils.Bootstrap, br *uti
 			return fmt.Errorf("unknown scenario layer '%s'", b)
 
 		}
+		// Phase 4 (deprecate-manifest-wrapper): the content-leaf :Manifest is
+		// now the canonical node. Create it first (which also sets the
+		// "manifest:<label>#id" alias), then link Repo/Tag to the content
+		// leaf via the collection helpers.
+		// bs.AddBootstrap("manifestdata:ft_amd64")
+		if e := n.Setup_Manifest(ctx, br, md, b); e != nil {
+			return errors.Wrapf(e, whileFmrt, "manifestdata", b)
+		}
 		switch b {
 		case "ft_amd64":
-			// Setup AMD64 manifest for generic featuretest
-			err = n.Setup_Manifest_FT_amd64(ctx, br)
-			if err != nil {
-				return errors.Wrapf(err, whileFmrt, "manifest", b)
-			} // bs.AddBootstrap("collection:ft_generic")
 			if e := n.Setup_Collection_FT_amd64(ctx, br); e != nil {
 				return errors.Wrapf(e, whileFmrt, "collection", b)
 			}
 		case "ft_arm64":
-			// Setup AMD64 manifest for generic featuretest
-			err = n.Setup_Manifest_FT_arm64(br)
-			if err != nil {
-				return errors.Wrapf(err, whileFmrt, "manifest", b)
-			}
-			// bs.AddBootstrap("collection:ft_generic")
 			if e := n.Setup_Collection_FT_arm64(ctx, br); e != nil {
 				return errors.Wrapf(e, whileFmrt, "collection", b)
 			}
 		default:
 			return fmt.Errorf("unknown scenario manifest '%s'", b)
-		}
-		// bs.AddBootstrap("manifestdata:ft_amd64")
-		if e := n.Setup_Manifest(ctx, br, md, b); e != nil {
-			return errors.Wrapf(e, whileFmrt, "manifestdata", b)
 		}
 
 		return

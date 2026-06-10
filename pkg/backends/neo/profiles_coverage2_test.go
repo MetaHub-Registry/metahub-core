@@ -169,58 +169,6 @@ func TestProfileFromManifestWrapperID(t *testing.T) {
 	assert.Empty(t, prfs2)
 }
 
-// TestProfileFromManifestWrapperIDViaAnnotations covers the annotation-based path.
-func TestProfileFromManifestWrapperIDViaAnnotations(t *testing.T) {
-	ctx := context.Background()
-	bs := utils.NewBootstrap()
-	bs.SetYAMLPrefix("../../../misc/yaml")
-	bs.SetEmptyAll()
-	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
-	bs.AddBootstrap("rules:rules/os/linux.yaml")
-	bs.AddBootstrap("profile:profiles/generic.yaml")
-	br, err := SetupTest(ctx, bs)
-	if err != nil {
-		db.TeardownTest(bs, br)
-		t.Fatal(err)
-	}
-	defer db.TeardownTest(bs, br)
-
-	err = db.RuleEvalAll(ctx)
-	require.NoError(t, err)
-
-	// No ManifestWrapper in the graph → expect empty
-	prfs, err := db.ProfileFromManifestWrapperIDViaAnnotations(ctx, 999999)
-	require.NoError(t, err)
-	assert.Empty(t, prfs)
-}
-
-// TestProfileFromManifestWrapperIDViaPlatform covers the platform-based path.
-func TestProfileFromManifestWrapperIDViaPlatform(t *testing.T) {
-	ctx := context.Background()
-	bs := utils.NewBootstrap()
-	bs.SetYAMLPrefix("../../../misc/yaml")
-	bs.SetEmptyAll()
-	bs.AddBootstrap("platforms:generic")
-	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
-	bs.AddBootstrap("rules:rules/os/linux.yaml")
-	bs.AddBootstrap("profile:profiles/generic.yaml")
-	br, err := SetupTest(ctx, bs)
-	if err != nil {
-		db.TeardownTest(bs, br)
-		t.Fatal(err)
-	}
-	defer db.TeardownTest(bs, br)
-
-	err = db.RuleEvalAll(ctx)
-	require.NoError(t, err)
-
-	// No ManifestWrapper in the graph → expect empty
-	prfs, err := db.ProfileFromManifestWrapperIDViaPlatform(ctx, 999999)
-	require.NoError(t, err)
-	assert.Empty(t, prfs)
-}
-
 // TestEvalUploadProfileWithBlob covers the EvalUploadProfile function.
 func TestEvalUploadProfileWithBlob(t *testing.T) {
 	ctx := context.Background()

@@ -608,7 +608,10 @@ func (n Neo) LayerGetUpstream(ctx context.Context, lID int64) (up types.Upstream
 	})
 	defer span.End()
 	_ = ctx
-	q := `MATCH (u:Upstream)<-[]-(m:ManifestWrapper)-[]->(md:Manifest)-[]->(l:Blob)`
+	// Phase 4 (deprecate-manifest-wrapper): walk Upstream directly from the
+	// content-leaf :Manifest via :ORIGINAL instead of through the legacy
+	// :ManifestWrapper wrapper node.
+	q := `MATCH (u:Upstream)<-[:ORIGINAL]-(md:Manifest)-[]->(l:Blob)`
 	q += fmt.Sprintf(` WHERE id(l) = %d AND l.type = "layer"`, lID)
 	q += ` RETURN DISTINCT id(u) AS upstreamID, u.reg AS upstreamReg, u.repo AS upstreamRepo, u.tag AS upstreamTag, u.digest AS upstreamDigest`
 	res, found, e := n.QueryOne(q)

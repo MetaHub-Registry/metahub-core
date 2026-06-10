@@ -205,9 +205,11 @@ func (n Neo) RulesGetByManifestID(ctx context.Context, maniID int64) (rules type
 	})
 	defer span.End()
 	_ = ctx
-	// Platform rules
-	q := `MATCH (m:ManifestWrapper)-[]-(md:Manifest)-[:HAS_PLATFORM]->(plat:Platform)<-[:TRUE]-(r:Rule)`
-	q += fmt.Sprintf(`WHERE id(m) = %d RETURN %s`, maniID, ruleReturn)
+	// Platform rules. Phase 4 (deprecate-manifest-wrapper): `maniID` is the
+	// content-leaf :Manifest id; walk HAS_PLATFORM directly from the leaf
+	// instead of through the legacy :ManifestWrapper wrapper node.
+	q := `MATCH (md:Manifest)-[:HAS_PLATFORM]->(plat:Platform)<-[:TRUE]-(r:Rule)`
+	q += fmt.Sprintf(` WHERE id(md) = %d RETURN %s`, maniID, ruleReturn)
 	utils.Debug(l, span, q)
 	res, err := n.Query(q)
 	if err != nil {

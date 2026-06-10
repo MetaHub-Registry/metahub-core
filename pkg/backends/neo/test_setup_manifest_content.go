@@ -71,18 +71,10 @@ func (n Neo) Setup_OrasManifest(ctx context.Context, br *utils.BootstrapResult, 
 	utils.Debug(l, span, "ORAS Manifest '%s#id' inserted: %d", label, maniData.ID)
 	br.Add(fmt.Sprintf("manifestdata:%s#mediaType", label), maniData.MediaType)
 	utils.Debug(l, span, "ORAS Manifest '%s#mediaType' inserted: %s", label, maniData.MediaType)
-	// Check if manifest with the same label is already in BR — link it if present.
-	// Use "CREATED" so ORAS queries that match (m)-[:CREATED]-(md:Manifest) can find it.
-	key := fmt.Sprintf("manifest:%s#id", label)
-	mID, e := br.GetInt64(key)
-	if e != nil {
-		utils.NewError(l, span, "Manifest not yet present, linking will happen later")
-	} else {
-		utils.Warn(l, span, "Found manifest with ID: %d", mID)
-		if e := n.LinkManifestWrapperToManifest(ctx, mID, maniData.ID, "CREATED"); e != nil {
-			utils.Warn(l, span, "LinkManifestWrapperToManifest failed for manifest %d", mID)
-		}
-	}
+	// Phase 4 (deprecate-manifest-wrapper): the content-leaf :Manifest is the
+	// canonical node. Alias "manifest:<label>#id" to the content-leaf id so the
+	// legacy test sites that read it keep working.
+	br.Add(fmt.Sprintf("manifest:%s#id", label), fmt.Sprint(maniData.ID))
 	// Link from Manifest to Upstream
 	if upID, found, e := n.UpstreamGetIDByDigest(ctx, maniData.Upstream.Digest.String()); e != nil {
 		return e
@@ -93,7 +85,50 @@ func (n Neo) Setup_OrasManifest(ctx context.Context, br *utils.BootstrapResult, 
 	} else {
 		return utils.ErrorHandler(l, span, e, "could not find upstream with digest '%s'", maniData.Upstream.Digest.String())
 	}
+	// Slot-centred wiring: Slot(repo, tag, generic) -> HAS_PUSHED -> content-leaf
+	n.setupSlotForLeaf(ctx, br, label, maniData.Upstream.Repo, maniData.Upstream.Tag, "generic", maniData.ID)
 	return
+}
+
+// setupSlotForLeaf wires the Slot-centred graph for a content-leaf :Manifest
+// fixture: it MERGEs a :Slot for the (repo, tag, profile) triple (creating the
+// :Repo/:Tag/:Profile string-identity nodes), records the slot id in the
+// BootstrapResult under "slot:<label>#id", and appends a :HAS_PUSHED edge from
+// the Slot to the content-leaf Manifest. This mirrors the production
+// wireSlotOnPush path so fixtures exercise the Slot-centred model rather than
+// only the legacy :ManifestWrapper node.
+//
+// It is intentionally additive and non-fatal: wrapper-node creation is retained
+// elsewhere until the read-side Cypher is migrated (Phase 4 / tasks §6), so a
+// missing triple component here is logged and skipped rather than failing the
+// fixture.
+func (n Neo) setupSlotForLeaf(ctx context.Context, br *utils.BootstrapResult, label, repo, tag, profile string, mdID int64) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func":    "setupSlotForLeaf",
+		"label":   label,
+		"repo":    repo,
+		"tag":     tag,
+		"profile": profile,
+	})
+	defer span.End()
+	if repo == "" || tag == "" {
+		utils.Warn(l, span, "setupSlotForLeaf: empty repo/tag for label %q (repo=%q tag=%q); skipping Slot wiring", label, repo, tag)
+		return
+	}
+	if profile == "" {
+		profile = "generic"
+	}
+	slot, e := n.SlotGetCreate(ctx, repo, tag, profile)
+	if e != nil {
+		utils.Warn(l, span, "setupSlotForLeaf: SlotGetCreate failed for %q (non-fatal): %v", label, e)
+		return
+	}
+	br.Add(fmt.Sprintf("slot:%s#id", label), fmt.Sprint(slot.ID))
+	if e := n.SlotAppendPushedManifest(ctx, slot.ID, mdID); e != nil {
+		utils.Warn(l, span, "setupSlotForLeaf: SlotAppendPushedManifest failed for %q (non-fatal): %v", label, e)
+		return
+	}
+	utils.Debug(l, span, "setupSlotForLeaf: slot %d (%s:%s/%s) -> HAS_PUSHED manifest %d", slot.ID, repo, tag, profile, mdID)
 }
 
 func (n Neo) Setup_Manifest(ctx context.Context, br *utils.BootstrapResult, maniData types.Manifest, label string) (err error) {
@@ -112,19 +147,10 @@ func (n Neo) Setup_Manifest(ctx context.Context, br *utils.BootstrapResult, mani
 	utils.Debug(l, span, "Manifest '%s#id' inserted: %d", label, maniData.ID)
 	br.Add(fmt.Sprintf("manifestdata:%s#mediaType", label), maniData.MediaType)
 	utils.Debug(l, span, "Manifest '%s#mediaType' inserted: %s", label, maniData.MediaType)
-	// Check if manifest with the same label is already in DB
-	key := fmt.Sprintf("manifest:%s#id", label)
-	mID, e := br.GetInt64(key)
-	if e != nil {
-		utils.NewError(l, span, "Manifest seems not to be present, skipping linking manifestdata to it. Trust that this will be done later eventually. :)")
-	} else {
-		utils.Warn(l, span, "Found manifest with ID :%d", mID)
-		// Link Manifest to Manifest
-		e := n.LinkManifestWrapperToManifest(ctx, mID, maniData.ID, maniData.Type)
-		if e != nil {
-			utils.Warn(l, span, "LinkManifestWrapperToManifest failed - even though we found a manifest (%d). :/", mID)
-		}
-	}
+	// Phase 4 (deprecate-manifest-wrapper): the content-leaf :Manifest is the
+	// canonical node. Alias "manifest:<label>#id" to the content-leaf id so the
+	// legacy test sites that read it keep working.
+	br.Add(fmt.Sprintf("manifest:%s#id", label), fmt.Sprint(maniData.ID))
 	// Link from Manifest to Upstream
 	if upID, found, e := n.UpstreamGetIDByDigest(ctx, maniData.Upstream.Digest.String()); e != nil {
 		return e
@@ -149,5 +175,7 @@ func (n Neo) Setup_Manifest(ctx context.Context, br *utils.BootstrapResult, mani
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, "could not link manifestdata to platform")
 	}
+	// Slot-centred wiring: Slot(repo, tag, generic) -> HAS_PUSHED -> content-leaf
+	n.setupSlotForLeaf(ctx, br, label, maniData.Upstream.Repo, maniData.Upstream.Tag, "generic", maniData.ID)
 	return
 }
