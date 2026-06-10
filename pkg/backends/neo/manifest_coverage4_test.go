@@ -132,6 +132,100 @@ func TestManifestCheckProfileCreationAndAnnotations(t *testing.T) {
 	assert.True(t, ok)
 }
 
+// TestManifestCheckProfileAnnotations_GenericNoopSemantics is a regression
+// guard for the e2e Verify-CE failure (session deprecate-manifest-wrapper):
+// qnib/ftest:latest#generic ended up with `slots=1 pushed=2 indexes=0` and a
+// 404 on HEAD-by-tag because the generic profile's compute filter silently
+// rejected the platform manifests.
+//
+// The generic profile rule is `os:linux=true && cpu:noop=true`. The `cpu:noop`
+// rule (anno/op=null on the wildcard key `org.supercontainers.hardware.cpu.*`)
+// is TRUE only for manifests that carry NO cpu.* annotation. The regression was
+// caused by upstream "platform" images being mis-built with a
+// `org.supercontainers.hardware.cpu.target.microarch=<arch>` annotation, which
+// makes `cpu:noop` FALSE — so the manifest was excluded from the generic index
+// and no Slot-[:POINTS_TO]->Index was ever wired.
+//
+// This test pins both halves of the truth table at the
+// ManifestCheckProfileAnnotations level (fast, no full compute):
+//
+//   - ft_arm64 : no cpu.* annotation     -> cpu:noop TRUE  -> generic MATCHES
+//   - ft_zen3  : cpu.target.microarch=*  -> cpu:noop FALSE -> generic REJECTS
+//
+// If a future change makes a microarch-annotated manifest match the generic
+// profile (or an annotation-free one stop matching), this test fails before the
+// regression can reach the e2e gate again.
+func TestManifestCheckProfileAnnotations_GenericNoopSemantics(t *testing.T) {
+	ctx := context.Background()
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.SetEmptyAll()
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("profile:profiles/generic.yaml")
+	// Annotation-free "platform" manifest (the correct shape for generic).
+	bs.AddBootstrap("config:ft_arm64")
+	bs.AddBootstrap("upstream:ft_arm64")
+	bs.AddBootstrap("manifest:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_arm64")
+	bs.AddBootstrap("layer:1:ft_arm64")
+	bs.AddBootstrap("manifestdata:ft_arm64")
+	bs.AddBootstrap("collection:ft_arm64")
+	// Microarch-annotated manifest (must NOT match the generic profile).
+	bs.AddBootstrap("rules:rules/cpu/zen3.yaml")
+	bs.AddBootstrap("annotation:org.supercontainers.hardware.cpu.target.microarch:zen3")
+	bs.AddBootstrap("config:ft_zen3")
+	bs.AddBootstrap("upstream:ft_zen3")
+	bs.AddBootstrap("manifest:ft_zen3")
+	bs.AddBootstrap("layer:0:ft_zen3")
+	bs.AddBootstrap("layer:1:ft_zen3")
+	bs.AddBootstrap("manifestdata:ft_zen3")
+	bs.AddBootstrap("collection:ft_zen3")
+
+	br, err := SetupTest(ctx, bs)
+	if err != nil {
+		db.TeardownTest(bs, br)
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs, br)
+
+	// Materialise the Rule-[:TRUE/FALSE]->{Annotation,Manifest} shortcut edges
+	// that ManifestCheckProfileAnnotations / manifestCheckNoopRules walk.
+	require.NoError(t, db.RuleEvalAll(ctx))
+
+	prf, found, err := db.ProfileGetByLabel(ctx, "generic")
+	require.NoError(t, err)
+	require.True(t, found, "generic profile must be present")
+
+	// --- noop-TRUE: annotation-free platform manifest matches generic ---
+	armID, err := br.GetInt64("manifestdata:ft_arm64#id")
+	require.NoError(t, err)
+	armDigest, err := br.Get("manifestdata:ft_arm64#digest")
+	require.NoError(t, err)
+	mdArm := types.Manifest{ID: armID, Digest: armDigest}
+
+	okArm, err := db.ManifestCheckProfileAnnotations(ctx, mdArm, prf)
+	require.NoError(t, err)
+	assert.True(t, okArm,
+		"annotation-free platform manifest must satisfy generic (cpu:noop=true); "+
+			"without this the generic Slot never gets a POINTS_TO->Index (e2e check #1 / HEAD-by-tag 404)")
+
+	// --- noop-FALSE: microarch-annotated manifest is rejected by generic ---
+	zenID, err := br.GetInt64("manifestdata:ft_zen3#id")
+	require.NoError(t, err)
+	zenDigest, err := br.Get("manifestdata:ft_zen3#digest")
+	require.NoError(t, err)
+	mdZen := types.Manifest{ID: zenID, Digest: zenDigest}
+
+	okZen, err := db.ManifestCheckProfileAnnotations(ctx, mdZen, prf)
+	require.NoError(t, err)
+	assert.False(t, okZen,
+		"manifest carrying org.supercontainers.hardware.cpu.target.microarch=* must NOT "+
+			"satisfy the generic profile (cpu:noop=false) — this is the mis-annotated "+
+			"platform-image case that broke e2e Verify-CE")
+}
+
 // TestManifestGetExactly covers the ManifestGetExactly function.
 func TestManifestGetExactly(t *testing.T) {
 	ctx := context.Background()

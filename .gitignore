@@ -1,5 +1,6 @@
 coverage.txt
 coverage.xml
+report.json
 lcov.info
 .scannerwork
 .env

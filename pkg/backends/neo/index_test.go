@@ -28,6 +28,8 @@ func TestManifestListCRUD(t *testing.T) {
 	bs.AddBootstrap("layer:1:ft_amd64")
 	bs.AddBootstrap("manifest:ft_arm64")
 	bs.AddBootstrap("manifest:ft_amd64")
+	bs.AddBootstrap("manifestdata:ft_arm64")
+	bs.AddBootstrap("manifestdata:ft_amd64")
 	bs.SetEmptyAll()
 	if debug > 0 {
 		bs.PostTestSleep = debug

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/opencontainers/go-digest"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient/types/platform"
 	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/types"
@@ -407,12 +408,11 @@ func TestManifestComputeManifestForProfileARM(t *testing.T) {
 		t.Fatal("Profile not found")
 	}
 	t.Logf("Profile ID: %d // ManiID: %d", prfID, maniID)
-	mani, found, err := mag.Database.ManifestWrapperGetByID(ctx, maniID)
+	// Phase 4 (deprecate-manifest-wrapper): build a leaf-keyed shim instead of
+	// fetching a :ManifestWrapper node.
+	mani, err := mag.getMani(ctx, br, "manifest:ft_arm64")
 	if err != nil {
 		t.Fatal(err)
-	}
-	if !found {
-		t.Fatal("Manifest not found")
 	}
 	// Actual test
 	err = mag.ComputeManifestForProfile(ctx, mani, prf)
@@ -425,13 +425,21 @@ func TestManifestComputeManifestForProfileARM(t *testing.T) {
 	}
 	// Path Z task 7.7: D5 invariant canary after every RuleEvalAll.
 	assertRuleShortcutInvariantsOrFatal(t, ctx)
-	// Check if the manifest is in the collection
-	mdID, found, e := mag.Database.ManifestGetIDByMediaType(ctx, mani.ID, "application/vnd.docker.distribution.manifest.v2+json")
+	// Phase 4 (deprecate-manifest-wrapper): verify a new OCI manifest was
+	// created and linked to the profile via UPLOADED_BY (the computed manifest
+	// is no longer attached to a :ManifestWrapper node, so walk Profile
+	// directly). Replaces the dead wrapper-only ManifestGetIDByMediaType lookup.
+	q := fmt.Sprintf(`MATCH (md:Manifest)-[:CREATED_BY]->(p:Profile) WHERE id(p) = %d AND md.mediaType IN ["application/vnd.docker.distribution.manifest.v2+json", "%s"] RETURN id(md) AS mdID`, prf.ID, v1.MediaTypeImageManifest)
+	res, found, e := mag.Database.QueryOne(q)
 	if e != nil {
 		t.Fatal(e)
 	}
 	if !found {
-		t.Fatal("Manifest not found")
+		t.Fatal("OCI manifest for profile not found")
+	}
+	mdID, e := res.GetInt64("mdID")
+	if e != nil {
+		t.Fatal(e)
 	}
 	assert.NotEqual(t, mdID, maniID)
 	span.End()

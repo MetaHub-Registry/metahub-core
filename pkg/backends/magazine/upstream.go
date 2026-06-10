@@ -316,9 +316,12 @@ func (mag Magazine) upstreamBlobInsertGeneric(ctx context.Context, req types.Req
 		return utils.ErrorHandler(l, span, e, FailLinkProfileToManifest)
 	}
 
-	// Phase C3: pass Manifest annotations directly to OCICreateBaseManifest
-	// (no wrapper read needed — OS annotations are on maniData.Annotations).
+	// Phase 4 (deprecate-manifest-wrapper): pass Manifest annotations directly
+	// to OCICreateBaseManifest (no wrapper read needed — OS annotations are on
+	// maniData.Annotations). The synthetic wrapper is keyed on the content-leaf
+	// id so any leaf-keyed reshape query resolves against the real content node.
 	syntheticMani := types.ManifestWrapper{
+		ID:          maniData.ID,
 		Upstream:    ups,
 		Manifests:   []types.Manifest{maniData},
 		Annotations: maniData.Annotations,
@@ -392,11 +395,13 @@ func (mag Magazine) upstreamBlobInsertProfile(ctx context.Context, req types.Req
 		return utils.ErrorHandler(l, span, e, FailLinkManifestToPlatform)
 	}
 
-	// Create OCI v1 manifest from the upstream manifest. Phase C3:
-	// construct a synthetic ManifestWrapper (wrapper type) from the content-leaf
-	// data so OCICreateBaseManifest can still operate. This shim will be
-	// removed when OCICreateBaseManifest is refactored to accept Slot/Manifest.
+	// Create OCI v1 manifest from the upstream manifest. Phase 4
+	// (deprecate-manifest-wrapper): construct a synthetic ManifestWrapper shim
+	// keyed on the content-leaf id so the leaf-keyed reshape queries resolve
+	// against the real content node. The wrapper type itself is retained until
+	// Phase 5; no graph :ManifestWrapper node is read or written.
 	syntheticMani := types.ManifestWrapper{
+		ID:          maniData.ID,
 		Upstream:    ups,
 		Manifests:   []types.Manifest{maniData},
 		Annotations: maniData.Annotations,
@@ -570,10 +575,9 @@ func (mag Magazine) upstreamInsertGeneric(ctx context.Context, req types.Request
 	}
 	// Phase C3: wire Slot-based attribution for upstream-pull path
 	mag.wireSlotOnPush(ctx, l, span, req, maniData.ID)
-	// Phase C3: ManifestWrapperGetOS (wrapper annotation read) and
-	// LinkManifestWrapperToManifest (wrapper→content-leaf edge) are removed.
-	// OS annotations are discovered from layer evaluation below and
-	// stored on the content-leaf via ManifestWrapperUpsertOS.
+	// The wrapper annotation read/write helpers are removed. OS
+	// annotations are discovered from layer evaluation below and stored
+	// on the content-leaf via ManifestAddAnnotations.
 	var os types.OS
 	osFound := false
 	// Iterate Layer

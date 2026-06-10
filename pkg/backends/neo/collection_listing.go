@@ -120,17 +120,14 @@ func (n Neo) CollectionListingGetByRepoLike(ctx context.Context, repo string) (c
 	// Only return Repo+Tag pairs that have at least one container-image manifest.
 	// This prevents ORAS-only repos from appearing in the collections listing even though
 	// they share a Repo node in the graph.
-	// Supports three graph patterns:
-	//   Legacy (mh-populate/ManifestWrapper): Repo -[:UPSTREAM]-> ManifestWrapper -[]- Manifest -> Blob(config)
-	//   Direct UPSTREAM (CE parse):           Repo -[:UPSTREAM]-> Manifest -> Blob(config)
-	//   Slot-centred (OCI push):              Repo -[:HAS_TAG]-> Tag -[:REF]-> Index -[:REFERENCES]-> Manifest -> Blob(config)
+	// Supports two graph patterns (the legacy ManifestWrapper EXISTS branch was
+	// removed in deprecate-manifest-wrapper Phase 4):
+	//   Direct UPSTREAM (CE parse): Repo -[:UPSTREAM]-> Manifest -> Blob(config)
+	//   Slot-centred (OCI push):    Repo -[:HAS_TAG]-> Tag -[:REF]-> Index -[:REFERENCES]-> Manifest -> Blob(config)
 	cfgFilter := containerImageConfigFilter()
 	q := `MATCH (c:Repo)-[:HAS_TAG]->(t) WHERE c.repo =~ "^%s.*"`
 	q += ` AND (`
 	q += `   EXISTS {`
-	q += `     MATCH (c)-[:UPSTREAM]->(m:ManifestWrapper)-[]-(md:Manifest)-[]->(cfg:Blob)`
-	q += `     WHERE cfg.type = "config" AND cfg.mediaType IN ` + cfgFilter
-	q += `   } OR EXISTS {`
 	q += `     MATCH (c)-[:UPSTREAM]->(md:Manifest)-[]->(cfg:Blob)`
 	q += `     WHERE cfg.type = "config" AND cfg.mediaType IN ` + cfgFilter
 	q += `   } OR EXISTS {`
@@ -194,9 +191,6 @@ func (n Neo) CollectionListingGetByRepoLikeForProfile(ctx context.Context, repo 
 	q += ` WHERE c.repo =~ "^%s.*"`
 	q += ` AND (`
 	q += `   EXISTS {`
-	q += `     MATCH (c)-[:UPSTREAM]->(m:ManifestWrapper)-[]-(md:Manifest)-[]->(cfg:Blob)`
-	q += `     WHERE cfg.type = "config" AND cfg.mediaType IN ` + cfgFilter
-	q += `   } OR EXISTS {`
 	q += `     MATCH (c)-[:UPSTREAM]->(md:Manifest)-[]->(cfg:Blob)`
 	q += `     WHERE cfg.type = "config" AND cfg.mediaType IN ` + cfgFilter
 	q += `   } OR EXISTS {`

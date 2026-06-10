@@ -76,10 +76,12 @@ func TestManifestDeleteAndExists(t *testing.T) {
 	err = db.ManifestDeleteByDigest(ctx, mdDigest)
 	require.NoError(t, err)
 
-	// ManifestDelete
+	// ManifestDelete on a wrapper-less manifest must succeed: wrapper cleanup
+	// is a no-op since :ManifestWrapper nodes are no longer created
+	// (deprecate-manifest-wrapper Phase 3).
 	md2 := types.Manifest{ID: 999999, Digest: "sha256:nonexistent"}
 	err = db.ManifestDelete(ctx, md2)
-	// May error or not — key thing is it doesn't panic
+	require.NoError(t, err, "ManifestDelete must succeed for a wrapper-less manifest")
 }
 
 // TestManifestV1GetInsertWorkflow covers the v1 descriptor insert + get.

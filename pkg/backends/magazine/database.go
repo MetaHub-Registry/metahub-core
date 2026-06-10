@@ -87,7 +87,11 @@ type Database interface {
 	// Phase C3 step 2. ManifestWrapperGetInsertWithUpstream in particular was a
 	// no-op stub returning (0, nil) from before the wrapper refactor.
 	ManifestWrapperGetInsertWithDesc(ctx context.Context, up types.Upstream, maniIn manifestlist.ManifestDescriptor) (maniID int64, err error)
-	ManifestWrapperGetByRepoTag(ctx context.Context, repo, tag string) (mani types.ManifestWrapper, found bool, err error)
+	// ManifestWrapperGetIDByManifestID was removed from this interface in
+	// deprecate-manifest-wrapper Phase 4: ComputeManifestForLeaf no longer
+	// resolves wrapper identity internally (it builds a leaf-keyed shim). The
+	// concrete neo method is retained in manifest_wrapper_deprecated.go until
+	// Phase 5.
 	ManifestWrapperGetByID(ctx context.Context, maniID int64) (mani types.ManifestWrapper, found bool, err error)
 	ManifestWrapperGetByIDWithProfile(ctx context.Context, maniID, prfID int64) (mani types.ManifestWrapper, found bool, err error)
 	// ManifestExists and ManifestExistsForTagProfile are Slot-agnostic
@@ -140,10 +144,6 @@ type Database interface {
 	ManifestDelete(ctx context.Context, mani types.Manifest) (err error)
 	ManifestGetByDigest(ctx context.Context, dig string) (m types.Manifest, found bool, err error)
 	ManifestLinkToUpstream(ctx context.Context, maniID, upID int64) (err error)
-	////// OS
-
-	ManifestWrapperGetOS(ctx context.Context, maniDataID int64) (os types.OS, found bool, err error)
-	ManifestWrapperUpsertOS(ctx context.Context, maniDataID int64, os types.OS) (err error)
 	/******* Manifest OCI Transformation ********/
 	ManifestGetIDByMediaType(ctx context.Context, msID int64, mediaType string) (maniID int64, found bool, err error)
 	ManifestGetRelIDByMediaType(ctx context.Context, msID int64, mediaType []string, relType string) (maniID int64, found bool, err error)
@@ -246,7 +246,6 @@ type Database interface {
 	/**** TEMP ****/
 	EvalUploadProfile(ctx context.Context, mani types.ManifestWrapper, origMani types.Manifest) (err error)
 	/***** BaseLayer *****/
-	ManifestWrapperGetAllSystemAnnos(ctx context.Context, maniDataID int64) (as types.Annotations, err error)
 	/***** Manipulations *****/
 	ManipulationGetCreate(ctx context.Context, mp *types.Manipulation) (err error)
 	ManipulationsGetByProfileID(ctx context.Context, prfID int64) (mps []types.Manipulation, err error)

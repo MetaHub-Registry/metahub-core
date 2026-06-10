@@ -480,7 +480,7 @@ func (n Neo) LinkCollectionToManifest(ctx context.Context, colID, maniID int64) 
 		attribute.Key("colID").Int64(colID),
 		attribute.Key("maniID").Int64(maniID),
 	)
-	q := `MATCH (c:Repo), (m) WHERE id(c) = %d AND id(m) = %d AND (m:ManifestWrapper OR m:Manifest)`
+	q := `MATCH (c:Repo), (m:Manifest) WHERE id(c) = %d AND id(m) = %d`
 	q += ` MERGE (c)-[:UPSTREAM]->(m)`
 	query := fmt.Sprintf(q, colID, maniID)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
@@ -757,11 +757,18 @@ func (n Neo) CollectionGetCreateUpstreamTriple(ctx context.Context, ups types.Up
 		span.RecordError(err)
 		return
 	}
-	maniID, e = n.ManifestWrapperGetInsertWithDesc(ctx, ups, maniIn)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, failInsMani)
-		return
-	}
+	// deprecate-manifest-wrapper Phase 3: the legacy wrapper creation
+	// (ManifestWrapperGetInsertWithDesc → CREATE (:ManifestWrapper)) is removed.
+	// This entrypoint now resolves only Upstream + Profile; the content-leaf
+	// :Manifest (carrying the descriptor's platform) and its Slot are wired at
+	// ingest time via wireSlotOnPush, not here. We deliberately do NOT MERGE a
+	// :Repo/:Slot in this resolver so the caller's later
+	// CollectionGetCreateByRepoTag keeps its create-vs-find semantics.
+	//
+	// `maniID` is left zero: its sole production caller
+	// (upstreamBlobInsertManifestDesc) is disabled, and no caller (incl. the
+	// CollectionGetCreateUpstreamTriple test) consumes it.
+	_ = maniIn
 	return
 
 }
