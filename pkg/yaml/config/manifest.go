@@ -9,9 +9,15 @@ import (
 )
 
 type Manifest struct {
-	Image       string            `yaml:"image"`
-	Digest      string            `yaml:"digest"`
-	Platform    platform.Platform `yaml:"platform"`
+	Image    string            `yaml:"image"`
+	Digest   string            `yaml:"digest"`
+	Platform platform.Platform `yaml:"platform"`
+	// Profile is the optional collection-authored profile label (e.g.
+	// "cpu#zen2") this manifest belongs to. When set, materialization
+	// binds the manifest to that profile authoritatively (see
+	// ProfileInjectDeterministicAnnotations). Empty means fall back to
+	// image-annotation / generic matching — the pre-existing behaviour.
+	Profile     string            `yaml:"profile,omitempty"`
 	Annotations map[string]string `yaml:"annotations"`
 }
 

@@ -34,10 +34,13 @@ func TestParseLayerSlice(t *testing.T) {
 		{"closed range stepped", "[1:5:2]", []int{1, 3}, ""},
 		{"no brackets ok", "1:", []int{1, 2, 3, 4}, ""},
 		{"whitespace tolerated", "[ 1 : 3 ]", []int{1, 2}, ""},
-		{"negative start clamps", "[-100:]", []int{0, 1, 2, 3, 4}, ""},
-		{"negative end truncates", "[:-1]", []int{0, 1, 2, 3}, ""},
-		{"open end past length clamps", "[2:999]", []int{2, 3, 4}, ""},
-		{"end before start yields empty", "[3:1]", []int{}, ""},
+		{"negative end truncates in range", "[:-1]", []int{0, 1, 2, 3}, ""},
+		{"negative start out of range errors", "[-100:]", nil, "out of range"},
+		{"open end past length errors", "[2:999]", nil, "out of range"},
+		{"start at length is empty errors", "[5:]", nil, "empty"},
+		{"start past length errors", "[6:]", nil, "out of range"},
+		{"end before start is empty errors", "[3:1]", nil, "empty"},
+		{"explicitly empty range errors", "[0:0]", nil, "empty"},
 		{"single oob positive", "[5]", nil, "out of range"},
 		{"single oob negative", "[-6]", nil, "out of range"},
 		{"negative step rejected", "[::-1]", nil, "step must be positive"},
@@ -68,16 +71,17 @@ func TestParseLayerSlice(t *testing.T) {
 	}
 }
 
-// TestLayerSlice_OpenEndedOnShortSource checks that an open-ended
-// slice on a source shorter than its start bound returns empty —
-// mirrors Python's silent empty result for `list[5:]` when len < 5.
-// A closed single index on the same input must still fail.
-func TestLayerSlice_OpenEndedOnShortSource(t *testing.T) {
+// TestLayerSlice_OutOfRangeOnShortSource checks strict semantics: an
+// open-ended slice whose start bound exceeds the source length fails
+// (rather than silently resolving to empty as Python would), and a
+// single index past the end fails the same way. Both must surface an
+// "out of range" error so a misconfigured select fails the pull.
+func TestLayerSlice_OutOfRangeOnShortSource(t *testing.T) {
 	ls, err := ParseLayerSlice("[5:]")
 	require.NoError(t, err)
-	got, err := ls.ApplyIndices(3)
-	require.NoError(t, err)
-	assert.Empty(t, got)
+	_, err = ls.ApplyIndices(3)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "out of range")
 
 	ls, err = ParseLayerSlice("[5]")
 	require.NoError(t, err)

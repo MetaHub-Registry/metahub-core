@@ -26,6 +26,7 @@ const (
 	FailManipuLayerLinkToRule           = "fail to link ManipuLayer to rule"
 	FailManipuLayerCreate               = "fail to create ManipuLayer"
 	FailManipuLayerFromConfigYAML       = "fail to create ManipuLayer from config YAML"
+	FailManipuLayerInvalidSelect        = "ManipuLayer select expression is invalid"
 )
 
 func (n Neo) ManipuLayerCreate(ctx context.Context, mpl *types.ManipuLayer) (err error) {
@@ -34,26 +35,8 @@ func (n Neo) ManipuLayerCreate(ctx context.Context, mpl *types.ManipuLayer) (err
 		"func":    "ManipuLayerCreate",
 	})
 	defer span.End()
-	_ = ctx
-	key := "mplID"
-	// Escape the slice expression defensively — users can put
-	// literal "[" and ":" etc. in there, and while the current
-	// ParseLayerSlice grammar rejects quotes, persisting raw avoids
-	// any future surprise if the grammar broadens.
-	selectEsc := strings.ReplaceAll(mpl.Select, `"`, `\"`)
-	q := fmt.Sprintf(
-		`CREATE (mpl:ManipuLayer {label: "%s", rule: "%s", select: "%s"}) RETURN id(mpl) AS %s`,
-		mpl.Label, mpl.Rule, selectEsc, key,
-	)
-	utils.Debug(l, span, q)
-	if res, err := n.Execute(q); err != nil {
-		return utils.ErrorHandler(l, span, err, FailNeoExecute)
-	} else {
-		if mplID, err := res.GetInt64(key); err != nil {
-			return utils.ErrorHandler(l, span, err, types.FailBrGet, key)
-		} else {
-			mpl.ID = mplID
-		}
+	if err = n.manipuLayerInsertNode(ctx, mpl); err != nil {
+		return err
 	}
 	// Add Cmd
 	utils.Debug(l, span, "ManipuCmd: %d", len(mpl.Cmd))
@@ -69,29 +52,97 @@ func (n Neo) ManipuLayerCreate(ctx context.Context, mpl *types.ManipuLayer) (err
 			return utils.ErrorHandler(l, span, e, FailManipuEnvInsert)
 		}
 	}
-	// Connect to Manifest
-	if md, found, err := n.ManifestGetByDigest(ctx, mpl.Image.Digest); err != nil {
-		return utils.ErrorHandler(l, span, err, FailManifestGetByDigest)
-	} else if !found {
-		return utils.NewError(l, span, "failed to get Manifest: %s", mpl.Image.Digest)
-	} else {
-		if err = n.ManifestLinkToManipulayer(ctx, md.ID, mpl.ID); err != nil {
-			return utils.ErrorHandler(l, span, err, FailManipuLayerLinkToManifest)
-		}
+	if err = n.manipuLayerLinkManifest(ctx, mpl); err != nil {
+		return err
 	}
-	// Connect to Rule
-	rLabel := strings.TrimSuffix(mpl.Rule, "=true")
-	utils.Debug(l, span, "RuleGetByLabel: %s", rLabel)
-	if rl, found, err := n.RuleGetByLabel(ctx, rLabel); err != nil {
-		return utils.ErrorHandler(l, span, err, FailRuleGetByLabel)
-	} else if !found {
-		return utils.NewError(l, span, "failed to get Rule: %s", rLabel)
-	} else {
-		if err = n.ManipuLayerLinkToRule(ctx, mpl.ID, rl.ID); err != nil {
-			return utils.ErrorHandler(l, span, err, FailManipuLayerLinkToRule)
-		}
+	if err = n.manipuLayerLinkRule(ctx, mpl); err != nil {
+		return err
 	}
 
+	return nil
+}
+
+// manipuLayerInsertNode validates the select expression then creates
+// the :ManipuLayer node, writing the assigned id back into mpl.ID.
+func (n Neo) manipuLayerInsertNode(ctx context.Context, mpl *types.ManipuLayer) error {
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameManipuLayer,
+		"func":    "manipuLayerInsertNode",
+	})
+	defer span.End()
+	// Validate the slice expression at write time so a malformed
+	// select never produces a :ManipuLayer node (per the manipulation
+	// schema spec). This is the single choke point all create paths
+	// pass through; ParseLayerSlice rejects bad syntax / negative
+	// step. Out-of-range bounds depend on the source layer count, so
+	// they remain an apply-time check.
+	if _, err := utils.ParseLayerSlice(mpl.Select); err != nil {
+		return utils.ErrorHandler(l, span, err, FailManipuLayerInvalidSelect)
+	}
+	// Escape the slice expression defensively — users can put
+	// literal "[" and ":" etc. in there, and while the current
+	// ParseLayerSlice grammar rejects quotes, persisting raw avoids
+	// any future surprise if the grammar broadens.
+	key := "mplID"
+	selectEsc := strings.ReplaceAll(mpl.Select, `"`, `\"`)
+	q := fmt.Sprintf(
+		`CREATE (mpl:ManipuLayer {label: "%s", rule: "%s", select: "%s"}) RETURN id(mpl) AS %s`,
+		mpl.Label, mpl.Rule, selectEsc, key,
+	)
+	utils.Debug(l, span, q)
+	res, err := n.Execute(q)
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, FailNeoExecute)
+	}
+	mplID, err := res.GetInt64(key)
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, types.FailBrGet, key)
+	}
+	mpl.ID = mplID
+	return nil
+}
+
+// manipuLayerLinkManifest connects the layer to its source Manifest,
+// resolved by the layer image's digest.
+func (n Neo) manipuLayerLinkManifest(ctx context.Context, mpl *types.ManipuLayer) error {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameManipuLayer,
+		"func":    "manipuLayerLinkManifest",
+	})
+	defer span.End()
+	md, found, err := n.ManifestGetByDigest(ctx, mpl.Image.Digest)
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, FailManifestGetByDigest)
+	}
+	if !found {
+		return utils.NewError(l, span, "failed to get Manifest: %s", mpl.Image.Digest)
+	}
+	if err = n.ManifestLinkToManipulayer(ctx, md.ID, mpl.ID); err != nil {
+		return utils.ErrorHandler(l, span, err, FailManipuLayerLinkToManifest)
+	}
+	return nil
+}
+
+// manipuLayerLinkRule connects the layer to the Rule named by its
+// rule label (with the "=true" suffix trimmed).
+func (n Neo) manipuLayerLinkRule(ctx context.Context, mpl *types.ManipuLayer) error {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameManipuLayer,
+		"func":    "manipuLayerLinkRule",
+	})
+	defer span.End()
+	rLabel := strings.TrimSuffix(mpl.Rule, "=true")
+	utils.Debug(l, span, "RuleGetByLabel: %s", rLabel)
+	rl, found, err := n.RuleGetByLabel(ctx, rLabel)
+	if err != nil {
+		return utils.ErrorHandler(l, span, err, FailRuleGetByLabel)
+	}
+	if !found {
+		return utils.NewError(l, span, "failed to get Rule: %s", rLabel)
+	}
+	if err = n.ManipuLayerLinkToRule(ctx, mpl.ID, rl.ID); err != nil {
+		return utils.ErrorHandler(l, span, err, FailManipuLayerLinkToRule)
+	}
 	return nil
 }
 
