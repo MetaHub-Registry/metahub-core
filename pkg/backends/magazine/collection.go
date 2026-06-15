@@ -51,6 +51,57 @@ func (mag Magazine) NeoLinkCollectionToManifest(ctx context.Context, colID, colT
 	return
 }
 
+// BindManifestToProfile authoritatively binds a manifest to the profile
+// named by a collection entry's explicit `profile:` field. It mirrors
+// the generic Slot/profile wiring the parse path applies for the
+// default profile (Slot HAS_PUSHED + PULLED_BY + rule unwind +
+// deterministic-annotation injection), so the manifest becomes servable
+// under that profile.
+//
+// An unresolved profile label is a hard error: a mis-authored
+// collection should surface loudly rather than silently binding
+// nothing. An empty label is a no-op (caller falls back to the existing
+// image-annotation / generic path).
+func (mag Magazine) BindManifestToProfile(ctx context.Context, repo, tag, profileLabel string, maniDataID int64) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgName,
+		"func":    "BindManifestToProfile",
+		"repo":    repo,
+		"tag":     tag,
+		"profile": profileLabel,
+	})
+	defer span.End()
+	if profileLabel == "" {
+		return nil
+	}
+	prf, found, e := mag.Database.ProfileGetByLabel(ctx, profileLabel)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to resolve collection profile '%s'", profileLabel)
+	}
+	if !found {
+		return utils.NewError(l, span, "collection profile '%s' does not resolve to an existing profile", profileLabel)
+	}
+	slot, e := mag.Database.SlotGetCreate(ctx, repo, tag, profileLabel)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, "SlotGetCreate(%s:%s#%s)", repo, tag, profileLabel)
+	}
+	if e = mag.Database.SlotAppendPushedManifest(ctx, slot.ID, maniDataID); e != nil {
+		return utils.ErrorHandler(l, span, e, "SlotAppendPushedManifest(slot=%d, manifest=%d)", slot.ID, maniDataID)
+	}
+	if e = mag.Database.LinkManifestToProfile(ctx, maniDataID, prf.ID, "PULLED_BY"); e != nil {
+		return utils.ErrorHandler(l, span, e, "LinkManifestToProfile(manifest=%d, profile=%d)", maniDataID, prf.ID)
+	}
+	if e = mag.Database.ProfileUnwindRules(ctx, prf.ID, maniDataID); e != nil {
+		return utils.ErrorHandler(l, span, e, "ProfileUnwindRules(profile=%d, manifest=%d)", prf.ID, maniDataID)
+	}
+	injected, skipped, e := mag.Database.ProfileInjectDeterministicAnnotations(ctx, prf.ID, maniDataID)
+	if e != nil {
+		return utils.ErrorHandler(l, span, e, "ProfileInjectDeterministicAnnotations(profile=%d, manifest=%d)", prf.ID, maniDataID)
+	}
+	utils.Info(l, span, "bound manifest %d to profile '%s' (injected=%d skipped=%d)", maniDataID, profileLabel, injected, skipped)
+	return nil
+}
+
 func (mag Magazine) RemoveCollectionByRequest(ctx context.Context, req types.Request) (found bool, err error) {
 	c := types.NewCollection(req.Repo, req.Tag)
 	return mag.Database.CollectionRemove(ctx, c)

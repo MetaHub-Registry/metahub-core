@@ -302,3 +302,120 @@ are left for Phase 5 deletion, not rewritten.
   profile linkage (`CREATED_BY`/`UPLOADED_BY`), not a direct leaf→OCI edge. Tests
   that verified "a new OCI manifest exists for profile X" were switched to walk
   `(:Manifest)-[:CREATED_BY]->(:Profile)` directly.
+
+## Session: add-manipulayer-select (2026-06, commit 2881016)
+
+ManipuLayer layer selection via Python-style slice expressions. Lets a
+manipulation overlay (e.g. one built `FROM alpine`) skip its own base
+layer when applied on top of an already-alpine target, so the base
+isn't duplicated. Capability: `manipulation-apply-select`.
+
+### The field's path through the stack
+`select` flows YAML (`config.ManipuLayer.Select`) → types
+(`types.ManipuLayer.Select`) → graph (`:ManipuLayer {select}` string
+prop, coalesced to `""` so pre-change nodes round-trip) → DTO →
+metahub-api → metahub-ui chip. Missing/empty `select` = `[:]` (all
+layers) — every existing manipulation YAML keeps its semantics.
+
+### Where the logic lives
+- **`pkg/utils/slice.go`** — `ParseLayerSlice` (syntax only) +
+  `LayerSlice.ApplyIndices`/`ApplyToLayers`. `resolve` translates the
+  parsed slice against a concrete length `n`. Refactored into
+  `resolveSingle` (single-index branch) + `resolveBound` (shared
+  start/end wrap+range-check) to stay under the cognitive-complexity
+  gate (was 20, now 5).
+- **`pkg/backends/neo/manipulayer.go`** — `ManipuLayerCreate` persists
+  the `select` prop. Split into `manipuLayerInsertNode` /
+  `manipuLayerLinkManifest` / `manipuLayerLinkRule` to stay under the
+  complexity gate (was 22, now 9). `manipuLayerInsertNode` calls
+  `ParseLayerSlice` **before** the CREATE so a malformed select never
+  produces a node.
+- **`pkg/backends/magazine/manipulation.go`** —
+  `applyManipuLayerSelect` (line ~700) is the ONLY apply-time caller;
+  resolves indices and threads them through `manipulationParts` so
+  `projectDiffIDs` slices `RootFS.DiffIDs` with the *same* indices as
+  the layer descriptors.
+
+### STRICT semantics (decided this session, diverges from author's original)
+The original merged code used **Python clamping** (out-of-range ranges
+silently resolved to empty). This was tightened to **strict**:
+- Single index out of `[0,n)` → error (`"out of range"`).
+- Range bound (start or end) out of `[0,n]` after negative-wrapping →
+  error (`"out of range"`).
+- Range resolving to empty (`[3:1]`, `[0:0]`, `[5:]` on len 5) →
+  error (`"empty layer set"`).
+- Negative/zero step (`[::-1]`, `[::0]`) → rejected at parse time.
+
+### Two validation points (and the gap that was closed)
+- **Parse time** (`ParseLayerSlice`): syntax/grammar errors. Now also
+  invoked on the **write path** (`manipuLayerInsertNode`) — previously
+  it was ONLY called at apply time, so malformed YAML could create a
+  graph node that only exploded at pull. That gap is closed.
+- **Apply time** (`resolve` against real layer count): out-of-range +
+  empty-result errors. These are length-dependent so they *cannot*
+  move to write time; a syntactically-valid-but-out-of-range select
+  can still create a node and fail only at pull. That matches the
+  spec (parse-time = syntax only).
+
+### Gotchas
+- **Lockstep invariant**: layer descriptors and `RootFS.DiffIDs` MUST
+  be sliced with identical indices or docker's pull-time diff check
+  rejects the image. `projectDiffIDs` enforces it; `nil` indices mean
+  identity/pass-through (DiffIDs untouched).
+- Two distinct error *messages* at the boundary: `[6:]` on 5 →
+  "out of range" (bound beyond length); `[5:]` on 5 → "empty layer
+  set" (in-bounds but selects nothing). Both fail the pull.
+- neo tests need a live Neo4j; the negative write-validation test
+  (`manipulayer_select_test.go`) asserts *before* any `n.Execute`, so
+  it surfaces the parse error regardless of DB state.
+
+## Session: collection-profile-authority (2026-06)
+
+A collection manifest entry's explicit `profile:` field is now the
+authority for which profile a manifest is served under.
+
+### Why
+`docker pull …/qnib/ftest:latest` under `cpu#zen2` returned
+MANIFEST_UNKNOWN even though the CE collection authored
+`profile: cpu#zen2` on the zen2 manifest. Root cause: `config.Manifest`
+had **no `Profile` field**, and yaml.v3 silently drops unknown keys —
+so the authored intent was parsed into nothing. All three ftest
+manifests landed under `generic` only; no `cpu#zen2` slot/annotation
+was ever created.
+
+### What changed
+- `pkg/yaml/config/manifest.go` — added `Profile string
+  \`yaml:"profile,omitempty"\``. Empty = pre-change behaviour.
+- `pkg/backends/magazine/collection.go` — new
+  `Magazine.BindManifestToProfile(repo, tag, profileLabel, mdID)`:
+  resolves the profile and mirrors the generic parse wiring
+  (`SlotGetCreate` + `SlotAppendPushedManifest` + `LinkManifestToProfile`
+  PULLED_BY + `ProfileUnwindRules` + `ProfileInjectDeterministicAnnotations`).
+  The inject step stamps the profile's `anno eq` rules (e.g.
+  `org.supercontainers.hardware.cpu.target.microarch=zen2`) onto the
+  manifest as `HAS_ANNOTATION` edges, which is what
+  `ProfileFromManifestIDViaAnnotations` matches at serve time.
+  Empty label = no-op; unknown label = hard error ("does not resolve").
+- Consumer lives in metahub-admin `cmd/parse_collections.go`: calls
+  `BindManifestToProfile` per manifest entry with a declared profile,
+  then computes the per-declared-profile index after the manifest loop.
+
+### Design note
+The binding logic lives in metalib (not the admin CLI) so it is
+unit-testable against live Neo4j and reusable by the planned
+`MaterializeManifest` unification (see metahub-admin CONTEXT "Future
+Direction"). Tests: `collection_profile_bind_test.go` (inject / empty /
+unknown) + `collection_test.go::TestManifestProfileRoundTrip`.
+
+### Gotchas
+- **Forward-only.** Binding happens at parse/materialize time. An
+  already-stored manifest (e.g. the current ftest zen2 image) will NOT
+  gain the binding until the collection is re-parsed. No in-place
+  migration command exists — re-run `metahub-admin parse collections`
+  after seeding profiles+rules.
+- The explicit `profile:` is *additional* to the generic wiring, not a
+  replacement: the manifest is still wired under `generic` AND bound to
+  its declared profile.
+- A secondary bug is out of scope here: bare profile `zen2` (no `#`)
+  returns 500 instead of 404 when nothing matches — tracked as a
+  metahub-api downstream fix.

@@ -14,11 +14,16 @@
 //
 // ParseLayerSlice validates syntax only. Out-of-range indices against
 // the actual slice length are detected at ApplyTo*-time so callers get
-// a clear error that mentions the observed length. This mirrors how
-// Python raises IndexError only when a concrete single-index access
-// cannot resolve — open-ended ranges silently clamp, while a single
-// explicit index that falls outside the real list is a hard error
-// (matches the "fail the pull" decision for the manipulation schema).
+// a clear error that mentions the observed length.
+//
+// Resolution uses STRICT semantics (it does not mirror Python's silent
+// clamping): any explicitly written bound — single index, range start,
+// or range end — that falls outside [0, n] after negative-wrapping is a
+// hard error, and a range that resolves to an empty layer set is also
+// an error. This implements the manipulation schema's "out-of-range
+// select fails the pull" decision so a misconfigured select surfaces
+// loudly instead of silently producing a truncated or empty image.
+// Only an omitted side of a range keeps its implicit default (0 / n).
 package utils
 
 import (
@@ -128,63 +133,90 @@ func parseRange(orig, startStr, endStr, stepStr string) (LayerSlice, error) {
 }
 
 // resolve translates the stored start/end into concrete indices for
-// an input of length n. Open-ended sides clamp to [0, n]; explicit
-// negative indices wrap relative to n. Returns an error only when a
-// single-index access falls outside [-n, n).
+// an input of length n. Explicit negative indices wrap relative to n;
+// an omitted range side defaults to 0 (start) / n (end). It returns an
+// error when any explicit bound falls outside [0, n] after wrapping,
+// when a single-index access falls outside [0, n), or when a range
+// resolves to an empty set.
 func (ls LayerSlice) resolve(n int) (start, end, step int, err error) {
 	if ls.identity {
 		return 0, n, 1, nil
 	}
 	if ls.single {
-		idx := ls.idx
-		if idx < 0 {
-			idx += n
-		}
-		if idx < 0 || idx >= n {
-			return 0, 0, 1, fmt.Errorf("select [%d]: out of range for input of length %d", ls.idx, n)
-		}
-		return idx, idx + 1, 1, nil
+		return ls.resolveSingle(n)
 	}
-	start = 0
-	end = n
-	step = ls.step
-	if ls.hasStart {
-		start = ls.start
-		if start < 0 {
-			start += n
-		}
+	// Strict semantics: an explicitly written bound that falls
+	// outside [0, n] after negative-wrapping is a hard error so a
+	// misconfigured select fails the pull loudly instead of silently
+	// resolving to a truncated (or empty) layer set. Only the
+	// implicit defaults for an omitted side are left untouched.
+	start, err = resolveBound("start", ls.hasStart, ls.start, 0, n)
+	if err != nil {
+		return 0, 0, 1, err
 	}
-	if ls.hasEnd {
-		end = ls.end
-		if end < 0 {
-			end += n
-		}
+	end, err = resolveBound("end", ls.hasEnd, ls.end, n, n)
+	if err != nil {
+		return 0, 0, 1, err
 	}
-	// Clamp to [0, n]. Python treats out-of-range open slices as
-	// silently empty; we mirror that.
-	start = clamp(start, 0, n)
-	end = clamp(end, 0, n)
-	if end < start {
-		end = start
+	// An empty resolved range (e.g. "[3:1]" or "[0:0]") almost
+	// certainly means a mistyped select — appending zero layers is a
+	// silent footgun, so reject it.
+	if end <= start {
+		return 0, 0, 1, fmt.Errorf("select [%s]: resolves to an empty layer set for input of length %d", ls.rangeString(), n)
 	}
-	return start, end, step, nil
+	return start, end, ls.step, nil
 }
 
-// clamp bounds x into [lo, hi].
-func clamp(x, lo, hi int) int {
-	if x < lo {
-		return lo
+// resolveSingle resolves a single-index access against length n,
+// wrapping a negative index and erroring when it lands outside [0, n).
+func (ls LayerSlice) resolveSingle(n int) (start, end, step int, err error) {
+	idx := ls.idx
+	if idx < 0 {
+		idx += n
 	}
-	if x > hi {
-		return hi
+	if idx < 0 || idx >= n {
+		return 0, 0, 1, fmt.Errorf("select [%d]: out of range for input of length %d", ls.idx, n)
 	}
-	return x
+	return idx, idx + 1, 1, nil
+}
+
+// resolveBound resolves one range bound. When the side is omitted it
+// takes def; otherwise the literal value is negative-wrapped against n
+// and validated to lie within [0, n]. name is used in the error.
+func resolveBound(name string, has bool, lit, def, n int) (int, error) {
+	if !has {
+		return def, nil
+	}
+	v := lit
+	if v < 0 {
+		v += n
+	}
+	if v < 0 || v > n {
+		return 0, fmt.Errorf("select %s %d: out of range for input of length %d", name, lit, n)
+	}
+	return v, nil
+}
+
+// rangeString renders the parsed range back to a readable "N:M" /
+// "N:M:S" form for error messages.
+func (ls LayerSlice) rangeString() string {
+	startStr := ""
+	if ls.hasStart {
+		startStr = strconv.Itoa(ls.start)
+	}
+	endStr := ""
+	if ls.hasEnd {
+		endStr = strconv.Itoa(ls.end)
+	}
+	if ls.step != 1 {
+		return fmt.Sprintf("%s:%s:%d", startStr, endStr, ls.step)
+	}
+	return fmt.Sprintf("%s:%s", startStr, endStr)
 }
 
 // ApplyToLayers returns the subset of layers selected by ls. The
-// input is never mutated. Out-of-range single-index selection is an
-// error; clampable range selection produces the (possibly empty)
-// subset without error.
+// input is never mutated. Out-of-range selection (single index or
+// range bound) and ranges that resolve to an empty set are errors.
 func (ls LayerSlice) ApplyToLayers(in []LayerLike) ([]LayerLike, error) {
 	start, end, step, err := ls.resolve(len(in))
 	if err != nil {
