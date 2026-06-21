@@ -290,7 +290,7 @@ func TestManifestUnlinkConfigAndLayer(t *testing.T) {
 	cfgRes, err := db.Execute(cfgQ)
 	require.NoError(t, err)
 	cfgID, _ := cfgRes.GetInt64("blobID")
-	cfg := types.Config{ID: cfgID, MediaType: "application/vnd.oci.image.config.v1+json"}
+	cfg := types.Config{ID: cfgID, Digest: "sha256:ucfg01", MediaType: "application/vnd.oci.image.config.v1+json"}
 	err = db.ManifestLinkToConfig(ctx, mdID, cfg)
 	require.NoError(t, err)
 
@@ -303,7 +303,7 @@ func TestManifestUnlinkConfigAndLayer(t *testing.T) {
 	lyrRes, err := db.Execute(lyrQ)
 	require.NoError(t, err)
 	lyrID, _ := lyrRes.GetInt64("blobID")
-	lyr := types.Layer{ID: lyrID, MediaType: "application/vnd.oci.image.layer.v1.tar+gzip"}
+	lyr := types.Layer{ID: lyrID, Digest: "sha256:ulyr01", MediaType: "application/vnd.oci.image.layer.v1.tar+gzip"}
 	err = db.ManifestLinkToLayer(ctx, mdID, lyr, 0)
 	require.NoError(t, err)
 

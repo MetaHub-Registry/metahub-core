@@ -137,8 +137,14 @@ func (mag Magazine) ManifestUpsertBackends(ctx context.Context, md *types.Manife
 	if err := mag.Minio.EnsureBlobExists(ctx, md.Config.Digest, md.Config.Data); err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to EnsureBlobExists")
 	}
-	// Make sure config is in Graph
-	if _, found, err := mag.Database.ConfigGetByDigest(ctx, md.Config.Digest); err != nil {
+	// Make sure config is in Graph. CRITICAL: adopt the existing node's
+	// ID in the found branch too. Neo4j internal IDs start at 0, so a
+	// zero-value md.Config.ID is indistinguishable from "the oldest node
+	// in the DB". If left at 0, the downstream ManifestLinkToConfig
+	// (id(c)=0) links the manifest to whatever node happens to be id 0,
+	// producing a phantom config edge and a "layers from manifest don't
+	// match image configuration" pull error.
+	if foundCfg, found, err := mag.Database.ConfigGetByDigest(ctx, md.Config.Digest); err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to ConfigGetByDigest")
 	} else if !found {
 		cfgID, err := mag.Database.ConfigInsert(ctx, md.Config)
@@ -146,10 +152,13 @@ func (mag Magazine) ManifestUpsertBackends(ctx context.Context, md *types.Manife
 			return utils.ErrorHandler(l, span, err, "failed to ConfigInsert")
 		}
 		md.Config.ID = cfgID
+	} else {
+		md.Config.ID = foundCfg.ID
 	}
-	// Make sure layers are in
+	// Make sure layers are in. Same ID-adoption invariant as the config
+	// above: set lyr.ID in the found branch so it is never left at 0.
 	for idx, lyr := range md.Layers {
-		if _, found, err := mag.Database.LayerGetByDigest(ctx, lyr.Digest); err != nil {
+		if foundLyr, found, err := mag.Database.LayerGetByDigest(ctx, lyr.Digest); err != nil {
 			return utils.ErrorHandler(l, span, err, "failed to LayerGetByDigest")
 		} else if !found {
 			lyrID, err := mag.Database.LayerPlainInsert(ctx, lyr)
@@ -157,6 +166,8 @@ func (mag Magazine) ManifestUpsertBackends(ctx context.Context, md *types.Manife
 				return utils.ErrorHandler(l, span, err, "failed to LayerInsert")
 			}
 			lyr.ID = lyrID
+		} else {
+			lyr.ID = foundLyr.ID
 		}
 		md.Layers[idx] = lyr
 	}

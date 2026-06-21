@@ -581,3 +581,64 @@ func TestCacheUpstream(t *testing.T) {
 		assert.Equal(t, up.Digest.String(), md.Upstream.Digest.String())
 	}
 }
+
+// TestManifestUpsertBackendsAdoptsExistingConfigID guards the regression
+// where ManifestUpsertBackends left md.Config.ID at its zero value when the
+// config blob already existed in the graph (the found branch). Because
+// Neo4j internal IDs start at 0, the subsequent ManifestLinkToConfig
+// (id(c)=0) silently linked the manifest to the OLDEST node in the DB,
+// producing a phantom config edge and a "layers from manifest don't match
+// image configuration" docker pull error on every re-parse.
+func TestManifestUpsertBackendsAdoptsExistingConfigID(t *testing.T) {
+	ctx := context.Background()
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:arm64")
+	bs.SetEmptyAll()
+	br, err := mag.SetupTest(ctx, bs)
+	if err != nil {
+		TeardownTest(bs, br)
+		t.Fatal(err)
+	}
+	defer TeardownTest(bs, br)
+
+	// Prime the graph so the config blob already exists.
+	if e := mag.CacheUpstream(ctx, types.UpstreamGlow150ARM64); e != nil {
+		t.Fatal(e)
+	}
+	req := types.Request{
+		Host: types.UpstreamGlow150ARM64.Reg,
+		Repo: types.UpstreamGlow150ARM64.Repo,
+		Tag:  types.UpstreamGlow150ARM64.Tag,
+	}
+	md, found, err := mag.Database.ManifestGetTypesByRequest(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("manifest data not found")
+	}
+	if md.Config.Digest == "" {
+		t.Fatal("precondition: cached manifest must carry a config digest")
+	}
+	wantCfgDigest := md.Config.Digest
+
+	// Simulate the idempotent re-parse: a freshly-parsed manifest carries
+	// a zero-value Config.ID. The found branch must adopt the existing
+	// node's ID rather than leaving it at 0.
+	md.Config.ID = 0
+	if e := mag.ManifestUpsertBackends(ctx, &md); e != nil {
+		t.Fatal(e)
+	}
+	assert.NotZero(t, md.Config.ID, "ManifestUpsertBackends must adopt the existing config node ID, not leave it at 0")
+
+	// The manifest must still resolve to its OWN config digest.
+	gotCfg, found, err := mag.Database.ConfigGetByManiDataID(ctx, md.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("config not found for manifest after re-upsert")
+	}
+	assert.Equal(t, wantCfgDigest, gotCfg.Digest, "manifest must resolve to its own config, not a phantom (node id 0)")
+}

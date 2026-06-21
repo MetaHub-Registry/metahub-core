@@ -1084,8 +1084,21 @@ func (n Neo) ManifestLinkToConfig(ctx context.Context, maniID int64, cfg types.C
 		err = utils.ErrorHandler(l, span, fmt.Errorf("%s", FailMediaTypeEmpty), "")
 		return
 	}
+	// Match the config by its content DIGEST, not by the in-memory node
+	// ID. Neo4j internal IDs start at 0 and are reused after deletes, so a
+	// zero-value cfg.ID (an unresolved config) is indistinguishable from
+	// "the node with id 0" — linking to id(c)=0 silently bound manifests
+	// to whatever node happened to be id 0 (a phantom config), causing a
+	// "layers from manifest don't match image configuration" pull error.
+	// The digest is the content-addressable identity and cannot be
+	// confused this way. Callers must ensure the config blob exists first
+	// (see ManifestUpsertBackends / createManifest).
+	if cfg.Digest == "" {
+		err = utils.NewError(l, span, "refusing to link manifest %d to config with empty digest", maniID)
+		return
+	}
 	mt := utils.ShortenMediaType(cfg.MediaType)
-	q := fmt.Sprintf(`MATCH (m:Manifest),(c:Blob) WHERE id(m) = %d AND id(c) = %d`, maniID, cfg.ID)
+	q := fmt.Sprintf(`MATCH (m:Manifest),(c:Blob) WHERE id(m) = %d AND c.digest = "%s"`, maniID, cfg.Digest)
 	q += fmt.Sprintf(` MERGE (m)-[:%s]->(c)`, mt)
 	q += fmt.Sprintf(` SET c.mediaType = "%s", c.type = "config"`, cfg.MediaType)
 	utils.Debug(l, span, q)
@@ -1112,8 +1125,15 @@ func (n Neo) ManifestLinkToLayer(ctx context.Context, maniID int64, layer types.
 	if layer.MediaType == "" {
 		return utils.NewError(l, span, FailMediaTypeEmpty)
 	}
+	// Match the layer by content DIGEST, not the in-memory node ID (see
+	// ManifestLinkToConfig for why id-based matching is unsafe: id 0 is a
+	// valid, reusable Neo4j node id and collides with the zero-value of an
+	// unresolved layer).
+	if layer.Digest == "" {
+		return utils.NewError(l, span, "refusing to link manifest %d to layer with empty digest", maniID)
+	}
 	_ = ctx
-	q := fmt.Sprintf(`MATCH (m:Manifest),(l:Blob) WHERE id(m) = %d AND id(l) = %d`, maniID, layer.ID)
+	q := fmt.Sprintf(`MATCH (m:Manifest),(l:Blob) WHERE id(m) = %d AND l.digest = "%s"`, maniID, layer.Digest)
 	q += fmt.Sprintf(` MERGE (m)-[:HAS_LAYER {order: %d, mediaType: "%s"}]->(l)`, idx, layer.MediaType)
 	q += fmt.Sprintf(` SET l.mediaType = "%s", l.type = "layer"`, layer.MediaType)
 
@@ -1133,7 +1153,7 @@ func (n Neo) ManifestLinkToLayer(ctx context.Context, maniID int64, layer types.
 		}
 		a.ID = aID
 		// TODO: Create ManifestLinkToAnnotation function?
-		q := fmt.Sprintf(`MATCH (l:Blob), (a:Annotation) WHERE id(l) = %d AND id(a) = %d MERGE (l)-[:HAS_ANNOTATION]->(a)`, layer.ID, aID)
+		q := fmt.Sprintf(`MATCH (l:Blob), (a:Annotation) WHERE l.digest = "%s" AND id(a) = %d MERGE (l)-[:HAS_ANNOTATION]->(a)`, layer.Digest, aID)
 		utils.Debug(l, span, q)
 		_, e = n.Execute(q)
 		if e != nil {
