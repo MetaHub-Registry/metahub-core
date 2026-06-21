@@ -51,19 +51,16 @@ func TestCEGlowExtendedParses(t *testing.T) {
 	}
 	assert.Equal(t, "layer/glow-extended#1.5.0", mp.Label)
 	def := mp.DefaultConfig()
-	// Fixture was retargeted earlier in the session to use /tmp and a
-	// non-glow workdir so it also serves as the compose-stack
-	// verification sample. Keep the assertion loose-but-present:
-	// workdir + user must be set, commands must carry a valid op.
-	assert.NotEmpty(t, def.Workdir, "default workdir must be set")
-	assert.NotEmpty(t, def.User, "default user must be set")
+	// The fixture injects hpc3-help as the entrypoint and hands off to
+	// the base image's intended program (entry.sh) as the cmd, so the
+	// help renders once and then the original execution flows. Pinning
+	// `bash` as the cmd loops, so entry.sh is the expected hand-off.
 	require.NotNil(t, def.Entrypoint)
-	// Fixture op strings vary over time (replace/append depending on
-	// the current use-case). Check the op is one of the accepted
-	// values rather than pinning a specific word.
-	assert.Contains(t, []string{"replace", "prepend", "append"}, def.Entrypoint.Op)
+	assert.Equal(t, "replace", def.Entrypoint.Op)
+	assert.Equal(t, []string{"/usr/bin/hpc3-help"}, def.Entrypoint.Value)
 	require.NotNil(t, def.Cmd)
-	assert.Contains(t, []string{"replace", "prepend", "append"}, def.Cmd.Op)
+	assert.Equal(t, "replace", def.Cmd.Op)
+	assert.Equal(t, []string{"/usr/bin/entry.sh"}, def.Cmd.Value)
 	variants := mp.NormalizedVariants()
 	require.Len(t, variants, 2)
 	require.Contains(t, variants, "arch:amd64=true")
