@@ -58,7 +58,7 @@ func TestManifestCRUDWorkflow(t *testing.T) {
 	res, err := db.Execute(q)
 	require.NoError(t, err)
 	cfgID, _ := res.GetInt64("blobID")
-	cfg := types.Config{ID: cfgID, MediaType: "application/vnd.oci.image.config.v1+json"}
+	cfg := types.Config{ID: cfgID, Digest: "sha256:cfgcrud01", MediaType: "application/vnd.oci.image.config.v1+json"}
 	err = db.ManifestLinkToConfig(ctx, mdID, cfg)
 	require.NoError(t, err)
 
@@ -71,7 +71,7 @@ func TestManifestCRUDWorkflow(t *testing.T) {
 	res2, err := db.Execute(q2)
 	require.NoError(t, err)
 	lyrID, _ := res2.GetInt64("blobID")
-	lyr := types.Layer{ID: lyrID, MediaType: "application/vnd.oci.image.layer.v1.tar+gzip"}
+	lyr := types.Layer{ID: lyrID, Digest: "sha256:lyrcrud01", MediaType: "application/vnd.oci.image.layer.v1.tar+gzip"}
 	err = db.ManifestLinkToLayer(ctx, mdID, lyr, 0)
 	require.NoError(t, err)
 
