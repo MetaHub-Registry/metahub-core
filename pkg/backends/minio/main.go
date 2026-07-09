@@ -42,6 +42,12 @@ type BucketConfig struct {
 	Password   string
 	Redirect   bool
 	Ssl        bool
+	// PublicURL / PublicSsl address the client-reachable endpoint used only to
+	// SIGN presigned URLs; internal object ops use Client (URL/Ssl). Empty
+	// PublicURL means "same as internal" (PresignClient == Client).
+	PublicURL     string
+	PublicSsl     bool
+	PresignClient *minio.Client
 }
 
 func (m Minio) BucketConfigString() string {
@@ -102,12 +108,14 @@ func NewMinio(cfgFile string) (m Minio, err error) {
 		},
 	}
 	bc := BucketConfig{
-		URL:      viper.GetString("minio.url"),
-		Region:   viper.GetString("minio.region"),
-		User:     viper.GetString("minio.user"),
-		Password: viper.GetString("minio.password"),
-		Redirect: viper.GetBool("minio.redirect"),
-		Ssl:      viper.GetBool("minio.ssl"),
+		URL:       viper.GetString("minio.url"),
+		Region:    viper.GetString("minio.region"),
+		User:      viper.GetString("minio.user"),
+		Password:  viper.GetString("minio.password"),
+		Redirect:  viper.GetBool("minio.redirect"),
+		Ssl:       viper.GetBool("minio.ssl"),
+		PublicURL: viper.GetString("minio.public_url"),
+		PublicSsl: viper.GetBool("minio.public_ssl"),
 	}
 
 	for _, v := range reflect.ValueOf(m.BucketConfig).MapKeys() {
@@ -157,6 +165,24 @@ func NewMinio(cfgFile string) (m Minio, err error) {
 		} else {
 			bCfg.Ssl = bc.Ssl
 		}
+		// Public presign endpoint: per-bucket key, then global minio.public_url,
+		// then fall back to the internal URL (identity — no separate presign host).
+		key = fmt.Sprintf("minio.%s.public_url", b)
+		if viper.IsSet(key) {
+			bCfg.PublicURL = viper.GetString(key)
+		} else if bc.PublicURL != "" {
+			bCfg.PublicURL = bc.PublicURL
+		} else {
+			bCfg.PublicURL = bCfg.URL
+		}
+		key = fmt.Sprintf("minio.%s.public_ssl", b)
+		if viper.IsSet(key) {
+			bCfg.PublicSsl = viper.GetBool(key)
+		} else if viper.IsSet("minio.public_ssl") {
+			bCfg.PublicSsl = bc.PublicSsl
+		} else {
+			bCfg.PublicSsl = bCfg.Ssl
+		}
 		m.BucketConfig[b] = bCfg
 	}
 	return
@@ -184,6 +210,24 @@ func (m Minio) ConnectClients() (err error) {
 			return
 		}
 		bCfg.Client = cli
+		// Build a dedicated presign client bound to the PUBLIC endpoint. Presigning
+		// is offline (no connection), so this client only needs endpoint+creds+region.
+		// When the public endpoint matches the internal one, reuse the same client.
+		if bCfg.PublicURL == "" || (bCfg.PublicURL == bCfg.URL && bCfg.PublicSsl == bCfg.Ssl) {
+			bCfg.PresignClient = cli
+		} else {
+			pcli, pe := minio.New(bCfg.PublicURL, &minio.Options{
+				Creds:  credentials.NewStaticV4(bCfg.User, bCfg.Password, ""),
+				Secure: bCfg.PublicSsl,
+				Region: bCfg.Region,
+			})
+			if pe != nil {
+				logrus.Errorf("Error creating minio presign client: %v\n %s\n", bCfg, pe)
+				err = pe
+				return
+			}
+			bCfg.PresignClient = pcli
+		}
 		m.BucketConfig[b] = bCfg
 	}
 	return

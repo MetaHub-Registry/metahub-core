@@ -195,7 +195,12 @@ func (m Minio) BlobGetPreSignedUrl(ctx context.Context, dig string) (psUrl strin
 		"func":    "BlobGetPreSignedUrl",
 	})
 	bucket := m.GetBlobBucketName()
-	cli := m.BucketConfig[GetBlobBucketKey()].Client
+	// Sign with the PUBLIC presign client so the URL host is client-reachable.
+	// Falls back to the internal client when no public endpoint is configured.
+	cli := m.BucketConfig[GetBlobBucketKey()].PresignClient
+	if cli == nil {
+		cli = m.BucketConfig[GetBlobBucketKey()].Client
+	}
 	reqParams := make(url.Values)
 	psU, err := cli.PresignedGetObject(
 		context.Background(),
