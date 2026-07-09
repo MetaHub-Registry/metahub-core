@@ -1,6 +1,23 @@
 # Context: metalib
 
 > This file helps AI agents understand the repo quickly.
+
+## model-centric-pull (session isc-session-v2, 2026-07-07) — branch `132-isc-session-v2`
+
+Complete metalib foundation for model-centric pull (`docker run …/models/<org>/<name>:<quant>`).
+All slices additive / tested / pushed.
+
+**Commits & key files:**
+- `cc1cf8a` Hardware schema — `pkg/types/hardware.go` (`IsModelServing`/`VRAMBytes`/`FieldMap`); added to `config.Profile` (`pkg/yaml/config/profiles.go`) + `types.Profile`.
+- `da2fa57` Neo persistence — `pkg/backends/neo/profile_hardware.go` (pure `hardwareCreateProps`/`hardwareFromResult`) wired into `CreateProfile` + `returnStatementProfile` + `ProfileFromResult`.
+- `73e90cb` `ResolveModelServe(quants, label, capacityBytes, namedQuant, headroom)` — capacity from `hardware.gpu.vram_gb`; **dropped `ParseAggregatedProfile`/`vramTierRe`**. Gate in `magazine/manipulation.go` = `prf.Hardware.IsModelServing()`.
+- `859a195` override engine — `pkg/utils/expr_override.go` (`RuleSpecificity`, `EvalHardwareRule`), `pkg/types/override.go` (`ResolveOverride`).
+- `ca9f864` `models/` loader — `pkg/yaml/config/models.go` (`FindModels`/`Model`/`Validate`).
+- `1194295` (#8) quant threading — `pkg/types/request_context.go` (`WithRequestedQuant`), read in `tryApplyModelManipulation`.
+
+**Gotchas:** lep equality is a single `=` (NOT `==`, which fails to parse). `ProfileGetInsert` writes Hardware on CREATE only. `returnStatementProfile` projects `hw_*` → all its queries must alias the Profile node as `prf`.
+
+**Next (#8):** metahub-api rewrites `models/<name>:<tag>` → the model's runtime collection + `ctx=WithRequestedQuant(tag)`; the existing manipulation engine injects model+config. See DevDiary `2026-07-07-1438-model-centric-pull-implementation`.
 > Updated after each session that modifies this repo.
 
 ## What This Repo Is

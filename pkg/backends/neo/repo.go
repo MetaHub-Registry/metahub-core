@@ -336,7 +336,7 @@ func (n Neo) CollectionGetCreateByRepoTag(ctx context.Context, repo, tag string)
 		"tag":     tag,
 	})
 	defer span.End()
-	ct, err := n.CollectionTagGetCreate(ctx, tag)
+	ct, err := n.CollectionTagGetCreate(ctx, repo, tag)
 	if err != nil {
 		err = utils.ErrorHandler(l, span, err, "failed to get collection tag")
 		return
@@ -366,7 +366,10 @@ func (n Neo) CollectionGetCreateByRepoTag(ctx context.Context, repo, tag string)
 // MERGEd first so the function is safe to call even before any other path
 // has created them. Idempotent — calling it twice is a no-op.
 func (n Neo) RepoLinkTag(ctx context.Context, repo, tag string) error {
-	q := fmt.Sprintf(`MERGE (c:Repo {repo: "%s"}) MERGE (t:Tag {name: "%s"}) MERGE (c)-[:HAS_TAG]->(t)`, repo, tag)
+	// Tag is per-collection: keyed on {name, repo} so a bare `latest` is not a
+	// single global node shared by every collection (which fanned every
+	// collection's manifests into every other via Repo→HAS_TAG→Tag→REF→Index).
+	q := fmt.Sprintf(`MERGE (c:Repo {repo: "%s"}) MERGE (t:Tag {name: "%s", repo: "%s"}) MERGE (c)-[:HAS_TAG]->(t)`, repo, tag, repo)
 	if _, err := n.Execute(q); err != nil {
 		return fmt.Errorf("RepoLinkTag: %w", err)
 	}

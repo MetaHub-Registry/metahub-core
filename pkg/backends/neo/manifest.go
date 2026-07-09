@@ -1133,7 +1133,15 @@ func (n Neo) ManifestLinkToLayer(ctx context.Context, maniID int64, layer types.
 		return utils.NewError(l, span, "refusing to link manifest %d to layer with empty digest", maniID)
 	}
 	_ = ctx
-	q := fmt.Sprintf(`MATCH (m:Manifest),(l:Blob) WHERE id(m) = %d AND l.digest = "%s"`, maniID, layer.Digest)
+	// Bind exactly ONE canonical :Blob for the digest. Historically a graph may
+	// hold duplicate :Blob nodes sharing a digest (pre-idempotent-MERGE pushes);
+	// a bare `MATCH (l:Blob) WHERE l.digest=…` then fans out and links the layer
+	// once PER duplicate node, inflating the manifest's layer count above its
+	// config DiffIDs → docker rejects the composed image. Pinning to the
+	// lowest-id node keeps the link single and deterministic regardless of dups.
+	q := fmt.Sprintf(`MATCH (m:Manifest) WHERE id(m) = %d`, maniID)
+	q += fmt.Sprintf(` MATCH (l:Blob) WHERE l.digest = "%s"`, layer.Digest)
+	q += ` WITH m, l ORDER BY id(l) LIMIT 1`
 	q += fmt.Sprintf(` MERGE (m)-[:HAS_LAYER {order: %d, mediaType: "%s"}]->(l)`, idx, layer.MediaType)
 	q += fmt.Sprintf(` SET l.mediaType = "%s", l.type = "layer"`, layer.MediaType)
 

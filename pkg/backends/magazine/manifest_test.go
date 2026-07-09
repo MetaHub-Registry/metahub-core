@@ -638,6 +638,94 @@ func TestStoreManifestUpload_WiresSlot(t *testing.T) {
 	}
 }
 
+// TestStoreManifestUpload_WiresSubject is the regression guard for the model
+// composition bug: an *image* manifest pushed via StoreManifestUpload that
+// carries an OCI `subject` (the shape `metahub-admin repackage` emits for a
+// model-config artefact, whose subject is the model-layer manifest) MUST get a
+// (manifest)-[:SUBJECT_OF]->(subject) edge so referrers(subject) — and thus
+// model compositions — resolve. Previously only StoreManifestArtifactUpload
+// wired the subject, so subject-bearing image manifests silently lost the edge
+// and compositions came back empty.
+func TestStoreManifestUpload_WiresSubject(t *testing.T) {
+	bs := utils.NewBootstrap()
+	debug := 0
+	bs.SetEmptyAll()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("users")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("profile:profiles/cpu/generic.yaml")
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := mag.SetupTest(ctx, bs)
+	if err != nil {
+		TeardownTest(bs, br)
+		t.Fatal(err)
+	}
+	defer TeardownTest(bs, br)
+
+	// A minimal OCI image manifest (embedded config, no layers). %s is either
+	// empty (the subject-target manifest) or a subject descriptor (the config
+	// manifest). Both go through the image path — IsArtifact() is false because
+	// the config is a real image config — which is exactly the path that lost
+	// the subject edge before this fix.
+	baseManifest := `{
+			"schemaVersion": 2,
+			"mediaType": "application/vnd.oci.image.manifest.v1+json",
+			"config": {
+				"mediaType": "application/vnd.oci.image.config.v1+json",
+				"digest": "sha256:65b1de14a76de70a46ff0839ab79775aceb96ee12069fb6ed45bc35f958fdbcb",
+				"size": 129,
+				"data": "ewoJImF1dGhvciI6ICJkbkljNHRjODBPNUxwNTk4IiwKCSJhcmNoaXRlY3R1cmUiOiAiYW1kNjQiLAoJIm9zIjogImxpbnV4IiwKCSJyb290ZnMiOiB7CgkJInR5cGUiOiAibGF5ZXJzIiwKCQkiZGlmZl9pZHMiOiBbXQoJfQp9"
+			},
+			"layers": []%s
+			}`
+
+	// 1. Push the subject-target ("model-layer") manifest.
+	targetReq := types.Request{
+		Repo: "qnib/subject-target", Tag: "v1", Profile: "cpu#generic",
+		User: "oci", ContentType: "application/vnd.oci.image.manifest.v1+json",
+	}
+	targetMani, err := mag.StoreManifestUpload(ctx, targetReq, []byte(fmt.Sprintf(baseManifest, "")))
+	if err != nil {
+		t.Fatalf("push subject-target: %v", err)
+	}
+
+	// 2. Push a "config" manifest whose OCI subject points at the target.
+	subjectFragment := fmt.Sprintf(`,
+			"subject": {
+				"mediaType": "application/vnd.oci.image.manifest.v1+json",
+				"digest": "%s",
+				"size": 100
+			}`, targetMani.Digest)
+	cfgReq := types.Request{
+		Repo: "qnib/subject-config", Tag: "v1", Profile: "cpu#generic",
+		User: "oci", ContentType: "application/vnd.oci.image.manifest.v1+json",
+	}
+	cfgMani, err := mag.StoreManifestUpload(ctx, cfgReq, []byte(fmt.Sprintf(baseManifest, subjectFragment)))
+	if err != nil {
+		t.Fatalf("push subject-config: %v", err)
+	}
+	assert.NotZero(t, cfgMani.ID, "pushed config manifest should have a non-zero ID")
+
+	// The config manifest must now carry a SUBJECT_OF edge to the target.
+	q := fmt.Sprintf(
+		`MATCH (m:Manifest)-[:SUBJECT_OF]->(s:Manifest) WHERE id(m) = %d RETURN s.digest AS subjectDigest`,
+		cfgMani.ID,
+	)
+	res, found, err := mag.Database.QueryOne(q)
+	if err != nil {
+		t.Fatalf("SUBJECT_OF query: %v", err)
+	}
+	assert.True(t, found, "StoreManifestUpload must wire a SUBJECT_OF edge for a subject-bearing image manifest")
+	if found {
+		got, _ := res.GetStr("subjectDigest")
+		assert.Equal(t, targetMani.Digest, got, "SUBJECT_OF must point at the manifest's declared subject")
+	}
+}
+
 // Note: an earlier draft of this test file had a
 // `TestStoreManifestUpload_EmptyProfileSkipsSlot` test that asserted
 // the Slot wiring was a no-op for empty req.Profile. It was removed

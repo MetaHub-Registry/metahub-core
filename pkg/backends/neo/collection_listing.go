@@ -135,6 +135,22 @@ func (n Neo) CollectionListingGetByRepoLike(ctx context.Context, repo string) (c
 	q += `     WHERE cfg.type = "config" AND cfg.mediaType IN ` + cfgFilter
 	q += `   }`
 	q += ` )`
+	// Exclude repackaged model/config images (models/<name>-layer, -config): each is
+	// the UPSTREAM of a `model/<name>`/`config/<name>` manipulation's layer and
+	// belongs in the Models tab, not Collections. Covers both the flat (HAS) and
+	// the multi-quant variant (HAS_VARIANT→ManipuConfig→HAS_LAYER) layer paths.
+	// Graph-native (no naming assumption).
+	q += ` AND NOT EXISTS {`
+	q += `   MATCH (mpM:Manipulation)-[:HAS|HAS_DEFAULT|HAS_VARIANT]->(mn)-[:UPSTREAM|HAS_LAYER*1..2]->(u:Upstream)`
+	q += `   WHERE (mpM.label STARTS WITH "model/" OR mpM.label STARTS WITH "config/") AND u.repo = c.repo`
+	q += ` }`
+	// Exclude a model's SOURCE artefact repo — the subject of a model-layer's OCI
+	// subject ref. The model surfaces in the Models tab (the card links back to the
+	// source), so its source should not also clutter Collections.
+	q += ` AND NOT EXISTS {`
+	q += `   MATCH (mpM:Manipulation)-[:HAS|HAS_DEFAULT|HAS_VARIANT]->(mn)-[:UPSTREAM|HAS_LAYER*1..2]->(u:Upstream)<-[:ORIGINAL]-(:Manifest)-[:SUBJECT_OF]->(:Manifest)<-[:HAS_PUSHED]-(:Slot)-[:OF_REPO]->(c)`
+	q += `   WHERE mpM.label STARTS WITH "model/"`
+	q += ` }`
 	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
 	query := fmt.Sprintf(q, repo)
 	utils.Debug(l, span, query)

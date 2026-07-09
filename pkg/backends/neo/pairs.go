@@ -217,9 +217,42 @@ func (n Neo) collectionTagProfilePairFromResult(ctx context.Context, res []types
 				return ctpps, err
 			}
 		}
+		// Explicit-pin exclusivity: record every non-generic `profile:`
+		// binding for this collection so FilterByCTPP drops manifests
+		// pinned to another profile from this profile's computed index.
+		n.applyCollectionPins(ctx, l, span, &ctpp, c.Repo, t.Tag)
 		utils.Debug(l, span, "add ctpp: %s", ctpp.String())
 		ctpps = append(ctpps, ctpp)
 	}
 	utils.Debug(l, span, "returned %d ctpps", len(ctpps))
 	return
+}
+
+// applyCollectionPins records, on the CTPP, every explicit (non-generic)
+// profile a manifest is pinned to within the (repo, tag) collection —
+// derived from Slot{repo,tag,profile≠generic}-[:HAS_PUSHED]->md edges. The
+// pins drive types.CollectionTagProfilePair pin-exclusivity in FilterByCTPP.
+// Best-effort: any failure is warned and leaves the pin set empty/partial,
+// degrading to the historical rule-union membership rather than erroring.
+func (n Neo) applyCollectionPins(ctx context.Context, l *logrus.Entry, span trace.Span, ctpp *types.CollectionTagProfilePair, repo, tag string) {
+	slots, err := n.SlotGetAllForRepoTag(ctx, repo, tag)
+	if err != nil {
+		utils.Warn(l, span, "applyCollectionPins: SlotGetAllForRepoTag(%s:%s) failed (non-fatal, pin-exclusivity off): %v", repo, tag, err)
+		return
+	}
+	for _, slot := range slots {
+		// "generic"/"" is the non-exclusive multi-arch default;
+		// AddPinnedProfile ignores it, and we skip the HAS_PUSHED walk here.
+		if slot.Profile == "" || slot.Profile == "generic" {
+			continue
+		}
+		slotMds, e := n.ManifestGetAllForSlot(ctx, slot.ID)
+		if e != nil {
+			utils.Warn(l, span, "applyCollectionPins: ManifestGetAllForSlot(%d) failed (non-fatal): %v", slot.ID, e)
+			continue
+		}
+		for _, md := range slotMds {
+			ctpp.AddPinnedProfile(fmt.Sprintf("%d", md.ID), slot.Profile)
+		}
+	}
 }

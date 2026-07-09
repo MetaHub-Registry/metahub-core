@@ -1,9 +1,11 @@
 package magazine
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/opencontainers/go-digest"
@@ -165,6 +167,73 @@ func TestStoreBlobUpload(t *testing.T) {
 		t.Fatal(err)
 	} else {
 		assert.True(t, found)
+	}
+}
+
+// TestStoreBlobUploadReader exercises the streaming (constant-memory) blob store
+// used for monolithic model-layer PUTs: the body is streamed to MinIO under the
+// expected digest and verified — a wrong expected digest must fail without
+// persisting the blob.
+func TestStoreBlobUploadReader(t *testing.T) {
+	ctx := context.Background()
+	l, c, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"func": "TestStoreBlobUploadReader",
+	})
+	ctx = c
+	defer span.End()
+	debug := 0
+	bs := utils.NewBootstrap()
+	bs.AddSpan(span)
+	bs.SetEmptyAll()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("users")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("rules:rules/generic/linux.yaml")
+	bs.AddBootstrap("profile:profiles/generic.yaml")
+	if debug > 0 {
+		bs.PostTestSleep = debug
+	}
+	br, err := mag.SetupTest(ctx, bs)
+	if err != nil {
+		TeardownTest(bs, br)
+		t.Fatal(err)
+	}
+	defer TeardownTest(bs, br)
+
+	bu, buff := types.FTarmBlobUploadConfig()
+	bu.Digest = digest.FromBytes(buff).String()
+	utils.Debug(l, span, "Create BlobUpload + chunk")
+	if err := mag.Database.BlobUploadCreateByOCI(ctx, &bu); err != nil {
+		t.Fatal(err)
+	}
+	chunk, err := mag.Database.UploadChunkCreate(ctx, &bu, 0, int64(len(buff)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	utils.Debug(l, span, "Streaming blob (constant memory)")
+	if err := mag.StoreBlobUploadReader(ctx, &bu, bytes.NewReader(buff), int64(len(buff))); err != nil {
+		t.Fatal(err)
+	}
+	if err := mag.ComposeFromChunks(ctx, &bu, []types.BlobChunk{chunk}); err != nil {
+		t.Fatal(err)
+	}
+	dt := types.DataTupeFTConfigArm64()
+	upt, err := upstream.UpstreamToUpstreamTriple(dt.Upstream, types.MediaTypeImageConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upt.Digest = digest.Digest(bu.Digest)
+	if found, err := mag.BlobExists(ctx, upt); err != nil {
+		t.Fatal(err)
+	} else {
+		assert.True(t, found)
+	}
+	// A wrong expected digest must be rejected (and not persisted).
+	bad := bu
+	bad.Digest = "sha256:" + strings.Repeat("0", 64)
+	if err := mag.StoreBlobUploadReader(ctx, &bad, bytes.NewReader(buff), int64(len(buff))); err == nil {
+		t.Fatal("expected digest-mismatch error, got nil")
 	}
 }
 

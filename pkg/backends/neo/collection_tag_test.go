@@ -21,17 +21,17 @@ func TestCollectionTagCRUD(t *testing.T) {
 	}
 	defer db.TeardownTest(bs, br)
 	// Actual test
-	_, found, err := db.CollectionTagGetByTag("test")
+	_, found, err := db.CollectionTagGetByTag("qnib/tagtest", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.False(t, found)
-	ct_got, err := db.CollectionTagGetCreate(ctx, "test")
+	ct_got, err := db.CollectionTagGetCreate(ctx, "qnib/tagtest", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.NotNil(t, ct_got.ID)
-	ct_got2, err := db.CollectionTagGetCreate(ctx, "test")
+	ct_got2, err := db.CollectionTagGetCreate(ctx, "qnib/tagtest", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,12 +75,12 @@ func TestCollectionTagLinkCollection(t *testing.T) {
 	}
 	defer db.TeardownTest(bs, br)
 	// Actual test
-	_, found, err := db.CollectionTagGetByTag("test")
+	_, found, err := db.CollectionTagGetByTag("qnib/featuretest", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.False(t, found)
-	ct_got, err := db.CollectionTagGetCreate(ctx, "test")
+	ct_got, err := db.CollectionTagGetCreate(ctx, "qnib/featuretest", "test")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -25,7 +25,7 @@ const (
 )
 
 var (
-	returnStatementProfile = `id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule, prf.label AS profileLabel`
+	returnStatementProfile = `id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule, prf.label AS profileLabel` + hardwareReturnFields
 )
 
 func (n Neo) ProfileGetInsert(ctx context.Context, p *types.Profile) (err error) {
@@ -304,12 +304,12 @@ func (n Neo) GetProfile(prf types.Profile) (prfID int64, success bool, err error
 }
 
 func (n Neo) CreateProfile(prf types.Profile) (prfID int64, err error) {
-	q := `CREATE (n:Profile {name: "%s", tag: "%s", label: "%s", rule: "%s"}) RETURN id(n) AS ID`
+	q := `CREATE (n:Profile {name: "%s", tag: "%s", label: "%s", rule: "%s"%s}) RETURN id(n) AS ID`
 	label := fmt.Sprintf("%s#%s", prf.Name, prf.Tag)
 	if prf.Name == "" {
 		label = prf.Tag
 	}
-	query := fmt.Sprintf(q, prf.Name, prf.Tag, label, prf.Rule)
+	query := fmt.Sprintf(q, prf.Name, prf.Tag, label, prf.Rule, hardwareCreateProps(prf.Hardware))
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	result, err := session.Run(query, map[string]interface{}{})
@@ -375,6 +375,7 @@ func (n Neo) ProfileFromResult(res types.Result) (p types.Profile, err error) {
 		Rule:          profileRule,
 		Label:         profileLabel,
 		Manipulations: []types.Manipulation{},
+		Hardware:      hardwareFromResult(res),
 	}
 	// TODO: Evaluate the rule string and get the rules attached?
 	/*
@@ -906,6 +907,7 @@ func (n Neo) ProfileFromYAML(ctx context.Context, p config.Profile) (prf types.P
 		Tag:           p.Tag,
 		Rule:          p.Rule,
 		Manipulations: mps,
+		Hardware:      p.Hardware, // carry the hardware block → model-serving capability + capacity
 	}
 	return
 }

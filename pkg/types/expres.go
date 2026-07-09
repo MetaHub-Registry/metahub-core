@@ -161,11 +161,20 @@ func (er ExprRes) FilterByCTPP(ctx context.Context, ctpp CollectionTagProfilePai
 		}
 		utils.Debug(l, span, "  Parsed manifestdata id: %d", id)
 		if md, ok := er.ManiMap[id]; ok {
-			if ctpp.ManifestIDs.Contains(mdID) {
+			switch {
+			case !ctpp.ManifestIDs.Contains(mdID):
+				utils.Debug(l, span, "  Skipping manifestdata: %s not in CTTP manifestIDs", md.Label)
+			case ctpp.pinnedElsewhere(mdID):
+				// Explicit-pin exclusivity: the manifest carries a
+				// `profile:` binding to a different profile within this
+				// collection, so it belongs to that profile's index only.
+				// A broad rule-union hit (e.g. os:linux) — even a more
+				// specific one — must not pull it into this profile's
+				// index. See CollectionTagProfilePair.PinnedProfiles.
+				utils.Debug(l, span, "  Skipping manifestdata: %s pinned to another profile (not '%s')", md.Label, ctpp.Profile.Label)
+			default:
 				utils.Debug(l, span, "  Adding manifestdata: %s", md.Label)
 				mds = append(mds, md)
-			} else {
-				utils.Debug(l, span, "  Skipping manifestdata: %s not in CTTP manifestIDs", md.Label)
 			}
 		} else {
 			utils.Debug(l, span, "  Manifestdata id: %d not found in ManiMap", id)

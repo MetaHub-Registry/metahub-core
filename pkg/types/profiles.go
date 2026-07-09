@@ -17,6 +17,10 @@ type Profile struct {
 	Rule          string         `json:"rule"`
 	Manipulations []Manipulation `json:"manipulations"`
 	Rules         []ProfileRule  `json:"rules"`
+	// Hardware is the optional physical-target description. Present for
+	// model-serving (GPU) profiles; nil for CPU/cloud profiles. Source of VRAM
+	// capacity and the model-serving capability (see Hardware.IsModelServing).
+	Hardware *Hardware `json:"hardware,omitempty"`
 }
 
 const (

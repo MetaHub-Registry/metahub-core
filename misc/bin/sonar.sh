@@ -26,6 +26,5 @@ sonar-scanner ${TAG_ARG} \
   -Dsonar.sources=. \
   -Dsonar.go.exclusions="**/*_test.go,**/test_*.go,**/vendor/**,**/test.go,**/testcases.go,**/*swagger*.go,**/coverage.*,**/examples*" \
   -Dsonar.go.coverage.reportPaths=coverage.txt \
-  -Dsonar.go.tests.reportPaths=report.json \
   -Dsonar.host.url=${SONAR_QUBE_URL} \
   -Dsonar.token=${SONAR_QUBE_TOKEN}

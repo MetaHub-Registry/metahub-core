@@ -199,6 +199,14 @@ func (n Neo) Setup(ctx context.Context) (err error) {
 			// slot-centred model; see design §D2 for the invariants.
 			name: "Slot",
 			attr: []string{"repo", "tag", "profile"},
+		}, {
+			// Tag is per-collection: identity is {name, repo}, NOT the bare
+			// tag name. A global `latest` node shared across collections made
+			// Repo→HAS_TAG→Tag→REF→Index fan every collection's manifests into
+			// every other collection's listing. The composite constraint keeps
+			// each collection's `latest` a distinct node.
+			name: "Tag",
+			attr: []string{"name", "repo"},
 		},
 	}
 	for _, t := range nodes {
