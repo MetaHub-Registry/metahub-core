@@ -7,6 +7,7 @@ import (
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -84,4 +85,63 @@ func TestBlobGetPreSignedUrl_S3HttpsHost(t *testing.T) {
 	// minio-go derives the AWS host from the region option (virtual-hosted,
 	// dualstack) — e.g. blobs.s3.dualstack.eu-central-1.amazonaws.com.
 	assert.Contains(t, u.Host, "eu-central-1.amazonaws.com")
+}
+
+// ConnectClients builds a DISTINCT presign client when the public endpoint
+// differs from the internal one.
+func TestConnectClients_PresignClientDistinct(t *testing.T) {
+	m := Minio{BucketConfig: map[string]BucketConfig{
+		blobBucketKey: {
+			Bucket: blobBucketKey, URL: "internal.local:9000", Region: "us-east-1",
+			User: minioAccessKey, Password: minioSecretKey,
+			PublicURL: "minio.dev.example.com", PublicSsl: false,
+		},
+	}}
+	err := m.ConnectClients()
+	assert.NoError(t, err)
+	bc := m.BucketConfig[blobBucketKey]
+	assert.NotNil(t, bc.Client)
+	assert.NotNil(t, bc.PresignClient)
+	assert.NotSame(t, bc.Client, bc.PresignClient)
+}
+
+// ConnectClients reuses the internal client for presigning when no distinct
+// public endpoint is configured (identity).
+func TestConnectClients_PresignClientIdentity(t *testing.T) {
+	m := Minio{BucketConfig: map[string]BucketConfig{
+		blobBucketKey: {
+			Bucket: blobBucketKey, URL: "internal.local:9000", Region: "us-east-1",
+			User: minioAccessKey, Password: minioSecretKey,
+		},
+	}}
+	err := m.ConnectClients()
+	assert.NoError(t, err)
+	bc := m.BucketConfig[blobBucketKey]
+	assert.Same(t, bc.Client, bc.PresignClient)
+}
+
+// NewMinio resolves per-bucket public_url, the global minio.public_url fallback,
+// and finally the internal url; global public_ssl applies when set.
+func TestNewMinio_PublicEndpointResolution(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+	viper.Set("minio.url", "minio-dev.metahub-dev.svc.cluster.local:9000")
+	viper.Set("minio.region", "eu-central-1")
+	viper.Set("minio.public_ssl", true)
+	viper.Set("minio.blobs.bucket", "metahub-api-dev")
+	viper.Set("minio.blobs.public_url", "minio.dev.example.com")
+	viper.Set("minio.blobs.redirect", true)
+	viper.Set("minio.manifests.bucket", "metahub-api-dev")
+
+	m, err := NewMinio("/tmp/unused-presign-test.yaml")
+	assert.NoError(t, err)
+	// blobs: explicit per-bucket public_url wins.
+	assert.Equal(t, "minio.dev.example.com", m.BucketConfig[blobBucketKey].PublicURL)
+	// manifests: no per-bucket/global public_url → falls back to internal url.
+	assert.Equal(t, "minio-dev.metahub-dev.svc.cluster.local:9000", m.BucketConfig[manifestsBucketKey].PublicURL)
+	// global public_ssl applies to buckets without their own.
+	assert.True(t, m.BucketConfig[blobBucketKey].PublicSsl)
+	// per-bucket redirect is honoured (covers the viperBool set-path).
+	assert.True(t, m.BucketConfig[blobBucketKey].Redirect)
+	assert.False(t, m.BucketConfig[manifestsBucketKey].Redirect)
 }

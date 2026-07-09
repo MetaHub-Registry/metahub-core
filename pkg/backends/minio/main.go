@@ -78,6 +78,23 @@ func NewMiniWithCfg(cfg map[string]BucketConfig) (m Minio, err error) {
 	return
 }
 
+// viperStr returns the string at key when set, else fallback. Extracted so the
+// per-bucket resolution in NewMinio stays flat (low cyclomatic complexity).
+func viperStr(key, fallback string) string {
+	if viper.IsSet(key) {
+		return viper.GetString(key)
+	}
+	return fallback
+}
+
+// viperBool returns the bool at key when set, else fallback.
+func viperBool(key string, fallback bool) bool {
+	if viper.IsSet(key) {
+		return viper.GetBool(key)
+	}
+	return fallback
+}
+
 func NewMinio(cfgFile string) (m Minio, err error) {
 	m = Minio{
 		BucketConfig: map[string]BucketConfig{},
@@ -120,69 +137,28 @@ func NewMinio(cfgFile string) (m Minio, err error) {
 
 	for _, v := range reflect.ValueOf(m.BucketConfig).MapKeys() {
 		b := fmt.Sprintf("%s", v)
+		p := "minio." + b + "."
 		bCfg := BucketConfig{
-			Bucket: b,
-		}
-		key := fmt.Sprintf("minio.%s.url", b)
-		if viper.IsSet(key) {
-			bCfg.URL = viper.GetString(key)
-		} else {
-			bCfg.URL = bc.URL
-		}
-		key = fmt.Sprintf("minio.%s.bucket", b)
-		if viper.IsSet(key) {
-			bCfg.Bucket = viper.GetString(key)
-		} else {
-			bCfg.Bucket = bc.Bucket
-		}
-		key = fmt.Sprintf("minio.%s.region", b)
-		if viper.IsSet(key) {
-			bCfg.Region = viper.GetString(key)
-		} else {
-			bCfg.Region = bc.Region
-		}
-		key = fmt.Sprintf("minio.%s.user", b)
-		if viper.IsSet(key) {
-			bCfg.User = viper.GetString(key)
-		} else {
-			bCfg.User = bc.User
-		}
-		key = fmt.Sprintf("minio.%s.password", b)
-		if viper.IsSet(key) {
-			bCfg.Password = viper.GetString(key)
-		} else {
-			bCfg.Password = bc.Password
-		}
-		key = fmt.Sprintf("minio.%s.redirect", b)
-		if viper.IsSet(key) {
-			bCfg.Redirect = viper.GetBool(key)
-		} else {
-			bCfg.Redirect = bc.Redirect
-		}
-		key = fmt.Sprintf("minio.%s.ssl", b)
-		if viper.IsSet(key) {
-			bCfg.Ssl = viper.GetBool(key)
-		} else {
-			bCfg.Ssl = bc.Ssl
+			Bucket:   viperStr(p+"bucket", bc.Bucket),
+			URL:      viperStr(p+"url", bc.URL),
+			Region:   viperStr(p+"region", bc.Region),
+			User:     viperStr(p+"user", bc.User),
+			Password: viperStr(p+"password", bc.Password),
+			Redirect: viperBool(p+"redirect", bc.Redirect),
+			Ssl:      viperBool(p+"ssl", bc.Ssl),
 		}
 		// Public presign endpoint: per-bucket key, then global minio.public_url,
 		// then fall back to the internal URL (identity — no separate presign host).
-		key = fmt.Sprintf("minio.%s.public_url", b)
-		if viper.IsSet(key) {
-			bCfg.PublicURL = viper.GetString(key)
-		} else if bc.PublicURL != "" {
-			bCfg.PublicURL = bc.PublicURL
-		} else {
-			bCfg.PublicURL = bCfg.URL
+		pubURL := bc.PublicURL
+		if pubURL == "" {
+			pubURL = bCfg.URL
 		}
-		key = fmt.Sprintf("minio.%s.public_ssl", b)
-		if viper.IsSet(key) {
-			bCfg.PublicSsl = viper.GetBool(key)
-		} else if viper.IsSet("minio.public_ssl") {
-			bCfg.PublicSsl = bc.PublicSsl
-		} else {
-			bCfg.PublicSsl = bCfg.Ssl
+		bCfg.PublicURL = viperStr(p+"public_url", pubURL)
+		pubSsl := bCfg.Ssl
+		if viper.IsSet("minio.public_ssl") {
+			pubSsl = bc.PublicSsl
 		}
+		bCfg.PublicSsl = viperBool(p+"public_ssl", pubSsl)
 		m.BucketConfig[b] = bCfg
 	}
 	return
