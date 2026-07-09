@@ -31,7 +31,14 @@ func (n Neo) CreateBlobFromChunk(ctx context.Context, bu *types.OCIBlobUpload, c
 	if dig == "" {
 		dig = bu.Digest
 	}
-	q := fmt.Sprintf(`CREATE (b:Blob {digest: "%s", label: "%s", created_at: TIMESTAMP(), size: %d})`, dig, utils.ShortenDigest(dig), chunk.Bytes)
+	// MERGE (not CREATE) on the content digest: a :Blob is content-addressed, so
+	// re-pushing identical content (e.g. the same model-layer image seeded under a
+	// second profile) MUST reuse the existing node, not mint a duplicate. Duplicate
+	// :Blob nodes with the same digest fan out `MATCH (l:Blob) WHERE l.digest=…`
+	// during compose (ManifestLinkToLayer), producing extra HAS_LAYER edges → a
+	// manifest whose layer count exceeds its config DiffIDs, which docker rejects
+	// with "number of layers and diffIDs don't match".
+	q := fmt.Sprintf(`MERGE (b:Blob {digest: "%s"}) ON CREATE SET b.label = "%s", b.created_at = TIMESTAMP(), b.size = %d`, dig, utils.ShortenDigest(dig), chunk.Bytes)
 	q = q + ` RETURN ID(b) AS blobID`
 	utils.Debug(l, span, q)
 	res, err := n.Execute(q)

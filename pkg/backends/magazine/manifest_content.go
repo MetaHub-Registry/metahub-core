@@ -71,7 +71,12 @@ func (mag Magazine) cacheManifestByUpstream(ctx context.Context, up types.Upstre
 		case "application/vnd.docker.distribution.manifest.v1+prettyjws":
 			err = fmt.Errorf("manifest type is not supported: %s", blob.MediaType)
 			return maniData, err
-		case "application/vnd.docker.distribution.manifest.v2+json":
+		case "application/vnd.docker.distribution.manifest.v2+json",
+			// OCI image manifest is structurally identical (config + layers) and is
+			// what podman/buildah emit by default — treat it the same. Without this,
+			// caching an OCI-format upstream (e.g. a collection's runtime image) fails
+			// with "Unknown media type", so parse-collections can't bind it per profile.
+			"application/vnd.oci.image.manifest.v1+json":
 			up.Digest = rawMani.ConfigInfo().Digest
 		default:
 			return maniData, utils.NewError(l, span, "Unknown media type: %s", blob.MediaType)
@@ -247,6 +252,32 @@ func (mag Magazine) NeoInsertManifest(ctx context.Context, msID int64, m types.M
 	}
 	return
 }
+
+// linkManifestSubject wires the OCI subject/referrer relationship for a pushed
+// manifest: it inserts the subject descriptor as a Manifest node and MERGEs the
+// (manifest)-[:SUBJECT_OF]->(subject) edge, so referrers(subject) resolves. It is
+// shared by both push paths — StoreManifestArtifactUpload (artifact manifests)
+// and StoreManifestUpload (image manifests that carry a subject, e.g. the
+// model-config artefacts `metahub-admin repackage` produces) — so the edge is
+// wired regardless of how the referrer manifest is classified. Returns the
+// inserted subject Manifest (nil when the manifest carries no subject).
+func (mag Magazine) linkManifestSubject(ctx context.Context, l *logrus.Entry, span trace.Span, mdDigest string, ociMani types.OCIManifest) (*types.Manifest, error) {
+	if ociMani.Subject == nil {
+		return nil, nil
+	}
+	utils.Debug(l, span, "Manifest has Subject: %s", utils.ShortenDigest(ociMani.Subject.Digest.String()))
+	sub := types.ManifestFromOciDescriptor(*ociMani.Subject)
+	subID, err := mag.Database.ManifestInsert(ctx, &sub)
+	if err != nil {
+		return nil, utils.ErrorHandler(l, span, err, "failed to insert subject manifest data")
+	}
+	utils.Debug(l, span, "Inserted Subject Manifest with ID: %d", subID)
+	if err := mag.Database.LinkManifestToSubject(ctx, mdDigest, subID); err != nil {
+		return nil, utils.ErrorHandler(l, span, err, "failed to link manifest data to subject")
+	}
+	return &sub, nil
+}
+
 func (mag Magazine) StoreManifestArtifactUpload(ctx context.Context, req types.Request, ociMani types.OCIManifest) (md types.Manifest, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMD,
@@ -277,23 +308,12 @@ func (mag Magazine) StoreManifestArtifactUpload(ctx context.Context, req types.R
 	}
 	// Wire Slot so the artifact is reachable via the Slot-centred graph model
 	mag.wireSlotOnPush(ctx, l, span, req, md.ID)
-	// Handle subject/referrer relationship
-	if ociMani.Subject != nil {
-		utils.Debug(l, span, "Artifact Manifest has Subject: %s", utils.ShortenDigest(ociMani.Subject.Digest.String()))
-		sub := types.ManifestFromOciDescriptor(*ociMani.Subject)
-		if subId, err := mag.Database.ManifestInsert(ctx, &sub); err != nil {
-			err = utils.ErrorHandler(l, span, err, "failed to insert subject manifest data")
-			return md, err
-		} else {
-			utils.Debug(l, span, "Inserted Subject Manifest with ID: %d", subId)
-			er := mag.Database.LinkManifestToSubject(ctx, req.Digest, subId)
-			if er != nil {
-				err = utils.ErrorHandler(l, span, er, "failed to link manifest data to subject")
-				return md, err
-			}
-		}
-		md.Subject = &sub
+	// Handle subject/referrer relationship (shared with the image push path).
+	sub, subErr := mag.linkManifestSubject(ctx, l, span, req.Digest, ociMani)
+	if subErr != nil {
+		return md, subErr
 	}
+	md.Subject = sub
 	return md, nil
 }
 
@@ -390,6 +410,16 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 	// :Upstream via [:ORIGINAL] inside createManifest. The Slot-based
 	// attribution is the sole remaining persistence path.
 	mag.wireSlotOnPush(ctx, l, span, req, md.ID)
+	// Wire the OCI subject/referrer edge for image manifests that carry one
+	// (e.g. the model-config artefacts `metahub-admin repackage` produces, whose
+	// subject is the model-layer manifest), so referrers(subject) — and model
+	// compositions — resolve. Previously only StoreManifestArtifactUpload did
+	// this, so subject-bearing *image* manifests silently lost the edge.
+	if sub, subErr := mag.linkManifestSubject(ctx, l, span, md.Digest, ociMani); subErr != nil {
+		return md, subErr
+	} else if sub != nil {
+		md.Subject = sub
+	}
 	return
 }
 

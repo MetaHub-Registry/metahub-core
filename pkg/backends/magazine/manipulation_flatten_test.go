@@ -24,6 +24,30 @@ func TestFlattenManipuLayers_Legacy(t *testing.T) {
 	assert.Equal(t, "arch:amd64=true", out[1].Rule)
 }
 
+// TestManipuLayerMatchesPlatform_QuantRuleIsNotPlatform locks in the invariant
+// behind the tryApplyModelManipulation fix: a multi-quant model variant layer
+// carries a quant selector rule ("quant:<q>"), NOT a platform rule
+// ("arch:.."/"os:.."). manipuLayerMatchesPlatform only understands platform
+// rules, so it reports no-match for a quant rule. The model injection path
+// therefore MUST NOT gate the resolved quant layer on manipuLayerMatchesPlatform
+// — the quant is already resolved+matched (ResolveModelServe/layerImageMatchesQuant)
+// and model weights are platform-agnostic. If the model path ever re-introduces
+// this gate, the model layer silently stops injecting (base served unmanipulated),
+// which is exactly the bug this test guards against.
+func TestManipuLayerMatchesPlatform_QuantRuleIsNotPlatform(t *testing.T) {
+	plat := types.Platform{OS: "linux", Arch: "amd64"}
+
+	// A multi-quant variant layer's rule — must NOT read as a platform match.
+	assert.False(t, manipuLayerMatchesPlatform(types.ManipuLayer{Rule: "quant:q8-0"}, plat),
+		"a quant selector rule is not a platform rule; the model path must bypass this gate")
+
+	// Genuine platform rules still match; empty matches all (unchanged behaviour).
+	assert.True(t, manipuLayerMatchesPlatform(types.ManipuLayer{Rule: ""}, plat))
+	assert.True(t, manipuLayerMatchesPlatform(types.ManipuLayer{Rule: "os:linux=true"}, plat))
+	assert.True(t, manipuLayerMatchesPlatform(types.ManipuLayer{Rule: "arch:amd64=true"}, plat))
+	assert.False(t, manipuLayerMatchesPlatform(types.ManipuLayer{Rule: "arch:arm64=true"}, plat))
+}
+
 // TestFlattenManipuLayers_DefaultAndVariants verifies that default-block
 // layers come first (with their rule unchanged) and then every variant's
 // layers get the variant's rule propagated onto the layer entries.

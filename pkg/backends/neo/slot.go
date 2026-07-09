@@ -79,7 +79,9 @@ func (n Neo) SlotGetCreate(ctx context.Context, repo, tag, profile string) (s ty
 	if _, e := n.Execute(mergeRepo); e != nil {
 		return s, utils.ErrorHandler(l, span, e, "SlotGetCreate: merging Repo node")
 	}
-	mergeTag := fmt.Sprintf(`MERGE (t:Tag {name: "%s"})`, tag)
+	// Tag is per-collection ({name, repo}) — see RepoLinkTag; a global `latest`
+	// node cross-links every collection's manifests.
+	mergeTag := fmt.Sprintf(`MERGE (t:Tag {name: "%s", repo: "%s"})`, tag, repo)
 	if _, e := n.Execute(mergeTag); e != nil {
 		return s, utils.ErrorHandler(l, span, e, "SlotGetCreate: merging Tag node")
 	}
@@ -103,8 +105,8 @@ func (n Neo) SlotGetCreate(ctx context.Context, repo, tag, profile string) (s ty
 	// Step 3: MERGE the three join edges. These are idempotent because the
 	// surrounding MERGE pattern already pinned the string-identity nodes.
 	joinEdges := fmt.Sprintf(
-		`MATCH (s:Slot {repo: "%s", tag: "%s", profile: "%s"}), (r:Repo {repo: "%s"}), (t:Tag {name: "%s"}), (p:Profile {label: "%s"}) MERGE (s)-[:OF_REPO]->(r) MERGE (s)-[:OF_TAG]->(t) MERGE (s)-[:OF_PROFILE]->(p)`,
-		repo, tag, profile, repo, tag, profile,
+		`MATCH (s:Slot {repo: "%s", tag: "%s", profile: "%s"}), (r:Repo {repo: "%s"}), (t:Tag {name: "%s", repo: "%s"}), (p:Profile {label: "%s"}) MERGE (s)-[:OF_REPO]->(r) MERGE (s)-[:OF_TAG]->(t) MERGE (s)-[:OF_PROFILE]->(p)`,
+		repo, tag, profile, repo, tag, repo, profile,
 	)
 	if _, e := n.Execute(joinEdges); e != nil {
 		return s, utils.ErrorHandler(l, span, e, "SlotGetCreate: merging join edges")

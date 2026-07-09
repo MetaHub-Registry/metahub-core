@@ -479,7 +479,7 @@ func (n Neo) Setup_ManifestList_FT_generic(br *utils.BootstrapResult) (err error
 func (n Neo) Cypher_Collection_FT_tag1(br *utils.BootstrapResult) (err error) {
 	// Seed DB
 	// Repo
-	q := `MERGE (t:Tag {name: "tag1"})`
+	q := `MERGE (t:Tag {name: "tag1", repo: "qnib/featuretest"})`
 	q += ` MERGE (c:Repo {repo: "qnib/featuretest"})`
 	q += ` MERGE (c)-[:HAS_TAG]->(t)`
 	q += ` RETURN id(c) AS colID, id(t) AS tagID`

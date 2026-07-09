@@ -14,7 +14,11 @@ const (
 
 var (
 	//regs    = []string{"docker.io", "quay.io", "registry.gitlab.com", "public.ecr.aws"}
-	upRegex = `^(?P<reg>[\w\.]+(\:\d+|\.\w+))?\/?(?P<repo>[a-z]{1}[\w\/\.\_\-]+)(@|:)?(?P<tag>.*)?`
+	// The registry host may contain hyphens (e.g. metahub.dev.example.com). \w
+	// excludes '-', so the class must list it explicitly in both the host body and
+	// the trailing label — otherwise the host is mis-split mid-name (the ".hvk"
+	// label would steal characters, yielding reg="metahub.metahu").
+	upRegex = `^(?P<reg>[\w\.\-]+(\:\d+|\.[\w\-]+))?\/?(?P<repo>[a-z]{1}[\w\/\.\_\-]+)(@|:)?(?P<tag>.*)?`
 	defReg  = "docker.io"
 )
 

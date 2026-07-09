@@ -71,6 +71,21 @@ func (m Minio) BlobStatObj(ctx context.Context, object string) (obj minio.Object
 	return cli.StatObject(ctx, bucket, object, minio.StatObjectOptions{})
 }
 
+// BlobGetReader returns a streaming reader for a blob identified by its digest
+// (the object key in the blob bucket). Unlike BlobGetBytes it does NOT buffer the
+// whole blob in memory, so callers can stream arbitrarily large blobs (e.g. model
+// files) at constant memory (cf. the model-repackage streaming path). The caller
+// MUST Close the returned reader.
+func (m Minio) BlobGetReader(ctx context.Context, dig string) (io.ReadCloser, error) {
+	bucket := m.GetBlobBucketName()
+	cli := m.BucketConfig[blobBucketKey].Client
+	obj, err := cli.GetObject(ctx, bucket, dig, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return obj, nil
+}
+
 func (m Minio) PutBlob(ctx context.Context, b []byte, dig string) (err error) {
 	l := logrus.WithFields(logrus.Fields{
 		"package": pkgName,
@@ -89,6 +104,16 @@ func (m Minio) PutBlob(ctx context.Context, b []byte, dig string) (err error) {
 	}
 	l.Infof("Put blob %s", utils.ShortenDigest(dig))
 	return
+}
+
+// BlobPutReader streams a blob from r (exactly size bytes) into the blobs bucket
+// under object, without buffering the whole payload — used to compose large
+// multi-chunk uploads at constant memory.
+func (m Minio) BlobPutReader(ctx context.Context, r io.Reader, size int64, object string) (err error) {
+	bucket := m.GetBlobBucketName()
+	cli := m.BucketConfig[GetBlobBucketKey()].Client
+	_, err = cli.PutObject(ctx, bucket, object, r, size, minio.PutObjectOptions{ContentType: "application/octet-stream"})
+	return err
 }
 
 func (m Minio) BlobPutObj(ctx context.Context, object string, data []byte) (err error) {

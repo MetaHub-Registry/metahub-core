@@ -3,8 +3,11 @@ package magazine
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
+	"sort"
 
+	"github.com/opencontainers/go-digest"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
@@ -52,6 +55,40 @@ func (mag Magazine) StoreBlobUpload(ctx context.Context, bu *types.OCIBlobUpload
 	// 	l.Debug(l, span, "Blob is neither a layer nor a config")
 	// 	return ErrJSONNOTCONFIG
 	// }
+}
+
+// StoreBlobUploadReader streams the blob body from r (exactly size bytes) into
+// MinIO under bu.Digest via a sha256 TeeReader — never buffering the whole
+// payload, so a monolithic model-layer PUT (10-100 GB) does not OOM the process
+// the way io.ReadAll + StoreBlobUpload([]byte) does. bu.Digest must hold the
+// expected whole-blob digest (from the monolithic PUT's ?digest=); the streamed
+// content is verified against it and removed on mismatch.
+func (mag Magazine) StoreBlobUploadReader(ctx context.Context, bu *types.OCIBlobUpload, r io.Reader, size int64) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":  pkgNameBlob,
+		"func":     "StoreBlobUploadReader",
+		"blobType": bu.BlobType,
+		"digest":   bu.Digest,
+	})
+	defer span.End()
+	if bu.Digest == "" {
+		return utils.NewError(l, span, "StoreBlobUploadReader requires bu.Digest (expected blob digest)")
+	}
+	utils.Debug(l, span, "streaming to MinIO: %s (%d bytes)", utils.ShortenDigest(bu.Digest), size)
+	digester := digest.SHA256.Digester()
+	tee := io.TeeReader(r, digester.Hash())
+	if e := mag.Minio.BlobPutReader(ctx, tee, size, bu.Digest); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to stream layer into minio")
+	}
+	if got := digester.Digest().String(); got != bu.Digest {
+		_ = mag.Minio.BlobRemoveObj(ctx, bu.Digest)
+		return utils.NewError(l, span, "uploaded digest %s does not match expected %s", got, bu.Digest)
+	}
+	utils.Debug(l, span, "Upload done, update database")
+	if e := mag.Database.BlobUploadUpdateByUUID(ctx, bu); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to link layer to blob upload")
+	}
+	return nil
 }
 
 func (mag Magazine) BlobDelete(ctx context.Context, req types.Request) (found bool, err error) {
@@ -146,11 +183,76 @@ func (mag Magazine) ComposeFromChunks(ctx context.Context, bu *types.OCIBlobUplo
 			return utils.ErrorHandler(l, span, e, "failed to create blob from chunk")
 		}
 	default:
-		// multiple chunks uploaded, need to assemble
+		// Each chunk was stored in MinIO under its own content digest during
+		// PATCH. Stream them back in start_byte order through a sha256 TeeReader
+		// and stream-write the assembled blob under the whole-blob digest
+		// (bu.Digest) — never buffering the full payload (models can be 100 GB).
+		sort.Slice(chunks, func(i, j int) bool { return chunks[i].StartByte < chunks[j].StartByte })
+		var total int64
 		for _, c := range chunks {
-			utils.NewError(l, span, "chunk: ID:%d Start:%d Bytes:%d > %s", c.ID, c.StartByte, c.Bytes, utils.ShortenDigest(c.Digest))
+			total += c.Bytes - c.StartByte + 1 // Bytes is the inclusive END offset
 		}
+		seq := &chunkSeqReader{ctx: ctx, mag: mag, chunks: chunks}
+		defer seq.Close()
+		digester := digest.SHA256.Digester()
+		tee := io.TeeReader(seq, digester.Hash())
+		if e := mag.Minio.BlobPutReader(ctx, tee, total, bu.Digest); e != nil {
+			return utils.ErrorHandler(l, span, e, "failed to stream-compose blob %s", utils.ShortenDigest(bu.Digest))
+		}
+		if got := digester.Digest().String(); bu.Digest != "" && got != bu.Digest {
+			_ = mag.Minio.BlobRemoveObj(ctx, bu.Digest)
+			return utils.NewError(l, span, "composed digest %s does not match expected %s", got, bu.Digest)
+		}
+		utils.Info(l, span, "composed %d chunks -> blob %s (%d bytes)", len(chunks), utils.ShortenDigest(bu.Digest), total)
+		if e := mag.Database.CreateBlobFromChunk(ctx, bu, types.BlobChunk{Digest: bu.Digest, Bytes: total}); e != nil {
+			return utils.ErrorHandler(l, span, e, "failed to create composed blob node")
+		}
+	}
+	return nil
+}
 
+// chunkSeqReader streams a sequence of MinIO-stored chunks as one contiguous
+// io.Reader, opening (and closing) exactly one chunk at a time so composing a
+// many-thousand-chunk blob never holds more than a single chunk's connection.
+type chunkSeqReader struct {
+	ctx    context.Context
+	mag    Magazine
+	chunks []types.BlobChunk
+	idx    int
+	cur    io.ReadCloser
+}
+
+func (r *chunkSeqReader) Read(p []byte) (int, error) {
+	for {
+		if r.cur == nil {
+			if r.idx >= len(r.chunks) {
+				return 0, io.EOF
+			}
+			rc, err := r.mag.Minio.BlobGetReader(r.ctx, r.chunks[r.idx].Digest)
+			if err != nil {
+				return 0, err
+			}
+			r.cur = rc
+		}
+		n, err := r.cur.Read(p)
+		if err == io.EOF {
+			_ = r.cur.Close()
+			r.cur = nil
+			r.idx++
+			if n > 0 {
+				return n, nil
+			}
+			continue
+		}
+		return n, err
+	}
+}
+
+func (r *chunkSeqReader) Close() error {
+	if r.cur != nil {
+		err := r.cur.Close()
+		r.cur = nil
+		return err
 	}
 	return nil
 }

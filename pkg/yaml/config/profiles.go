@@ -8,6 +8,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -19,10 +20,11 @@ var (
 )
 
 type Profile struct {
-	Name          string         `yaml:"name"`
-	Tag           string         `yaml:"tag"`
-	Rule          string         `yaml:"rule"`
-	Manipulations []Manipulation `yaml:"manipulations"`
+	Name          string          `yaml:"name"`
+	Tag           string          `yaml:"tag"`
+	Rule          string          `yaml:"rule"`
+	Manipulations []Manipulation  `yaml:"manipulations"`
+	Hardware      *types.Hardware `yaml:"hardware,omitempty"`
 }
 
 func FindProfiles(cacheDir string) (profiles []Profile, err error) {

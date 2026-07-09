@@ -29,7 +29,9 @@ type Database interface {
 	TeardownTest(bs utils.Bootstrap, br utils.BootstrapResult)
 	/*******  Platform ********/
 	PlatformGetInsert(ctx context.Context, p *types.Platform) error
+	PlatformGetByManifestID(ctx context.Context, maniDataID int64) (plat types.Platform, found bool, err error)
 	/******* Upstream ********/
+	UpstreamGetInsert(ctx context.Context, up *types.Upstream) (found bool, err error)
 	UpstreamGetInsertByRequest(ctx context.Context, req types.Request) (up types.Upstream, found bool, err error)
 	UpstreamGetByRequest(ctx context.Context, req types.Request) (up types.Upstream, found bool, err error)
 	UpstreamGet(ctx context.Context, up types.Upstream) (upID int64, success bool, err error)
@@ -216,6 +218,7 @@ type Database interface {
 	ProfileGetByID(ctx context.Context, prfID int64) (p types.Profile, found bool, err error)
 	ProfileAuthorizedPushHandler(ctx context.Context, req types.Request) (prf types.Profile, err error)
 	ProfileGetUploadedByViaManifestID(ctx context.Context, maniID int64) (p types.Profile, found bool, err error)
+	ProfileLinkToManipulation(ctx context.Context, prfID, mpID int64) (err error)
 	ProfileGetPulledByViaManifestID(ctx context.Context, maniID int64) (p types.Profile, found bool, err error)
 	ProfileUnwindRules(ctx context.Context, prfID, maniID int64) (err error)
 	ProfileGetAnnoEqRules(ctx context.Context, prfID int64) (rs []types.Rule, err error)
@@ -275,6 +278,14 @@ type Database interface {
 	LinkManifestToSubject(ctx context.Context, mdDigest string, subId int64) (err error)
 	LinkSubjectByDigestMediaType(ctx context.Context, refID int64, subDigest, subMediaType string) (err error)
 	ReferrersGetBySubjectDigest(ctx context.Context, dig string) (refs types.ReferrersResponse, err error)
+	/**** Models ******/
+	ModelListingGetAll(ctx context.Context) ([]types.ModelListing, error)
+	ModelDetailGet(ctx context.Context, name string) (types.ModelDetail, bool, error)
+	ModelQuantsGetByName(ctx context.Context, name string) ([]types.ModelImageRef, error)
+	ModelQuantVariantUpsert(ctx context.Context, name, quant, imgDigest string) (int64, error)
+	/**** Runtimes ******/
+	RuntimeUpsert(ctx context.Context, rt types.Runtime) (int64, error)
+	RuntimesGetAll(ctx context.Context) ([]types.Runtime, error)
 	/**** ORAS ********/
 	OrasArtifactGetByRepoLike(ctx context.Context, repo string) ([]types.OrasListing, error)
 	OrasArtifactGetByName(ctx context.Context, repo, artifactType string) (types.OrasArtifact, error)

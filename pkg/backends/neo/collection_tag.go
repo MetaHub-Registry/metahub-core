@@ -73,9 +73,14 @@ func (n Neo) CollectionTagCleanupByID(ctx context.Context, tagID int64) (err err
 	return nil
 }
 
-func (n Neo) CollectionTagCreate(tag string) (ct types.CollectionTag, err error) {
-	q := `CREATE (t:Tag {name: "%s"}) RETURN id(t) AS tagID, t.name AS tagName`
-	query := fmt.Sprintf(q, tag)
+func (n Neo) CollectionTagCreate(repo, tag string) (ct types.CollectionTag, err error) {
+	// Tag identity is per-collection ({name, repo}). A bare `latest` must NOT be
+	// shared across collections: a global Tag node made every collection list
+	// every other collection's manifests via Repo→HAS_TAG→Tag→REF→Index. MERGE
+	// (not CREATE) so this converges with the Tag that SlotGetCreate/RepoLinkTag
+	// MERGE for the same (repo, tag).
+	q := `MERGE (t:Tag {name: "%s", repo: "%s"}) RETURN id(t) AS tagID, t.name AS tagName`
+	query := fmt.Sprintf(q, tag, repo)
 	res, err := n.Execute(query)
 	if err != nil {
 		return
@@ -83,20 +88,21 @@ func (n Neo) CollectionTagCreate(tag string) (ct types.CollectionTag, err error)
 	return CollectionTagFromResult(res)
 }
 
-func (n Neo) CollectionTagGetCreate(ctx context.Context, tag string) (ct types.CollectionTag, err error) {
+func (n Neo) CollectionTagGetCreate(ctx context.Context, repo, tag string) (ct types.CollectionTag, err error) {
 	_, span := tracer.Start(ctx, "CollectionTagGetCreate")
 	defer span.End()
 	span.SetAttributes(
+		attribute.Key("repo").String(repo),
 		attribute.Key("tag").String(tag),
 	)
-	ct, found, err := n.CollectionTagGetByTag(tag)
+	ct, found, err := n.CollectionTagGetByTag(repo, tag)
 	if err != nil {
 		return
 	}
 	if found {
 		return ct, nil
 	}
-	return n.CollectionTagCreate(tag)
+	return n.CollectionTagCreate(repo, tag)
 }
 
 func (n Neo) LinkCollectionTagToManifest(ctx context.Context, colTagID, maniID int64) (err error) {
@@ -145,9 +151,9 @@ func (n Neo) LinkCollectionTagToManifestRemove(ctx context.Context, colTagID, ma
 	return
 }
 
-func (n Neo) CollectionTagGetByTag(tag string) (ct types.CollectionTag, found bool, err error) {
-	q := `MATCH (t:Tag {name: "%s"}) RETURN id(t) AS tagID, t.name AS tagName`
-	query := fmt.Sprintf(q, tag)
+func (n Neo) CollectionTagGetByTag(repo, tag string) (ct types.CollectionTag, found bool, err error) {
+	q := `MATCH (t:Tag {name: "%s", repo: "%s"}) RETURN id(t) AS tagID, t.name AS tagName`
+	query := fmt.Sprintf(q, tag, repo)
 	res, err := n.Query(query)
 	if err != nil {
 		return

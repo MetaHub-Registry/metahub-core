@@ -90,8 +90,14 @@ func (mag Magazine) filterManifestsForCTTP(ctx context.Context, l *logrus.Entry,
 		}
 		utils.Debug(l, span, "Adding Manifest to Index: %s", m.Upstream.String())
 		mds = append(mds, m)
-		ml.Manifests = append(ml.Manifests, m)
 	}
+	// Collapse a re-pushed mutable runtime tag (same upstream reg:repo:tag on the
+	// same platform) to its latest manifest, so the computed index never carries
+	// two same-platform members for one tag — which docker resolves
+	// nondeterministically and can serve the stale base (e.g. a runtime image
+	// rebuilt with a new entrypoint that never takes effect).
+	mds = types.DedupeLatestByUpstreamTagPlatform(mds)
+	ml.Manifests = append(ml.Manifests, mds...)
 	return mds, nil
 }
 
@@ -487,7 +493,50 @@ type rebuildCtx struct {
 	er        *types.ExprRes
 	repo      string
 	tag       string
-	pusherPrf *types.Profile // the profile that triggered the push (nil for batch compute)
+	pusherPrf *types.Profile  // the profile that triggered the push (nil for batch compute)
+	pins      []collectionPin // explicit (non-generic) profile pins for (repo, tag)
+}
+
+// collectionPin is one explicit `profile:` binding within a collection: the
+// manifest mdID is pinned to profile (from a Slot{repo,tag,profile≠generic}
+// -[:HAS_PUSHED]-> md edge). It drives FilterByCTPP's pin-exclusivity so a
+// pinned runtime image never leaks into another profile's computed index.
+type collectionPin struct {
+	mdID    int64
+	profile string
+}
+
+// gatherCollectionPins enumerates every explicit (non-generic) profile pin
+// for (repo, tag) by walking each non-generic Slot's HAS_PUSHED edges. The
+// result is applied to every per-profile CTPP so FilterByCTPP can drop
+// manifests pinned to a different profile. Best-effort: any failure is
+// warned and yields an empty/partial pin set, degrading gracefully to the
+// historical rule-union membership rather than failing the compute.
+func (mag Magazine) gatherCollectionPins(ctx context.Context, l *logrus.Entry, span trace.Span, repo, tag string) []collectionPin {
+	pins := make([]collectionPin, 0)
+	slots, err := mag.Database.SlotGetAllForRepoTag(ctx, repo, tag)
+	if err != nil {
+		utils.Warn(l, span, "gatherCollectionPins: SlotGetAllForRepoTag(%s:%s) failed (non-fatal, pin-exclusivity off): %v", repo, tag, err)
+		return pins
+	}
+	for _, slot := range slots {
+		// "generic"/"" is the non-exclusive multi-arch default (see
+		// types.CollectionTagProfilePair.AddPinnedProfile, which also
+		// ignores it). Skip early to avoid a needless HAS_PUSHED walk.
+		if slot.Profile == "" || slot.Profile == "generic" {
+			continue
+		}
+		slotMds, e := mag.Database.ManifestGetAllForSlot(ctx, slot.ID)
+		if e != nil {
+			utils.Warn(l, span, "gatherCollectionPins: ManifestGetAllForSlot(%d) failed (non-fatal): %v", slot.ID, e)
+			continue
+		}
+		for _, md := range slotMds {
+			pins = append(pins, collectionPin{mdID: md.ID, profile: slot.Profile})
+		}
+	}
+	utils.Debug(l, span, "gatherCollectionPins: %d explicit pins for %s:%s", len(pins), repo, tag)
+	return pins
 }
 
 // rebuildIndexesPerProfile walks every Profile in the database, constructs
@@ -500,6 +549,10 @@ func (mag Magazine) rebuildIndexesPerProfile(ctx context.Context, l *logrus.Entr
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to fetch profiles")
 	}
+	// Gather explicit `profile:` pins ONCE for the (repo, tag): they are
+	// profile-independent collection facts, so we compute them here and
+	// share the slice across every per-profile CTPP below.
+	rc.pins = mag.gatherCollectionPins(ctx, l, span, rc.repo, rc.tag)
 	utils.Debug(l, span, "rebuilding indexes for %d profiles on %s:%s", len(prfs), rc.repo, rc.tag)
 	for _, prf := range prfs {
 		if e := mag.rebuildIndexForProfile(ctx, l, span, rc, prf); e != nil {
@@ -549,6 +602,13 @@ func (mag Magazine) rebuildIndexForProfile(ctx context.Context, l *logrus.Entry,
 		if addErr := ctpp.AddManifest(md); addErr != nil {
 			return utils.ErrorHandler(l, span, addErr, "failed to add manifestdata to CTPP for profile %s", prf.Label)
 		}
+	}
+	// Apply explicit-pin exclusivity: a manifest pinned to another profile
+	// is dropped from this profile's index by FilterByCTPP. AddPinnedProfile
+	// ignores the generic/empty default, so multi-arch collections are
+	// unaffected.
+	for _, p := range rc.pins {
+		ctpp.AddPinnedProfile(fmt.Sprintf("%d", p.mdID), p.profile)
 	}
 	if computeErr := mag.ComputeManifestlistForCTTP(ctx, er, ctpp); computeErr != nil {
 		utils.Warn(l, span, "ComputeManifestlistForCTTP failed for profile %s: %v", prf.Label, computeErr)

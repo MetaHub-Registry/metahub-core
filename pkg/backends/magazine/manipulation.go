@@ -3,6 +3,7 @@ package magazine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -19,6 +20,15 @@ import (
 
 const (
 	pkgNameManipulation = "magazine/manipulation.go"
+	// modelManipPrefix labels a model manipulation (`model/<name>`).
+	modelManipPrefix = "model/"
+	// configManipPrefix labels a model's runtime-config manipulation
+	// (`config/<name>`), the sibling of its `model/<name>` weights.
+	configManipPrefix = "config/"
+	// defaultHeadroomFactor reserves no VRAM by default when resolving the served
+	// quantization; a configured factor can be threaded from the pull-path call
+	// site later (model-resolution task 1.3).
+	defaultHeadroomFactor = 1.0
 )
 
 func (mag Magazine) ManipulationGetCreate(ctx context.Context, mp types.Manipulation) (mpID int64, err error) {
@@ -256,20 +266,306 @@ func (mag Magazine) ApplyManipulationsToManifests(ctx context.Context, prf types
 
 	result := make([]types.Manifest, 0, len(candidates))
 	for _, md := range candidates {
-		manipulated := false
-		for _, mp := range mps {
-			if tryApplyManipulation(ctx, mag, l, span, &mp, &md, &result) {
-				manipulated = true
-				break // Only apply the first matching manipulation per manifest
-			}
-		}
-		if !manipulated {
-			// No manipulation matched or manipulation failed — keep the original
-			result = append(result, md)
+		if ferr := mag.applyManipulationsToCandidate(ctx, l, span, prf, mps, md, &result); ferr != nil {
+			// Infeasible quant for this aggregated profile → fatal reject;
+			// the pull-path handler maps it to an OCI UNSUPPORTED error.
+			return candidates, ferr
 		}
 	}
 	utils.Info(l, span, "Manipulation complete: %d candidates → %d results", len(candidates), len(result))
 	return result, nil
+}
+
+// applyManipulationsToCandidate applies the first matching manipulation for the
+// profile to md, appending the (manipulated) manifest to result; when none match
+// it appends md unchanged. A non-nil error is fatal — an infeasible model quant,
+// which rejects the pull.
+//
+// Dynamic model resolution applies ONLY to model manipulations under a
+// model-serving profile — one carrying a hardware.gpu block (VRAM + vendor), which
+// is the capacity source. Every other profile keeps the static path below (zero
+// regression); capacity is read from the profile's hardware, never the label.
+func (mag Magazine) applyManipulationsToCandidate(ctx context.Context, l *logrus.Entry, span trace.Span, prf types.Profile, mps []types.Manipulation, md types.Manifest, result *[]types.Manifest) error {
+	// A model-serving profile (hardware.gpu block) composes a model from SEVERAL
+	// manipulations that must ALL land on the same manifest — the weights
+	// (model/<name>) and the per-profile config (config/<name>). Apply them as an
+	// additive stack (see applyModelServingStack) instead of the single-match path
+	// below, which would serve only the first (config-only, no weights).
+	if prf.Hardware.IsModelServing() {
+		return mag.applyModelServingStack(ctx, l, span, prf, mps, md, result)
+	}
+	// Static path: the first matching manipulation for the profile wins (one
+	// variant per manifest). Unchanged — zero regression for non-model profiles.
+	for i := range mps {
+		mp := &mps[i]
+		if tryApplyManipulation(ctx, mag, l, span, mp, &md, result) {
+			return nil // only the first matching manipulation per manifest
+		}
+	}
+	*result = append(*result, md) // no manipulation matched — keep the original
+	return nil
+}
+
+// stackStep is one manipulation's contribution to a model-serving stack: the
+// layer to append and the OCI-config mutation to merge, tagged by the
+// manipulation label for collision diagnostics.
+type stackStep struct {
+	layer types.ManipuLayer
+	cfg   types.ManipuConfig
+	label string
+}
+
+// stackOwner records which manipulation last set a singleton config field (or
+// env key) and to what value, for additive-only collision detection.
+type stackOwner struct {
+	value string
+	label string
+}
+
+// applyModelServingStack composes every matching manipulation for a
+// model-serving profile onto md as an ADDITIVE stack: each manipulation's layer
+// is appended and its OCI-config mutation merged, chaining
+// createManipulatedManifest so the served manifest carries them all (runtime
+// base + gguf weights + config). The stack is strictly additive — if two
+// manipulations set the same env key (or Entrypoint/Cmd/WorkingDir/User) to
+// DIFFERENT values, one would silently invalidate the other, so the pull is
+// REJECTED with a fatal error rather than served half-composed.
+func (mag Magazine) applyModelServingStack(ctx context.Context, l *logrus.Entry, span trace.Span, prf types.Profile, mps []types.Manipulation, md types.Manifest, result *[]types.Manifest) error {
+	steps, ferr := mag.gatherModelServingSteps(ctx, l, span, prf, mps, md)
+	if ferr != nil {
+		return ferr // e.g. no quant fits (ErrQuantInfeasible) → reject the pull
+	}
+	if len(steps) == 0 {
+		*result = append(*result, md) // nothing matched → serve the original
+		return nil
+	}
+	if cerr := detectStackCollisions(steps); cerr != nil {
+		return utils.NewError(l, span, "model-serving stack for profile %s: %v", prf.Label, cerr)
+	}
+	cur := md
+	for _, st := range steps {
+		next, err := mag.createManipulatedManifest(ctx, cur, st.layer, st.label, st.cfg)
+		if err != nil {
+			return utils.ErrorHandler(l, span, err, "model-serving stack: applying %s failed", st.label)
+		}
+		cur = next
+	}
+	utils.Info(l, span, "model-serving stack for profile %s: composed %d manipulation(s) onto manifest %d", prf.Label, len(steps), md.ID)
+	*result = append(*result, cur)
+	return nil
+}
+
+// gatherModelServingSteps builds the ordered stack for a model-serving profile:
+// the weights (model/<name>, quant-resolved) first so the gguf lands over the
+// runtime base, then the remaining manipulations (config/<name>, platform
+// matched). A non-fatal miss (no quants / no matching layer) contributes no
+// step; an infeasible quant is returned as a fatal error so the pull is rejected.
+func (mag Magazine) gatherModelServingSteps(ctx context.Context, l *logrus.Entry, span trace.Span, prf types.Profile, mps []types.Manipulation, md types.Manifest) ([]stackStep, error) {
+	// A model-centric pull threads the requested model name (WithRequestedModel):
+	// only that model's model/<name> + config/<name> manipulations are in scope,
+	// so a profile hosting several models never stacks the wrong one (nor trips
+	// the QNIB_MODEL_CONFIG_DIR collision guard on a sibling model's config).
+	// Empty → no scoping (single-model-per-profile behaviour, zero regression).
+	scoped := scopeManipulationsToModel(mps, types.RequestedModelFromContext(ctx))
+	steps := make([]stackStep, 0, len(scoped))
+	for i := range scoped { // model (weights) manipulations first
+		mp := &scoped[i]
+		if !strings.HasPrefix(mp.Label, modelManipPrefix) {
+			continue
+		}
+		st, ok, ferr := mag.resolveModelStep(ctx, l, span, prf, mp)
+		if ferr != nil {
+			return nil, ferr
+		}
+		if ok {
+			steps = append(steps, st)
+		}
+	}
+	for i := range scoped { // then non-model manipulations (config, …)
+		mp := &scoped[i]
+		if strings.HasPrefix(mp.Label, modelManipPrefix) {
+			continue
+		}
+		if st, ok := staticStep(mp, md); ok {
+			steps = append(steps, st)
+		}
+	}
+	return steps, nil
+}
+
+// scopeManipulationsToModel returns the manipulations that apply when composing
+// reqModel. An empty reqModel disables scoping (returns mps unchanged, the
+// pre-model-centric behaviour). Otherwise a model/<name> or config/<name>
+// manipulation is kept only when <name> matches reqModel; non-model overlays are
+// always kept. See manipulationInScopeForModel for the per-manipulation rule.
+func scopeManipulationsToModel(mps []types.Manipulation, reqModel string) []types.Manipulation {
+	if reqModel == "" {
+		return mps
+	}
+	scoped := make([]types.Manipulation, 0, len(mps))
+	for _, mp := range mps {
+		if manipulationInScopeForModel(mp.Label, reqModel) {
+			scoped = append(scoped, mp)
+		}
+	}
+	return scoped
+}
+
+// manipulationInScopeForModel reports whether a manipulation applies when
+// composing the requested model. When reqModel is empty (non-model pull), every
+// manipulation is in scope — zero change from the pre-scoping behaviour. A
+// model/<name> or config/<name> manipulation is in scope only when <name>
+// equals reqModel; any other manipulation label (e.g. a non-model overlay) is
+// always in scope because it is not model-specific.
+func manipulationInScopeForModel(label, reqModel string) bool {
+	if reqModel == "" {
+		return true
+	}
+	for _, prefix := range []string{modelManipPrefix, configManipPrefix} {
+		if strings.HasPrefix(label, prefix) {
+			return strings.TrimPrefix(label, prefix) == reqModel
+		}
+	}
+	return true
+}
+
+// resolveModelStep resolves which quantization of a model/<name> manipulation to
+// serve for the profile (ModelQuantsGetByName + ResolveModelServe: highest
+// precision that fits VRAM; an explicit pull tag pins the quant) and returns the
+// matching layer + its config as a stack step. ok=false (no quants / no matching
+// layer) is a non-fatal miss; an *ErrQuantInfeasible is returned as a fatal error
+// so the pull is rejected rather than served unrunnable.
+func (mag Magazine) resolveModelStep(ctx context.Context, l *logrus.Entry, span trace.Span, prf types.Profile, mp *types.Manipulation) (stackStep, bool, error) {
+	name := strings.TrimPrefix(mp.Label, modelManipPrefix)
+	quants, err := mag.Database.ModelQuantsGetByName(ctx, name)
+	if err != nil {
+		utils.Warn(l, span, "ModelQuantsGetByName(%s) failed (non-fatal, skipping weights): %v", name, err)
+		return stackStep{}, false, nil
+	}
+	if len(quants) == 0 {
+		return stackStep{}, false, nil
+	}
+	// An explicit pull tag (models/<name>:<quant>) pins that quant; absent → best-fit.
+	namedQuant := types.RequestedQuantFromContext(ctx)
+	resolved, rerr := types.ResolveModelServe(quants, prf.Label, prf.Hardware.VRAMBytes(), namedQuant, defaultHeadroomFactor)
+	if rerr != nil {
+		var infeasible *types.ErrQuantInfeasible
+		if errors.As(rerr, &infeasible) {
+			utils.Warn(l, span, "model %s: no quant fits profile %s → rejecting pull (%v)", name, prf.Label, rerr)
+			return stackStep{}, false, rerr // FATAL reject
+		}
+		utils.Warn(l, span, "model %s resolution non-fatal for profile %s (skipping weights): %v", name, prf.Label, rerr)
+		return stackStep{}, false, nil
+	}
+	utils.Info(l, span, "model %s resolved to quant %s for profile %s", name, resolved.Tag, prf.Label)
+	for _, item := range flattenManipuLayers(mp) {
+		// NB: no manipuLayerMatchesPlatform gate — a model variant layer's Rule is
+		// the quant selector ("quant:<q>"), not a platform rule, and the quant is
+		// already resolved + image-matched; the weights are platform-agnostic data.
+		if layerImageMatchesQuant(item.Image, resolved) {
+			return stackStep{layer: item, cfg: effectiveConfigForLayer(mp, item), label: mp.Label}, true, nil
+		}
+	}
+	return stackStep{}, false, nil // resolved quant has no matching layer → skip
+}
+
+// staticStep returns the first ManipuLayer of mp whose rule matches md's
+// platform as a stack step (for non-model manipulations like config/<name>).
+func staticStep(mp *types.Manipulation, md types.Manifest) (stackStep, bool) {
+	for _, item := range flattenManipuLayers(mp) {
+		if manipuLayerMatchesPlatform(item, md.Platform) {
+			return stackStep{layer: item, cfg: effectiveConfigForLayer(mp, item), label: mp.Label}, true
+		}
+	}
+	return stackStep{}, false
+}
+
+// detectStackCollisions enforces the additive-only invariant across a
+// model-serving stack: layers always stack cleanly, but if two manipulations set
+// the same env key — or both set Entrypoint / Cmd / WorkingDir / User — to
+// DIFFERENT values, the later would silently invalidate the earlier. Returns a
+// descriptive error (naming both manipulations) so the caller rejects the pull.
+// Setting the same field to the same value is idempotent and allowed.
+func detectStackCollisions(steps []stackStep) error {
+	env := map[string]stackOwner{}
+	var sing singletons
+	for _, st := range steps {
+		if err := checkStepEnv(env, st); err != nil {
+			return err
+		}
+		if err := sing.check(st); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkStepEnv unions st's env into the running env map, erroring when a key was
+// already set by another step to a DIFFERENT value (same value is idempotent).
+func checkStepEnv(env map[string]stackOwner, st stackStep) error {
+	for k, v := range st.cfg.Env {
+		if prev, ok := env[k]; ok && prev.value != v {
+			return fmt.Errorf("env %q would be overwritten: %q (%s) vs %q (%s) — additive only", k, prev.value, prev.label, v, st.label)
+		}
+		env[k] = stackOwner{value: v, label: st.label}
+	}
+	return nil
+}
+
+// singletons tracks the at-most-one-owner OCI config fields across a stack.
+type singletons struct {
+	entrypoint stackOwner
+	cmd        stackOwner
+	workdir    stackOwner
+	user       stackOwner
+}
+
+// check claims each singleton field st sets, erroring on a conflicting owner.
+func (s *singletons) check(st stackStep) error {
+	if err := claimSingleton(&s.entrypoint, commandString(st.cfg.Entrypoint), st.label, "Entrypoint"); err != nil {
+		return err
+	}
+	if err := claimSingleton(&s.cmd, commandString(st.cfg.Cmd), st.label, "Cmd"); err != nil {
+		return err
+	}
+	if err := claimSingleton(&s.workdir, st.cfg.Workdir, st.label, "WorkingDir"); err != nil {
+		return err
+	}
+	return claimSingleton(&s.user, st.cfg.User, st.label, "User")
+}
+
+// claimSingleton records that `label` set `field` to a non-empty `value`,
+// erroring when a different manipulation already set it to a different value.
+// An empty value is a no-op (the step does not set the field).
+func claimSingleton(cur *stackOwner, value, label, field string) error {
+	if value == "" {
+		return nil
+	}
+	if cur.label != "" && cur.value != value {
+		return fmt.Errorf("%s would be overwritten: %q (%s) vs %q (%s) — additive only", field, cur.value, cur.label, value, label)
+	}
+	cur.value = value
+	cur.label = label
+	return nil
+}
+
+// commandString renders a ManipuCommand (op + value) as a stable string for
+// equality comparison, empty for a nil or zero command.
+func commandString(c *types.ManipuCommand) string {
+	if c == nil || c.IsZero() {
+		return ""
+	}
+	return fmt.Sprintf("%v:%v", c.Op, c.Value)
+}
+
+// layerImageMatchesQuant reports whether a manipulation layer's image is the
+// resolved quantization — matched by manifest digest (most reliable) or by the
+// upstream repo+tag.
+func layerImageMatchesQuant(img types.Manifest, q types.ModelImageRef) bool {
+	if q.Digest != "" && (img.Digest == q.Digest || img.Upstream.Digest.String() == q.Digest) {
+		return true
+	}
+	return q.Repo != "" && img.Upstream.Repo == q.Repo && img.Upstream.Tag == q.Tag
 }
 
 // tryApplyManipulation iterates every ManipuLayer reachable from the
@@ -599,12 +895,25 @@ func (mag Magazine) createManipulatedManifest(ctx context.Context, orig types.Ma
 	if err != nil {
 		return types.Manifest{}, err
 	}
+	// Inherit the original's platform. Compute-path candidates (e.g. the model
+	// injection path) arrive with an unhydrated Platform (OS/Arch/ID all empty)
+	// even though the original manifest has a HAS_PLATFORM edge in the graph.
+	// Without a platform the manipulated manifest's descriptor in the computed
+	// index has no platform field and docker rejects it ("no matching manifest
+	// for <os>/<arch>"), so resolve it from the graph by the original's ID.
+	plat := orig.Platform
+	if plat.ID == 0 && plat.OS == "" && plat.Arch == "" && orig.ID > 0 {
+		if p, found, e := mag.Database.PlatformGetByManifestID(ctx, orig.ID); e == nil && found {
+			plat = p
+			utils.Debug(l, span, "createManipulatedManifest: hydrated platform %s (id %d) from original %d", plat.GetLabel(), plat.ID, orig.ID)
+		}
+	}
 	manipMd := types.Manifest{
 		Digest:    maniDigest.String(),
 		MediaType: v1.MediaTypeImageManifest,
 		Size:      int64(len(maniBytes)),
 		Label:     manipLabel,
-		Platform:  orig.Platform,
+		Platform:  plat,
 		Config:    newCfgType,
 		Layers:    allLayers,
 	}
@@ -678,6 +987,15 @@ func (mag Magazine) gatherManipulationParts(ctx context.Context, l *logrus.Entry
 	if err != nil {
 		return manipulationParts{}, err
 	}
+	// Each source image must present as many layers as its config lists DiffIDs;
+	// otherwise the additive stack propagates the drift into a corrupt composed
+	// manifest. Attribute the failure to the offending image at its source.
+	if e := validateLayerDiffIDLockstep(fmt.Sprintf("original manifest %d", orig.ID), len(origLayers), len(origV1Cfg.RootFS.DiffIDs)); e != nil {
+		return manipulationParts{}, utils.ErrorHandler(l, span, e, "gatherManipulationParts (original)")
+	}
+	if e := validateLayerDiffIDLockstep(fmt.Sprintf("ManipuLayer image %d (%s)", mpl.Image.ID, mpl.Label), len(mplLayersFull), len(mplV1Cfg.RootFS.DiffIDs)); e != nil {
+		return manipulationParts{}, utils.ErrorHandler(l, span, e, "gatherManipulationParts (ManipuLayer)")
+	}
 	return manipulationParts{
 		origLayers:     origLayers,
 		mplLayers:      mplLayers,
@@ -735,6 +1053,20 @@ func projectDiffIDs(in []digest.Digest, idx []int) ([]digest.Digest, error) {
 		out = append(out, in[i])
 	}
 	return out, nil
+}
+
+// validateLayerDiffIDLockstep guards the OCI invariant that an image's layer
+// count equals its config RootFS.DiffIDs count. A mismatch means the image (or a
+// composed manifest) is malformed and docker/containerd rejects the pull with
+// "number of layers and diffIDs don't match: <layers> != <diffIDs>". Catching it
+// at compose time — naming the offending image via kind — turns that cryptic
+// client-side failure into an actionable server-side error at the true source.
+func validateLayerDiffIDLockstep(kind string, nLayers, nDiffIDs int) error {
+	if nLayers != nDiffIDs {
+		return fmt.Errorf("%s is malformed: %d layers but %d config DiffIDs — composing it produces a manifest docker rejects with \"number of layers and diffIDs don't match: %d != %d\"",
+			kind, nLayers, nDiffIDs, nLayers, nDiffIDs)
+	}
+	return nil
 }
 
 // loadManipuLayerLayers returns the ManipuLayer image's layer slice,
@@ -795,6 +1127,12 @@ func (mag Magazine) buildAndStoreManipulatedConfig(ctx context.Context, l *logru
 		return types.Config{}, utils.ErrorHandler(l, span, err, "ManipuLayer select projection against DiffIDs")
 	}
 	newV1Cfg.RootFS.DiffIDs = append(newV1Cfg.RootFS.DiffIDs, mplDiffIDs...)
+	// The assembled config must carry exactly one DiffID per layer the manifest
+	// blob will list (origLayers + mplLayers); otherwise the pull fails with
+	// "number of layers and diffIDs don't match".
+	if e := validateLayerDiffIDLockstep("manipulated manifest", len(parts.origLayers)+len(parts.mplLayers), len(newV1Cfg.RootFS.DiffIDs)); e != nil {
+		return types.Config{}, utils.ErrorHandler(l, span, e, "buildAndStoreManipulatedConfig")
+	}
 	// Apply the manipulation's OCI config mutations (env / workdir /
 	// user / volumes / entrypoint / cmd) when the new-schema path has
 	// produced a non-zero cfg. Legacy-form manipulations get a zero
@@ -880,8 +1218,11 @@ func (mag Magazine) persistManipulatedManifestGraph(ctx context.Context, l *logr
 			return utils.ErrorHandler(l, span, err, "failed to link manipulated manifest to layer %d", idx)
 		}
 	}
-	if orig.Platform.ID > 0 {
-		if err := mag.Database.LinkManifestToPlatform(ctx, manipMd.ID, orig.Platform.ID); err != nil {
+	// Link the (resolved) platform — manipMd.Platform is hydrated from the
+	// original in createManipulatedManifest, so this covers compute-path
+	// candidates whose orig.Platform.ID was 0.
+	if manipMd.Platform.ID > 0 {
+		if err := mag.Database.LinkManifestToPlatform(ctx, manipMd.ID, manipMd.Platform.ID); err != nil {
 			return utils.ErrorHandler(l, span, err, "failed to link manipulated manifest to platform")
 		}
 	}
