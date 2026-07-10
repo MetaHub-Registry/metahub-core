@@ -173,7 +173,8 @@ func (m Minio) ConnectClients() (err error) {
 		} else {
 			bCfg = bc
 		}
-		logrus.Infof("Connecting to minio bucket '%s'", bCfg.Bucket)
+
+		logrus.Infof("Connecting to bucket '%s' in '%s'", bCfg.Bucket, bCfg.URL)
 
 		cli, e := minio.New(bCfg.URL, &minio.Options{
 			Creds:  credentials.NewStaticV4(bCfg.User, bCfg.Password, ""),
