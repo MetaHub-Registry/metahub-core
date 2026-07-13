@@ -77,8 +77,10 @@ func (m Minio) BlobStatObj(ctx context.Context, object string) (obj minio.Object
 // files) at constant memory (cf. the model-repackage streaming path). The caller
 // MUST Close the returned reader.
 func (m Minio) BlobGetReader(ctx context.Context, dig string) (io.ReadCloser, error) {
-	bucket := m.GetBlobBucketName()
-	cli := m.BucketConfig[blobBucketKey].Client
+	bc := m.BucketConfig[blobBucketKey]
+	bucket := bc.Bucket
+	cli := bc.Client
+	logrus.Infof("BlobGetReader: endpoint=%s bucket=%s digest=%s", bc.URL, bucket, dig)
 	obj, err := cli.GetObject(ctx, bucket, dig, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, err
