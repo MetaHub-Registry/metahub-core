@@ -54,8 +54,18 @@ func (mag Magazine) cacheManifestByUpstream(ctx context.Context, up types.Upstre
 		// Fall through to the upstream fetch path below
 	}
 	utils.Debug(l, span, "Caching manifest for %-101s -> %t", up.GetLabel(), found)
-	if !found {
-		utils.Debug(l, span, "Manifest not cached, yet")
+	// Reaching here means the MinIO cache did not satisfy the request: either the
+	// upstream node is new (!found), or it exists in the graph but its
+	// manifest/config bytes were never cached (parse-collections records upstream
+	// nodes without caching docker.io/gitlab.com blobs). A MinIO cache hit already
+	// returned above, so in every remaining case we must (re-)fetch from the
+	// upstream registry. Previously this block was gated on `if !found`, so the
+	// found-but-uncached case fell through and returned a zero-value Manifest with
+	// an empty Config.Digest — which downstream ManifestUpsertBackends ->
+	// EnsureBlobExists("") rejects with "Object name cannot be empty", breaking
+	// pull-time model injection for non-pusher profiles.
+	{
+		utils.Debug(l, span, "Manifest not (fully) cached, fetching from upstream")
 		// ***** Manifest not already there
 		b, blob, e := mag.GetManifestByUpstreamByDigest(ctx, up)
 		if e != nil {
