@@ -229,6 +229,34 @@ func TestStoreBlobUploadReader(t *testing.T) {
 	} else {
 		assert.True(t, found)
 	}
+	// Dedup path: mirror the e2e --empty-graph=keep-upstream wipe by deleting the
+	// :Blob graph node while the S3 object remains. Re-storing must skip the
+	// upload (object already present) yet still recreate the node so the blob is
+	// resolvable again — without paying the (slow remote-S3) re-upload.
+	if err := mag.Database.BlobDeleteByDigest(ctx, bu.Digest); err != nil {
+		t.Fatal(err)
+	}
+	bu2, _ := types.FTarmBlobUploadConfig()
+	bu2.Digest = bu.Digest
+	if err := mag.Database.BlobUploadCreateByOCI(ctx, &bu2); err != nil {
+		t.Fatal(err)
+	}
+	chunk2, err := mag.Database.UploadChunkCreate(ctx, &bu2, 0, int64(len(buff)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mag.StoreBlobUploadReader(ctx, &bu2, bytes.NewReader(buff), int64(len(buff))); err != nil {
+		t.Fatalf("re-store of already-present blob must dedup and succeed: %v", err)
+	}
+	if err := mag.ComposeFromChunks(ctx, &bu2, []types.BlobChunk{chunk2}); err != nil {
+		t.Fatal(err)
+	}
+	upt.Digest = digest.Digest(bu2.Digest)
+	if found, err := mag.BlobExists(ctx, upt); err != nil {
+		t.Fatal(err)
+	} else {
+		assert.True(t, found, "blob node must be recreated from the already-present object")
+	}
 	// A wrong expected digest must be rejected (and not persisted).
 	bad := bu
 	bad.Digest = "sha256:" + strings.Repeat("0", 64)

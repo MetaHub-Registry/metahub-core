@@ -74,6 +74,28 @@ func (mag Magazine) StoreBlobUploadReader(ctx context.Context, bu *types.OCIBlob
 	if bu.Digest == "" {
 		return utils.NewError(l, span, "StoreBlobUploadReader requires bu.Digest (expected blob digest)")
 	}
+	// Content-addressed dedup: blob objects are keyed by digest, so if the object
+	// is already in the bucket there is nothing to upload. This is the common case
+	// after the e2e conformance graph wipe (parse rules --empty-graph=keep-upstream
+	// DETACH DELETEs the :Blob nodes but leaves the S3 objects intact), where a
+	// re-seed would otherwise re-stream ~1GB model layers over the slow remote-S3
+	// egress. Drain+verify the body through the same sha256 so integrity is still
+	// checked (fast, LAN), then skip only the PutObject; the caller still creates
+	// the :Blob node from the already-present object via ComposeFromChunks.
+	if obj, e := mag.Minio.BlobStatObj(ctx, bu.Digest); e == nil && obj.Size == size {
+		digester := digest.SHA256.Digester()
+		if _, ce := io.Copy(digester.Hash(), r); ce != nil {
+			return utils.ErrorHandler(l, span, ce, "failed to drain body for already-present blob")
+		}
+		if got := digester.Digest().String(); got != bu.Digest {
+			return utils.NewError(l, span, "streamed digest %s does not match expected %s (object already present)", got, bu.Digest)
+		}
+		utils.Info(l, span, "blob %s already in object store (%d bytes) — skipped S3 upload", utils.ShortenDigest(bu.Digest), size)
+		if e := mag.Database.BlobUploadUpdateByUUID(ctx, bu); e != nil {
+			return utils.ErrorHandler(l, span, e, "failed to link layer to blob upload")
+		}
+		return nil
+	}
 	utils.Debug(l, span, "streaming to MinIO: %s (%d bytes)", utils.ShortenDigest(bu.Digest), size)
 	digester := digest.SHA256.Digester()
 	tee := io.TeeReader(r, digester.Hash())
