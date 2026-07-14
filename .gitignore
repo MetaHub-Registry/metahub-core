@@ -6,3 +6,4 @@ lcov.info
 .env
 .opencode/package-lock.json
 *.log
+.understand-anything/.trash-*
