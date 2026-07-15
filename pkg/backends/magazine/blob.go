@@ -16,7 +16,8 @@ import (
 )
 
 const (
-	pkgNameBlob = "magazine/blob.go"
+	pkgNameBlob        = "magazine/blob.go"
+	failLinkBlobUpload = "failed to link layer to blob upload"
 )
 
 var (
@@ -30,6 +31,30 @@ func dedupMissReason(statFound bool) string {
 		return "object-absent"
 	}
 	return "size-mismatch"
+}
+
+// drainAndLinkPresent handles the content-addressed dedup HIT: the object is
+// already in the bucket, so drain+verify the request body (integrity check, fast
+// LAN) without re-uploading, then link the blob upload to the existing object.
+func (mag Magazine) drainAndLinkPresent(ctx context.Context, bu *types.OCIBlobUpload, r io.Reader, size int64) error {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameBlob,
+		"func":    "drainAndLinkPresent",
+		"digest":  bu.Digest,
+	})
+	defer span.End()
+	digester := digest.SHA256.Digester()
+	if _, ce := io.Copy(digester.Hash(), r); ce != nil {
+		return utils.ErrorHandler(l, span, ce, "failed to drain body for already-present blob")
+	}
+	if got := digester.Digest().String(); got != bu.Digest {
+		return utils.NewError(l, span, "streamed digest %s does not match expected %s (object already present)", got, bu.Digest)
+	}
+	utils.Info(l, span, "blob %s already in object store (%d bytes) — skipped S3 upload", utils.ShortenDigest(bu.Digest), size)
+	if e := mag.Database.BlobUploadUpdateByUUID(ctx, bu); e != nil {
+		return utils.ErrorHandler(l, span, e, failLinkBlobUpload)
+	}
+	return nil
 }
 
 func (mag Magazine) StoreBlobUpload(ctx context.Context, bu *types.OCIBlobUpload, buf []byte) (err error) {
@@ -48,7 +73,7 @@ func (mag Magazine) StoreBlobUpload(ctx context.Context, bu *types.OCIBlobUpload
 	utils.Debug(l, span, "Upload done, update database")
 	// Link Layer to BlobUpload
 	if e := mag.Database.BlobUploadUpdateByUUID(ctx, bu); e != nil {
-		return utils.ErrorHandler(l, span, e, "failed to link layer to blob upload")
+		return utils.ErrorHandler(l, span, e, failLinkBlobUpload)
 	}
 	return nil
 	//// Are we dealing with a Config or a layer?
@@ -111,24 +136,16 @@ func (mag Magazine) StoreBlobUploadReader(ctx context.Context, bu *types.OCIBlob
 		attribute.Bool("blob.stat_found", statFound),
 		attribute.Int64("blob.stat_size", obj.Size),
 		attribute.Bool("blob.size_match", sizeMatch),
-		attribute.Bool("blob.dedup_skip", statFound && sizeMatch),
+		attribute.Bool("blob.dedup_skip", sizeMatch),
 		attribute.String("blob.stat_err", statErrStr),
 	)
 	utils.Info(l, span, "blob-dedup-decision digest=%s declared_size=%d stat_found=%v stat_size=%d size_match=%v skip=%v stat_err=%q",
-		bu.Digest, size, statFound, obj.Size, sizeMatch, statFound && sizeMatch, statErrStr)
-	if statFound && sizeMatch {
-		digester := digest.SHA256.Digester()
-		if _, ce := io.Copy(digester.Hash(), r); ce != nil {
-			return utils.ErrorHandler(l, span, ce, "failed to drain body for already-present blob")
-		}
-		if got := digester.Digest().String(); got != bu.Digest {
-			return utils.NewError(l, span, "streamed digest %s does not match expected %s (object already present)", got, bu.Digest)
-		}
-		utils.Info(l, span, "blob %s already in object store (%d bytes) — skipped S3 upload", utils.ShortenDigest(bu.Digest), size)
-		if e := mag.Database.BlobUploadUpdateByUUID(ctx, bu); e != nil {
-			return utils.ErrorHandler(l, span, e, "failed to link layer to blob upload")
-		}
-		return nil
+		bu.Digest, size, statFound, obj.Size, sizeMatch, sizeMatch, statErrStr)
+	if sizeMatch { // sizeMatch implies statFound (see above)
+		// dedup HIT: the content-addressed object is already in the bucket — skip
+		// the S3 upload, drain+verify the body, and link it (helper keeps this
+		// method under the cognitive-complexity limit).
+		return mag.drainAndLinkPresent(ctx, bu, r, size)
 	}
 	// Redundant re-upload path: the dedup skip did NOT fire. Log loudly with the
 	// reason (object absent vs size mismatch) and time the S3 write so the run's
@@ -149,7 +166,7 @@ func (mag Magazine) StoreBlobUploadReader(ctx context.Context, bu *types.OCIBlob
 	}
 	utils.Debug(l, span, "Upload done, update database")
 	if e := mag.Database.BlobUploadUpdateByUUID(ctx, bu); e != nil {
-		return utils.ErrorHandler(l, span, e, "failed to link layer to blob upload")
+		return utils.ErrorHandler(l, span, e, failLinkBlobUpload)
 	}
 	return nil
 }
