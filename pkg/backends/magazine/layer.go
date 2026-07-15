@@ -169,8 +169,11 @@ func (mag Magazine) StoreLayerUpload(ctx context.Context, bu *types.OCIBlobUploa
 	return nil
 }
 
-func (mag Magazine) LayerGetPresignedUrlByHTTPRequest(r *http.Request) (psUrl string, err error) {
-	ctx := context.Background()
+// LayerGetPresignedUrlByHTTPRequest mints a presigned GET URL for the blob named
+// in the request. ctx is threaded from the caller so the presign carries trace
+// context and honours request cancellation (previously a context.Background()
+// that dropped both on the pull-redirect hot path).
+func (mag Magazine) LayerGetPresignedUrlByHTTPRequest(ctx context.Context, r *http.Request) (psUrl string, err error) {
 	req := types.NewRequest(ctx, r)
 	return mag.Minio.BlobGetPreSignedUrl(ctx, req.Digest)
 }

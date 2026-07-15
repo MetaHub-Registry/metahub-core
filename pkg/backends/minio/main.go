@@ -42,6 +42,12 @@ type BucketConfig struct {
 	Password   string
 	Redirect   bool
 	Ssl        bool
+	// PublicURL / PublicSsl address the client-reachable endpoint used only to
+	// SIGN presigned URLs; internal object ops use Client (URL/Ssl). Empty
+	// PublicURL means "same as internal" (PresignClient == Client).
+	PublicURL     string
+	PublicSsl     bool
+	PresignClient *minio.Client
 }
 
 func (m Minio) BucketConfigString() string {
@@ -70,6 +76,23 @@ func NewMiniWithCfg(cfg map[string]BucketConfig) (m Minio, err error) {
 		BucketConfig: cfg,
 	}
 	return
+}
+
+// viperStr returns the string at key when set, else fallback. Extracted so the
+// per-bucket resolution in NewMinio stays flat (low cyclomatic complexity).
+func viperStr(key, fallback string) string {
+	if viper.IsSet(key) {
+		return viper.GetString(key)
+	}
+	return fallback
+}
+
+// viperBool returns the bool at key when set, else fallback.
+func viperBool(key string, fallback bool) bool {
+	if viper.IsSet(key) {
+		return viper.GetBool(key)
+	}
+	return fallback
 }
 
 func NewMinio(cfgFile string) (m Minio, err error) {
@@ -102,61 +125,40 @@ func NewMinio(cfgFile string) (m Minio, err error) {
 		},
 	}
 	bc := BucketConfig{
-		URL:      viper.GetString("minio.url"),
-		Region:   viper.GetString("minio.region"),
-		User:     viper.GetString("minio.user"),
-		Password: viper.GetString("minio.password"),
-		Redirect: viper.GetBool("minio.redirect"),
-		Ssl:      viper.GetBool("minio.ssl"),
+		URL:       viper.GetString("minio.url"),
+		Region:    viper.GetString("minio.region"),
+		User:      viper.GetString("minio.user"),
+		Password:  viper.GetString("minio.password"),
+		Redirect:  viper.GetBool("minio.redirect"),
+		Ssl:       viper.GetBool("minio.ssl"),
+		PublicURL: viper.GetString("minio.public_url"),
+		PublicSsl: viper.GetBool("minio.public_ssl"),
 	}
 
 	for _, v := range reflect.ValueOf(m.BucketConfig).MapKeys() {
 		b := fmt.Sprintf("%s", v)
+		p := "minio." + b + "."
 		bCfg := BucketConfig{
-			Bucket: b,
+			Bucket:   viperStr(p+"bucket", bc.Bucket),
+			URL:      viperStr(p+"url", bc.URL),
+			Region:   viperStr(p+"region", bc.Region),
+			User:     viperStr(p+"user", bc.User),
+			Password: viperStr(p+"password", bc.Password),
+			Redirect: viperBool(p+"redirect", bc.Redirect),
+			Ssl:      viperBool(p+"ssl", bc.Ssl),
 		}
-		key := fmt.Sprintf("minio.%s.url", b)
-		if viper.IsSet(key) {
-			bCfg.URL = viper.GetString(key)
-		} else {
-			bCfg.URL = bc.URL
+		// Public presign endpoint: per-bucket key, then global minio.public_url,
+		// then fall back to the internal URL (identity — no separate presign host).
+		pubURL := bc.PublicURL
+		if pubURL == "" {
+			pubURL = bCfg.URL
 		}
-		key = fmt.Sprintf("minio.%s.bucket", b)
-		if viper.IsSet(key) {
-			bCfg.Bucket = viper.GetString(key)
-		} else {
-			bCfg.Bucket = bc.Bucket
+		bCfg.PublicURL = viperStr(p+"public_url", pubURL)
+		pubSsl := bCfg.Ssl
+		if viper.IsSet("minio.public_ssl") {
+			pubSsl = bc.PublicSsl
 		}
-		key = fmt.Sprintf("minio.%s.region", b)
-		if viper.IsSet(key) {
-			bCfg.Region = viper.GetString(key)
-		} else {
-			bCfg.Region = bc.Region
-		}
-		key = fmt.Sprintf("minio.%s.user", b)
-		if viper.IsSet(key) {
-			bCfg.User = viper.GetString(key)
-		} else {
-			bCfg.User = bc.User
-		}
-		key = fmt.Sprintf("minio.%s.password", b)
-		if viper.IsSet(key) {
-			bCfg.Password = viper.GetString(key)
-		} else {
-			bCfg.Password = bc.Password
-		}
-		key = fmt.Sprintf("minio.%s.redirect", b)
-		if viper.IsSet(key) {
-			bCfg.Redirect = viper.GetBool(key)
-		} else {
-			bCfg.Redirect = bc.Redirect
-		}
-		key = fmt.Sprintf("minio.%s.ssl", b)
-		if viper.IsSet(key) {
-			bCfg.Ssl = viper.GetBool(key)
-		} else {
-			bCfg.Ssl = bc.Ssl
-		}
+		bCfg.PublicSsl = viperBool(p+"public_ssl", pubSsl)
 		m.BucketConfig[b] = bCfg
 	}
 	return
@@ -171,7 +173,8 @@ func (m Minio) ConnectClients() (err error) {
 		} else {
 			bCfg = bc
 		}
-		logrus.Infof("Connecting to minio bucket '%s'", bCfg.Bucket)
+
+		logrus.Infof("Connecting to bucket '%s' in '%s'", bCfg.Bucket, bCfg.URL)
 
 		cli, e := minio.New(bCfg.URL, &minio.Options{
 			Creds:  credentials.NewStaticV4(bCfg.User, bCfg.Password, ""),
@@ -184,6 +187,24 @@ func (m Minio) ConnectClients() (err error) {
 			return
 		}
 		bCfg.Client = cli
+		// Build a dedicated presign client bound to the PUBLIC endpoint. Presigning
+		// is offline (no connection), so this client only needs endpoint+creds+region.
+		// When the public endpoint matches the internal one, reuse the same client.
+		if bCfg.PublicURL == "" || (bCfg.PublicURL == bCfg.URL && bCfg.PublicSsl == bCfg.Ssl) {
+			bCfg.PresignClient = cli
+		} else {
+			pcli, pe := minio.New(bCfg.PublicURL, &minio.Options{
+				Creds:  credentials.NewStaticV4(bCfg.User, bCfg.Password, ""),
+				Secure: bCfg.PublicSsl,
+				Region: bCfg.Region,
+			})
+			if pe != nil {
+				logrus.Errorf("Error creating minio presign client: %v\n %s\n", bCfg, pe)
+				err = pe
+				return
+			}
+			bCfg.PresignClient = pcli
+		}
 		m.BucketConfig[b] = bCfg
 	}
 	return
@@ -218,9 +239,11 @@ func (m Minio) PreTearDown(bs utils.Bootstrap) {
 }
 
 func (m Minio) EmptyAll() (err error) {
-	logrus.Info("Emptying all buckets")
+	// INSTRUMENTATION (perf-debug): a bucket-wide wipe is a prime suspect for the
+	// re-uploaded model blobs — make it impossible to miss in a run's logs.
+	logrus.Warn("EmptyAll CALLED — emptying ALL buckets (bulk object delete)")
 	for _, bc := range m.BucketConfig {
-		logrus.Infof(">> Emptying bucket '%s'", bc.Bucket)
+		logrus.Warnf(">> EmptyAll emptying bucket '%s'", bc.Bucket)
 		objectsCh := make(chan minio.ObjectInfo)
 
 		// Send object names that are needed to be removed to objectsCh
