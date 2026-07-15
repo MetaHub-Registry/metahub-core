@@ -304,24 +304,44 @@ func initOauth(cfg *MagConfig) (err error) {
 
 func initTracing(cmd *cobra.Command, cfg *MagConfig) (ctx context.Context, err error) {
 	ctx = cmd.Context()
+	if ctx == nil {
+		// Older cobra returns a nil context when the command was not run via
+		// ExecuteContext; a nil ctx panics the OTLP exporter's lazy Start.
+		ctx = context.Background()
+	}
+	// tracing.* may be overridden via environment variables so pipelines (e.g.
+	// the e2e evidence run) can point tracing at an OTLP backend such as
+	// VictoriaTraces without editing the config file / k8s secret. Per viper
+	// precedence a bound env var wins over the config-file value.
+	_ = viper.BindEnv("tracing.endpoint", "TRACING_ENDPOINT")
+	_ = viper.BindEnv("tracing.name", "TRACING_NAME")
+	_ = viper.BindEnv("tracing.protocol", "TRACING_PROTOCOL")
+	_ = viper.BindEnv("tracing.sync", "TRACING_SYNC")
 	trEnd := viper.GetString("tracing.endpoint")
 	svcName := viper.GetString("tracing.name")
 	if svcName == "" || trEnd == "" {
 		logrus.Warn("Tracing is disabled (tracing.name/tracing.endpoint is empty)")
 	}
 	if trEnd != "" {
-		logrus.Infof("Tracing endpoint '%s': %s", svcName, trEnd)
-		tr, err := tracing.InitTracer(svcName, trEnd)
-		if err != nil {
-			logrus.Fatalf("Could not initialize jaeger tracer: %s", err.Error())
+		proto := viper.GetString("tracing.protocol")
+		logrus.Infof("Tracing endpoint '%s' [proto=%s]: %s", svcName, proto, trEnd)
+		if proto == "otlp" {
+			// OTLP/HTTP exporter (e.g. VictoriaTraces). Use a synchronous
+			// processor for short-lived CLI commands so spans are not dropped
+			// on process exit (tracing.sync defaults false for long-running
+			// services which flush via the batch processor).
+			tr, err := tracing.InitTracerOTLP(ctx, svcName, trEnd, viper.GetBool("tracing.sync"))
+			if err != nil {
+				logrus.Fatalf("Could not initialize otlp tracer: %s", err.Error())
+			}
+			cfg.Tracing = TraceCfg{Enabled: true, Endpoint: trEnd, Tracer: tr}
+		} else {
+			tr, err := tracing.InitTracer(svcName, trEnd)
+			if err != nil {
+				logrus.Fatalf("Could not initialize jaeger tracer: %s", err.Error())
+			}
+			cfg.Tracing = TraceCfg{Enabled: true, Endpoint: trEnd, Tracer: tr}
 		}
-		trCfg := TraceCfg{
-			Enabled:  true,
-			Endpoint: trEnd,
-			Tracer:   tr,
-		}
-		cfg.Tracing = trCfg
-
 	}
 	return
 }

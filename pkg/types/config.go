@@ -23,7 +23,19 @@ import (
 const (
 	dockerConfigMediaType = "application/vnd.docker.container.image.v1+json"
 	ociConfigMediaType    = "application/vnd.oci.image.config.v1+json"
+	// MediaTypeOCIEmpty is the OCI "empty" descriptor mediaType (RFC: the config of
+	// ORAS artifact manifests). EmptyConfigDigest is the digest of its canonical
+	// content ("{}"). Together they are a well-known sentinel the registry can
+	// materialize itself, so an artifact push need never upload the 2-byte config —
+	// and the manifest-link content-addressed fallback can re-create its :Blob node.
+	MediaTypeOCIEmpty = "application/vnd.oci.empty.v1+json"
+	EmptyConfigDigest = "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
 )
+
+// EmptyConfigBytes is the canonical content ("{}") of the OCI empty descriptor
+// (EmptyConfigDigest). Kept as a package var so the store/link fallback can
+// materialize the object without the client ever uploading it.
+var EmptyConfigBytes = []byte("{}")
 
 type Config struct {
 	ID         int64       `json:"-"`

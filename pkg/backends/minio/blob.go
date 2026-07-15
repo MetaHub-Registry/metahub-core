@@ -77,8 +77,10 @@ func (m Minio) BlobStatObj(ctx context.Context, object string) (obj minio.Object
 // files) at constant memory (cf. the model-repackage streaming path). The caller
 // MUST Close the returned reader.
 func (m Minio) BlobGetReader(ctx context.Context, dig string) (io.ReadCloser, error) {
-	bucket := m.GetBlobBucketName()
-	cli := m.BucketConfig[blobBucketKey].Client
+	bc := m.BucketConfig[blobBucketKey]
+	bucket := bc.Bucket
+	cli := bc.Client
+	logrus.Infof("BlobGetReader: endpoint=%s bucket=%s digest=%s", bc.URL, bucket, dig)
 	obj, err := cli.GetObject(ctx, bucket, dig, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, err
@@ -147,9 +149,11 @@ func (m Minio) BlobRemoveObj(ctx context.Context, object string) (err error) {
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to stat object before removal")
 	}
-	utils.Debug(l, span, "Blob '%s' found: %d bytes", utils.ShortenDigest(object), obj.Size)
+	// INSTRUMENTATION (perf-debug): S3 object deletions are loud (Info + size) so a
+	// run's logs pinpoint any removal of a large content-addressed blob.
+	utils.Info(l, span, "BlobRemoveObj DELETING object=%s size=%d bucket=%s", object, obj.Size, bucket)
 	err = cli.RemoveObject(ctx, bucket, object, minio.RemoveObjectOptions{})
-	utils.Debug(l, span, "Removed blob '%s': %v", utils.ShortenDigest(object), err)
+	utils.Info(l, span, "BlobRemoveObj DELETED object=%s size=%d err=%v", object, obj.Size, err)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to remove object")
 	}
@@ -180,11 +184,13 @@ func (m Minio) BlobGetBytes(ctx context.Context, path string) (b []byte, err err
 	b, e := io.ReadAll(obj)
 	if e != nil {
 		if e.Error() == keyDoesNotExistError {
-			l.Error("")
+			l.Debugf("blob %q not found in bucket", path)
 			return nil, e
 		}
-		err = errors.Wrap(e, "failed to read blob")
-		l.Fatal(err)
+		// Return the error instead of l.Fatal: this is a library call on the
+		// pull path, and Fatal calls os.Exit — a transient object-store read
+		// error would take the whole process down. Let callers handle it.
+		return nil, errors.Wrap(e, "failed to read blob")
 	}
 	return
 }
@@ -195,10 +201,15 @@ func (m Minio) BlobGetPreSignedUrl(ctx context.Context, dig string) (psUrl strin
 		"func":    "BlobGetPreSignedUrl",
 	})
 	bucket := m.GetBlobBucketName()
-	cli := m.BucketConfig[GetBlobBucketKey()].Client
+	// Sign with the PUBLIC presign client so the URL host is client-reachable.
+	// Falls back to the internal client when no public endpoint is configured.
+	cli := m.BucketConfig[GetBlobBucketKey()].PresignClient
+	if cli == nil {
+		cli = m.BucketConfig[GetBlobBucketKey()].Client
+	}
 	reqParams := make(url.Values)
 	psU, err := cli.PresignedGetObject(
-		context.Background(),
+		ctx,
 		bucket,
 		dig,
 		time.Second*30*60,

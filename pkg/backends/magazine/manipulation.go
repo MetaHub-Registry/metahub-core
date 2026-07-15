@@ -1144,8 +1144,13 @@ func (mag Magazine) buildAndStoreManipulatedConfig(ctx context.Context, l *logru
 		return types.Config{}, utils.ErrorHandler(l, span, err, "failed to marshal new config")
 	}
 	cfgDigest := digest.FromBytes(cfgBytes)
-	if err := mag.Minio.PutBlob(ctx, cfgBytes, cfgDigest.String()); err != nil {
-		return types.Config{}, utils.ErrorHandler(l, span, err, "failed to store new config in MinIO")
+	// Idempotent write-on-recompute: the config blob is content-addressed, so a
+	// cache-miss recompute re-derives identical bytes — skip the (remote, ~100ms
+	// against eu-west-1 S3) PutBlob when the object already exists.
+	if _, statErr := mag.Minio.BlobStatObj(ctx, cfgDigest.String()); statErr != nil {
+		if err := mag.Minio.PutBlob(ctx, cfgBytes, cfgDigest.String()); err != nil {
+			return types.Config{}, utils.ErrorHandler(l, span, err, "failed to store new config in MinIO")
+		}
 	}
 	newCfgType := types.Config{
 		Digest:    cfgDigest.String(),
@@ -1191,8 +1196,12 @@ func (mag Magazine) buildAndStoreManipulatedManifestBlob(ctx context.Context, l 
 		return nil, "", nil, utils.ErrorHandler(l, span, err, "failed to marshal manipulated OCI manifest")
 	}
 	maniDigest := digest.FromBytes(maniBytes)
-	if err := mag.Minio.ManifestsPutObj(ctx, maniDigest.String(), maniBytes); err != nil {
-		return nil, "", nil, utils.ErrorHandler(l, span, err, "failed to store manipulated manifest in MinIO")
+	// Idempotent write-on-recompute (see buildAndStoreManipulatedConfig): the
+	// manipulated manifest is content-addressed; skip the remote put when present.
+	if _, statErr := mag.Minio.ManifestsStatObj(ctx, maniDigest.String()); statErr != nil {
+		if err := mag.Minio.ManifestsPutObj(ctx, maniDigest.String(), maniBytes); err != nil {
+			return nil, "", nil, utils.ErrorHandler(l, span, err, "failed to store manipulated manifest in MinIO")
+		}
 	}
 	return maniBytes, maniDigest, allLayers, nil
 }
