@@ -149,9 +149,11 @@ func (m Minio) BlobRemoveObj(ctx context.Context, object string) (err error) {
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to stat object before removal")
 	}
-	utils.Debug(l, span, "Blob '%s' found: %d bytes", utils.ShortenDigest(object), obj.Size)
+	// INSTRUMENTATION (perf-debug): S3 object deletions are loud (Info + size) so a
+	// run's logs pinpoint any removal of a large content-addressed blob.
+	utils.Info(l, span, "BlobRemoveObj DELETING object=%s size=%d bucket=%s", object, obj.Size, bucket)
 	err = cli.RemoveObject(ctx, bucket, object, minio.RemoveObjectOptions{})
-	utils.Debug(l, span, "Removed blob '%s': %v", utils.ShortenDigest(object), err)
+	utils.Info(l, span, "BlobRemoveObj DELETED object=%s size=%d err=%v", object, obj.Size, err)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "failed to remove object")
 	}

@@ -239,9 +239,11 @@ func (m Minio) PreTearDown(bs utils.Bootstrap) {
 }
 
 func (m Minio) EmptyAll() (err error) {
-	logrus.Info("Emptying all buckets")
+	// INSTRUMENTATION (perf-debug): a bucket-wide wipe is a prime suspect for the
+	// re-uploaded model blobs — make it impossible to miss in a run's logs.
+	logrus.Warn("EmptyAll CALLED — emptying ALL buckets (bulk object delete)")
 	for _, bc := range m.BucketConfig {
-		logrus.Infof(">> Emptying bucket '%s'", bc.Bucket)
+		logrus.Warnf(">> EmptyAll emptying bucket '%s'", bc.Bucket)
 		objectsCh := make(chan minio.ObjectInfo)
 
 		// Send object names that are needed to be removed to objectsCh

@@ -6,11 +6,13 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"time"
 
 	"github.com/opencontainers/go-digest"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const (
@@ -20,6 +22,15 @@ const (
 var (
 	ErrJSONNOTCONFIG = fmt.Errorf("buf is JSON, but not v1.Image")
 )
+
+// dedupMissReason classifies why the content-addressed dedup skip did not fire,
+// for the perf-debug instrumentation in StoreBlobUploadReader.
+func dedupMissReason(statFound bool) string {
+	if !statFound {
+		return "object-absent"
+	}
+	return "size-mismatch"
+}
 
 func (mag Magazine) StoreBlobUpload(ctx context.Context, bu *types.OCIBlobUpload, buf []byte) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
@@ -82,7 +93,30 @@ func (mag Magazine) StoreBlobUploadReader(ctx context.Context, bu *types.OCIBlob
 	// egress. Drain+verify the body through the same sha256 so integrity is still
 	// checked (fast, LAN), then skip only the PutObject; the caller still creates
 	// the :Blob node from the already-present object via ComposeFromChunks.
-	if obj, e := mag.Minio.BlobStatObj(ctx, bu.Digest); e == nil && obj.Size == size {
+	// INSTRUMENTATION (perf-debug, non-behavioral): hoist the object stat so the
+	// exact dedup decision is visible per blob PUT in VictoriaLogs/traces — whether
+	// the content-addressed object was already in the bucket (skip) or streamed
+	// again (redundant re-upload of ~1GB), and the stat result that drove it. This
+	// settles "object deleted between runs" vs "dedup never fires" without guessing.
+	obj, statErr := mag.Minio.BlobStatObj(ctx, bu.Digest)
+	statFound := statErr == nil
+	sizeMatch := statFound && obj.Size == size
+	statErrStr := ""
+	if statErr != nil {
+		statErrStr = statErr.Error()
+	}
+	span.SetAttributes(
+		attribute.String("blob.digest", bu.Digest),
+		attribute.Int64("blob.declared_size", size),
+		attribute.Bool("blob.stat_found", statFound),
+		attribute.Int64("blob.stat_size", obj.Size),
+		attribute.Bool("blob.size_match", sizeMatch),
+		attribute.Bool("blob.dedup_skip", statFound && sizeMatch),
+		attribute.String("blob.stat_err", statErrStr),
+	)
+	utils.Info(l, span, "blob-dedup-decision digest=%s declared_size=%d stat_found=%v stat_size=%d size_match=%v skip=%v stat_err=%q",
+		bu.Digest, size, statFound, obj.Size, sizeMatch, statFound && sizeMatch, statErrStr)
+	if statFound && sizeMatch {
 		digester := digest.SHA256.Digester()
 		if _, ce := io.Copy(digester.Hash(), r); ce != nil {
 			return utils.ErrorHandler(l, span, ce, "failed to drain body for already-present blob")
@@ -96,12 +130,19 @@ func (mag Magazine) StoreBlobUploadReader(ctx context.Context, bu *types.OCIBlob
 		}
 		return nil
 	}
-	utils.Debug(l, span, "streaming to MinIO: %s (%d bytes)", utils.ShortenDigest(bu.Digest), size)
+	// Redundant re-upload path: the dedup skip did NOT fire. Log loudly with the
+	// reason (object absent vs size mismatch) and time the S3 write so the run's
+	// logs quantify exactly which ~1GB PUT(s) hit the slow S3 egress.
+	uploadStart := time.Now()
+	utils.Info(l, span, "streaming to MinIO (dedup MISS, redundant if already present): digest=%s size=%d reason=%s",
+		bu.Digest, size, dedupMissReason(statFound))
 	digester := digest.SHA256.Digester()
 	tee := io.TeeReader(r, digester.Hash())
 	if e := mag.Minio.BlobPutReader(ctx, tee, size, bu.Digest); e != nil {
 		return utils.ErrorHandler(l, span, e, "failed to stream layer into minio")
 	}
+	span.SetAttributes(attribute.Float64("blob.upload_seconds", time.Since(uploadStart).Seconds()))
+	utils.Info(l, span, "streamed-to-MinIO digest=%s size=%d upload_seconds=%.1f", bu.Digest, size, time.Since(uploadStart).Seconds())
 	if got := digester.Digest().String(); got != bu.Digest {
 		_ = mag.Minio.BlobRemoveObj(ctx, bu.Digest)
 		return utils.NewError(l, span, "uploaded digest %s does not match expected %s", got, bu.Digest)
@@ -122,6 +163,9 @@ func (mag Magazine) BlobDelete(ctx context.Context, req types.Request) (found bo
 		"digest":  utils.ShortenDigest(req.Digest),
 	})
 	defer span.End()
+	// INSTRUMENTATION (perf-debug): make blob deletions loud so a run's logs reveal
+	// any code path that removes a (large, content-addressed) blob between seeds.
+	utils.Info(l, span, "BlobDelete CALLED repo=%s tag=%s digest=%s", req.Repo, req.Tag, req.Digest)
 	_, found, err = mag.Database.BlobGetByDigest(ctx, req.Digest)
 	if err != nil {
 		return false, utils.ErrorHandler(l, span, err, types.FailBlobGetByDigest)
