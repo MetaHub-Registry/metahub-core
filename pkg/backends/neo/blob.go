@@ -235,3 +235,28 @@ func (n Neo) BlobUpdateSizeByDigest(ctx context.Context, digest string, size int
 	_, err := n.Execute(q)
 	return err
 }
+
+// BlobEnsureByDigest content-addressed-materializes a bare :Blob node for `dig`
+// (size only) when it is missing from the graph but its bytes survive in the
+// object store. This is the graph half of the content-addressed HEAD fallback: a
+// client that HEADs an already-present object is answered 200 and skips the
+// upload, so no :Blob node is (re)created — but the manifest-link path
+// (ManifestLinkToArtifactConfig / ManifestLinkToConfig, which MATCH (b:Blob
+// {digest})) needs the node to exist or it 400s "config blob not found". MERGE
+// on the content digest keeps it idempotent and content-addressed (no duplicate
+// :Blob nodes, cf. CreateBlobFromChunk).
+func (n Neo) BlobEnsureByDigest(ctx context.Context, dig string, size int64) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameBlob,
+		"func":    "BlobEnsureByDigest",
+		"digest":  utils.ShortenDigest(dig),
+	})
+	defer span.End()
+	_ = ctx
+	q := fmt.Sprintf(`MERGE (b:Blob {digest: "%s"}) ON CREATE SET b.label = "%s", b.created_at = TIMESTAMP(), b.size = %d`, dig, utils.ShortenDigest(dig), size)
+	utils.Debug(l, span, q)
+	if _, err = n.Execute(q); err != nil {
+		return utils.ErrorHandler(l, span, err, FailQueryExec)
+	}
+	return nil
+}

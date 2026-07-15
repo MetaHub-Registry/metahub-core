@@ -288,6 +288,40 @@ func (mag Magazine) linkManifestSubject(ctx context.Context, l *logrus.Entry, sp
 	return &sub, nil
 }
 
+// ensureBlobNodeResolvable guarantees the content-addressed :Blob node for `dig`
+// exists so a manifest can link to it. The HEAD content-addressed fallback lets a
+// client skip re-uploading a blob whose object survives in the bucket but whose
+// :Blob graph node was wiped (e.g. the e2e --empty-graph reseed) — without this
+// the manifest-link path 400s "config blob not found". Resolution order:
+//  1. graph node already present -> nothing to do;
+//  2. object present in the bucket -> re-materialize the node from its stat size;
+//  3. OCI empty-config sentinel -> materialize the 2-byte "{}" object + node;
+//  4. otherwise the blob is genuinely absent -> error (a real MANIFEST_INVALID).
+func (mag Magazine) ensureBlobNodeResolvable(ctx context.Context, l *logrus.Entry, span trace.Span, dig, mediaType string) error {
+	if _, found, err := mag.Database.BlobGetByDigest(ctx, dig); err != nil {
+		return utils.ErrorHandler(l, span, err, "failed to BlobGetByDigest")
+	} else if found {
+		return nil
+	}
+	var size int64
+	if obj, e := mag.Minio.BlobStatObj(ctx, dig); e == nil {
+		size = obj.Size
+		utils.Info(l, span, "blob %s missing from graph but present in bucket (%d bytes) — re-materializing :Blob node", utils.ShortenDigest(dig), size)
+	} else if dig == types.EmptyConfigDigest || mediaType == types.MediaTypeOCIEmpty {
+		if e2 := mag.Minio.PutBlob(ctx, types.EmptyConfigBytes, dig); e2 != nil {
+			return utils.ErrorHandler(l, span, e2, "failed to materialize empty-config blob object")
+		}
+		size = int64(len(types.EmptyConfigBytes))
+		utils.Info(l, span, "materialized OCI empty-config sentinel %s (%d bytes)", utils.ShortenDigest(dig), size)
+	} else {
+		return utils.NewError(l, span, "blob %s not found in graph or object store", utils.ShortenDigest(dig))
+	}
+	if e := mag.Database.BlobEnsureByDigest(ctx, dig, size); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to materialize :Blob node")
+	}
+	return nil
+}
+
 func (mag Magazine) StoreManifestArtifactUpload(ctx context.Context, req types.Request, ociMani types.OCIManifest) (md types.Manifest, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMD,
@@ -312,6 +346,14 @@ func (mag Magazine) StoreManifestArtifactUpload(ctx context.Context, req types.R
 	md.ArtifactType = ociMani.ArtifactType
 
 	utils.Debug(l, span, "Link Manifest w/ Config Blob: %s", utils.ShortenDigest(ociMani.Config.Digest.String()))
+	// Content-addressed fallback: the client may have HEAD-skipped uploading the
+	// config blob (its object survives a graph wipe, so BlobHandler answers the HEAD
+	// 200 without a :Blob node). Re-materialize the node from the bucket — or, for
+	// the OCI empty-config sentinel, synthesize it — so the link below does not
+	// 400 "config blob not found".
+	if err := mag.ensureBlobNodeResolvable(ctx, l, span, ociMani.Config.Digest.String(), ociMani.Config.MediaType); err != nil {
+		return md, utils.ErrorHandler(l, span, err, "failed to ensure config blob resolvable")
+	}
 	if err := mag.Database.ManifestLinkToArtifactConfig(ctx, req.Digest, ociMani.Config); err != nil {
 		err = utils.ErrorHandler(l, span, err, "failed to ManifestLinkToArtifactConfig")
 		return md, err
@@ -372,6 +414,14 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 	}
 	utils.Debug(l, span, "Found Config: ID:%d Digest:%s", cfg.ID, cfg.Digest)
 	md.Config = cfg
+	// Content-addressed fallback (parity with the ORAS artifact path): guarantee the
+	// config :Blob node exists even if the client HEAD-skipped its upload after a
+	// graph wipe, so ManifestLinkToConfig (MATCH (c:Blob {digest})) resolves instead
+	// of silently linking nothing.
+	if e = mag.ensureBlobNodeResolvable(ctx, l, span, cfg.Digest, cfg.MediaType); e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to ensure config blob resolvable")
+		return
+	}
 	// Link Manifest to Config
 	utils.Debug(l, span, "Linking Manifest to Config: '%d' -> '%d'", md.ID, cfg.ID)
 	e = mag.Database.ManifestLinkToConfig(ctx, md.ID, cfg)

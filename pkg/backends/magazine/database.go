@@ -49,6 +49,7 @@ type Database interface {
 	BlobExists(ctx context.Context, up upstream.UpstreamTriple) (found bool, err error)
 	BlobGetByDigest(ctx context.Context, dig string) (b *types.Blob, found bool, err error)
 	BlobDeleteByDigest(ctx context.Context, dig string) error
+	BlobEnsureByDigest(ctx context.Context, dig string, size int64) error
 	/********* Layer ***********/
 	LayerGetByDigest(ctx context.Context, dig string) (l types.Layer, found bool, err error)
 	LayerDeleteByDigest(ctx context.Context, dig string) error
