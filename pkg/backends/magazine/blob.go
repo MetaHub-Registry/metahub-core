@@ -24,6 +24,9 @@ const (
 	// content-addressed dedup fires — the object was already in the bucket so the
 	// S3 PutObject egress was skipped.
 	msgSkippedS3Upload = "blob %s already in object store (%d bytes) — skipped S3 upload"
+	// failCreateComposedBlob is the error wrap used wherever a composed :Blob node
+	// is (re)created from chunks — shared by the dedup-skip and stream-compose paths.
+	failCreateComposedBlob = "failed to create composed blob node"
 )
 
 var (
@@ -104,7 +107,7 @@ func (mag Magazine) drainAndLinkPresent(ctx context.Context, bu *types.OCIBlobUp
 func (mag Magazine) linkComposedPresent(ctx context.Context, l *logrus.Entry, span trace.Span, bu *types.OCIBlobUpload, total int64) error {
 	utils.Info(l, span, msgSkippedS3Upload, utils.ShortenDigest(bu.Digest), total)
 	if e := mag.Database.CreateBlobFromChunk(ctx, bu, types.BlobChunk{Digest: bu.Digest, Bytes: total}); e != nil {
-		return utils.ErrorHandler(l, span, e, "failed to create composed blob node")
+		return utils.ErrorHandler(l, span, e, failCreateComposedBlob)
 	}
 	return nil
 }
@@ -309,50 +312,51 @@ func (mag Magazine) ComposeFromChunks(ctx context.Context, bu *types.OCIBlobUplo
 		return fmt.Errorf("why did we upload a blob with no chunks?")
 	case 1:
 		utils.Debug(l, span, "single chunk upload, finalizing")
-		chunk := chunks[0]
-		e := mag.Database.CreateBlobFromChunk(ctx, bu, chunk)
-		if e != nil {
+		if e := mag.Database.CreateBlobFromChunk(ctx, bu, chunks[0]); e != nil {
 			return utils.ErrorHandler(l, span, e, "failed to create blob from chunk")
 		}
+		return nil
 	default:
-		// Each chunk was stored in MinIO under its own content digest during
-		// PATCH. Stream them back in start_byte order through a sha256 TeeReader
-		// and stream-write the assembled blob under the whole-blob digest
-		// (bu.Digest) — never buffering the full payload (models can be 100 GB).
-		sort.Slice(chunks, func(i, j int) bool { return chunks[i].StartByte < chunks[j].StartByte })
-		var total int64
-		for _, c := range chunks {
-			total += c.Bytes - c.StartByte + 1 // Bytes is the inclusive END offset
+		return mag.composeMultiChunk(ctx, l, span, bu, chunks)
+	}
+}
+
+// composeMultiChunk assembles a multi-chunk upload into the single whole-blob
+// object. Each chunk was stored in MinIO under its own content digest during
+// PATCH; they are streamed back in start_byte order through a sha256 TeeReader
+// and stream-written under the whole-blob digest (bu.Digest) — never buffering
+// the full payload (models can be 100 GB). Split out of ComposeFromChunks to keep
+// that method under the cognitive-complexity limit.
+func (mag Magazine) composeMultiChunk(ctx context.Context, l *logrus.Entry, span trace.Span, bu *types.OCIBlobUpload, chunks []types.BlobChunk) error {
+	sort.Slice(chunks, func(i, j int) bool { return chunks[i].StartByte < chunks[j].StartByte })
+	var total int64
+	for _, c := range chunks {
+		total += c.Bytes - c.StartByte + 1 // Bytes is the inclusive END offset
+	}
+	// Content-addressed dedup: the assembled whole-blob object is keyed by
+	// bu.Digest. If it is already in the bucket (matching total size), skip the
+	// re-compose+re-upload entirely (reading every chunk back through the pod +
+	// re-streaming to S3) and just (re)create the :Blob node — the same
+	// wipe-and-reseed scenario handled in StoreBlobUpload{,Reader}.
+	if bu.Digest != "" {
+		if skip, _ := mag.blobObjPresent(ctx, l, span, bu.Digest, total); skip {
+			return mag.linkComposedPresent(ctx, l, span, bu, total)
 		}
-		// Content-addressed dedup: the assembled whole-blob object is keyed by
-		// bu.Digest. If it is already in the bucket (matching total size), skip the
-		// re-compose+re-upload entirely (reading every chunk back through the pod +
-		// re-streaming to S3) and just (re)create the :Blob node — the same
-		// wipe-and-reseed scenario handled in StoreBlobUpload{,Reader}.
-		if bu.Digest != "" {
-			if skip, _ := mag.blobObjPresent(ctx, l, span, bu.Digest, total); skip {
-				utils.Info(l, span, msgSkippedS3Upload, utils.ShortenDigest(bu.Digest), total)
-				if e := mag.Database.CreateBlobFromChunk(ctx, bu, types.BlobChunk{Digest: bu.Digest, Bytes: total}); e != nil {
-					return utils.ErrorHandler(l, span, e, "failed to create composed blob node")
-				}
-				return nil
-			}
-		}
-		seq := &chunkSeqReader{ctx: ctx, mag: mag, chunks: chunks}
-		defer seq.Close()
-		digester := digest.SHA256.Digester()
-		tee := io.TeeReader(seq, digester.Hash())
-		if e := mag.Minio.BlobPutReader(ctx, tee, total, bu.Digest); e != nil {
-			return utils.ErrorHandler(l, span, e, "failed to stream-compose blob %s", utils.ShortenDigest(bu.Digest))
-		}
-		if got := digester.Digest().String(); bu.Digest != "" && got != bu.Digest {
-			_ = mag.Minio.BlobRemoveObj(ctx, bu.Digest)
-			return utils.NewError(l, span, "composed digest %s does not match expected %s", got, bu.Digest)
-		}
-		utils.Info(l, span, "composed %d chunks -> blob %s (%d bytes)", len(chunks), utils.ShortenDigest(bu.Digest), total)
-		if e := mag.Database.CreateBlobFromChunk(ctx, bu, types.BlobChunk{Digest: bu.Digest, Bytes: total}); e != nil {
-			return utils.ErrorHandler(l, span, e, "failed to create composed blob node")
-		}
+	}
+	seq := &chunkSeqReader{ctx: ctx, mag: mag, chunks: chunks}
+	defer seq.Close()
+	digester := digest.SHA256.Digester()
+	tee := io.TeeReader(seq, digester.Hash())
+	if e := mag.Minio.BlobPutReader(ctx, tee, total, bu.Digest); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed to stream-compose blob %s", utils.ShortenDigest(bu.Digest))
+	}
+	if got := digester.Digest().String(); bu.Digest != "" && got != bu.Digest {
+		_ = mag.Minio.BlobRemoveObj(ctx, bu.Digest)
+		return utils.NewError(l, span, "composed digest %s does not match expected %s", got, bu.Digest)
+	}
+	utils.Info(l, span, "composed %d chunks -> blob %s (%d bytes)", len(chunks), utils.ShortenDigest(bu.Digest), total)
+	if e := mag.Database.CreateBlobFromChunk(ctx, bu, types.BlobChunk{Digest: bu.Digest, Bytes: total}); e != nil {
+		return utils.ErrorHandler(l, span, e, failCreateComposedBlob)
 	}
 	return nil
 }
