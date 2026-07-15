@@ -184,11 +184,13 @@ func (m Minio) BlobGetBytes(ctx context.Context, path string) (b []byte, err err
 	b, e := io.ReadAll(obj)
 	if e != nil {
 		if e.Error() == keyDoesNotExistError {
-			l.Error("")
+			l.Debugf("blob %q not found in bucket", path)
 			return nil, e
 		}
-		err = errors.Wrap(e, "failed to read blob")
-		l.Fatal(err)
+		// Return the error instead of l.Fatal: this is a library call on the
+		// pull path, and Fatal calls os.Exit — a transient object-store read
+		// error would take the whole process down. Let callers handle it.
+		return nil, errors.Wrap(e, "failed to read blob")
 	}
 	return
 }
@@ -207,7 +209,7 @@ func (m Minio) BlobGetPreSignedUrl(ctx context.Context, dig string) (psUrl strin
 	}
 	reqParams := make(url.Values)
 	psU, err := cli.PresignedGetObject(
-		context.Background(),
+		ctx,
 		bucket,
 		dig,
 		time.Second*30*60,

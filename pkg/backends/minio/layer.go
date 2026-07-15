@@ -113,7 +113,7 @@ func (m Minio) LayerGetPreSignedUrl(ctx context.Context, dig string) (psUrl stri
 	cli := m.BucketConfig[layersBucketKey].Client
 	reqParams := make(url.Values)
 	psU, err := cli.PresignedGetObject(
-		context.Background(),
+		ctx,
 		m.GetLayersBucketName(),
 		dig,
 		time.Second*30*60,
