@@ -572,7 +572,24 @@ func TestStoreManifestUpload_WiresSlot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.NotZero(t, mani.ID, "pushed manifest should have a non-zero ID")
+	// Verify the manifest was actually persisted. We deliberately do NOT assert
+	// mani.ID != 0: neo4j internal node ids (id(n)) start at 0 and are reused
+	// after a DETACH DELETE, so under bs.SetEmptyAll() a freshly created
+	// :Manifest can legitimately be assigned id 0 (identical rationale to the
+	// slot.ID note below). Asserting NotZero here made this test flake
+	// intermittently (metalib_main_prod #27). Re-fetch the content leaf by
+	// digest instead — a real id, zero or not, must resolve back to the node we
+	// just wrote.
+	maniProbe, maniProbeFound, err := mag.Database.QueryOne(fmt.Sprintf(
+		`MATCH (m:Manifest) WHERE m.digest = "%s" RETURN id(m) AS mid`, mani.Digest))
+	if err != nil {
+		t.Fatalf("manifest digest probe: %v", err)
+	}
+	assert.True(t, maniProbeFound, "pushed manifest should be retrievable by digest %q", mani.Digest)
+	if maniProbeFound {
+		mid, _ := maniProbe.GetInt64("mid")
+		assert.Equal(t, mani.ID, mid, "digest lookup must resolve to the pushed manifest node (id %d)", mani.ID)
+	}
 
 	// Assertion 1: Slot was created for the triple
 	slot, found, err := mag.Database.SlotGetByTriple(ctx, req.Repo, req.Tag, req.Profile)
