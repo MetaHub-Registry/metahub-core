@@ -1,3 +1,8 @@
+# collections-image-filter Specification
+
+## Purpose
+Graph filtering of collection membership for image manifests by profile pin and rule.
+
 ## Requirements
 
 ### Requirement: RepoListingGetByRepoLike excludes ORAS-only repos

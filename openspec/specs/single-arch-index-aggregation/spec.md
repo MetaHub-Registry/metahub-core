@@ -1,4 +1,9 @@
-## ADDED Requirements
+# single-arch-index-aggregation Specification
+
+## Purpose
+Aggregation of single-architecture manifests into a per-tag multi-arch image index.
+
+## Requirements
 
 ### Requirement: Push-time compute trigger for a single `(repo, tag)`
 The Magazine API SHALL expose `ComputeManifestlistsForRepoTag(ctx, repo, tag, pusherPrf *types.Profile) error`, a push-time primitive that eagerly injects the pusher profile's deterministic annotations onto every `ManifestData` linked to `(repo, tag)` and then rebuilds all per-profile `ManifestList`s for that `(collection, tag)`.

@@ -1,9 +1,7 @@
 ## Purpose
 
 Defines the slot-centred graph model for metalib, where `:Slot` nodes serve as the primary anchor for per-`(repo, tag, profile)` state, replacing the legacy `:Collection`/`:ManifestData`/`:ManifestList`/`:Manifest` wrapper model.
-
 ## Requirements
-
 ### Requirement: Slot node as primary (repo, tag, profile) anchor
 
 The metalib graph model SHALL introduce a `:Slot` node label as the primary anchor for per-`(repo, tag, profile)` state. Every distinct triple of repo name, tag name, and profile label SHALL correspond to exactly one Slot node, enforced by a Neo4j UNIQUE constraint on the compound key `(s.repo, s.tag, s.profile)`.
@@ -491,3 +489,23 @@ The client's original digest SHALL be pullable via `GET /v2/<repo>/manifests/<cl
 - **WHEN** the push completes
 - **THEN** the created `:Index` node SHALL have `origin = "client-pushed"`
 - **AND** a subsequent `ComputeIndexForRepoTag` that produces the same digest SHALL NOT overwrite `origin`
+
+### Requirement: The :ManifestWrapper node is never created
+
+Push-time and descriptor-ingestion flows SHALL NOT create `:ManifestWrapper` nodes. The multi-arch descriptor flow previously served by `ManifestWrapperGetInsertWithDesc` → `manifestCreateViaUpstream` (which issued `CREATE (m:ManifestWrapper {...})`) SHALL be rewired onto `SlotGetCreate` plus Index/content-leaf links. Any cleanup of wrapper nodes during `ManifestDelete` SHALL become a no-op once creation stops, consistent with the existing guard that treats the wrapper as optional.
+
+#### Scenario: Pushing a multi-arch index creates no wrapper node
+- **WHEN** a multi-arch index with per-platform descriptors is ingested
+- **THEN** a `:Slot` and the corresponding `:Index` / content-leaf `:Manifest` nodes SHALL be created
+- **AND** no `:ManifestWrapper` node SHALL exist in the graph afterwards
+
+#### Scenario: Deleting a post-Slot manifest does not require a wrapper
+- **WHEN** `ManifestDelete` runs against a manifest that was ingested without a wrapper node
+- **THEN** the delete SHALL succeed
+- **AND** SHALL NOT fail due to a missing `:ManifestWrapper` node
+
+> Note: migrating the remaining read/traversal Cypher off `(:ManifestWrapper)`
+> (profile evaluation, collection/tag listing, manifest lookups) is owned by the
+> `migrate-wrapper-read-cypher` change, which carries the "read paths walk Slot
+> and content-leaf edges, not the wrapper node" requirement.
+
