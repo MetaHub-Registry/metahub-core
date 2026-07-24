@@ -347,4 +347,15 @@ type Database interface {
 	// descriptor order from the original OCI manifest list. Idempotent.
 	// Path Z task 8.2.
 	LinkIndexReferenceWithOrder(ctx context.Context, indexID, mdID int64, order int) error
+
+	// Registry projects + logical storage quotas (add-registry-project-quotas).
+	ProjectCreate(ctx context.Context, team, project string, quotaBytes int64) (types.Project, error)
+	ProjectGet(ctx context.Context, team, project string) (types.Project, bool, error)
+	ProjectUpdateQuota(ctx context.Context, team, project string, quotaBytes int64) error
+	ProjectDelete(ctx context.Context, team, project string) (bool, error)
+	ProjectList(ctx context.Context) ([]types.Project, error)
+	ProjectQuotaSum(ctx context.Context) (int64, error)
+	ProjectUsageBytes(ctx context.Context, team, project string) (int64, error)
+	ProjectBlobDigests(ctx context.Context, team, project string) ([]string, error)
+	BlobRefCount(ctx context.Context, digest string) (int64, error)
 }

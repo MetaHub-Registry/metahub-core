@@ -190,6 +190,37 @@ func (n Neo) ProjectUsageBytes(ctx context.Context, team, project string) (usage
 	return
 }
 
+// ProjectBlobDigests returns the DISTINCT digests of the config/layer blobs
+// reachable from the project's manifests — the set used to dedup an incoming
+// push against what the project already references (the quota guard at push).
+func (n Neo) ProjectBlobDigests(ctx context.Context, team, project string) (digests []string, err error) {
+	_, span := tracer.Start(ctx, "ProjectBlobDigests")
+	defer span.End()
+	prefix := team + "/" + project
+	q := `OPTIONAL MATCH (r:Repo)-[:HAS_TAG]->(:Tag)-[:REF]->(:Index)-[:REFERENCES]->(:Manifest)-[]->(b:Blob)` +
+		` WHERE (r.repo STARTS WITH $prefixSlash OR r.repo = $prefix) AND b.type IN ["config", "layer"]` +
+		` RETURN collect(DISTINCT b.digest) AS digests`
+	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
+	defer session.Close()
+	result, err := session.Run(q, map[string]interface{}{"prefix": prefix, "prefixSlash": prefix + "/"})
+	if err != nil {
+		logrus.Errorf("ProjectBlobDigests failed: %v", err)
+		return
+	}
+	if result.Next() {
+		if v, ok := result.Record().Get("digests"); ok {
+			if arr, ok := v.([]interface{}); ok {
+				for _, d := range arr {
+					if s, ok := d.(string); ok {
+						digests = append(digests, s)
+					}
+				}
+			}
+		}
+	}
+	return
+}
+
 // BlobRefCount returns the number of DISTINCT manifests referencing a blob by
 // digest (config or layer). Zero means the blob is unreferenced (a future GC
 // candidate).
