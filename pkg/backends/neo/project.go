@@ -209,16 +209,26 @@ func (n Neo) ProjectBlobDigests(ctx context.Context, team, project string) (dige
 	}
 	if result.Next() {
 		if v, ok := result.Record().Get("digests"); ok {
-			if arr, ok := v.([]interface{}); ok {
-				for _, d := range arr {
-					if s, ok := d.(string); ok {
-						digests = append(digests, s)
-					}
-				}
-			}
+			digests = toStringSlice(v)
 		}
 	}
 	return
+}
+
+// toStringSlice converts a neo4j list value (of strings) into a []string,
+// skipping any non-string elements.
+func toStringSlice(v interface{}) []string {
+	arr, ok := v.([]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, d := range arr {
+		if s, ok := d.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // BlobRefCount returns the number of DISTINCT manifests referencing a blob by

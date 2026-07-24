@@ -199,3 +199,55 @@ func TestBlobRefCount(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), n)
 }
+
+func TestProjectList(t *testing.T) {
+	ctx := context.Background()
+	defer db.ProjectDelete(ctx, "qteam-list", "p1")
+	defer db.ProjectDelete(ctx, "qteam-list", "p2")
+	_, err := db.ProjectCreate(ctx, "qteam-list", "p1", 100)
+	require.NoError(t, err)
+	_, err = db.ProjectCreate(ctx, "qteam-list", "p2", 200)
+	require.NoError(t, err)
+
+	ps, err := db.ProjectList(ctx)
+	require.NoError(t, err)
+	got := map[string]int64{}
+	for _, p := range ps {
+		if p.TeamSlug == "qteam-list" {
+			got[p.ProjectSlug] = p.QuotaBytes
+		}
+	}
+	assert.Equal(t, int64(100), got["p1"])
+	assert.Equal(t, int64(200), got["p2"])
+}
+
+func TestProjectBlobDigests(t *testing.T) {
+	ctx := context.Background()
+	team, project := "qteam-digests", "p"
+	defer db.ProjectDelete(ctx, team, project)
+	base := team + "/" + project
+	projSeedManifest(t, base+"/img", "sha256:digm")
+	projLinkBlob(t, "sha256:digm", "sha256:digcfg", 10, "config", "HAS_CONFIG")
+	projLinkBlob(t, "sha256:digm", "sha256:diglyr", 20, "layer", "HAS_LAYER")
+
+	digs, err := db.ProjectBlobDigests(ctx, team, project)
+	require.NoError(t, err)
+	set := map[string]bool{}
+	for _, d := range digs {
+		set[d] = true
+	}
+	assert.True(t, set["sha256:digcfg"])
+	assert.True(t, set["sha256:diglyr"])
+
+	// empty/unknown project -> no digests
+	empty, err := db.ProjectBlobDigests(ctx, "qteam-none", "x")
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+}
+
+func TestToStringSlice(t *testing.T) {
+	assert.Nil(t, toStringSlice("not-a-list"))
+	assert.Equal(t, []string{"a", "b"}, toStringSlice([]interface{}{"a", "b"}))
+	// non-string elements are skipped
+	assert.Equal(t, []string{"a"}, toStringSlice([]interface{}{"a", 5}))
+}
