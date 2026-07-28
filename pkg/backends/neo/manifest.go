@@ -1101,6 +1101,16 @@ func (n Neo) ManifestLinkToConfig(ctx context.Context, maniID int64, cfg types.C
 	q := fmt.Sprintf(`MATCH (m:Manifest),(c:Blob) WHERE id(m) = %d AND c.digest = "%s"`, maniID, cfg.Digest)
 	q += fmt.Sprintf(` MERGE (m)-[:%s]->(c)`, mt)
 	q += fmt.Sprintf(` SET c.mediaType = "%s", c.type = "config"`, cfg.MediaType)
+	// Persist the authoritative descriptor size onto the :Blob node. A config
+	// blob node can pre-exist with size 0 (e.g. created as a resolvable
+	// placeholder when the content-addressed blob is present in object storage
+	// but its graph node was wiped, or when the client deduped the upload).
+	// Without this, ProjectUsageBytes sums zeros and the storage quota is never
+	// counted. Size is immutable per digest, so setting it from the manifest
+	// descriptor is safe and self-heals stale size-0 nodes on the next push.
+	if cfg.Size > 0 {
+		q += fmt.Sprintf(`, c.size = %d`, cfg.Size)
+	}
 	utils.Debug(l, span, q)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
@@ -1144,6 +1154,16 @@ func (n Neo) ManifestLinkToLayer(ctx context.Context, maniID int64, layer types.
 	q += ` WITH m, l ORDER BY id(l) LIMIT 1`
 	q += fmt.Sprintf(` MERGE (m)-[:HAS_LAYER {order: %d, mediaType: "%s"}]->(l)`, idx, layer.MediaType)
 	q += fmt.Sprintf(` SET l.mediaType = "%s", l.type = "layer"`, layer.MediaType)
+	// Persist the authoritative descriptor size onto the :Blob node. A layer
+	// blob node can pre-exist with size 0 (e.g. created as a resolvable
+	// placeholder when the content-addressed blob is already in storage and
+	// docker skips the upload — "Layer already exists"). Without this, project
+	// storage usage (sum of reachable blob sizes) under-counts to 0. Only set
+	// when the descriptor carries a positive size so a real value is never
+	// clobbered with 0; self-heals stale size-0 nodes on the next push.
+	if layer.Size > 0 {
+		q += fmt.Sprintf(`, l.size = %d`, layer.Size)
+	}
 
 	utils.Debug(l, span, q)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
