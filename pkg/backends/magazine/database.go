@@ -358,4 +358,9 @@ type Database interface {
 	ProjectUsageBytes(ctx context.Context, team, project string) (int64, error)
 	ProjectBlobDigests(ctx context.Context, team, project string) ([]string, error)
 	BlobRefCount(ctx context.Context, digest string) (int64, error)
+
+	// Namespace authorization model (add-registry-namespace-authz): project
+	// visibility + per-user personal namespaces (user/<username>).
+	PersonalNamespaceGetOrCreate(ctx context.Context, username string, defaultQuotaBytes int64) (types.Project, error)
+	ProjectSetVisibility(ctx context.Context, team, project, visibility string) (bool, error)
 }

@@ -21,8 +21,12 @@ import (
 const pkgNameProject = "backends/neo/project.go"
 
 // projectReturn is the shared RETURN projection so every read yields the same shape.
+// visibility/kind/owner use coalesce so pre-existing :Project nodes (created before
+// add-registry-namespace-authz) read back as private/project/"" (migration on read).
 const projectReturn = ` id(p) AS id, p.team_slug AS team, p.project_slug AS project,` +
-	` p.quota_bytes AS quota, p.created_at AS created`
+	` p.quota_bytes AS quota, p.created_at AS created,` +
+	` coalesce(p.visibility, "private") AS visibility,` +
+	` coalesce(p.kind, "project") AS kind, coalesce(p.owner, "") AS owner`
 
 // recToProject extracts a types.Project from the current record of a result.
 func recToProject(result neo4j.Result) (p types.Project) {
@@ -42,6 +46,15 @@ func recToProject(result neo4j.Result) (p types.Project) {
 	if v, ok := rec.Get("created"); ok {
 		p.CreatedAt, _ = v.(int64)
 	}
+	if v, ok := rec.Get("visibility"); ok {
+		p.Visibility, _ = v.(string)
+	}
+	if v, ok := rec.Get("kind"); ok {
+		p.Kind, _ = v.(string)
+	}
+	if v, ok := rec.Get("owner"); ok {
+		p.Owner, _ = v.(string)
+	}
 	return
 }
 
@@ -51,7 +64,8 @@ func (n Neo) ProjectCreate(ctx context.Context, team, project string, quotaBytes
 	_, span := tracer.Start(ctx, "ProjectCreate")
 	defer span.End()
 	q := `MERGE (p:Project {team_slug: $team, project_slug: $project})` +
-		` ON CREATE SET p.quota_bytes = $quota, p.created_at = TIMESTAMP()` +
+		` ON CREATE SET p.quota_bytes = $quota, p.created_at = TIMESTAMP(),` +
+		` p.visibility = "private", p.kind = "project", p.owner = ""` +
 		` RETURN` + projectReturn
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
