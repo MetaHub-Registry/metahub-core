@@ -334,8 +334,8 @@ func TestSlotAppendPushedManifest_AppendsMultiple(t *testing.T) {
 	require.NoError(t, err)
 
 	// Append both
-	require.NoError(t, db.SlotAppendPushedManifest(ctx, slot.ID, md1ID))
-	require.NoError(t, db.SlotAppendPushedManifest(ctx, slot.ID, md2ID))
+	require.NoError(t, db.SlotAppendPushedManifest(ctx, slot.ID, md1ID, ""))
+	require.NoError(t, db.SlotAppendPushedManifest(ctx, slot.ID, md2ID, ""))
 	assert.Equal(t, 2, countEdgesFrom(t, slot.ID, "HAS_PUSHED"))
 
 	// Retrieve via ManifestGetAllForSlot

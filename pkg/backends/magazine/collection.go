@@ -85,7 +85,8 @@ func (mag Magazine) BindManifestToProfile(ctx context.Context, repo, tag, profil
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, "SlotGetCreate(%s:%s#%s)", repo, tag, profileLabel)
 	}
-	if e = mag.Database.SlotAppendPushedManifest(ctx, slot.ID, maniDataID); e != nil {
+	// Collection profile-pin binding, not a user push → no user attribution ("").
+	if e = mag.Database.SlotAppendPushedManifest(ctx, slot.ID, maniDataID, ""); e != nil {
 		return utils.ErrorHandler(l, span, e, "SlotAppendPushedManifest(slot=%d, manifest=%d)", slot.ID, maniDataID)
 	}
 	if e = mag.Database.LinkManifestToProfile(ctx, maniDataID, prf.ID, "PULLED_BY"); e != nil {

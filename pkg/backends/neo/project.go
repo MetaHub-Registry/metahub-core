@@ -204,6 +204,70 @@ func (n Neo) ProjectUsageBytes(ctx context.Context, team, project string) (usage
 	return
 }
 
+// UnknownUsageBucket is the reserved per-user usage key for bytes that cannot be
+// attributed to a real pusher — compute-generated artefacts (repackage/injection
+// Jobs push as a system identity) or legacy HAS_PUSHED edges written before
+// per-user stamping. Consumers that report per-user usage to an external system
+// (e.g. the Waldur site-agent) drop this bucket; it exists so the split still
+// reconciles with the project total.
+const UnknownUsageBucket = "unknown"
+
+// ProjectUserUsageBytes attributes the project's logical usage to individual
+// pushers. It takes the SAME billable blob set as ProjectUsageBytes (the DISTINCT
+// config/layer blobs reachable from the project's manifests) and, for each blob,
+// splits its size equally among the DISTINCT users who pushed a manifest
+// referencing it within the namespace — the `user` stamped on the append-only
+// HAS_PUSHED edge. A deduped re-push still appends a HAS_PUSHED edge, so a second
+// pusher of an already-stored blob correctly dilutes the split (Alice+Bob → ½
+// each). Blobs with no attributable pusher fall into UnknownUsageBucket. By
+// construction Σ(all buckets) == ProjectUsageBytes (modulo float rounding), so the
+// per-user split reconciles exactly with the project total.
+func (n Neo) ProjectUserUsageBytes(ctx context.Context, team, project string) (usage map[string]float64, err error) {
+	_, span := tracer.Start(ctx, "ProjectUserUsageBytes")
+	defer span.End()
+	usage = map[string]float64{}
+	prefix := team + "/" + project
+	// Billable set = ProjectUsageBytes's reachable config/layer blobs; then per
+	// blob collect the DISTINCT non-empty pushers (scoped to this namespace's
+	// Slots) off the HAS_PUSHED edge. Split is done in Go for testability.
+	q := `OPTIONAL MATCH (r:Repo)-[:HAS_TAG]->(:Tag)-[:REF]->(:Index)-[:REFERENCES]->(md:Manifest)` +
+		` WHERE r.repo STARTS WITH $prefixSlash OR r.repo = $prefix` +
+		` OPTIONAL MATCH (md)-[]->(b:Blob) WHERE b.type IN ["config", "layer"] AND b.size >= 0` +
+		` WITH collect(DISTINCT b) AS blobs` +
+		` UNWIND blobs AS b` +
+		` OPTIONAL MATCH (s:Slot)-[hp:HAS_PUSHED]->(:Manifest)-[]->(b)` +
+		`   WHERE (s.repo STARTS WITH $prefixSlash OR s.repo = $prefix) AND hp.user IS NOT NULL AND hp.user <> ""` +
+		` RETURN b.size AS size, collect(DISTINCT hp.user) AS users`
+	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
+	defer session.Close()
+	result, err := session.Run(q, map[string]interface{}{"prefix": prefix, "prefixSlash": prefix + "/"})
+	if err != nil {
+		logrus.Errorf("ProjectUserUsageBytes failed: %v", err)
+		return
+	}
+	for result.Next() {
+		rec := result.Record()
+		sv, _ := rec.Get("size")
+		size, _ := sv.(int64)
+		if size <= 0 {
+			continue
+		}
+		uv, _ := rec.Get("users")
+		// The Cypher already excludes null/empty pushers, so toStringSlice yields
+		// exactly the distinct real usernames for this blob.
+		users := toStringSlice(uv)
+		if len(users) == 0 {
+			usage[UnknownUsageBucket] += float64(size)
+			continue
+		}
+		share := float64(size) / float64(len(users))
+		for _, u := range users {
+			usage[u] += share
+		}
+	}
+	return
+}
+
 // ProjectBlobDigests returns the DISTINCT digests of the config/layer blobs
 // reachable from the project's manifests — the set used to dedup an incoming
 // push against what the project already references (the quota guard at push).

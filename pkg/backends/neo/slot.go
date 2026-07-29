@@ -248,22 +248,28 @@ func (n Neo) SlotLinkPointsTo(ctx context.Context, slotID, indexID int64) (err e
 // call creates a new edge even if the same Manifest was already pushed to
 // this Slot before. This makes HAS_PUSHED a true append-only log suitable
 // for reconstructing push history.
-func (n Neo) SlotAppendPushedManifest(ctx context.Context, slotID, manifestID int64) (err error) {
+func (n Neo) SlotAppendPushedManifest(ctx context.Context, slotID, manifestID int64, user string) (err error) {
 	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNameSlot,
 		"func":       "SlotAppendPushedManifest",
 		"slotID":     slotID,
 		"manifestID": manifestID,
+		"user":       user,
 	})
 	defer span.End()
+	// The Slot/Manifest ids are internal int64s (safe to interpolate), but `user`
+	// is the OIDC preferred_username — caller/attacker-influenced — so bind it as a
+	// parameter ($user), never interpolate it into the Cypher. It stamps the
+	// append-only HAS_PUSHED edge for per-user usage attribution; empty for
+	// non-user (system/collection) bindings.
 	q := fmt.Sprintf(
-		`MATCH (s:Slot), (m:Manifest) WHERE id(s) = %d AND id(m) = %d CREATE (s)-[:HAS_PUSHED {timestamp: timestamp()}]->(m)`,
+		`MATCH (s:Slot), (m:Manifest) WHERE id(s) = %d AND id(m) = %d CREATE (s)-[:HAS_PUSHED {timestamp: timestamp(), user: $user}]->(m)`,
 		slotID, manifestID,
 	)
-	if _, e := n.Execute(q); e != nil {
+	if _, e := n.ExecuteWithParams(q, map[string]interface{}{"user": user}); e != nil {
 		return utils.ErrorHandler(l, span, e, "SlotAppendPushedManifest: creating HAS_PUSHED edge")
 	}
-	utils.Debug(l, span, "SlotAppendPushedManifest: slot %d pushed manifest %d", slotID, manifestID)
+	utils.Debug(l, span, "SlotAppendPushedManifest: slot %d pushed manifest %d (user=%q)", slotID, manifestID, user)
 	return nil
 }
 

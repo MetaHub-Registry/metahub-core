@@ -257,14 +257,20 @@ func (n Neo) EmptyGraph() (err error) {
 }
 
 func (n Neo) Execute(q string) (res types.Result, err error) {
+	return n.ExecuteWithParams(q, nil)
+}
+
+// ExecuteWithParams runs a write query with bound parameters. Prefer this over
+// Execute for any query that embeds caller/attacker-influenced values (e.g. an
+// OIDC username): parameters are bound by the driver, never interpolated into
+// Cypher, so they cannot alter the query structure.
+func (n Neo) ExecuteWithParams(q string, params map[string]interface{}) (res types.Result, err error) {
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
-	if err != nil {
-		logrus.Errorf("Error creating neo session: %s\n", err)
-		return
-	}
 	defer session.Close()
-	input := map[string]interface{}{}
-	r, err := session.Run(q, input)
+	if params == nil {
+		params = map[string]interface{}{}
+	}
+	r, err := session.Run(q, params)
 	if err != nil {
 		logrus.Errorf("Error running query: %s\n", err)
 		return

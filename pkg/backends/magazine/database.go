@@ -326,8 +326,10 @@ type Database interface {
 	// no-op.
 	SlotLinkPointsTo(ctx context.Context, slotID, indexID int64) error
 	// SlotAppendPushedManifest appends a timestamped HAS_PUSHED edge from
-	// the Slot to the Manifest. Append-only, never deduplicated.
-	SlotAppendPushedManifest(ctx context.Context, slotID, manifestID int64) error
+	// the Slot to the Manifest, stamped with the pushing `user` (OIDC
+	// preferred_username; "" for system/collection bindings) for per-user
+	// usage attribution. Append-only, never deduplicated.
+	SlotAppendPushedManifest(ctx context.Context, slotID, manifestID int64, user string) error
 	// SlotAppendPushedIndex appends a timestamped HAS_PUSHED_INDEX edge
 	// from the Slot to the Index. Append-only.
 	SlotAppendPushedIndex(ctx context.Context, slotID, indexID int64) error
@@ -356,6 +358,10 @@ type Database interface {
 	ProjectList(ctx context.Context) ([]types.Project, error)
 	ProjectQuotaSum(ctx context.Context) (int64, error)
 	ProjectUsageBytes(ctx context.Context, team, project string) (int64, error)
+	// ProjectUserUsageBytes splits ProjectUsageBytes across the distinct pushers
+	// of each blob (size/N per HAS_PUSHED.user); unattributable bytes land in
+	// UnknownUsageBucket. Σ(buckets) == ProjectUsageBytes.
+	ProjectUserUsageBytes(ctx context.Context, team, project string) (map[string]float64, error)
 	ProjectBlobDigests(ctx context.Context, team, project string) ([]string, error)
 	BlobRefCount(ctx context.Context, digest string) (int64, error)
 
