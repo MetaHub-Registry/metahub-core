@@ -59,6 +59,12 @@ func TestConfigCRUD(t *testing.T) {
 	assert.NoError(t, err)
 	assert.False(t, found)
 	assert.NotNil(t, amd64_cfg_got.ID)
+	// Regression: the insert branch must persist the config media type from the
+	// manifest descriptor. An empty mediaType later trips ConfigGetByManifest's
+	// "unsupported config media type" switch and fails the manifest push (400)
+	// for any image whose config blob is present but has no graph node.
+	assert.Equal(t, amd64_ocimani.Config.MediaType, amd64_cfg_got.MediaType,
+		"inserted config must carry the descriptor media type")
 	amd64_cfg_got2, found, err := db.ConfigGetInsertByOCIManifest(ctx, amd64_ocimani, amd64_label)
 	if err != nil {
 		t.Fatal(err)
@@ -71,6 +77,8 @@ func TestConfigCRUD(t *testing.T) {
 	}
 	assert.True(t, found, fmt.Sprintf("expected to find config with digest %s", amd64_cfg_got.Digest))
 	assert.Equal(t, amd64_cfg_got.ID, amd64_cfg_got3.ID)
+	assert.Equal(t, amd64_ocimani.Config.MediaType, amd64_cfg_got3.MediaType,
+		"persisted config node must carry the descriptor media type")
 	// Delete
 	err = db.ConfigDeleteByDigest(ctx, amd64_cfg_got.Digest)
 	if err != nil {

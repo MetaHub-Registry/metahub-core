@@ -516,7 +516,7 @@ func (mag Magazine) wireSlotOnPush(ctx context.Context, l *logrus.Entry, span tr
 	if tagErr := mag.Database.RepoLinkTag(ctx, req.Repo, req.Tag); tagErr != nil {
 		utils.Debug(l, span, "RepoLinkTag failed (non-fatal): %v", tagErr)
 	}
-	if pushErr := mag.Database.SlotAppendPushedManifest(ctx, slot.ID, manifestDataID); pushErr != nil {
+	if pushErr := mag.Database.SlotAppendPushedManifest(ctx, slot.ID, manifestDataID, req.User); pushErr != nil {
 		utils.Debug(l, span, "SlotAppendPushedManifest failed (non-fatal, Slot node still created): %v", pushErr)
 		return
 	}

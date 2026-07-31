@@ -156,7 +156,7 @@ func (n Neo) Bootstrap_Scenario_OrasCyclonedx(ctx context.Context, bs utils.Boot
 	if e != nil {
 		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: get manifest id")
 	}
-	if e := n.SlotAppendPushedManifest(ctx, slot.ID, mdID); e != nil {
+	if e := n.SlotAppendPushedManifest(ctx, slot.ID, mdID, ""); e != nil {
 		return errors.Wrapf(e, "Bootstrap_Scenario_OrasCyclonedx: slot push manifest")
 	}
 	// Add a layer blob with an org.opencontainers.image.title annotation

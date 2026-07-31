@@ -239,9 +239,17 @@ func (n Neo) ConfigGetInsertByOCIManifest(ctx context.Context, ociMani types.OCI
 
 		return
 	}
+	// Persist the config's media type from the manifest descriptor on insert.
+	// A config blob can be present in object storage yet have no graph node
+	// (content-addressed blob that outlived its node after a tag delete/GC);
+	// docker then skips re-uploading the config, so StoreConfigUpload never
+	// runs and we reach here to insert from the descriptor. Without MediaType
+	// the node gets mediaType:"" and ConfigGetByManifest later rejects it with
+	// "unsupported config media type" (mirrors the found-branch backfill above).
 	cfg = types.Config{
-		Digest: ociMani.Config.Digest.String(),
-		Size:   ociMani.Config.Size,
+		Digest:    ociMani.Config.Digest.String(),
+		Size:      ociMani.Config.Size,
+		MediaType: ociMani.Config.MediaType,
 	}
 	cfgId, err := n.createConfig(ctx, cfg)
 	if err != nil {

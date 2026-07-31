@@ -74,6 +74,10 @@ type MagConfig struct {
 	OAuth       OAuthCfg
 	OIDC        OIDCCfg
 	CORS        CORS
+	// LogicalPoolBytes is the no-overcommit logical storage-pool budget
+	// (add-registry-project-quotas): Σ(project quota) may not exceed it.
+	// 0 means unlimited (no pool cap enforced).
+	LogicalPoolBytes int64
 }
 
 type OIDCCfg struct {

@@ -124,7 +124,7 @@ func (n Neo) setupSlotForLeaf(ctx context.Context, br *utils.BootstrapResult, la
 		return
 	}
 	br.Add(fmt.Sprintf("slot:%s#id", label), fmt.Sprint(slot.ID))
-	if e := n.SlotAppendPushedManifest(ctx, slot.ID, mdID); e != nil {
+	if e := n.SlotAppendPushedManifest(ctx, slot.ID, mdID, ""); e != nil {
 		utils.Warn(l, span, "setupSlotForLeaf: SlotAppendPushedManifest failed for %q (non-fatal): %v", label, e)
 		return
 	}

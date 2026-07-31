@@ -1,3 +1,8 @@
+# profiles-graph-query Specification
+
+## Purpose
+Graph read-queries for profiles and their hardware, rules, and pins.
+
 ## Requirements
 
 ### Requirement: ProfileGetAll database interface method

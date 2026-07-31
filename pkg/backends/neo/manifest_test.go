@@ -542,7 +542,7 @@ func TestManifestGetPulledByRepoTag(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e := db.SlotAppendPushedManifest(ctx, slot.ID, mdID); e != nil {
+	if e := db.SlotAppendPushedManifest(ctx, slot.ID, mdID, ""); e != nil {
 		t.Fatal(e)
 	}
 	// Actual test
