@@ -133,7 +133,7 @@ func TestCollectionTagProfilePairAnnotationGetAll(t *testing.T) {
 		span.End()
 		t.Fatal(err)
 	}
-	err = db.SlotAppendPushedManifest(ctx, slot.ID, mdID)
+	err = db.SlotAppendPushedManifest(ctx, slot.ID, mdID, "")
 	if err != nil {
 		span.End()
 		t.Fatal(err)

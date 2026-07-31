@@ -326,8 +326,10 @@ type Database interface {
 	// no-op.
 	SlotLinkPointsTo(ctx context.Context, slotID, indexID int64) error
 	// SlotAppendPushedManifest appends a timestamped HAS_PUSHED edge from
-	// the Slot to the Manifest. Append-only, never deduplicated.
-	SlotAppendPushedManifest(ctx context.Context, slotID, manifestID int64) error
+	// the Slot to the Manifest, stamped with the pushing `user` (OIDC
+	// preferred_username; "" for system/collection bindings) for per-user
+	// usage attribution. Append-only, never deduplicated.
+	SlotAppendPushedManifest(ctx context.Context, slotID, manifestID int64, user string) error
 	// SlotAppendPushedIndex appends a timestamped HAS_PUSHED_INDEX edge
 	// from the Slot to the Index. Append-only.
 	SlotAppendPushedIndex(ctx context.Context, slotID, indexID int64) error
@@ -347,4 +349,24 @@ type Database interface {
 	// descriptor order from the original OCI manifest list. Idempotent.
 	// Path Z task 8.2.
 	LinkIndexReferenceWithOrder(ctx context.Context, indexID, mdID int64, order int) error
+
+	// Registry projects + logical storage quotas (add-registry-project-quotas).
+	ProjectCreate(ctx context.Context, team, project string, quotaBytes int64) (types.Project, error)
+	ProjectGet(ctx context.Context, team, project string) (types.Project, bool, error)
+	ProjectUpdateQuota(ctx context.Context, team, project string, quotaBytes int64) error
+	ProjectDelete(ctx context.Context, team, project string) (bool, error)
+	ProjectList(ctx context.Context) ([]types.Project, error)
+	ProjectQuotaSum(ctx context.Context) (int64, error)
+	ProjectUsageBytes(ctx context.Context, team, project string) (int64, error)
+	// ProjectUserUsageBytes splits ProjectUsageBytes across the distinct pushers
+	// of each blob (size/N per HAS_PUSHED.user); unattributable bytes land in
+	// UnknownUsageBucket. Σ(buckets) == ProjectUsageBytes.
+	ProjectUserUsageBytes(ctx context.Context, team, project string) (map[string]float64, error)
+	ProjectBlobDigests(ctx context.Context, team, project string) ([]string, error)
+	BlobRefCount(ctx context.Context, digest string) (int64, error)
+
+	// Namespace authorization model (add-registry-namespace-authz): project
+	// visibility + per-user personal namespaces (user/<username>).
+	PersonalNamespaceGetOrCreate(ctx context.Context, username string, defaultQuotaBytes int64) (types.Project, error)
+	ProjectSetVisibility(ctx context.Context, team, project, visibility string) (bool, error)
 }

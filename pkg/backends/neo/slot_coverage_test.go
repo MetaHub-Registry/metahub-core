@@ -67,7 +67,7 @@ func TestSlotAppendPushedManifest_CreatesEdge(t *testing.T) {
 	mdID := createTestManifest(t, "sha256:f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0")
 
 	// First call — single edge.
-	err = db.SlotAppendPushedManifest(ctx, slot.ID, mdID)
+	err = db.SlotAppendPushedManifest(ctx, slot.ID, mdID, "")
 	require.NoError(t, err)
 
 	edgeCount, ts := readHasPushedEdgeCountAndTimestamp(t, slot.ID, mdID)
@@ -75,7 +75,7 @@ func TestSlotAppendPushedManifest_CreatesEdge(t *testing.T) {
 	assert.NotZero(t, ts, "edge must carry a non-zero timestamp")
 
 	// Second call — append (not dedup).
-	err = db.SlotAppendPushedManifest(ctx, slot.ID, mdID)
+	err = db.SlotAppendPushedManifest(ctx, slot.ID, mdID, "")
 	require.NoError(t, err)
 	edgeCountAfter, _ := readHasPushedEdgeCountAndTimestamp(t, slot.ID, mdID)
 	assert.Equal(t, 2, edgeCountAfter,
@@ -110,7 +110,7 @@ func TestSlotAppendPushedManifest_InvalidSlotID(t *testing.T) {
 	// Use an impossibly-large slot ID. MATCH returns zero rows → CREATE
 	// is a no-op. No error because the cypher statement itself is
 	// syntactically valid.
-	err := db.SlotAppendPushedManifest(ctx, int64(999999999), mdID)
+	err := db.SlotAppendPushedManifest(ctx, int64(999999999), mdID, "")
 	assert.NoError(t, err,
 		"cypher MATCH on a non-existent slot ID returns zero rows, CREATE is a no-op, no error")
 
@@ -154,9 +154,9 @@ func TestManifestGetAllForSlot_ReturnsAllPushedManifests(t *testing.T) {
 	md3 := createTestManifest(t, "sha256:3333333333333333333333333333333333333333333333333333333333333333")
 
 	// Wire three distinct manifests as HAS_PUSHED.
-	require.NoError(t, db.SlotAppendPushedManifest(ctx, slot.ID, md1))
-	require.NoError(t, db.SlotAppendPushedManifest(ctx, slot.ID, md2))
-	require.NoError(t, db.SlotAppendPushedManifest(ctx, slot.ID, md3))
+	require.NoError(t, db.SlotAppendPushedManifest(ctx, slot.ID, md1, ""))
+	require.NoError(t, db.SlotAppendPushedManifest(ctx, slot.ID, md2, ""))
+	require.NoError(t, db.SlotAppendPushedManifest(ctx, slot.ID, md3, ""))
 
 	manis, err := db.ManifestGetAllForSlot(ctx, slot.ID)
 	require.NoError(t, err)
@@ -189,9 +189,9 @@ func TestManifestGetAllForSlot_DedupesOnRepush(t *testing.T) {
 	md := createTestManifest(t, "sha256:4444444444444444444444444444444444444444444444444444444444444444")
 
 	// Push the same manifest 3 times — creates 3 HAS_PUSHED edges.
-	require.NoError(t, db.SlotAppendPushedManifest(ctx, slot.ID, md))
-	require.NoError(t, db.SlotAppendPushedManifest(ctx, slot.ID, md))
-	require.NoError(t, db.SlotAppendPushedManifest(ctx, slot.ID, md))
+	require.NoError(t, db.SlotAppendPushedManifest(ctx, slot.ID, md, ""))
+	require.NoError(t, db.SlotAppendPushedManifest(ctx, slot.ID, md, ""))
+	require.NoError(t, db.SlotAppendPushedManifest(ctx, slot.ID, md, ""))
 
 	// Verify the append-only log really does have 3 edges.
 	edgeCount, _ := readHasPushedEdgeCountAndTimestamp(t, slot.ID, md)
@@ -223,8 +223,8 @@ func TestManifestGetAllForSlot_IgnoresOtherSlots(t *testing.T) {
 	md2 := createTestManifest(t, "sha256:6666666666666666666666666666666666666666666666666666666666666666")
 
 	// Push md1 to slotA, md2 to slotB.
-	require.NoError(t, db.SlotAppendPushedManifest(ctx, slotA.ID, md1))
-	require.NoError(t, db.SlotAppendPushedManifest(ctx, slotB.ID, md2))
+	require.NoError(t, db.SlotAppendPushedManifest(ctx, slotA.ID, md1, ""))
+	require.NoError(t, db.SlotAppendPushedManifest(ctx, slotB.ID, md2, ""))
 
 	// slotA should see ONLY md1.
 	manisA, err := db.ManifestGetAllForSlot(ctx, slotA.ID)

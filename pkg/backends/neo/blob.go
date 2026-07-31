@@ -229,7 +229,13 @@ func (n Neo) BlobDeleteByDigest(ctx context.Context, dig string) (err error) {
 // overwriting a previously correct value.
 func (n Neo) BlobUpdateSizeByDigest(ctx context.Context, digest string, size int64) error {
 	q := fmt.Sprintf(
-		`MATCH (b:Blob {digest: "%s"}) WHERE b.size < 0 SET b.size = %d RETURN id(b) AS blobID`,
+		// Heal any blob node whose recorded size is below the authoritative
+		// descriptor size — this covers both the "unknown" sentinel (size < 0)
+		// and the size-0 placeholders minted by BlobEnsureByDigest when a client
+		// deduped the upload ("Layer already exists"). Blob size is immutable per
+		// digest, so a grow-only update (b.size < %[2]d) is safe and never shrinks
+		// a real value; passing size 0 is a no-op.
+		`MATCH (b:Blob {digest: "%[1]s"}) WHERE b.size < %[2]d SET b.size = %[2]d RETURN id(b) AS blobID`,
 		digest, size,
 	)
 	_, err := n.Execute(q)

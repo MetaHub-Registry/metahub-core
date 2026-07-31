@@ -133,6 +133,9 @@ func NewMagazine(cmd *cobra.Command, tables string) (m Magazine, ctx context.Con
 	cfg.CORS = cors
 	cfg.AuthURL = au
 	cfg.RedirectDoc = fr
+	// No-overcommit logical storage-pool budget (add-registry-project-quotas);
+	// 0/absent means unlimited (no pool cap enforced).
+	cfg.LogicalPoolBytes = viper.GetInt64("registry.logical_pool_bytes")
 	if e := initOauth(&cfg); e != nil {
 		err = errors.Wrapf(e, "failed to init oauth")
 		logrus.Fatal(err)

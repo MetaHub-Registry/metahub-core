@@ -66,7 +66,7 @@ func TestGatherCollectionPins_GenericOnlyYieldsNoPins(t *testing.T) {
 	// non-exclusive path every plain push takes.
 	slot, err := mag.Database.SlotGetCreate(ctx, testRepo, testTag, "generic")
 	require.NoError(t, err)
-	require.NoError(t, mag.Database.SlotAppendPushedManifest(ctx, slot.ID, mdID))
+	require.NoError(t, mag.Database.SlotAppendPushedManifest(ctx, slot.ID, mdID, ""))
 
 	l, span := testLogSpan()
 	pins := mag.gatherCollectionPins(ctx, l, span, testRepo, testTag)

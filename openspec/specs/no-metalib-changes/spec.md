@@ -1,4 +1,9 @@
-## ADDED Requirements
+# no-metalib-changes Specification
+
+## Purpose
+Sentinel capability recording changes that intentionally touch no metalib specs.
+
+## Requirements
 
 ### Requirement: Profile propagation via gorilla context is sufficient
 Metalib SHALL correctly serve the profile-scoped manifest when `req.Profile` is populated from the gorilla context `profileName` key, regardless of how that key was set by the calling API layer. No additional metalib changes are required for profile envelope token support.
