@@ -281,23 +281,39 @@ func (mag Magazine) ApplyManipulationsToManifests(ctx context.Context, prf types
 // it appends md unchanged. A non-nil error is fatal — an infeasible model quant,
 // which rejects the pull.
 //
-// Dynamic model resolution applies ONLY to model manipulations under a
-// model-serving profile — one carrying a hardware.gpu block (VRAM + vendor), which
-// is the capacity source. Every other profile keeps the static path below (zero
-// regression); capacity is read from the profile's hardware, never the label.
+// Dynamic model resolution applies ONLY to model-centric pulls (RequestedModel set
+// in context) under a model-serving profile — one carrying a hardware.gpu block
+// (VRAM + vendor), which is the capacity source. Collection pulls under a
+// model-serving profile keep the static path below: no model/config injection,
+// but non-model manipulations (e.g. glow) still apply. Every other profile also
+// keeps the static path (zero regression); capacity is read from the profile's
+// hardware, never the label.
 func (mag Magazine) applyManipulationsToCandidate(ctx context.Context, l *logrus.Entry, span trace.Span, prf types.Profile, mps []types.Manipulation, md types.Manifest, result *[]types.Manifest) error {
-	// A model-serving profile (hardware.gpu block) composes a model from SEVERAL
-	// manipulations that must ALL land on the same manifest — the weights
-	// (model/<name>) and the per-profile config (config/<name>). Apply them as an
-	// additive stack (see applyModelServingStack) instead of the single-match path
-	// below, which would serve only the first (config-only, no weights).
-	if prf.Hardware.IsModelServing() {
+	// A model-centric pull (RequestedModel set) under a model-serving profile
+	// composes a model from SEVERAL manipulations that must ALL land on the same
+	// manifest — the weights (model/<name>) and the per-profile config
+	// (config/<name>). Apply them as an additive stack (see
+	// applyModelServingStack) instead of the single-match path below, which would
+	// serve only the first (config-only, no weights).
+	//
+	// A collection pull (RequestedModel empty) under a model-serving profile must
+	// NOT inject model/config layers — it serves the runtime as-is (with optional
+	// non-model manipulations). Without this gate, the runtime tag gets the full
+	// composite baked in, making it byte-identical to the model-centric pull.
+	if prf.Hardware.IsModelServing() && types.RequestedModelFromContext(ctx) != "" {
 		return mag.applyModelServingStack(ctx, l, span, prf, mps, md, result)
 	}
 	// Static path: the first matching manipulation for the profile wins (one
-	// variant per manifest). Unchanged — zero regression for non-model profiles.
+	// variant per manifest). On collection pulls (RequestedModel empty), skip
+	// model/ and config/ manipulations — they only apply via the model-serving
+	// stack on model-centric pulls. Non-model manipulations (e.g. glow) still
+	// apply first-match-wins.
 	for i := range mps {
 		mp := &mps[i]
+		if types.RequestedModelFromContext(ctx) == "" &&
+			(strings.HasPrefix(mp.Label, modelManipPrefix) || strings.HasPrefix(mp.Label, configManipPrefix)) {
+			continue
+		}
 		if tryApplyManipulation(ctx, mag, l, span, mp, &md, result) {
 			return nil // only the first matching manipulation per manifest
 		}

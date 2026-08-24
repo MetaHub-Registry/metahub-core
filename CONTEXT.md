@@ -20,6 +20,49 @@ All slices additive / tested / pushed.
 **Next (#8):** metahub-api rewrites `models/<name>:<tag>` → the model's runtime collection + `ctx=WithRequestedQuant(tag)`; the existing manipulation engine injects model+config. See DevDiary `2026-07-07-1438-model-centric-pull-implementation`.
 > Updated after each session that modifies this repo.
 
+## Session: waldur-outfitter-integration — gate-model-serving-on-model-centric (2026-08-24)
+
+### What changed
+
+`applyManipulationsToCandidate` (`pkg/backends/magazine/manipulation.go`)
+gated the model-serving stack on the **pull type**, not just the profile:
+
+```go
+if prf.Hardware.IsModelServing() && types.RequestedModelFromContext(ctx) != "" {
+    return mag.applyModelServingStack(...)
+}
+// static path skips model/ and config/ manipulations when RequestedModel is empty
+```
+
+Before, `RequestedModel` empty (collection pull under a model-serving profile)
+still fired `applyModelServingStack` → injected model+config onto a runtime tag,
+making `qnib/llama-server:latest` byte-identical to `models/qnib/minicpm5:q8-0`.
+
+Now:
+- **Collection pulls** (`qnib/llama-server:latest`, `qnib/ftest:latest`) under a
+  model-serving profile are served **un-injected** — the static path runs and
+  skips `model/`/`config/` manipulations (non-model overlays like glow still apply).
+- **Model-centric pulls** (`models/<name>:<quant>`) set `RequestedModel` via
+  metahub-api `resolveModelCentricRuntime`, so the stack fires and composes
+  runtime + weights + config.
+
+### Key files
+- `pkg/backends/magazine/manipulation.go` — the gate + static-path filter
+- `pkg/backends/magazine/model_resolution_engine_test.go` — 3 new tests
+  (collection no-inject, model-centric fires stack, config-manip skipped on
+  collection) + 2 existing tests updated to set `WithRequestedModel`
+
+### Gotchas
+- `scopeManipulationsToModel` returns ALL manipulations when `RequestedModel` is
+  empty (single-model-per-profile back-compat), so the **gate** must be checked
+  separately — the static-path filter (`model/`/`config/` prefix skip) is what
+  actually prevents the leak on collection pulls.
+- The config manipulation's flat layer has an **empty rule** (match-all), so it
+  would have matched via the static path without the explicit prefix skip.
+- `IndexGetByRequest` (multi-descriptor index path) applies manipulations via
+  `manipulateIndexInPlace` in metahub-api, which passes `ctx` through — the gate
+  is effective there too, not just the single-manifest path.
+
 ## What This Repo Is
 
 The shared Go library for MetaHub. Provides the `magazine.Magazine`
@@ -436,3 +479,50 @@ unknown) + `collection_test.go::TestManifestProfileRoundTrip`.
 - A secondary bug is out of scope here: bare profile `zen2` (no `#`)
   returns 500 instead of 404 when nothing matches — tracked as a
   metahub-api downstream fix.
+
+---
+
+## Session: waldur-outfitter-integration (2026-08-04)
+
+### OCI error codes now carry their spec status
+
+`utils.ErrorHandlerWithWWW` mapped only `MANIFEST_UNKNOWN` and
+`MANIFEST_INVALID`/`INTERNAL_ERROR`; everything else fell through to **HTTP 500**
+with an "Unknown error type" warning. `DENIED` has 16 call sites and
+`UNAUTHORIZED` 9, so authorization outcomes were reported as server faults — in
+one session a quota rejection, a missing profile and a namespace-authz denial all
+surfaced as 500, and each time the first assumption was that metahub had broken
+rather than that it had said no. skopeo prints the status and nothing else, so
+the real reason only appears in the server log.
+
+Now `DENIED → 403`, `UNAUTHORIZED → 401`. `BLOB_UNKNOWN` and `NAME_UNKNOWN` still
+fall through (spec says 404) — deliberately left, since they touch the OCI
+conformance surface and deserve their own run.
+
+### ORAS artifact push returned an empty MediaType
+
+`StoreManifestUpload` populates a content-leaf (`ID`, `Digest`, `Label`) and then,
+for artifacts, **discarded it**:
+
+```go
+md, ociMani, e := mag.storeManifestUploadOCIManifest(...)   // md is real
+md.Digest, md.Label = ...
+if ociMani.IsArtifact() {
+    return mag.StoreManifestArtifactUpload(ctx, req, ociMani)   // md thrown away
+}
+```
+
+`StoreManifestArtifactUpload` re-derived `md` from a graph lookup that misses on
+a **first** push, so it returned a zero-value struct with only `ArtifactType`
+set — and `WriteWWWHeader` rejects an empty `MediaType`, producing a 500 on a
+manifest that had actually stored fine. Only ORAS artifacts hit it (the image
+path continues on and populates everything), which is why it presented as
+"outfitter pushes are broken". The content-leaf is now threaded through, which
+also stops `wireSlotOnPush` receiving `md.ID == 0`.
+
+### Legacy push authz lives here
+
+`ProfileAuthorizedPushHandler` enforces "repo path must start with the username,
+else admin". metahub-api now skips it when `registry.enforce_write_ownership` is
+on, because it silently overrode the namespace matrix. If you touch it, note the
+comment says "profile name" but the code compares `req.User`.

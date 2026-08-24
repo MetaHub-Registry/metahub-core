@@ -95,7 +95,22 @@ func ErrorHandlerWithWWW(w http.ResponseWriter, l *logrus.Entry, span trace.Span
 		helper.WriteOCIErrror(w, http.StatusNotFound, ep)
 	case "MANIFEST_INVALID", "INTERNAL_ERROR":
 		helper.WriteOCIErrror(w, http.StatusBadRequest, ep)
+	// Authorization outcomes are not server faults. Both of these fell through
+	// to the default and were reported as 500 with an "Unknown error type"
+	// warning, so a refused push looked to the client -- and to whoever was
+	// debugging it -- like metahub had crashed. DENIED is by far the most used
+	// of the unmapped codes, and it cost real time on three separate occasions
+	// in one session: a quota rejection, a missing profile, and a namespace
+	// authz refusal all presented as HTTP 500.
+	// Status codes per the OCI distribution spec's error-code table.
+	case "DENIED":
+		helper.WriteOCIErrror(w, http.StatusForbidden, ep)
+	case "UNAUTHORIZED":
+		helper.WriteOCIErrror(w, http.StatusUnauthorized, ep)
 	default:
+		// Still reached by BLOB_UNKNOWN and NAME_UNKNOWN, which the spec puts at
+		// 404. Left alone deliberately: they are barely used here and changing
+		// them touches the OCI conformance surface, which deserves its own run.
 		Warn(l, span, "Unknown error type: %s", eType)
 		helper.WriteOCIErrror(w, http.StatusInternalServerError, ep)
 	}
