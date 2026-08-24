@@ -322,7 +322,21 @@ func (mag Magazine) ensureBlobNodeResolvable(ctx context.Context, l *logrus.Entr
 	return nil
 }
 
-func (mag Magazine) StoreManifestArtifactUpload(ctx context.Context, req types.Request, ociMani types.OCIManifest) (md types.Manifest, err error) {
+// StoreManifestArtifactUpload stores an ORAS artifact manifest (a manifest whose
+// config media type is not a container config, e.g. an outfitter skill).
+//
+// `leaf` is the content-leaf :Manifest that storeManifestUploadOCIManifest has
+// just created/resolved: it carries the real node ID, digest and label, exactly
+// as the container-image branch relies on. It MUST be used as the base.
+//
+// A previous version ignored it and re-derived the manifest via
+// ManifestGetByDigest. On a FIRST push nothing matches yet, so it returned the
+// zero value: the handler then wrote response headers from a Manifest with an
+// empty MediaType and failed with `Manifest.MediaType is empty` (HTTP 500) even
+// though the artifact had stored fine, and wireSlotOnPush silently received
+// ID 0. Note ID 0 cannot be used as a "missing" sentinel here — neo4j's id() is
+// 0-based and reused.
+func (mag Magazine) StoreManifestArtifactUpload(ctx context.Context, req types.Request, leaf types.Manifest, ociMani types.OCIManifest) (md types.Manifest, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMD,
 		"func":    "StoreManifestArtifactUpload",
@@ -332,14 +346,16 @@ func (mag Magazine) StoreManifestArtifactUpload(ctx context.Context, req types.R
 		"profile": req.Profile,
 	})
 	defer span.End()
-	var found bool
-	md, found, err = mag.Database.ManifestGetByDigest(ctx, req.Digest)
-	if err != nil {
-		err = utils.ErrorHandler(l, span, err, "failed to ManifestGetByDigest")
-		return md, err
+	md = leaf
+	if md.Digest == "" {
+		md.Digest = req.Digest
 	}
-	if !found {
-		utils.Debug(l, span, "Artifact Manifest not found, creating new one for digest: %s", utils.ShortenDigest(req.Digest))
+	// MediaType comes from the pushed bytes — the :Manifest node does not store
+	// it, so it cannot be recovered from the graph. Fall back to the OCI image
+	// manifest media type, which is what an artifact manifest is by definition.
+	md.MediaType = ociMani.MediaType
+	if md.MediaType == "" {
+		md.MediaType = "application/vnd.oci.image.manifest.v1+json"
 	}
 	// Propagate ArtifactType from the parsed OCI manifest so callers can
 	// detect artifacts without re-parsing the raw bytes.
@@ -398,7 +414,7 @@ func (mag Magazine) StoreManifestUpload(ctx context.Context, req types.Request, 
 	// Do we have a typical OCI Manifest to run a container or an artifact manifest?
 	if ociMani.IsArtifact() {
 		utils.Info(l, span, "Storing Artifact Manifest for Digest: %s", utils.ShortenDigest(md.Digest))
-		return mag.StoreManifestArtifactUpload(ctx, req, ociMani)
+		return mag.StoreManifestArtifactUpload(ctx, req, md, ociMani)
 	}
 
 	// Fetch Config

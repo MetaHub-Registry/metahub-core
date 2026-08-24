@@ -56,3 +56,27 @@ func TestErrHandlerPlainWWW(t *testing.T) {
 	assert.ErrorContains(t, err, "ErrorHandlerPlainWWW")
 
 }
+
+// OCI error codes must carry their spec status. DENIED and UNAUTHORIZED used to
+// fall through to the default and return 500 with an "Unknown error type"
+// warning, so an authorization refusal was indistinguishable from a crash --
+// a quota rejection, a missing profile and a namespace-authz denial all showed
+// up as HTTP 500 while debugging the same feature.
+func TestErrorHandlerWithWWWOCIStatus(t *testing.T) {
+	e := fmt.Errorf("boom")
+	for _, tc := range []struct {
+		eType string
+		want  int
+	}{
+		{"MANIFEST_UNKNOWN", http.StatusNotFound},
+		{"MANIFEST_INVALID", http.StatusBadRequest},
+		{"INTERNAL_ERROR", http.StatusBadRequest},
+		{"DENIED", http.StatusForbidden},
+		{"UNAUTHORIZED", http.StatusUnauthorized},
+		{"SOMETHING_UNMAPPED", http.StatusInternalServerError},
+	} {
+		w := httptest.NewRecorder()
+		ErrorHandlerWithWWW(w, nil, nil, "repo", "push", e, tc.eType, "")
+		assert.Equal(t, w.Code, tc.want)
+	}
+}

@@ -102,5 +102,28 @@ func TestStoreManifestArtifactUpload(t *testing.T) {
 		Profile: "cpu#generic",
 		Digest:  dig.String(),
 	}
-	mag.StoreManifestArtifactUpload(ctx, req, inMani)
+	// The content-leaf the production caller (StoreManifestUpload) passes in:
+	// a real node ID/digest/label resolved by storeManifestUploadOCIManifest.
+	leaf := types.Manifest{
+		ID:     42,
+		Digest: dig.String(),
+		Label:  "qnib/plain-featuretest:20220715-arm64-generic",
+	}
+	md, err := mag.StoreManifestArtifactUpload(ctx, req, leaf, inMani)
+	if err != nil {
+		// Blob/link steps depend on fixture objects being present; the identity
+		// fields asserted below are populated before any of that runs, so they
+		// hold regardless of how far the storage path gets.
+		t.Logf("StoreManifestArtifactUpload returned err (not fatal for these assertions): %v", err)
+	}
+	// Regression — outfitter skill push returned HTTP 500. The artifact branch
+	// used to discard the content-leaf and re-derive the manifest via
+	// ManifestGetByDigest; on a FIRST push nothing matches, so it returned the
+	// zero value. The empty MediaType then made ManifestPutHandlerWrapper's
+	// WriteWWWHeader fail with "Manifest.MediaType is empty", and
+	// wireSlotOnPush silently received ID 0.
+	assert.NotEmpty(t, md.MediaType, "MediaType must be set — WriteWWWHeader rejects an empty one with a 500")
+	assert.Equal(t, dig.String(), md.Digest, "digest must survive the artifact path")
+	assert.Equal(t, int64(42), md.ID, "content-leaf node ID must be preserved (neo4j id() is 0-based, so 0 is not a safe sentinel)")
+	assert.Equal(t, inMani.ArtifactType, md.ArtifactType, "ArtifactType must be propagated from the pushed bytes")
 }
