@@ -509,3 +509,44 @@ Push-time and descriptor-ingestion flows SHALL NOT create `:ManifestWrapper` nod
 > `migrate-wrapper-read-cypher` change, which carries the "read paths walk Slot
 > and content-leaf edges, not the wrapper node" requirement.
 
+### Requirement: Read/traversal paths walk Slot/content-leaf, not the wrapper
+
+All production read and traversal Cypher SHALL resolve manifests, profiles,
+rules, layers, and collection/tag listings by walking `:Slot`,
+`:HAS_PUSHED`, `:POINTS_TO`, `:REFERENCES`, `:ORIGINAL`, and content-leaf
+`:Manifest` edges. No production query SHALL traverse a `:ManifestWrapper`
+node.
+
+#### Scenario: Collection listing finds image repos without the wrapper
+
+- **WHEN** `CollectionListingGetByRepoLike` (and its profile-filtered variant)
+  runs against a graph with no `:ManifestWrapper` nodes
+- **THEN** a repo with at least one container-image content-leaf `:Manifest`
+  SHALL appear in the listing
+- **AND** an ORAS-only repo SHALL NOT appear
+
+#### Scenario: Profile evaluation resolves via the content-leaf
+
+- **WHEN** profile evaluation runs for a pushed manifest
+- **THEN** it SHALL resolve profiles by walking the content-leaf `:Manifest`
+  and `:Slot` edges
+- **AND** SHALL NOT walk `(:ManifestWrapper)` to discover profiles, rules, or
+  manipulations
+
+#### Scenario: Reshape no longer resolves a wrapper internally
+
+- **WHEN** `ComputeManifestForLeaf` reshapes a pushed content-leaf
+- **THEN** it SHALL operate on the content-leaf / Slot directly
+- **AND** SHALL NOT call `ManifestWrapperGetIDByManifestID` or
+  `ManifestWrapperGetByID`
+
+#### Scenario: Fixtures create no wrapper nodes
+
+- **WHEN** a test fixture sets up a repo/tag/profile with a manifest
+- **THEN** the manifest SHALL be attached to the Repo/Tag and Slot via the
+  content-leaf `:Manifest`
+- **AND** the fixture SHALL create no `:ManifestWrapper` node
+- **AND** `TestFixturesAreSlotCentred` SHALL assert zero `:ManifestWrapper`
+  nodes exist after setup
+</content>
+
