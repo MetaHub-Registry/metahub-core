@@ -541,22 +541,43 @@ func (n Neo) ManifestListExists(ctx context.Context, up upstream.UpstreamTriple)
 		err = utils.ErrorHandler(l, span, e, FailQueryExec)
 		return "", false, err
 	}
-	if !found {
-		utils.Debug(l, span, "Index not found")
-		return "", false, nil
+	if found {
+		md, err := res.GetStr("mediaType")
+		if err != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to get mediaType from record")
+			return "", false, err
+		}
+		colID, err := res.GetInt64("collectionID")
+		if err != nil {
+			err = utils.ErrorHandler(l, span, e, "colID could not be found")
+			return "", false, err
+		}
+		l.Debugf("found collection with id %d and manifestList with type '%s' (wrapper-era REF path)", colID, md)
+		return md, true, nil
 	}
-	md, err := res.GetStr("mediaType")
-	if err != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to get mediaType from record")
-		return "", false, err
+
+	// Slot-based fallback (Path Z): walk via Slot-[:POINTS_TO]->Index.
+	// Uses a write session (leader read) to guarantee read-after-write
+	// consistency — the wrapper-era REF edge query above may miss recently
+	// committed writes on a Neo4j cluster or under high load.
+	// Only applicable for tag-based (non-digest) queries with a profile.
+	if up.Digest.String() == "" && up.Profile != "" && up.Repo != "" && up.Tag != "" {
+		qSlot := fmt.Sprintf(`MATCH (s:Slot {repo: "%s", tag: "%s", profile: "%s"})-[:POINTS_TO]->(ml:Index) RETURN ml.mediaType AS mediaType LIMIT 1`,
+			up.Repo, up.Tag, up.Profile)
+		utils.Debug(l, span, "ManifestListExists: Slot-based fallback query: %s", qSlot)
+		resSlot, eSlot := n.Execute(qSlot)
+		if eSlot != nil {
+			utils.Debug(l, span, "ManifestListExists: Slot-based fallback query error (non-fatal): %v", eSlot)
+		} else {
+			if mdSlot, errSlot := resSlot.GetStr("mediaType"); errSlot == nil && mdSlot != "" {
+				utils.Debug(l, span, "found Index via Slot POINTS_TO with type '%s'", mdSlot)
+				return mdSlot, true, nil
+			}
+		}
 	}
-	colID, err := res.GetInt64("collectionID")
-	if err != nil {
-		err = utils.ErrorHandler(l, span, e, "colID could not be found")
-		return "", false, err
-	}
-	l.Debugf("found collection with id %d and manifestList with type '%s'", colID, md)
-	return md, true, nil
+
+	utils.Debug(l, span, "Index not found")
+	return "", false, nil
 }
 
 // Index origin labels used by SetIndexOrigin. These are the two sources of
