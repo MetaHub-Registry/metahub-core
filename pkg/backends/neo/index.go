@@ -557,27 +557,35 @@ func (n Neo) ManifestListExists(ctx context.Context, up upstream.UpstreamTriple)
 	}
 
 	// Slot-based fallback (Path Z): walk via Slot-[:POINTS_TO]->Index.
-	// Uses a write session (leader read) to guarantee read-after-write
-	// consistency — the wrapper-era REF edge query above may miss recently
-	// committed writes on a Neo4j cluster or under high load.
-	// Only applicable for tag-based (non-digest) queries with a profile.
-	if up.Digest.String() == "" && up.Profile != "" && up.Repo != "" && up.Tag != "" {
-		qSlot := fmt.Sprintf(`MATCH (s:Slot {repo: "%s", tag: "%s", profile: "%s"})-[:POINTS_TO]->(ml:Index) RETURN ml.mediaType AS mediaType LIMIT 1`,
-			up.Repo, up.Tag, up.Profile)
-		utils.Debug(l, span, "ManifestListExists: Slot-based fallback query: %s", qSlot)
-		resSlot, eSlot := n.Execute(qSlot)
-		if eSlot != nil {
-			utils.Debug(l, span, "ManifestListExists: Slot-based fallback query error (non-fatal): %v", eSlot)
-		} else {
-			if mdSlot, errSlot := resSlot.GetStr("mediaType"); errSlot == nil && mdSlot != "" {
-				utils.Debug(l, span, "found Index via Slot POINTS_TO with type '%s'", mdSlot)
-				return mdSlot, true, nil
-			}
-		}
+	if mdSlot, ok := n.manifestListViaSlot(l, span, up); ok {
+		return mdSlot, true, nil
 	}
 
 	utils.Debug(l, span, "Index not found")
 	return "", false, nil
+}
+
+// manifestListViaSlot is the Path-Z fallback for ManifestListExists: it walks
+// Slot-[:POINTS_TO]->Index to guarantee read-after-write consistency for
+// tag-based (non-digest) queries. Only runs when repo/tag/profile are all set.
+func (n Neo) manifestListViaSlot(l *logrus.Entry, span trace.Span, up upstream.UpstreamTriple) (string, bool) {
+	if up.Digest.String() != "" || up.Profile == "" || up.Repo == "" || up.Tag == "" {
+		return "", false
+	}
+	qSlot := fmt.Sprintf(`MATCH (s:Slot {repo: "%s", tag: "%s", profile: "%s"})-[:POINTS_TO]->(ml:Index) RETURN ml.mediaType AS mediaType LIMIT 1`,
+		up.Repo, up.Tag, up.Profile)
+	utils.Debug(l, span, "ManifestListExists: Slot-based fallback query: %s", qSlot)
+	resSlot, eSlot := n.Execute(qSlot)
+	if eSlot != nil {
+		utils.Debug(l, span, "ManifestListExists: Slot-based fallback query error (non-fatal): %v", eSlot)
+		return "", false
+	}
+	mdSlot, errSlot := resSlot.GetStr("mediaType")
+	if errSlot != nil || mdSlot == "" {
+		return "", false
+	}
+	utils.Debug(l, span, "found Index via Slot POINTS_TO with type '%s'", mdSlot)
+	return mdSlot, true
 }
 
 // Index origin labels used by SetIndexOrigin. These are the two sources of
