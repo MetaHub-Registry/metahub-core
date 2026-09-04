@@ -310,3 +310,55 @@ func TestIndexGetByRequest(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, found3)
 }
+
+// TestManifestListViaSlot_Guards exercises the early-return branches in
+// manifestListViaSlot: when profile, repo, or tag is empty the helper must
+// skip the DB query. The digest-set guard is already covered by the
+// digest-based lookup in TestIndexLinkingWorkflow.
+func TestManifestListViaSlot_Guards(t *testing.T) {
+	ctx := context.Background()
+	defer slotTestSetup(ctx, t)()
+
+	cases := []struct {
+		name string
+		up   upstream.UpstreamTriple
+	}{
+		{"empty profile", upstream.UpstreamTriple{Repo: "r", Tag: "t"}},
+		{"empty repo", upstream.UpstreamTriple{Tag: "t", Profile: "p"}},
+		{"empty tag", upstream.UpstreamTriple{Repo: "r", Profile: "p"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, found, err := db.ManifestListExists(ctx, tc.up)
+			require.NoError(t, err)
+			assert.False(t, found)
+		})
+	}
+}
+
+// TestManifestListExists_SlotFallback verifies that ManifestListExists finds
+// an Index reachable only via Slot-[:POINTS_TO]->Index (no REF edges),
+// exercising the success return path in manifestListViaSlot.
+func TestManifestListExists_SlotFallback(t *testing.T) {
+	ctx := context.Background()
+	defer slotTestSetup(ctx, t)()
+
+	idxDigest := "sha256:slotfb1111111111111111111111111111111111111111111111111111111111"
+	idxID := createTestIndex(t, idxDigest)
+
+	// Wire a Slot to the Index (no REF edges — the wrapper-era query misses it).
+	_, err := db.Execute(fmt.Sprintf(
+		`MATCH (i:Index) WHERE id(i) = %d
+		 MERGE (s:Slot {repo: "qnib/slotfb", tag: "v1", profile: "generic"})
+		 WITH s, i MERGE (s)-[:POINTS_TO]->(i)`, idxID))
+	require.NoError(t, err)
+
+	mt, found, err := db.ManifestListExists(ctx, upstream.UpstreamTriple{
+		Repo:    "qnib/slotfb",
+		Tag:     "v1",
+		Profile: "generic",
+	})
+	require.NoError(t, err)
+	assert.True(t, found, "should find Index via Slot POINTS_TO fallback")
+	assert.Equal(t, "application/vnd.oci.image.index.v1+json", mt)
+}
