@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing/fstest"
 
@@ -118,6 +119,7 @@ func (lyr Layer) EvalOS(ctx context.Context) (os OS, err error) {
 	fs, found, e := lyr.FindFile(ctx, "etc/os-release")
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to uncompress layer")
+		return
 	}
 	if !found {
 		err = utils.NewError(l, span, "failed to find /etc/os-release")
@@ -145,42 +147,106 @@ func (lyr Layer) Uncompress(ctx context.Context, fnames ...string) (fs fstest.Ma
 		err = utils.NewError(l, span, "unknown file type %s", kind)
 		return
 	}
-	var tarRead *tar.Reader
-	r := bytes.NewReader(lyr.Data)
-	switch kind.MIME.Value {
-	case "application/x-tar":
-		tarRead = tar.NewReader(r)
-	case "application/gzip":
-		gzRead, e := gzip.NewReader(r)
-		if e != nil {
-			return nil, utils.NewError(l, span, "error reading gzip")
+	newTarReader := func() (*tar.Reader, error) {
+		r := bytes.NewReader(lyr.Data)
+		switch kind.MIME.Value {
+		case "application/x-tar":
+			return tar.NewReader(r), nil
+		case "application/gzip":
+			gzRead, e := gzip.NewReader(r)
+			if e != nil {
+				return nil, utils.NewError(l, span, "error reading gzip")
+			}
+			return tar.NewReader(gzRead), nil
+		default:
+			return nil, utils.NewError(l, span, "unknown file type: %s", kind.MIME.Value)
 		}
-		tarRead = tar.NewReader(gzRead)
-	default:
-		err = utils.NewError(l, span, "unknown file type: %s", kind.MIME.Value)
-		return
+	}
+
+	// Pass 1 (filtered scans only): scan headers and collect symlink/hardlink
+	// entries matching a requested name, resolving each to its tar-internal
+	// target path. Some images ship requested files as links — e.g. alpine
+	// >=3.21 ships /etc/os-release as a symlink to /usr/lib/os-release — so
+	// the materialization below serves the link name from the regular file's
+	// content instead of silently skipping it.
+	links := make(map[string]string) // requested name -> resolved tar path
+	if !fn.IsEmpty() {
+		tr, e := newTarReader()
+		if e != nil {
+			return nil, e
+		}
+		for {
+			cur, e := tr.Next()
+			if e == io.EOF {
+				break
+			} else if e != nil {
+				err = utils.ErrorHandler(l, span, e, "failed to read tar")
+				return nil, err
+			}
+			if cur.Typeflag != tar.TypeSymlink && cur.Typeflag != tar.TypeLink {
+				continue
+			}
+			if !fn.Contains(cur.Name) {
+				continue
+			}
+			target := cur.Linkname
+			if cur.Typeflag == tar.TypeSymlink && !strings.HasPrefix(target, "/") {
+				// relative symlink: resolve against the entry's directory
+				target = filepath.Join(filepath.Dir(cur.Name), target)
+			}
+			links[cur.Name] = strings.TrimPrefix(target, "/")
+		}
+	}
+
+	// Pass 2: read the requested regular files plus any symlink targets.
+	targets := make(map[string]bool)
+	for _, t := range links {
+		targets[t] = true
 	}
 	fs = make(fstest.MapFS)
+	tr, e := newTarReader()
+	if e != nil {
+		return nil, e
+	}
 	for {
-		cur, e := tarRead.Next()
+		cur, e := tr.Next()
 		if e == io.EOF {
 			break
 		} else if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to read tar")
 			return nil, err
 		}
-		if !fn.IsEmpty() && !fn.Contains(cur.Name) {
-			continue
-		}
 		if cur.Typeflag != tar.TypeReg {
 			continue
 		}
-		data, e := io.ReadAll(tarRead)
+		if !fn.IsEmpty() && !fn.Contains(cur.Name) && !targets[cur.Name] {
+			continue
+		}
+		data, e := io.ReadAll(tr)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to ReadAll")
 			return nil, err
 		}
 		fs[cur.Name] = &fstest.MapFile{Data: data}
+	}
+	// Materialize requested names that only exist as symlinks by copying the
+	// target's content (link chains followed, loop-guarded).
+	for name, target := range links {
+		if _, ok := fs[name]; ok {
+			continue
+		}
+		cur := target
+		for i := 0; i < 8; i++ {
+			if data, ok := fs[cur]; ok {
+				fs[name] = data
+				break
+			}
+			if next, ok := links[cur]; ok {
+				cur = next
+				continue
+			}
+			break
+		}
 	}
 	return fs, nil
 }
