@@ -187,6 +187,11 @@ type Database interface {
 	LinkManifestListToCollection(mlID, colID int64) (err error)
 	LinkManifestListToCollectionTag(mlID, colTagID int64) (err error)
 	LinkManifestListToProfile(mlID, prfID int64) (err error)
+	// UnLinkProfileFromOtherRepoIndexes detaches the profile from every other
+	// Index of the repo (one-image-per-profile invariant per collection); call
+	// it before LinkManifestListToProfile so a re-push detaches the old
+	// attachment before the new one is created.
+	UnLinkProfileFromOtherRepoIndexes(mlID, prfID, repoID int64) (err error)
 	LinkManifestListToManifest(ctx context.Context, mlID, mdID int64) (err error)
 	ManifestLinkToLayer(ctx context.Context, maniDataID int64, layer types.Layer, idx int) error
 	ManifestLinkToProfile(ctx context.Context, maniDataID, profileID int64) error

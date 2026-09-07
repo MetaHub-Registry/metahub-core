@@ -164,7 +164,14 @@ func (mag Magazine) linkComputedIndexToWrapperEra(ctx context.Context, l *logrus
 	if e := mag.Database.LinkManifestListToCollectionTag(mlID, ct.ID); e != nil {
 		return utils.ErrorHandler(l, span, e, "failed LinkManifestListToCollectionTag")
 	}
-	// Link Index to Profile
+	// Link Index to Profile — but first detach the profile from every other
+	// Index in this collection. The Profile→Index REF edge drives the
+	// profile-scoped serve resolution; without the detach a re-push leaves the
+	// old attachment in place and the resolver matches two indexes for
+	// (profile, repo, tag), serving stale content nondeterministically.
+	if e := mag.Database.UnLinkProfileFromOtherRepoIndexes(mlID, p.ID, c.ID); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed UnLinkProfileFromOtherRepoIndexes")
+	}
 	if e := mag.Database.LinkManifestListToProfile(mlID, p.ID); e != nil {
 		return utils.ErrorHandler(l, span, e, "failed LinkManifestListToProfile")
 	}

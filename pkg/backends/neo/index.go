@@ -153,6 +153,34 @@ func (n Neo) LinkManifestListToProfile(mlID, pID int64) (err error) {
 	return
 }
 
+// UnLinkProfileFromOtherRepoIndexes enforces the one-image-per-profile
+// invariant within a collection: it deletes every (p:Profile)-[:REF]->(ml:Index)
+// edge that points at an Index of repo repoID other than mlID.
+//
+// The Profile→Index REF edge is what the serve path joins on
+// (ManifestListExistsForTagProfile / ManifestListExists:
+// Profile→Index←Repo-HAS_TAG→Tag-REF→Index). If a profile stays attached to
+// the index of a previously pushed image, that pattern matches two rows and
+// QueryOne serves a stale image nondeterministically — observed as a re-push
+// of different content still resolving to the old digest. Called directly
+// before LinkManifestListToProfile, the invariant "a profile is attached to at
+// most one image per collection" holds after every push: the profile is
+// detached from the old image before it is attached to the new one.
+func (n Neo) UnLinkProfileFromOtherRepoIndexes(mlID, pID, repoID int64) (err error) {
+	q := `MATCH (p:Profile)-[r:REF]->(ml:Index)<-[:REF]-(c:Repo)`
+	q += ` WHERE id(p) = %d AND id(c) = %d AND id(ml) <> %d`
+	q += ` DELETE r`
+	query := fmt.Sprintf(q, pID, repoID, mlID)
+	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close()
+	_, err = session.Run(query, map[string]interface{}{})
+	if err != nil {
+		logrus.Errorf("failed to unlink profile %d from other indexes of repo %d: %v", pID, repoID, err)
+		return
+	}
+	return
+}
+
 func (n Neo) LinkManifestListToFilter(mlID, filterID int64) (err error) {
 	q := `MATCH (ml:Index),(f:Filter) WHERE id(ml) = %d AND id(f) = %d`
 	q += ` MERGE (ml)-[:IMPLEMENTS]->(f)`
