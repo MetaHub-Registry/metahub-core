@@ -322,6 +322,14 @@ type Database interface {
 	// SlotGetAllForRepoTag returns every Slot for a (repo, tag) pair
 	// across all profiles. Used by the compute path.
 	SlotGetAllForRepoTag(ctx context.Context, repo, tag string) ([]types.Slot, error)
+	// SlotLatestPushTimestamps maps manifest node ID -> latest HAS_PUSHED
+	// timestamp within the (repo, tag, profile) slot; empty when the slot
+	// does not exist. Drives latest-push-wins dedupe at compute time.
+	SlotLatestPushTimestamps(ctx context.Context, repo, tag, profile string) (map[int64]int64, error)
+	// RepoTagLatestPushTimestamps maps manifest node ID -> latest HAS_PUSHED
+	// timestamp across all slots of the (repo, tag) pair. Fallback view for
+	// profiles that never pushed to the tag themselves.
+	RepoTagLatestPushTimestamps(ctx context.Context, repo, tag string) (map[int64]int64, error)
 	// SlotGetAllForRepo returns every Slot for a repo across all (tag,
 	// profile) pairs. Used by the catalog endpoint.
 	SlotGetAllForRepo(ctx context.Context, repo string) ([]types.Slot, error)

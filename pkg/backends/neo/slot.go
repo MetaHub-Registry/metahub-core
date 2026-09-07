@@ -295,6 +295,87 @@ func (n Neo) SlotAppendPushedIndex(ctx context.Context, slotID, indexID int64) (
 	return nil
 }
 
+// SlotLatestPushTimestamps returns, for the (repo, tag, profile) Slot, a map
+// of Manifest node ID -> timestamp of its most recent HAS_PUSHED edge. An
+// empty map (no error) means the Slot does not exist or never pushed.
+//
+// HAS_PUSHED is an append-only push log, so a manifest can carry several
+// edges; the map value is the LATEST timestamp. Consumers use this to apply
+// latest-push-wins semantics per platform when computing a Slot's index.
+func (n Neo) SlotLatestPushTimestamps(ctx context.Context, repo, tag, profile string) (map[int64]int64, error) {
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameSlot,
+		"func":    "SlotLatestPushTimestamps",
+		"repo":    repo,
+		"tag":     tag,
+		"profile": profile,
+	})
+	defer span.End()
+	if repo == "" || tag == "" || profile == "" {
+		return nil, utils.NewError(l, span, "SlotLatestPushTimestamps: empty triple component repo=%q tag=%q profile=%q", repo, tag, profile)
+	}
+	q := fmt.Sprintf(
+		`MATCH (s:Slot {repo: "%s", tag: "%s", profile: "%s"})-[hp:HAS_PUSHED]->(m:Manifest) RETURN id(m) AS mid, max(hp.timestamp) AS ts`,
+		repo, tag, profile,
+	)
+	res, e := n.Query(q)
+	if e != nil {
+		return nil, utils.ErrorHandler(l, span, e, "SlotLatestPushTimestamps: executing query")
+	}
+	ts := make(map[int64]int64, len(res))
+	for _, r := range res {
+		mid, e := r.GetInt64("mid")
+		if e != nil {
+			return nil, utils.ErrorHandler(l, span, e, "SlotLatestPushTimestamps: decoding mid")
+		}
+		t, e := r.GetInt64("ts")
+		if e != nil {
+			return nil, utils.ErrorHandler(l, span, e, "SlotLatestPushTimestamps: decoding ts")
+		}
+		ts[mid] = t
+	}
+	return ts, nil
+}
+
+// RepoTagLatestPushTimestamps returns a map of Manifest node ID -> timestamp
+// of its most recent HAS_PUSHED edge across EVERY Slot of the (repo, tag)
+// pair. Used as the fallback view for profiles that never pushed to the tag
+// themselves: their computed index follows the registry tag's push history
+// (latest push wins per platform) rather than a stale rule-union snapshot.
+func (n Neo) RepoTagLatestPushTimestamps(ctx context.Context, repo, tag string) (map[int64]int64, error) {
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameSlot,
+		"func":    "RepoTagLatestPushTimestamps",
+		"repo":    repo,
+		"tag":     tag,
+	})
+	defer span.End()
+	if repo == "" || tag == "" {
+		return nil, utils.NewError(l, span, "RepoTagLatestPushTimestamps: empty component repo=%q tag=%q", repo, tag)
+	}
+	q := fmt.Sprintf(
+		`MATCH (s:Slot {repo: "%s", tag: "%s"})-[hp:HAS_PUSHED]->(m:Manifest) RETURN id(m) AS mid, max(hp.timestamp) AS ts`,
+		repo, tag,
+	)
+	res, e := n.Query(q)
+	if e != nil {
+		return nil, utils.ErrorHandler(l, span, e, "RepoTagLatestPushTimestamps: executing query")
+	}
+	ts := make(map[int64]int64, len(res))
+	for _, r := range res {
+		mid, e := r.GetInt64("mid")
+		if e != nil {
+			return nil, utils.ErrorHandler(l, span, e, "RepoTagLatestPushTimestamps: decoding mid")
+		}
+		t, e := r.GetInt64("ts")
+		if e != nil {
+			return nil, utils.ErrorHandler(l, span, e, "RepoTagLatestPushTimestamps: decoding ts")
+		}
+		ts[mid] = t
+	}
+	return ts, nil
+}
+
 // ManifestGetAllForSlot walks the HAS_PUSHED edges from the :Slot with id
 // slotID and returns every content-leaf Manifest (currently labelled
 // :Manifest until Phase C) that was ever pushed to that Slot. The

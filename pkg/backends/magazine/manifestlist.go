@@ -97,8 +97,84 @@ func (mag Magazine) filterManifestsForCTTP(ctx context.Context, l *logrus.Entry,
 	// nondeterministically and can serve the stale base (e.g. a runtime image
 	// rebuilt with a new entrypoint that never takes effect).
 	mds = types.DedupeLatestByUpstreamTagPlatform(mds)
+	// Slot-scoped latest-push-wins: HAS_PUSHED is an append-only log, so a
+	// profile re-pushing different content to the same tag (e.g. a re-tagged
+	// image whose Upstream triple differs from the earlier push) would
+	// otherwise accumulate every historical same-platform manifest into the
+	// slot's computed index — the upstream-keyed dedupe above cannot collapse
+	// those. Per platform, keep only the manifest from the most recent push:
+	// the slot's own if the profile pushed to the tag itself, otherwise the
+	// (repo, tag)-wide history so a passive profile's view still follows the
+	// registry tag. Platforms with no push-log entry (multi-arch union
+	// members) are untouched.
+	ts, tsErr := mag.Database.SlotLatestPushTimestamps(ctx, ctpp.Repo.Repo, ctpp.Tag.Tag, ctpp.Profile.Label)
+	if tsErr != nil {
+		utils.Warn(l, span, "SlotLatestPushTimestamps failed (non-fatal, skipping latest-push dedupe): %v", tsErr)
+	} else {
+		if len(ts) == 0 {
+			globalTs, gErr := mag.Database.RepoTagLatestPushTimestamps(ctx, ctpp.Repo.Repo, ctpp.Tag.Tag)
+			if gErr != nil {
+				utils.Warn(l, span, "RepoTagLatestPushTimestamps failed (non-fatal, skipping latest-push dedupe): %v", gErr)
+			} else {
+				ts = globalTs
+			}
+		}
+		mds = latestPerPlatformForSlot(mds, ts)
+	}
 	ml.Manifests = append(ml.Manifests, mds...)
 	return mds, nil
+}
+
+// latestPerPlatformForSlot applies latest-push-wins per platform to a slot's
+// computed-index candidates. ts maps manifest node ID -> the manifest's latest
+// HAS_PUSHED timestamp (slot-scoped, or (repo, tag)-wide as fallback).
+//
+//   - Candidates with no entry in ts are union members (pushed via another
+//     profile's slot, or seeded by fixtures). They survive unless their
+//     platform was pushed via this slot/tag — the author's own latest push is
+//     the authoritative statement for that platform.
+//   - Within a platform group holding at least one ts-carrying member, exactly
+//     one manifest survives: the highest timestamp (ties broken by the higher
+//     node ID for determinism).
+//
+// An empty ts map disables the dedupe entirely (no push log — fixtures).
+// The relative order of surviving manifests is preserved so the computed
+// index blob stays reproducible.
+func latestPerPlatformForSlot(mds []types.Manifest, ts map[int64]int64) []types.Manifest {
+	if len(ts) == 0 || len(mds) < 2 {
+		return mds
+	}
+	type group struct {
+		hasTS   bool
+		bestIdx int
+		bestTS  int64
+	}
+	groups := map[string]*group{}
+	for i, md := range mds {
+		label := md.Platform.GetLabel()
+		g, ok := groups[label]
+		if !ok {
+			g = &group{bestIdx: -1}
+			groups[label] = g
+		}
+		if t, pushed := ts[md.ID]; pushed {
+			if !g.hasTS || t > g.bestTS || (t == g.bestTS && md.ID > mds[g.bestIdx].ID) {
+				g.hasTS = true
+				g.bestTS = t
+				g.bestIdx = i
+			}
+		}
+	}
+	out := make([]types.Manifest, 0, len(mds))
+	for i, md := range mds {
+		if g := groups[md.Platform.GetLabel()]; g.hasTS && i != g.bestIdx {
+			// An older same-platform push (or a union member) loses to the
+			// slot's latest push for that platform.
+			continue
+		}
+		out = append(out, md)
+	}
+	return out
 }
 
 // persistComputedIndex stores the computed Index bytes in minio, MERGEs
