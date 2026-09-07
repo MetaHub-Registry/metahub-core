@@ -2,6 +2,54 @@
 
 > This file helps AI agents understand the repo quickly.
 
+## Session: waldur-outfitter-improvements — SonarQube gate closure (2026-09-07)
+
+Branch `137-waldur-outfitter-improvements` now passes the full quality gate
+(GoCD `metalib_MR137_dev` run 16, commit `c884210`):
+`new_violations 0`, `new_duplicated_lines_density 0.0%` (≤3), `new_coverage
+88.3%` (≥80). What moved the needle:
+
+**Commits:**
+- `2097f8d` S107 fix — `manifestColTagOCI` took 10 params; the five
+  query-shaping strings are now bundled in `colTagOCIQuery{pathLabel, relType,
+  matchQ, withVars, upstreamQ}`; `manifestColTagSlot`/`manifestColTagUpstream`
+  construct the spec.
+- `be00427` slot.go dedupe — extracted `slotsFromQuery(l, span, fn, q)`
+  (SlotGetAllForRepoTag/SlotGetAllForRepo twins) and
+  `latestPushTimestampsFromQuery(l, span, fn, q)`
+  (SlotLatestPushTimestamps/RepoTagLatestPushTimestamps twins). That removed
+  ALL 38 new duplicated lines (the only new-code duplication in the branch).
+- `c884210` coverage — new `pkg/backends/neo/manifest_legacy_path_test.go`:
+  legacy wrapper-path fixture (Repo/Tag-UPSTREAM→ManifestWrapper-REFERENCES→
+  Manifest) driving `manifestColTagLegacy`/`processLegacyManifestRecord`
+  (0%→82.5%) in three flavors (matched profile / FALSE-annotation filtered /
+  no profile); `applyContentSize` unit table via a `fakeNeoResult` wrapping
+  `neo4j.Record{Keys, Values}` (57%→100%); `hydrateOCIManifestRecord` error
+  branches with progressively-valid synthetic records (80%→96%).
+
+**Gotchas learned (do not rediscover):**
+- Rule match relations are `[:TRUE]` / `[:FALSE]` (`types.RelationSuccess` /
+  `RelationFailure`) — NOT `SUCCESS`/`FAILURE`. A fixture with `[:SUCCESS]`
+  silently matches zero profiles.
+- `Platform.label` and `Profile.label` are uniqueness-constrained; tests
+  sharing one graph (per-TEST `slotTestSetup`, not per-subtest) must use
+  per-repo labels AND per-repo Platform nodes — a shared MERGEd Platform lets
+  one subtest's `Rule-[:TRUE]->Platform` match another subtest's manifest
+  through `HAS_PLATFORM`.
+- `Platform.GetLabel()` derives from os/arch/variant, not the `label` property.
+- `neo4j.Result` is trivially fakeable in tests (8 methods); `neo4j.Record`
+  has exported `Keys`/`Values` — no DB needed for record-decoder coverage.
+- Sonar `new_*` per-file measures live under `measures[].period.value`; the
+  Sonar token `squ_…` (user-provided) HAS `api/duplications/show` +
+  `api/measures/component` privileges (the GoCD `sqa_…` token did not).
+- Duplication hunt shortcut: `api/duplications/show` per file gives exact
+  block pairs; cross-check with per-file `new_duplicated_lines` to see which
+  blocks are in the new-code period.
+
+**Deferred / downstream:** metahub-api dev image (`:17`) embeds metalib at
+docker build; the runtime fixes (stale index serving, profile attribution)
+warrant a rebuild to `:18` + flux bump — see session CONTEXT.md "Downstream".
+
 ## model-centric-pull (session isc-session-v2, 2026-07-07) — branch `132-isc-session-v2`
 
 Complete metalib foundation for model-centric pull (`docker run …/models/<org>/<name>:<quant>`).
