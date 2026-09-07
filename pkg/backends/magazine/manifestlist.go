@@ -140,25 +140,37 @@ func (mag Magazine) filterManifestsForCTTP(ctx context.Context, l *logrus.Entry,
 // An empty ts map disables the dedupe entirely (no push log — fixtures).
 // The relative order of surviving manifests is preserved so the computed
 // index blob stays reproducible.
+type platformGroup struct {
+	hasTS   bool
+	bestIdx int
+	bestTS  int64
+}
+
+// isBetterCandidate reports whether a manifest with timestamp t and node ID
+// mdID beats the current best in group g (newer timestamp wins; ties broken by
+// higher node ID for determinism).
+func isBetterCandidate(g *platformGroup, t, mdID, bestMDID int64) bool {
+	return !g.hasTS || t > g.bestTS || (t == g.bestTS && mdID > bestMDID)
+}
+
 func latestPerPlatformForSlot(mds []types.Manifest, ts map[int64]int64) []types.Manifest {
 	if len(ts) == 0 || len(mds) < 2 {
 		return mds
 	}
-	type group struct {
-		hasTS   bool
-		bestIdx int
-		bestTS  int64
-	}
-	groups := map[string]*group{}
+	groups := map[string]*platformGroup{}
 	for i, md := range mds {
 		label := md.Platform.GetLabel()
 		g, ok := groups[label]
 		if !ok {
-			g = &group{bestIdx: -1}
+			g = &platformGroup{bestIdx: -1}
 			groups[label] = g
 		}
 		if t, pushed := ts[md.ID]; pushed {
-			if !g.hasTS || t > g.bestTS || (t == g.bestTS && md.ID > mds[g.bestIdx].ID) {
+			var bestMDID int64
+			if g.bestIdx >= 0 {
+				bestMDID = mds[g.bestIdx].ID
+			}
+			if isBetterCandidate(g, t, md.ID, bestMDID) {
 				g.hasTS = true
 				g.bestTS = t
 				g.bestIdx = i
