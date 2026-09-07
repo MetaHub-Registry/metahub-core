@@ -1865,6 +1865,11 @@ func (n Neo) ManifestGetRawByRepoTag(ctx context.Context, repo, tag string) (man
 
 const colTagCfgFilter = `["application/vnd.oci.image.config.v1+json", "application/vnd.docker.container.image.v1+json"]`
 
+// colTagCfgPredicate is the shared "config-blob" predicate appended to every
+// ManifestGetByCollectionTag query path; hoisted into a constant so the
+// literal exists exactly once.
+const colTagCfgPredicate = ` AND cfg.type = "config" AND cfg.mediaType IN ` + colTagCfgFilter
+
 func applyColTagSlotProfile(m *types.Manifest, sp map[int64][]string) {
 	if labels, ok := sp[m.ID]; ok && len(labels) > 0 {
 		m.Profile = strings.Join(labels, "/")
@@ -2013,59 +2018,55 @@ func (n Neo) manifestColTagLegacy(ctx context.Context, l *logrus.Entry, span tra
 func (n Neo) manifestColTagSlot(ctx context.Context, l *logrus.Entry, span trace.Span,
 	session neo4j.Session, colID, colTagID int64, slotProfiles map[int64][]string) ([]types.Manifest, error) {
 	utils.Debug(l, span, "legacy query returned no results, trying slot-centred path")
-	qs := fmt.Sprintf(`MATCH (c:Repo)-[:HAS_TAG]->(t:Tag)-[:REF]->(:Index)-[:REFERENCES]->(md:Manifest)-[cfgRel]->(cfg:Blob) WHERE id(c) = %d AND id(t) = %d`, colID, colTagID)
-	qs += ` AND cfg.type = "config" AND cfg.mediaType IN ` + colTagCfgFilter
-	qs += ` MATCH (p:Platform)-[]-(md)`
-	qs += ` OPTIONAL MATCH (md)-[]->(blob:Blob) WHERE blob.type IN ["config", "layer"]`
-	qs += ` WITH c, t, md, cfgRel, cfg, p, collect(DISTINCT blob) AS blobs`
-	qs += ` WITH c, t, md, cfgRel, cfg, p, reduce(s = 0, b IN blobs | s + b.size) AS contentSize`
-	qs += ` RETURN "REFERENCES" AS manifestdataRelType,`
-	qs += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
-	qs += ` ` + manifestDataReturn + `,`
-	qs += ` 0 AS upstreamID, "" AS upstreamReg, c.repo AS upstreamRepo, t.name AS upstreamTag, md.digest AS upstreamDigest,`
-	qs += ` id(cfg) AS configID, cfg.digest AS configDigest, TYPE(cfgRel) AS configMediaType, cfg.size AS configSize,`
-	qs += ` contentSize`
-	utils.Debug(l, span, qs)
-	result, e := session.Run(qs, map[string]interface{}{})
-	if e != nil {
-		return nil, e
-	}
-	var manis []types.Manifest
-	for result.Next() {
-		m, e := n.hydrateOCIManifestRecord(ctx, l, span, result, "slot", slotProfiles)
-		if e != nil {
-			return nil, e
-		}
-		manis = append(manis, m)
-	}
-	return manis, nil
+	matchQ := fmt.Sprintf(
+		`MATCH (c:Repo)-[:HAS_TAG]->(t:Tag)-[:REF]->(:Index)-[:REFERENCES]->(md:Manifest)-[cfgRel]->(cfg:Blob) WHERE id(c) = %d AND id(t) = %d`+colTagCfgPredicate,
+		colID, colTagID)
+	return n.manifestColTagOCI(ctx, l, span, session, slotProfiles, "slot", "REFERENCES", matchQ,
+		"c, t, md, cfgRel, cfg, p",
+		` 0 AS upstreamID, "" AS upstreamReg, c.repo AS upstreamRepo, t.name AS upstreamTag, md.digest AS upstreamDigest,`)
 }
 
 func (n Neo) manifestColTagUpstream(ctx context.Context, l *logrus.Entry, span trace.Span,
 	session neo4j.Session, colID, colTagID int64, slotProfiles map[int64][]string) ([]types.Manifest, error) {
 	utils.Debug(l, span, "slot-centred path returned no results, trying direct UPSTREAM path")
-	qd := fmt.Sprintf(`MATCH (c:Repo)-[:UPSTREAM]->(md:Manifest)-[cfgRel]->(cfg:Blob) WHERE id(c) = %d`, colID)
-	qd += ` AND cfg.type = "config" AND cfg.mediaType IN ` + colTagCfgFilter
-	qd += fmt.Sprintf(` MATCH (t:Tag)-[:UPSTREAM]->(md) WHERE id(t) = %d`, colTagID)
-	qd += ` MATCH (p:Platform)-[]-(md)`
-	qd += ` OPTIONAL MATCH (md)-[:ORIGINAL]->(u:Upstream)`
-	qd += ` OPTIONAL MATCH (md)-[]->(blob:Blob) WHERE blob.type IN ["config", "layer"]`
-	qd += ` WITH md, cfgRel, cfg, p, u, collect(DISTINCT blob) AS blobs`
-	qd += ` WITH md, cfgRel, cfg, p, u, reduce(s = 0, b IN blobs | s + b.size) AS contentSize`
-	qd += ` RETURN "UPSTREAM" AS manifestdataRelType,`
-	qd += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
-	qd += ` ` + manifestDataReturn + `,`
-	qd += ` coalesce(id(u), 0) AS upstreamID, coalesce(u.reg, "") AS upstreamReg, coalesce(u.repo, md.label) AS upstreamRepo, coalesce(u.tag, "") AS upstreamTag, coalesce(u.digest, md.digest) AS upstreamDigest,`
-	qd += ` id(cfg) AS configID, cfg.digest AS configDigest, TYPE(cfgRel) AS configMediaType, cfg.size AS configSize,`
-	qd += ` contentSize`
-	utils.Debug(l, span, qd)
-	result, e := session.Run(qd, map[string]interface{}{})
+	matchQ := fmt.Sprintf(
+		`MATCH (c:Repo)-[:UPSTREAM]->(md:Manifest)-[cfgRel]->(cfg:Blob) WHERE id(c) = %d`+colTagCfgPredicate+
+			` MATCH (t:Tag)-[:UPSTREAM]->(md) WHERE id(t) = %d`+
+			` OPTIONAL MATCH (md)-[:ORIGINAL]->(u:Upstream)`,
+		colID, colTagID)
+	return n.manifestColTagOCI(ctx, l, span, session, slotProfiles, "direct UPSTREAM", "UPSTREAM", matchQ,
+		"md, cfgRel, cfg, p, u",
+		` coalesce(id(u), 0) AS upstreamID, coalesce(u.reg, "") AS upstreamReg, coalesce(u.repo, md.label) AS upstreamRepo, coalesce(u.tag, "") AS upstreamTag, coalesce(u.digest, md.digest) AS upstreamDigest,`)
+}
+
+// manifestColTagOCI runs one of the two OCI-shaped fallback queries behind
+// ManifestGetByCollectionTag (slot-centred Index walk, or direct UPSTREAM
+// walk). The two differ only in their MATCH prefix, WITH carry-over list and
+// upstream synthesis columns, which the caller supplies; the blob-size
+// aggregation and RETURN shape are shared here so the query skeletons stay
+// single-sourced.
+func (n Neo) manifestColTagOCI(ctx context.Context, l *logrus.Entry, span trace.Span,
+	session neo4j.Session, slotProfiles map[int64][]string,
+	pathLabel, relType, matchQ, withVars, upstreamQ string) ([]types.Manifest, error) {
+	q := matchQ
+	q += ` MATCH (p:Platform)-[]-(md)`
+	q += ` OPTIONAL MATCH (md)-[]->(blob:Blob) WHERE blob.type IN ["config", "layer"]`
+	q += ` WITH ` + withVars + `, collect(DISTINCT blob) AS blobs`
+	q += ` WITH ` + withVars + `, reduce(s = 0, b IN blobs | s + b.size) AS contentSize`
+	q += ` RETURN "` + relType + `" AS manifestdataRelType,`
+	q += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
+	q += ` ` + manifestDataReturn + `,`
+	q += upstreamQ
+	q += ` id(cfg) AS configID, cfg.digest AS configDigest, TYPE(cfgRel) AS configMediaType, cfg.size AS configSize,`
+	q += ` contentSize`
+	utils.Debug(l, span, q)
+	result, e := session.Run(q, map[string]interface{}{})
 	if e != nil {
 		return nil, e
 	}
 	var manis []types.Manifest
 	for result.Next() {
-		m, e := n.hydrateOCIManifestRecord(ctx, l, span, result, "direct UPSTREAM", slotProfiles)
+		m, e := n.hydrateOCIManifestRecord(ctx, l, span, result, pathLabel, slotProfiles)
 		if e != nil {
 			return nil, e
 		}
