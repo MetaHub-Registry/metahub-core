@@ -131,6 +131,26 @@ func (n Neo) UnLinkManifestListToCollectionTag(mlID, colTagID int64) (err error)
 	return
 }
 
+// UnLinkCollectionTagFromOtherIndexes removes every (ct:Tag)-[:REF]->(ml:Index)
+// edge where the Tag matches colTagID and the Index is NOT mlID. Call directly
+// before LinkManifestListToCollectionTag on every recompute to enforce the
+// one-index-per-tag invariant — mirroring what UnLinkProfileFromOtherRepoIndexes
+// does for profiles. Without this, superseded computed indexes accumulate stale
+// Tag→REF edges that surface as duplicate results in the wrapper-era query layer
+// and show stale indexes in the UI.
+func (n Neo) UnLinkCollectionTagFromOtherIndexes(mlID, colTagID int64) (err error) {
+	q := `MATCH (ct:Tag)-[r:REF]->(ml:Index) WHERE id(ct) = %d AND id(ml) <> %d DELETE r`
+	query := fmt.Sprintf(q, colTagID, mlID)
+	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close()
+	_, err = session.Run(query, map[string]interface{}{})
+	if err != nil {
+		logrus.Errorf("failed to unlink tag %d from other indexes: %v", colTagID, err)
+		return
+	}
+	return
+}
+
 func (n Neo) LinkManifestListToCollectionTag(mlID, colTagID int64) (err error) {
 	q := `MATCH (ct:Tag), (ml:Index) WHERE id(ct) = %d AND id(ml) = %d`
 	q += ` MERGE (ml)<-[:REF]-(ct)`
@@ -441,6 +461,11 @@ func (n Neo) IndexGetByRequest(ctx context.Context, req types.Request) (ml types
 	q := fmt.Sprintf(`MATCH (c:Repo)-[:REF]->(ml)<-[:REF]-(t:Tag) WHERE c.repo = "%s"`, req.Repo)
 	if req.Tag != "" {
 		q += fmt.Sprintf(` AND t.name ="%s"`, req.Tag)
+		// Exclude indexes that are in any Slot's HAS_HISTORY for this (repo, tag):
+		// those are superseded computed indexes whose Tag→REF was not yet pruned
+		// by UnLinkCollectionTagFromOtherIndexes. HAS_HISTORY is the authoritative
+		// "this index is stale" signal from the Slot-centred model.
+		q += fmt.Sprintf(` AND NOT (:Slot {repo: "%s", tag: "%s"})-[:HAS_HISTORY]->(ml)`, req.Repo, req.Tag)
 	} else {
 		q += fmt.Sprintf(` AND ml.digest ="%s"`, req.Digest)
 	}

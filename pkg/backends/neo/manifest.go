@@ -1871,6 +1871,24 @@ func (n Neo) ManifestGetByCollectionTag(ctx context.Context, colID, colTagID int
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 
+	// Collection-scoped profile attribution: which Slot profiles pushed each
+	// manifest into THIS (repo, tag). Overrides the manifest's global
+	// UPLOADED_BY record, which reflects the FIRST uploader anywhere in the
+	// registry — wrong for collections a manifest was later re-pushed into by
+	// a different profile (observed: a manifest uploaded by bazzite under one
+	// tag, re-pushed by frame into another collection, displayed as bazzite).
+	slotProfiles, spErr := n.SlotProfilesForCollectionTag(ctx, colID, colTagID)
+	if spErr != nil {
+		utils.Warn(l, span, "SlotProfilesForCollectionTag failed (non-fatal, falling back to UPLOADED_BY attribution): %v", spErr)
+		slotProfiles = map[int64][]string{}
+	}
+	applySlotProfile := func(m *types.Manifest) {
+		if labels, ok := slotProfiles[m.ID]; ok && len(labels) > 0 {
+			m.Profile = strings.Join(labels, "/")
+			m.Upstream.Profile = m.Profile
+		}
+	}
+
 	cfgFilter := `["application/vnd.oci.image.config.v1+json", "application/vnd.docker.container.image.v1+json"]`
 
 	// --- Legacy query (mh-populate / ManifestWrapper path) ---
@@ -1957,6 +1975,7 @@ func (n Neo) ManifestGetByCollectionTag(ctx context.Context, colID, colTagID int
 			l.Debug(msg)
 			if ok {
 				m.Upstream.Profile = prf.Label
+				applySlotProfile(&m)
 				manis = append(manis, m)
 			}
 		}
@@ -2022,6 +2041,7 @@ func (n Neo) ManifestGetByCollectionTag(ctx context.Context, colID, colTagID int
 			m.Upstream = u
 			m.Profile = "generic"
 			m.Upstream.Profile = "generic"
+			applySlotProfile(&m)
 			// Read content size (sum of config + layer blobs).
 			// The reduce() result may arrive as int64, int, or float64 depending
 			// on the neo4j driver version and arithmetic path.
@@ -2097,6 +2117,7 @@ func (n Neo) ManifestGetByCollectionTag(ctx context.Context, colID, colTagID int
 			m.Upstream = u
 			m.Profile = "generic"
 			m.Upstream.Profile = "generic"
+			applySlotProfile(&m)
 			if csVal, ok := result3.Record().Get("contentSize"); ok && csVal != nil {
 				switch v := csVal.(type) {
 				case int64:

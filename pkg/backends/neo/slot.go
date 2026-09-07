@@ -11,6 +11,7 @@ package neo
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
@@ -374,6 +375,66 @@ func (n Neo) RepoTagLatestPushTimestamps(ctx context.Context, repo, tag string) 
 		ts[mid] = t
 	}
 	return ts, nil
+}
+
+// SlotProfilesForCollectionTag returns, for the (repo, tag) collection, a map
+// of Manifest node ID -> the sorted labels of every Slot profile that pushed
+// that manifest to THIS collection. This is the collection-scoped attribution
+// ("who pushed this manifest into this collection") — in contrast to the
+// manifest's global UPLOADED_BY edge, which records who uploaded it FIRST
+// anywhere in the registry. The distinction matters when a manifest is
+// re-pushed into another collection by a different profile: the UI listing
+// must show the pushing profile of THIS collection, not the original
+// uploader.
+func (n Neo) SlotProfilesForCollectionTag(ctx context.Context, colID, colTagID int64) (map[int64][]string, error) {
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":  pkgNameSlot,
+		"func":     "SlotProfilesForCollectionTag",
+		"colID":    colID,
+		"colTagID": colTagID,
+	})
+	defer span.End()
+	if colID < 0 || colTagID < 0 {
+		return nil, utils.NewError(l, span, "SlotProfilesForCollectionTag: invalid ids colID=%d colTagID=%d", colID, colTagID)
+	}
+	// Return one row per (manifest, profile) — Result only has Strings/Int64s,
+	// so we can't use collect() here. Deduplication and sorting happen in Go.
+	q := fmt.Sprintf(
+		`MATCH (c:Repo)-[:HAS_TAG]->(t:Tag)<-[:OF_TAG]-(s:Slot)-[:HAS_PUSHED]->(m:Manifest)
+		 WHERE id(c) = %d AND id(t) = %d
+		 RETURN id(m) AS mid, s.profile AS profile`,
+		colID, colTagID,
+	)
+	res, e := n.Query(q)
+	if e != nil {
+		return nil, utils.ErrorHandler(l, span, e, "SlotProfilesForCollectionTag: executing query")
+	}
+	// Aggregate (mid -> set of profile labels) then sort for stable output.
+	seen := make(map[int64]map[string]struct{})
+	for _, r := range res {
+		mid, e := r.GetInt64("mid")
+		if e != nil {
+			return nil, utils.ErrorHandler(l, span, e, "SlotProfilesForCollectionTag: decoding mid")
+		}
+		profile, _ := r.GetStr("profile")
+		if profile == "" {
+			continue
+		}
+		if _, ok := seen[mid]; !ok {
+			seen[mid] = make(map[string]struct{})
+		}
+		seen[mid][profile] = struct{}{}
+	}
+	out := make(map[int64][]string, len(seen))
+	for mid, profileSet := range seen {
+		labels := make([]string, 0, len(profileSet))
+		for p := range profileSet {
+			labels = append(labels, p)
+		}
+		sort.Strings(labels)
+		out[mid] = labels
+	}
+	return out, nil
 }
 
 // ManifestGetAllForSlot walks the HAS_PUSHED edges from the :Slot with id

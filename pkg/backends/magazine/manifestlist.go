@@ -236,6 +236,13 @@ func (mag Magazine) linkComputedIndexToWrapperEra(ctx context.Context, l *logrus
 	if e := mag.Database.LinkManifestListToCollection(mlID, c.ID); e != nil {
 		return utils.ErrorHandler(l, span, e, "failed LinkManifestListToCollection")
 	}
+	// Prune stale Tag→REF edges before linking the new index. Without this,
+	// every recompute leaves an orphaned Tag-[:REF]->oldIndex alongside the new
+	// one — the wrapper-era query layer (Tag-REF→Index) then matches both,
+	// surfacing stale indexes in the UI. Mirrors the profile pattern above.
+	if e := mag.Database.UnLinkCollectionTagFromOtherIndexes(mlID, ct.ID); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed UnLinkCollectionTagFromOtherIndexes")
+	}
 	// Link Index to CollectionTag
 	if e := mag.Database.LinkManifestListToCollectionTag(mlID, ct.ID); e != nil {
 		return utils.ErrorHandler(l, span, e, "failed LinkManifestListToCollectionTag")
