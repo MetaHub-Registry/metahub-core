@@ -2021,9 +2021,13 @@ func (n Neo) manifestColTagSlot(ctx context.Context, l *logrus.Entry, span trace
 	matchQ := fmt.Sprintf(
 		`MATCH (c:Repo)-[:HAS_TAG]->(t:Tag)-[:REF]->(:Index)-[:REFERENCES]->(md:Manifest)-[cfgRel]->(cfg:Blob) WHERE id(c) = %d AND id(t) = %d`+colTagCfgPredicate,
 		colID, colTagID)
-	return n.manifestColTagOCI(ctx, l, span, session, slotProfiles, "slot", "REFERENCES", matchQ,
-		"c, t, md, cfgRel, cfg, p",
-		` 0 AS upstreamID, "" AS upstreamReg, c.repo AS upstreamRepo, t.name AS upstreamTag, md.digest AS upstreamDigest,`)
+	return n.manifestColTagOCI(ctx, l, span, session, slotProfiles, colTagOCIQuery{
+		pathLabel: "slot",
+		relType:   "REFERENCES",
+		matchQ:    matchQ,
+		withVars:  "c, t, md, cfgRel, cfg, p",
+		upstreamQ: ` 0 AS upstreamID, "" AS upstreamReg, c.repo AS upstreamRepo, t.name AS upstreamTag, md.digest AS upstreamDigest,`,
+	})
 }
 
 func (n Neo) manifestColTagUpstream(ctx context.Context, l *logrus.Entry, span trace.Span,
@@ -2034,29 +2038,42 @@ func (n Neo) manifestColTagUpstream(ctx context.Context, l *logrus.Entry, span t
 			` MATCH (t:Tag)-[:UPSTREAM]->(md) WHERE id(t) = %d`+
 			` OPTIONAL MATCH (md)-[:ORIGINAL]->(u:Upstream)`,
 		colID, colTagID)
-	return n.manifestColTagOCI(ctx, l, span, session, slotProfiles, "direct UPSTREAM", "UPSTREAM", matchQ,
-		"md, cfgRel, cfg, p, u",
-		` coalesce(id(u), 0) AS upstreamID, coalesce(u.reg, "") AS upstreamReg, coalesce(u.repo, md.label) AS upstreamRepo, coalesce(u.tag, "") AS upstreamTag, coalesce(u.digest, md.digest) AS upstreamDigest,`)
+	return n.manifestColTagOCI(ctx, l, span, session, slotProfiles, colTagOCIQuery{
+		pathLabel: "direct UPSTREAM",
+		relType:   "UPSTREAM",
+		matchQ:    matchQ,
+		withVars:  "md, cfgRel, cfg, p, u",
+		upstreamQ: ` coalesce(id(u), 0) AS upstreamID, coalesce(u.reg, "") AS upstreamReg, coalesce(u.repo, md.label) AS upstreamRepo, coalesce(u.tag, "") AS upstreamTag, coalesce(u.digest, md.digest) AS upstreamDigest,`,
+	})
+}
+
+// colTagOCIQuery bundles the caller-supplied pieces of an OCI-shaped fallback
+// query behind ManifestGetByCollectionTag (see manifestColTagOCI).
+type colTagOCIQuery struct {
+	pathLabel string
+	relType   string
+	matchQ    string
+	withVars  string
+	upstreamQ string
 }
 
 // manifestColTagOCI runs one of the two OCI-shaped fallback queries behind
 // ManifestGetByCollectionTag (slot-centred Index walk, or direct UPSTREAM
 // walk). The two differ only in their MATCH prefix, WITH carry-over list and
-// upstream synthesis columns, which the caller supplies; the blob-size
+// upstream synthesis columns, which the caller supplies via spec; the blob-size
 // aggregation and RETURN shape are shared here so the query skeletons stay
 // single-sourced.
 func (n Neo) manifestColTagOCI(ctx context.Context, l *logrus.Entry, span trace.Span,
-	session neo4j.Session, slotProfiles map[int64][]string,
-	pathLabel, relType, matchQ, withVars, upstreamQ string) ([]types.Manifest, error) {
-	q := matchQ
+	session neo4j.Session, slotProfiles map[int64][]string, spec colTagOCIQuery) ([]types.Manifest, error) {
+	q := spec.matchQ
 	q += ` MATCH (p:Platform)-[]-(md)`
 	q += ` OPTIONAL MATCH (md)-[]->(blob:Blob) WHERE blob.type IN ["config", "layer"]`
-	q += ` WITH ` + withVars + `, collect(DISTINCT blob) AS blobs`
-	q += ` WITH ` + withVars + `, reduce(s = 0, b IN blobs | s + b.size) AS contentSize`
-	q += ` RETURN "` + relType + `" AS manifestdataRelType,`
+	q += ` WITH ` + spec.withVars + `, collect(DISTINCT blob) AS blobs`
+	q += ` WITH ` + spec.withVars + `, reduce(s = 0, b IN blobs | s + b.size) AS contentSize`
+	q += ` RETURN "` + spec.relType + `" AS manifestdataRelType,`
 	q += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
 	q += ` ` + manifestDataReturn + `,`
-	q += upstreamQ
+	q += spec.upstreamQ
 	q += ` id(cfg) AS configID, cfg.digest AS configDigest, TYPE(cfgRel) AS configMediaType, cfg.size AS configSize,`
 	q += ` contentSize`
 	utils.Debug(l, span, q)
@@ -2066,7 +2083,7 @@ func (n Neo) manifestColTagOCI(ctx context.Context, l *logrus.Entry, span trace.
 	}
 	var manis []types.Manifest
 	for result.Next() {
-		m, e := n.hydrateOCIManifestRecord(ctx, l, span, result, pathLabel, slotProfiles)
+		m, e := n.hydrateOCIManifestRecord(ctx, l, span, result, spec.pathLabel, slotProfiles)
 		if e != nil {
 			return nil, e
 		}
