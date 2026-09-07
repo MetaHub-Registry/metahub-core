@@ -13,8 +13,10 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -143,6 +145,24 @@ func (n Neo) SlotGetByTriple(ctx context.Context, repo, tag, profile string) (s 
 	return s, true, nil
 }
 
+// slotsFromQuery runs q and decodes every record into a Slot list. fn is used
+// to attribute errors to the public entry point in log/error messages.
+func (n Neo) slotsFromQuery(l *logrus.Entry, span trace.Span, fn, q string) ([]types.Slot, error) {
+	results, e := n.Query(q)
+	if e != nil {
+		return nil, utils.ErrorHandler(l, span, e, fn+": executing query")
+	}
+	slots := make([]types.Slot, 0, len(results))
+	for _, r := range results {
+		sl, e := slotFromResult(r)
+		if e != nil {
+			return nil, utils.ErrorHandler(l, span, e, fn+": decoding Slot")
+		}
+		slots = append(slots, sl)
+	}
+	return slots, nil
+}
+
 // SlotGetAllForRepoTag returns every Slot sharing a (repo, tag) pair, across
 // all profiles. Used by the compute path to know which profiles need an Index
 // rebuild when a new Manifest lands on (repo, tag).
@@ -156,19 +176,7 @@ func (n Neo) SlotGetAllForRepoTag(ctx context.Context, repo, tag string) (slots 
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (s:Slot) WHERE s.repo = "%s" AND s.tag = "%s"`, repo, tag)
 	q += slotReturnClause
-	results, e := n.Query(q)
-	if e != nil {
-		return nil, utils.ErrorHandler(l, span, e, "SlotGetAllForRepoTag: executing query")
-	}
-	slots = make([]types.Slot, 0, len(results))
-	for _, r := range results {
-		sl, e := slotFromResult(r)
-		if e != nil {
-			return nil, utils.ErrorHandler(l, span, e, "SlotGetAllForRepoTag: decoding Slot")
-		}
-		slots = append(slots, sl)
-	}
-	return slots, nil
+	return n.slotsFromQuery(l, span, "SlotGetAllForRepoTag", q)
 }
 
 // SlotGetAllForRepo returns every Slot for a given repo, across all (tag,
@@ -183,19 +191,7 @@ func (n Neo) SlotGetAllForRepo(ctx context.Context, repo string) (slots []types.
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (s:Slot) WHERE s.repo = "%s"`, repo)
 	q += slotReturnClause
-	results, e := n.Query(q)
-	if e != nil {
-		return nil, utils.ErrorHandler(l, span, e, "SlotGetAllForRepo: executing query")
-	}
-	slots = make([]types.Slot, 0, len(results))
-	for _, r := range results {
-		sl, e := slotFromResult(r)
-		if e != nil {
-			return nil, utils.ErrorHandler(l, span, e, "SlotGetAllForRepo: decoding Slot")
-		}
-		slots = append(slots, sl)
-	}
-	return slots, nil
+	return n.slotsFromQuery(l, span, "SlotGetAllForRepo", q)
 }
 
 // SlotLinkPointsTo replaces the Slot's current POINTS_TO edge with a new one
@@ -296,6 +292,30 @@ func (n Neo) SlotAppendPushedIndex(ctx context.Context, slotID, indexID int64) (
 	return nil
 }
 
+// latestPushTimestampsFromQuery runs a (Slot)-[HAS_PUSHED]->(m:Manifest)
+// aggregation query returning id(m) AS mid, max(hp.timestamp) AS ts rows and
+// folds them into a map of manifest node ID -> latest push timestamp. fn is
+// used to attribute errors to the public entry point in log/error messages.
+func (n Neo) latestPushTimestampsFromQuery(l *logrus.Entry, span trace.Span, fn, q string) (map[int64]int64, error) {
+	res, e := n.Query(q)
+	if e != nil {
+		return nil, utils.ErrorHandler(l, span, e, fn+": executing query")
+	}
+	ts := make(map[int64]int64, len(res))
+	for _, r := range res {
+		mid, e := r.GetInt64("mid")
+		if e != nil {
+			return nil, utils.ErrorHandler(l, span, e, fn+": decoding mid")
+		}
+		t, e := r.GetInt64("ts")
+		if e != nil {
+			return nil, utils.ErrorHandler(l, span, e, fn+": decoding ts")
+		}
+		ts[mid] = t
+	}
+	return ts, nil
+}
+
 // SlotLatestPushTimestamps returns, for the (repo, tag, profile) Slot, a map
 // of Manifest node ID -> timestamp of its most recent HAS_PUSHED edge. An
 // empty map (no error) means the Slot does not exist or never pushed.
@@ -319,23 +339,7 @@ func (n Neo) SlotLatestPushTimestamps(ctx context.Context, repo, tag, profile st
 		`MATCH (s:Slot {repo: "%s", tag: "%s", profile: "%s"})-[hp:HAS_PUSHED]->(m:Manifest) RETURN id(m) AS mid, max(hp.timestamp) AS ts`,
 		repo, tag, profile,
 	)
-	res, e := n.Query(q)
-	if e != nil {
-		return nil, utils.ErrorHandler(l, span, e, "SlotLatestPushTimestamps: executing query")
-	}
-	ts := make(map[int64]int64, len(res))
-	for _, r := range res {
-		mid, e := r.GetInt64("mid")
-		if e != nil {
-			return nil, utils.ErrorHandler(l, span, e, "SlotLatestPushTimestamps: decoding mid")
-		}
-		t, e := r.GetInt64("ts")
-		if e != nil {
-			return nil, utils.ErrorHandler(l, span, e, "SlotLatestPushTimestamps: decoding ts")
-		}
-		ts[mid] = t
-	}
-	return ts, nil
+	return n.latestPushTimestampsFromQuery(l, span, "SlotLatestPushTimestamps", q)
 }
 
 // RepoTagLatestPushTimestamps returns a map of Manifest node ID -> timestamp
@@ -358,23 +362,7 @@ func (n Neo) RepoTagLatestPushTimestamps(ctx context.Context, repo, tag string) 
 		`MATCH (s:Slot {repo: "%s", tag: "%s"})-[hp:HAS_PUSHED]->(m:Manifest) RETURN id(m) AS mid, max(hp.timestamp) AS ts`,
 		repo, tag,
 	)
-	res, e := n.Query(q)
-	if e != nil {
-		return nil, utils.ErrorHandler(l, span, e, "RepoTagLatestPushTimestamps: executing query")
-	}
-	ts := make(map[int64]int64, len(res))
-	for _, r := range res {
-		mid, e := r.GetInt64("mid")
-		if e != nil {
-			return nil, utils.ErrorHandler(l, span, e, "RepoTagLatestPushTimestamps: decoding mid")
-		}
-		t, e := r.GetInt64("ts")
-		if e != nil {
-			return nil, utils.ErrorHandler(l, span, e, "RepoTagLatestPushTimestamps: decoding ts")
-		}
-		ts[mid] = t
-	}
-	return ts, nil
+	return n.latestPushTimestampsFromQuery(l, span, "RepoTagLatestPushTimestamps", q)
 }
 
 // SlotProfilesForCollectionTag returns, for the (repo, tag) collection, a map
