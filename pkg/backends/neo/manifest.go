@@ -65,7 +65,10 @@ func (n Neo) ManifestUpdateDesc(ctx context.Context, maniDataID int64, maniDataV
 			return utils.ErrorHandler(l, span, e, "failed to update manifest")
 		}
 	} else {
-		// TODO: Link Manifest to already existing ManifestDat
+		// NB: an existing Manifest with the same digest wins — the row at
+		// maniDataID is deleted and the caller re-inserts against the
+		// surviving digest row. (Linking both rows instead is a possible
+		// future refinement.)
 		oldManiDataID, err := res.GetInt64("mdID")
 		if err != nil {
 			return utils.ErrorHandler(l, span, err, "failed to get manifestID from result")
@@ -419,7 +422,8 @@ func (n Neo) ManifestGetAllByManifestID(ctx context.Context, msID int64) (manis 
 			err = e
 			return
 		}
-		// FIXME: manifestdataRelType might be connected twice: PARSED, PULLED_BY
+		// NB: manifestdataRelType may be connected twice (PARSED, PULLED_BY);
+		// the digest check below deduplicates those rows.
 		if mdDigs.Contains(m.Digest) {
 			continue
 		}
@@ -1859,6 +1863,217 @@ func (n Neo) ManifestGetRawByRepoTag(ctx context.Context, repo, tag string) (man
 	return manis, nil
 }
 
+const colTagCfgFilter = `["application/vnd.oci.image.config.v1+json", "application/vnd.docker.container.image.v1+json"]`
+
+func applyColTagSlotProfile(m *types.Manifest, sp map[int64][]string) {
+	if labels, ok := sp[m.ID]; ok && len(labels) > 0 {
+		m.Profile = strings.Join(labels, "/")
+		m.Upstream.Profile = m.Profile
+	}
+}
+
+func applyContentSize(result neo4j.Result, m *types.Manifest) {
+	csVal, ok := result.Record().Get("contentSize")
+	if !ok || csVal == nil {
+		return
+	}
+	switch v := csVal.(type) {
+	case int64:
+		m.ContentSize = v
+	case int:
+		m.ContentSize = int64(v)
+	case float64:
+		m.ContentSize = int64(v)
+	}
+}
+
+func (n Neo) hydrateOCIManifestRecord(ctx context.Context, l *logrus.Entry, span trace.Span,
+	result neo4j.Result, pathLabel string, slotProfiles map[int64][]string) (types.Manifest, error) {
+	p, e := PlatformFromRecord(result)
+	if e != nil {
+		return types.Manifest{}, utils.ErrorHandler(l, span, e, "while PlatformFromRecord ("+pathLabel+")")
+	}
+	c, e := n.ConfigFromRecord(ctx, result)
+	if e != nil {
+		return types.Manifest{}, utils.ErrorHandler(l, span, e, "while ConfigFromRecord ("+pathLabel+")")
+	}
+	u, e := UpstreamFromRecord(result)
+	if e != nil {
+		return types.Manifest{}, utils.ErrorHandler(l, span, e, "while UpstreamFromRecord ("+pathLabel+")")
+	}
+	m, e := ManifestFromRecord(result)
+	if e != nil {
+		return types.Manifest{}, utils.ErrorHandler(l, span, e, "while ManifestFromRecord ("+pathLabel+")")
+	}
+	anno, e := n.LabelsGetByConfigID(ctx, c.ID)
+	if e != nil {
+		return types.Manifest{}, utils.ErrorHandler(l, span, e, "while LabelsGetByConfigID ("+pathLabel+")")
+	}
+	m.Annotations = anno
+	c.Labels = anno
+	m.Config = c
+	m.Platform = p
+	m.Upstream = u
+	m.Profile = "generic"
+	m.Upstream.Profile = "generic"
+	applyColTagSlotProfile(&m, slotProfiles)
+	applyContentSize(result, &m)
+	return m, nil
+}
+
+func (n Neo) processLegacyManifestRecord(ctx context.Context, l *logrus.Entry, span trace.Span,
+	result neo4j.Result, slotProfiles map[int64][]string) (manis []types.Manifest, err error) {
+	p, e := PlatformFromRecord(result)
+	if e != nil {
+		return nil, utils.ErrorHandler(l, span, e, "while PlatformFromRecord")
+	}
+	c, e := n.ConfigFromRecord(ctx, result)
+	if e != nil {
+		return nil, utils.ErrorHandler(l, span, e, "while ConfigFromRecord")
+	}
+	u, e := UpstreamFromRecord(result)
+	if e != nil {
+		return nil, utils.ErrorHandler(l, span, e, "while UpstreamFromRecord")
+	}
+	m, e := ManifestFromRecord(result)
+	if e != nil {
+		return nil, utils.ErrorHandler(l, span, e, "while ManifestFromRecord")
+	}
+	anno, e := n.LabelsGetByConfigID(ctx, c.ID)
+	if e != nil {
+		return nil, utils.ErrorHandler(l, span, e, "while LabelsGetByConfigID")
+	}
+	m.Annotations = anno
+	c.Labels = anno
+	m.Config = c
+	m.Platform = p
+	m.Upstream = u
+	prfs, e := n.ProfileFromManifestID(ctx, m.ID)
+	if e != nil {
+		return nil, utils.ErrorHandler(l, span, e, "failed to get profiles for manifest data")
+	}
+	utils.Debug(l, span, "found %d profiles for manifest data", len(prfs))
+	if len(prfs) == 0 {
+		utils.NewError(l, span, "no profiles found for manifest data: %d", m.ID)
+		return
+	}
+	m.Profile = prfs[0].Label
+	for _, prf := range prfs {
+		// Use annotation-only check here: parsed manifests have no UPLOADED_BY/PULLED_BY
+		// relationship to a profile, so ManifestCheckProfile would always return false.
+		ok, e := n.ManifestCheckProfileAnnotations(ctx, m, prf)
+		if e != nil {
+			return nil, utils.ErrorHandler(l, span, e, "Failed to check profile")
+		}
+		msg := fmt.Sprintf("  %t > %d -> filtered md: %s", ok, prf.ID, m.Label)
+		span.AddEvent("log", trace.WithAttributes(
+			attribute.String(attrLogSeverity, attrSevDebug),
+			attribute.String(attrLogMessage, msg),
+		))
+		l.Debug(msg)
+		if ok {
+			m.Upstream.Profile = prf.Label
+			applyColTagSlotProfile(&m, slotProfiles)
+			manis = append(manis, m)
+		}
+	}
+	return
+}
+
+func (n Neo) manifestColTagLegacy(ctx context.Context, l *logrus.Entry, span trace.Span,
+	session neo4j.Session, colID, colTagID int64, slotProfiles map[int64][]string) (manis []types.Manifest, hasResults bool, err error) {
+	q := `MATCH (p:Platform)-[]-(md:Manifest)-[cfgRel]->(cfg:Blob) WHERE cfg.type = "config"`
+	q += ` AND cfg.mediaType IN ` + colTagCfgFilter
+	q += fmt.Sprintf(` MATCH (c:Repo)-[:UPSTREAM]->(m)-[r]-(md:Manifest) WHERE id(c) = %d`, colID)
+	q += fmt.Sprintf(` MATCH (t:Tag)-[:UPSTREAM]->(m)-[]->(md) WHERE id(t) = %d`, colTagID)
+	q += ` MATCH (m)-[]->(u:Upstream)`
+	q += ` RETURN type(r) AS manifestdataRelType,`
+	q += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
+	q += manifestDataReturn + `,`
+	q += UpstreamReturn + ` ,`
+	q += ` id(cfg) AS configID, cfg.digest AS configDigest, TYPE(cfgRel) AS configMediaType, cfg.size AS configSize`
+	utils.Debug(l, span, q)
+	result, e := session.Run(q, map[string]interface{}{})
+	if e != nil {
+		err = e
+		return
+	}
+	for result.Next() {
+		hasResults = true
+		batch, e := n.processLegacyManifestRecord(ctx, l, span, result, slotProfiles)
+		if e != nil {
+			err = e
+			return
+		}
+		manis = append(manis, batch...)
+	}
+	return
+}
+
+func (n Neo) manifestColTagSlot(ctx context.Context, l *logrus.Entry, span trace.Span,
+	session neo4j.Session, colID, colTagID int64, slotProfiles map[int64][]string) ([]types.Manifest, error) {
+	utils.Debug(l, span, "legacy query returned no results, trying slot-centred path")
+	qs := fmt.Sprintf(`MATCH (c:Repo)-[:HAS_TAG]->(t:Tag)-[:REF]->(:Index)-[:REFERENCES]->(md:Manifest)-[cfgRel]->(cfg:Blob) WHERE id(c) = %d AND id(t) = %d`, colID, colTagID)
+	qs += ` AND cfg.type = "config" AND cfg.mediaType IN ` + colTagCfgFilter
+	qs += ` MATCH (p:Platform)-[]-(md)`
+	qs += ` OPTIONAL MATCH (md)-[]->(blob:Blob) WHERE blob.type IN ["config", "layer"]`
+	qs += ` WITH c, t, md, cfgRel, cfg, p, collect(DISTINCT blob) AS blobs`
+	qs += ` WITH c, t, md, cfgRel, cfg, p, reduce(s = 0, b IN blobs | s + b.size) AS contentSize`
+	qs += ` RETURN "REFERENCES" AS manifestdataRelType,`
+	qs += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
+	qs += ` ` + manifestDataReturn + `,`
+	qs += ` 0 AS upstreamID, "" AS upstreamReg, c.repo AS upstreamRepo, t.name AS upstreamTag, md.digest AS upstreamDigest,`
+	qs += ` id(cfg) AS configID, cfg.digest AS configDigest, TYPE(cfgRel) AS configMediaType, cfg.size AS configSize,`
+	qs += ` contentSize`
+	utils.Debug(l, span, qs)
+	result, e := session.Run(qs, map[string]interface{}{})
+	if e != nil {
+		return nil, e
+	}
+	var manis []types.Manifest
+	for result.Next() {
+		m, e := n.hydrateOCIManifestRecord(ctx, l, span, result, "slot", slotProfiles)
+		if e != nil {
+			return nil, e
+		}
+		manis = append(manis, m)
+	}
+	return manis, nil
+}
+
+func (n Neo) manifestColTagUpstream(ctx context.Context, l *logrus.Entry, span trace.Span,
+	session neo4j.Session, colID, colTagID int64, slotProfiles map[int64][]string) ([]types.Manifest, error) {
+	utils.Debug(l, span, "slot-centred path returned no results, trying direct UPSTREAM path")
+	qd := fmt.Sprintf(`MATCH (c:Repo)-[:UPSTREAM]->(md:Manifest)-[cfgRel]->(cfg:Blob) WHERE id(c) = %d`, colID)
+	qd += ` AND cfg.type = "config" AND cfg.mediaType IN ` + colTagCfgFilter
+	qd += fmt.Sprintf(` MATCH (t:Tag)-[:UPSTREAM]->(md) WHERE id(t) = %d`, colTagID)
+	qd += ` MATCH (p:Platform)-[]-(md)`
+	qd += ` OPTIONAL MATCH (md)-[:ORIGINAL]->(u:Upstream)`
+	qd += ` OPTIONAL MATCH (md)-[]->(blob:Blob) WHERE blob.type IN ["config", "layer"]`
+	qd += ` WITH md, cfgRel, cfg, p, u, collect(DISTINCT blob) AS blobs`
+	qd += ` WITH md, cfgRel, cfg, p, u, reduce(s = 0, b IN blobs | s + b.size) AS contentSize`
+	qd += ` RETURN "UPSTREAM" AS manifestdataRelType,`
+	qd += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
+	qd += ` ` + manifestDataReturn + `,`
+	qd += ` coalesce(id(u), 0) AS upstreamID, coalesce(u.reg, "") AS upstreamReg, coalesce(u.repo, md.label) AS upstreamRepo, coalesce(u.tag, "") AS upstreamTag, coalesce(u.digest, md.digest) AS upstreamDigest,`
+	qd += ` id(cfg) AS configID, cfg.digest AS configDigest, TYPE(cfgRel) AS configMediaType, cfg.size AS configSize,`
+	qd += ` contentSize`
+	utils.Debug(l, span, qd)
+	result, e := session.Run(qd, map[string]interface{}{})
+	if e != nil {
+		return nil, e
+	}
+	var manis []types.Manifest
+	for result.Next() {
+		m, e := n.hydrateOCIManifestRecord(ctx, l, span, result, "direct UPSTREAM", slotProfiles)
+		if e != nil {
+			return nil, e
+		}
+		manis = append(manis, m)
+	}
+	return manis, nil
+}
+
 func (n Neo) ManifestGetByCollectionTag(ctx context.Context, colID, colTagID int64) (manis []types.Manifest, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":  pkgNameMD,
@@ -1871,265 +2086,25 @@ func (n Neo) ManifestGetByCollectionTag(ctx context.Context, colID, colTagID int
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 
-	// Collection-scoped profile attribution: which Slot profiles pushed each
-	// manifest into THIS (repo, tag). Overrides the manifest's global
-	// UPLOADED_BY record, which reflects the FIRST uploader anywhere in the
-	// registry — wrong for collections a manifest was later re-pushed into by
-	// a different profile (observed: a manifest uploaded by bazzite under one
-	// tag, re-pushed by frame into another collection, displayed as bazzite).
 	slotProfiles, spErr := n.SlotProfilesForCollectionTag(ctx, colID, colTagID)
 	if spErr != nil {
 		utils.Warn(l, span, "SlotProfilesForCollectionTag failed (non-fatal, falling back to UPLOADED_BY attribution): %v", spErr)
 		slotProfiles = map[int64][]string{}
 	}
-	applySlotProfile := func(m *types.Manifest) {
-		if labels, ok := slotProfiles[m.ID]; ok && len(labels) > 0 {
-			m.Profile = strings.Join(labels, "/")
-			m.Upstream.Profile = m.Profile
-		}
-	}
 
-	cfgFilter := `["application/vnd.oci.image.config.v1+json", "application/vnd.docker.container.image.v1+json"]`
-
-	// --- Legacy query (mh-populate / ManifestWrapper path) ---
-	q := `MATCH (p:Platform)-[]-(md:Manifest)-[cfgRel]->(cfg:Blob) WHERE cfg.type = "config"`
-	q += ` AND cfg.mediaType IN ` + cfgFilter
-	q += fmt.Sprintf(` MATCH (c:Repo)-[:UPSTREAM]->(m)-[r]-(md:Manifest) WHERE id(c) = %d`, colID)
-	q += fmt.Sprintf(` MATCH (t:Tag)-[:UPSTREAM]->(m)-[]->(md) WHERE id(t) = %d`, colTagID)
-	q += ` MATCH (m)-[]->(u:Upstream)`
-	q += ` RETURN type(r) AS manifestdataRelType,`
-	q += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
-	q += manifestDataReturn + `,`
-	q += UpstreamReturn + ` ,`
-	q += ` id(cfg) AS configID, cfg.digest AS configDigest, TYPE(cfgRel) AS configMediaType, cfg.size AS configSize`
-	utils.Debug(l, span, q)
-	input := map[string]interface{}{}
-	result, err := session.Run(q, input)
+	var hasLegacy bool
+	manis, hasLegacy, err = n.manifestColTagLegacy(ctx, l, span, session, colID, colTagID, slotProfiles)
 	if err != nil {
 		return
 	}
-	manis = make([]types.Manifest, 0)
-	hasLegacyResults := false
-	for result.Next() {
-		hasLegacyResults = true
-		p, e := PlatformFromRecord(result)
-		if e != nil {
-			err = utils.ErrorHandler(l, span, e, "while PlatformFromRecord")
+	if !hasLegacy {
+		manis, err = n.manifestColTagSlot(ctx, l, span, session, colID, colTagID, slotProfiles)
+		if err != nil {
 			return
-		}
-		c, e := n.ConfigFromRecord(ctx, result)
-		if e != nil {
-			err = utils.ErrorHandler(l, span, e, "while ConfigFromRecord")
-			return
-		}
-		u, e := UpstreamFromRecord(result)
-		if e != nil {
-			err = utils.ErrorHandler(l, span, e, "while UpstreamFromRecord")
-			return
-		}
-		m, e := ManifestFromRecord(result)
-		if e != nil {
-			err = utils.ErrorHandler(l, span, e, "while ManifestFromRecord")
-			return
-		}
-
-		anno, e := n.LabelsGetByConfigID(ctx, c.ID)
-		if e != nil {
-			err = utils.ErrorHandler(l, span, e, "while LabelsGetByConfigID")
-			return
-		}
-		m.Annotations = anno
-		c.Labels = anno
-		m.Config = c
-		m.Platform = p
-		m.Upstream = u
-		prfs, e := n.ProfileFromManifestID(ctx, m.ID)
-		if e != nil {
-			err = utils.ErrorHandler(l, span, e, "failed to get profiles for manifest data")
-			return
-		}
-		utils.Debug(l, span, "found %d profiles for manifest data", len(prfs))
-		switch len(prfs) {
-		case 0:
-			m.Profile = "unknown"
-		default:
-			m.Profile = prfs[0].Label
-		}
-		if len(prfs) == 0 {
-			utils.NewError(l, span, "no profiles found for manifest data: %d", m.ID)
-			continue
-		}
-		for _, prf := range prfs {
-			// Use annotation-only check here: parsed manifests have no UPLOADED_BY/PULLED_BY
-			// relationship to a profile, so ManifestCheckProfile would always return false.
-			ok, e := n.ManifestCheckProfileAnnotations(ctx, m, prf)
-			if e != nil {
-				utils.ErrorHandler(l, span, e, "Failed to check profile")
-				return
-			}
-			msg := fmt.Sprintf("  %t > %d -> filtered md: %s", ok, prf.ID, m.Label)
-			span.AddEvent("log", trace.WithAttributes(
-				attribute.String(attrLogSeverity, attrSevDebug),
-				attribute.String(attrLogMessage, msg),
-			))
-			l.Debug(msg)
-			if ok {
-				m.Upstream.Profile = prf.Label
-				applySlotProfile(&m)
-				manis = append(manis, m)
-			}
 		}
 	}
-
-	// --- Slot-centred fallback (OCI push path) ---
-	// If the legacy query returned no results, try the slot-centred graph path:
-	// Repo -> Tag -> Index -> Manifest -> Blob(config)
-	if !hasLegacyResults {
-		utils.Debug(l, span, "legacy query returned no results, trying slot-centred path")
-		qs := fmt.Sprintf(`MATCH (c:Repo)-[:HAS_TAG]->(t:Tag)-[:REF]->(:Index)-[:REFERENCES]->(md:Manifest)-[cfgRel]->(cfg:Blob) WHERE id(c) = %d AND id(t) = %d`, colID, colTagID)
-		qs += ` AND cfg.type = "config" AND cfg.mediaType IN ` + cfgFilter
-		qs += ` MATCH (p:Platform)-[]-(md)`
-		// Compute total content size: sum of distinct blob sizes (config + layers) for this manifest.
-		// Blobs may be shared across manifests or connected via multiple paths, so collect distinct
-		// blob nodes first to avoid double-counting.
-		qs += ` OPTIONAL MATCH (md)-[]->(blob:Blob) WHERE blob.type IN ["config", "layer"]`
-		qs += ` WITH c, t, md, cfgRel, cfg, p, collect(DISTINCT blob) AS blobs`
-		qs += ` WITH c, t, md, cfgRel, cfg, p, reduce(s = 0, b IN blobs | s + b.size) AS contentSize`
-		qs += ` RETURN "REFERENCES" AS manifestdataRelType,`
-		qs += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
-		qs += ` ` + manifestDataReturn + `,`
-		// Synthesize Upstream from the Repo/Tag metadata (OCI-pushed images have no Upstream node)
-		qs += ` 0 AS upstreamID, "" AS upstreamReg, c.repo AS upstreamRepo, t.name AS upstreamTag, md.digest AS upstreamDigest,`
-		qs += ` id(cfg) AS configID, cfg.digest AS configDigest, TYPE(cfgRel) AS configMediaType, cfg.size AS configSize,`
-		qs += ` contentSize`
-		utils.Debug(l, span, qs)
-		result2, e := session.Run(qs, map[string]interface{}{})
-		if e != nil {
-			err = e
-			return
-		}
-		for result2.Next() {
-			p, e := PlatformFromRecord(result2)
-			if e != nil {
-				err = utils.ErrorHandler(l, span, e, "while PlatformFromRecord (slot path)")
-				return
-			}
-			c, e := n.ConfigFromRecord(ctx, result2)
-			if e != nil {
-				err = utils.ErrorHandler(l, span, e, "while ConfigFromRecord (slot path)")
-				return
-			}
-			u, e := UpstreamFromRecord(result2)
-			if e != nil {
-				err = utils.ErrorHandler(l, span, e, "while UpstreamFromRecord (slot path)")
-				return
-			}
-			m, e := ManifestFromRecord(result2)
-			if e != nil {
-				err = utils.ErrorHandler(l, span, e, "while ManifestFromRecord (slot path)")
-				return
-			}
-			anno, e := n.LabelsGetByConfigID(ctx, c.ID)
-			if e != nil {
-				err = utils.ErrorHandler(l, span, e, "while LabelsGetByConfigID (slot path)")
-				return
-			}
-			m.Annotations = anno
-			c.Labels = anno
-			m.Config = c
-			m.Platform = p
-			m.Upstream = u
-			m.Profile = "generic"
-			m.Upstream.Profile = "generic"
-			applySlotProfile(&m)
-			// Read content size (sum of config + layer blobs).
-			// The reduce() result may arrive as int64, int, or float64 depending
-			// on the neo4j driver version and arithmetic path.
-			if csVal, ok := result2.Record().Get("contentSize"); ok && csVal != nil {
-				switch v := csVal.(type) {
-				case int64:
-					m.ContentSize = v
-				case int:
-					m.ContentSize = int64(v)
-				case float64:
-					m.ContentSize = int64(v)
-				}
-			}
-			manis = append(manis, m)
-		}
-	}
-
-	// --- Direct UPSTREAM fallback (CE parse path) ---
-	// If neither legacy nor slot-centred returned results, try the direct UPSTREAM path:
-	// Repo -[:UPSTREAM]-> Manifest -> Blob(config), with Manifest -[:ORIGINAL]-> Upstream
 	if len(manis) == 0 {
-		utils.Debug(l, span, "slot-centred path returned no results, trying direct UPSTREAM path")
-		qd := fmt.Sprintf(`MATCH (c:Repo)-[:UPSTREAM]->(md:Manifest)-[cfgRel]->(cfg:Blob) WHERE id(c) = %d`, colID)
-		qd += ` AND cfg.type = "config" AND cfg.mediaType IN ` + cfgFilter
-		qd += fmt.Sprintf(` MATCH (t:Tag)-[:UPSTREAM]->(md) WHERE id(t) = %d`, colTagID)
-		qd += ` MATCH (p:Platform)-[]-(md)`
-		qd += ` OPTIONAL MATCH (md)-[:ORIGINAL]->(u:Upstream)`
-		qd += ` OPTIONAL MATCH (md)-[]->(blob:Blob) WHERE blob.type IN ["config", "layer"]`
-		qd += ` WITH md, cfgRel, cfg, p, u, collect(DISTINCT blob) AS blobs`
-		qd += ` WITH md, cfgRel, cfg, p, u, reduce(s = 0, b IN blobs | s + b.size) AS contentSize`
-		qd += ` RETURN "UPSTREAM" AS manifestdataRelType,`
-		qd += ` id(p) AS platformID, p.arch AS platformArch, p.os AS platformOS, p.variant AS platformVariant,`
-		qd += ` ` + manifestDataReturn + `,`
-		qd += ` coalesce(id(u), 0) AS upstreamID, coalesce(u.reg, "") AS upstreamReg, coalesce(u.repo, md.label) AS upstreamRepo, coalesce(u.tag, "") AS upstreamTag, coalesce(u.digest, md.digest) AS upstreamDigest,`
-		qd += ` id(cfg) AS configID, cfg.digest AS configDigest, TYPE(cfgRel) AS configMediaType, cfg.size AS configSize,`
-		qd += ` contentSize`
-		utils.Debug(l, span, qd)
-		result3, e := session.Run(qd, map[string]interface{}{})
-		if e != nil {
-			err = e
-			return
-		}
-		for result3.Next() {
-			p, e := PlatformFromRecord(result3)
-			if e != nil {
-				err = utils.ErrorHandler(l, span, e, "while PlatformFromRecord (direct UPSTREAM path)")
-				return
-			}
-			c, e := n.ConfigFromRecord(ctx, result3)
-			if e != nil {
-				err = utils.ErrorHandler(l, span, e, "while ConfigFromRecord (direct UPSTREAM path)")
-				return
-			}
-			u, e := UpstreamFromRecord(result3)
-			if e != nil {
-				err = utils.ErrorHandler(l, span, e, "while UpstreamFromRecord (direct UPSTREAM path)")
-				return
-			}
-			m, e := ManifestFromRecord(result3)
-			if e != nil {
-				err = utils.ErrorHandler(l, span, e, "while ManifestFromRecord (direct UPSTREAM path)")
-				return
-			}
-			anno, e := n.LabelsGetByConfigID(ctx, c.ID)
-			if e != nil {
-				err = utils.ErrorHandler(l, span, e, "while LabelsGetByConfigID (direct UPSTREAM path)")
-				return
-			}
-			m.Annotations = anno
-			c.Labels = anno
-			m.Config = c
-			m.Platform = p
-			m.Upstream = u
-			m.Profile = "generic"
-			m.Upstream.Profile = "generic"
-			applySlotProfile(&m)
-			if csVal, ok := result3.Record().Get("contentSize"); ok && csVal != nil {
-				switch v := csVal.(type) {
-				case int64:
-					m.ContentSize = v
-				case int:
-					m.ContentSize = int64(v)
-				case float64:
-					m.ContentSize = int64(v)
-				}
-			}
-			manis = append(manis, m)
-		}
+		manis, err = n.manifestColTagUpstream(ctx, l, span, session, colID, colTagID, slotProfiles)
 	}
 	return
 }

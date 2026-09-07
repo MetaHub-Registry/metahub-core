@@ -153,10 +153,10 @@ func isBetterCandidate(g *platformGroup, t, mdID, bestMDID int64) bool {
 	return !g.hasTS || t > g.bestTS || (t == g.bestTS && mdID > bestMDID)
 }
 
-func latestPerPlatformForSlot(mds []types.Manifest, ts map[int64]int64) []types.Manifest {
-	if len(ts) == 0 || len(mds) < 2 {
-		return mds
-	}
+// groupLatestPerPlatform buckets candidate manifests by platform label and
+// records, per bucket, the index of the manifest carrying the latest push
+// timestamp (ties broken by higher node ID).
+func groupLatestPerPlatform(mds []types.Manifest, ts map[int64]int64) map[string]*platformGroup {
 	groups := map[string]*platformGroup{}
 	for i, md := range mds {
 		label := md.Platform.GetLabel()
@@ -177,6 +177,14 @@ func latestPerPlatformForSlot(mds []types.Manifest, ts map[int64]int64) []types.
 			}
 		}
 	}
+	return groups
+}
+
+func latestPerPlatformForSlot(mds []types.Manifest, ts map[int64]int64) []types.Manifest {
+	if len(ts) == 0 || len(mds) < 2 {
+		return mds
+	}
+	groups := groupLatestPerPlatform(mds, ts)
 	out := make([]types.Manifest, 0, len(mds))
 	for i, md := range mds {
 		if g := groups[md.Platform.GetLabel()]; g.hasTS && i != g.bestIdx {
