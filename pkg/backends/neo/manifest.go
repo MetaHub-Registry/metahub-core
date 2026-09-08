@@ -42,6 +42,10 @@ const (
 	msgQueryManiID              = "%s -> maniID: %d"
 	keyMDLabel                  = "md.label"
 	keyProfileName              = "profile.name"
+
+	// Unlinked manifest (exists but not linked to the requesting profile):
+	// a legitimate graph state reported as not-found, never an error (#41).
+	msgManifestNotLinkedWithProfile = "manifest data is not linked with profile '%s'"
 )
 
 func (n Neo) ManifestUpdateDesc(ctx context.Context, maniDataID int64, maniDataV1 v1.Descriptor) (err error) {
@@ -1754,7 +1758,7 @@ func (n Neo) ManifestFromResult(ctx context.Context, res types.Result, prfs ...t
 			// pre-checks (OpenProject #41 / openspec fix-digest-manifest-existence).
 			// Callers decide what unlinked means: not-found for profile-scoped
 			// tag lookups, irrelevant for content-addressable digest lookups.
-			utils.Debug(l, span, "manifest data is not linked with profile '%s'", prf.Label)
+			utils.Debug(l, span, msgManifestNotLinkedWithProfile, prf.Label)
 			return m, false, nil
 		}
 	}
@@ -2496,7 +2500,7 @@ func (n Neo) ManifestExistsForTagProfileContent(ctx context.Context, up upstream
 		// Profile-scoped tag lookup: an existing-but-unlinked manifest is not
 		// part of this profile's view — not-found, never an error (500s on
 		// HEAD broke oras cp pre-checks; OpenProject #41).
-		utils.Debug(l, span, "manifest data is not linked with profile '%s'", up.Profile)
+		utils.Debug(l, span, msgManifestNotLinkedWithProfile, up.Profile)
 		return "", false, nil
 	}
 	colID, err := res.GetInt64("collectionID")
@@ -2569,7 +2573,7 @@ func (n Neo) ManifestExistsContent(ctx context.Context, up upstream.UpstreamTrip
 		err = utils.ErrorHandler(l, span, e, "failed to get manifestData from result")
 		return "", false, err
 	} else if !ok {
-		utils.Debug(l, span, "manifest data is not linked with profile '%s'", up.Profile)
+		utils.Debug(l, span, msgManifestNotLinkedWithProfile, up.Profile)
 		return "", false, nil
 	}
 	colID, err := res.GetInt64("collectionID")
