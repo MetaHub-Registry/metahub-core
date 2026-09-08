@@ -490,6 +490,16 @@ func (n Neo) IndexGetByRequest(ctx context.Context, req types.Request) (ml types
 		return
 	}
 	if !found {
+		// Slot-based fallback (Path Z, mirrors ManifestListExists's fallback
+		// from commit 19a0327): the Slot's CURRENT POINTS_TO target keeps the
+		// serve path in agreement with the existence path during the
+		// transient REF-less push window (OpenProject #42).
+		if resSlot, ok := n.indexViaSlot(span, req); ok {
+			res = resSlot
+			found = true
+		}
+	}
+	if !found {
 		logrus.Warnf("Index not found for repo=%s tag=%s digest=%s profile=%s", req.Repo, req.Tag, req.Digest, req.Profile)
 		return
 	}
@@ -595,6 +605,12 @@ func (n Neo) ManifestListExists(ctx context.Context, up upstream.UpstreamTriple)
 		q += fmt.Sprintf(` WHERE prf.label = "%s" AND c.repo = "%s" AND ml.digest = "%s"`, up.Profile, up.Repo, up.Digest.String())
 	} else {
 		q += fmt.Sprintf(` WHERE prf.label = "%s" AND c.repo = "%s" AND t.name = "%s"`, up.Profile, up.Repo, up.Tag)
+		// Exclude superseded indexes recorded in the owning Slot's
+		// HAS_HISTORY chain — the same exclusion the serve path
+		// (IndexGetByRequest) applies, so HEAD cannot report an archived
+		// index that GET would hide (OpenProject #42). Digest-addressed
+		// lookups stay content-addressable (Path Z, cf. WP #41).
+		q += fmt.Sprintf(` AND NOT (:Slot {repo: "%s", tag: "%s"})-[:HAS_HISTORY]->(ml)`, up.Repo, up.Tag)
 	}
 	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo, ml.mediaType AS mediaType`
 	utils.Debug(l, span, q)
@@ -648,6 +664,38 @@ func (n Neo) manifestListViaSlot(l *logrus.Entry, span trace.Span, up upstream.U
 	}
 	utils.Debug(l, span, "found Index via Slot POINTS_TO with type '%s'", mdSlot)
 	return mdSlot, true
+}
+
+// indexViaSlot is the Path-Z fallback for IndexGetByRequest (the serve-path
+// mirror of ManifestListExists's manifestListViaSlot, OpenProject #42): the
+// Slot-[:POINTS_TO]->Index edge is wired synchronously at push time
+// (wireSlotOnPush), while the Profile/Repo/Tag :REF edges materialise
+// asynchronously during the compute sweep. In that transient REF-less window
+// the strict join misses and the serve path would 404 while HEAD — which
+// already has this fallback — reports the index as found: an "exists but
+// unservable" split (openspec align-manifest-existence-queries). Serving the
+// Slot's CURRENT target keeps HEAD and GET in agreement; the current target
+// is never in HAS_HISTORY, so superseded indexes stay hidden.
+func (n Neo) indexViaSlot(span trace.Span, req types.Request) (types.Result, bool) {
+	if req.Tag == "" || req.Repo == "" || req.Profile == "" {
+		return types.Result{}, false
+	}
+	qSlot := fmt.Sprintf(`MATCH (s:Slot {repo: "%s", tag: "%s", profile: "%s"})-[:POINTS_TO]->(ml:Index)`, req.Repo, req.Tag, req.Profile)
+	qSlot += ` RETURN id(ml) as manifestlistID, ml.digest as manifestlistDigest, ml.mediaType as manifestlistMediaType, ml.size as manifestlistSize LIMIT 1`
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, qSlot),
+	))
+	res, found, err := n.QueryOne(qSlot)
+	if err != nil {
+		logrus.Error(err)
+		return types.Result{}, false
+	}
+	if !found {
+		return types.Result{}, false
+	}
+	logrus.Infof("Index resolved via Slot POINTS_TO fallback for repo=%s tag=%s profile=%s", req.Repo, req.Tag, req.Profile)
+	return res, true
 }
 
 // Index origin labels used by SetIndexOrigin. These are the two sources of
