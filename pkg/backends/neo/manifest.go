@@ -480,10 +480,15 @@ func (n Neo) ManifestGetAllByManifestIDWithProfile(ctx context.Context, msID, pr
 	}
 	manis = make([]types.Manifest, 0)
 	for _, r := range res {
-		m, _, e := n.ManifestFromResult(ctx, r, prf)
+		m, linked, e := n.ManifestFromResult(ctx, r, prf)
 		if e != nil {
 			err = e
 			return
+		}
+		if !linked {
+			// An unlinked manifest must not abort the whole listing
+			// (OpenProject #41) — it is simply not part of this profile's view.
+			continue
 		}
 		c, e := n.ConfigFromResult(ctx, r)
 		if e != nil {
@@ -1743,8 +1748,14 @@ func (n Neo) ManifestFromResult(ctx context.Context, res types.Result, prfs ...t
 			return
 		}
 		if !linked {
-			err = utils.NewError(l, span, "manifest data is not linked with profile '%s'", prf.Label)
-			return
+			// "Exists but not linked to the requesting profile" is a legitimate
+			// graph state, not an exceptional condition. Surfacing it as an error
+			// propagated to HTTP 500 on HEAD/GET and broke oras cp destination
+			// pre-checks (OpenProject #41 / openspec fix-digest-manifest-existence).
+			// Callers decide what unlinked means: not-found for profile-scoped
+			// tag lookups, irrelevant for content-addressable digest lookups.
+			utils.Debug(l, span, "manifest data is not linked with profile '%s'", prf.Label)
+			return m, false, nil
 		}
 	}
 
@@ -2482,8 +2493,11 @@ func (n Neo) ManifestExistsForTagProfileContent(ctx context.Context, up upstream
 		err = utils.ErrorHandler(l, span, e, "failed to get manifestData from result")
 		return "", false, err
 	} else if !ok {
-		err = utils.NewError(l, span, "manifestData not found connected to profile")
-		return "", false, err
+		// Profile-scoped tag lookup: an existing-but-unlinked manifest is not
+		// part of this profile's view — not-found, never an error (500s on
+		// HEAD broke oras cp pre-checks; OpenProject #41).
+		utils.Debug(l, span, "manifest data is not linked with profile '%s'", up.Profile)
+		return "", false, nil
 	}
 	colID, err := res.GetInt64("collectionID")
 	if err != nil {
@@ -2503,16 +2517,23 @@ func (n Neo) ManifestExistsContent(ctx context.Context, up upstream.UpstreamTrip
 		"digest":  utils.ShortenDigest(up.Digest.String()),
 	})
 	defer span.End()
-	prf, found, e := n.ProfileGetByLabel(ctx, up.Profile)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, FailedProfGetByLabel)
-		return "", false, err
+	// Profile scoping is a tag-based concern (Path Z, OpenProject #41):
+	// digest-addressed content is content-addressable, so neither the profile's
+	// existence nor its linkage to the manifest may turn into an error here.
+	var prfArgs []types.Profile
+	if up.Digest.String() == "" {
+		prf, found, e := n.ProfileGetByLabel(ctx, up.Profile)
+		if e != nil {
+			err = utils.ErrorHandler(l, span, e, FailedProfGetByLabel)
+			return "", false, err
+		}
+		if !found {
+			err = utils.ErrorHandler(l, span, errors.New(FailedProfileNotFound), "profile '%s' not found in database", up.Profile)
+			return "", false, err
+		}
+		utils.Debug(l, span, msgFoundProfile, up.Profile, prf.ID)
+		prfArgs = []types.Profile{prf}
 	}
-	if !found {
-		err = utils.ErrorHandler(l, span, errors.New(FailedProfileNotFound), "profile '%s' not found in database", up.Profile)
-		return "", false, err
-	}
-	utils.Debug(l, span, msgFoundProfile, up.Profile, prf.ID)
 	// Path Z Phase C3: walk directly from Manifest to Upstream via
 	// :ORIGINAL instead of through the :ManifestWrapper wrapper. Also join
 	// Repo+Tag via the Upstream's repo/tag fields.
@@ -2540,13 +2561,16 @@ func (n Neo) ManifestExistsContent(ctx context.Context, up upstream.UpstreamTrip
 		utils.Debug(l, span, "manifestdata not found")
 		return "", false, nil
 	}
-	maniData, ok, e := n.ManifestFromResult(ctx, res, prf)
+	// Tag-based lookups are profile-scoped: an existing-but-unlinked manifest
+	// is reported as not found (never an error — see OpenProject #41).
+	// Digest-based lookups hydrate without a profile (content-addressable).
+	maniData, ok, e := n.ManifestFromResult(ctx, res, prfArgs...)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to get manifestData from result")
 		return "", false, err
 	} else if !ok {
-		err = utils.NewError(l, span, "manifestData not found connected to profile")
-		return "", false, err
+		utils.Debug(l, span, "manifest data is not linked with profile '%s'", up.Profile)
+		return "", false, nil
 	}
 	colID, err := res.GetInt64("collectionID")
 	if err != nil {
