@@ -125,6 +125,50 @@ func TestUnLinkCollectionTagFromOtherIndexes(t *testing.T) {
 	assert.Equal(t, "sha256:"+strings.Repeat("b1", 32), tagREFDigest(t, col.ColTag.ID))
 }
 
+// TestUnLinkCollectionTagFromOtherIndexes_KeepsClaimedIndexes pins the
+// orphan-scoped prune: per-profile computed indexes legitimately share one
+// Tag, so the prune must NOT strip the Tag→REF edge of an index that another
+// profile claims via (p:Profile)-[:REF]->(ml). Regression for the GPU
+// workload outage where each profile's compute sweep wiped every previously
+// computed profile's Tag→REF edge, leaving only the last-computed profile
+// servable.
+func TestUnLinkCollectionTagFromOtherIndexes_KeepsClaimedIndexes(t *testing.T) {
+	ctx := context.Background()
+	defer slotTestSetup(ctx, t)()
+
+	col, _, err := db.CollectionGetCreateByRepoTag(ctx, "qnib/tagguard2", "v1")
+	require.NoError(t, err)
+
+	// indexA is claimed by a profile (another profile's current index).
+	idxA := createTestIndex(t, "sha256:"+strings.Repeat("d1", 32))
+	require.NoError(t, db.LinkManifestListToCollectionTag(idxA, col.ColTag.ID))
+	prfRes, err := db.Execute(`MERGE (p:Profile {name: "claimer", tag: "claimer", rule: "t", label: "claimer"})
+		RETURN id(p) AS prfID`)
+	require.NoError(t, err)
+	prfID, err := prfRes.GetInt64("prfID")
+	require.NoError(t, err)
+	require.NoError(t, db.LinkManifestListToProfile(idxA, prfID))
+
+	// indexB is an orphaned (superseded) index: Tag→REF but no Profile→REF.
+	idxB := createTestIndex(t, "sha256:"+strings.Repeat("e1", 32))
+	require.NoError(t, db.LinkManifestListToCollectionTag(idxB, col.ColTag.ID))
+
+	// indexC is the freshly computed index whose prune call this simulates.
+	idxC := createTestIndex(t, "sha256:"+strings.Repeat("f1", 32))
+	require.NoError(t, db.UnLinkCollectionTagFromOtherIndexes(idxC, col.ColTag.ID))
+
+	// The claimed index keeps its Tag→REF; the orphaned one loses it.
+	cnt := tagREFCount(t, col.ColTag.ID)
+	assert.Equal(t, 1, cnt, "exactly the claimed index (indexA) must retain its Tag→REF after the prune")
+	q := fmt.Sprintf(`MATCH (ct:Tag)-[:REF]->(ml:Index) WHERE id(ct) = %d RETURN id(ml) AS idx`, col.ColTag.ID)
+	res, err := db.Query(q)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	kept, err := res[0].GetInt64("idx")
+	require.NoError(t, err)
+	assert.Equal(t, idxA, kept, "the profile-claimed index must be the one that survives")
+}
+
 // TestManifestGetByCollectionTag_FallbackPaths wires the slot-centred and
 // direct-UPSTREAM graph shapes by hand and verifies both fallbacks of
 // ManifestGetByCollectionTag, including collection-scoped profile attribution

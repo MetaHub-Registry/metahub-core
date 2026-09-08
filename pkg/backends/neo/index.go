@@ -132,14 +132,23 @@ func (n Neo) UnLinkManifestListToCollectionTag(mlID, colTagID int64) (err error)
 }
 
 // UnLinkCollectionTagFromOtherIndexes removes every (ct:Tag)-[:REF]->(ml:Index)
-// edge where the Tag matches colTagID and the Index is NOT mlID. Call directly
-// before LinkManifestListToCollectionTag on every recompute to enforce the
-// one-index-per-tag invariant — mirroring what UnLinkProfileFromOtherRepoIndexes
-// does for profiles. Without this, superseded computed indexes accumulate stale
-// Tag→REF edges that surface as duplicate results in the wrapper-era query layer
-// and show stale indexes in the UI.
+// edge where the Tag matches colTagID, the Index is NOT mlID, and NO Profile
+// claims the Index via (p:Profile)-[:REF]->(ml). Call directly before
+// LinkManifestListToCollectionTag on every recompute to enforce the
+// one-index-per-(tag, profile) invariant — mirroring what
+// UnLinkProfileFromOtherRepoIndexes does for profiles.
+//
+// The orphan scoping matters because per-profile computed indexes legitimately
+// share one Tag (one Index per (tag, profile)). An unscoped prune — as
+// originally shipped — stripped the Tag→REF edge of every OTHER profile's
+// current index during a multi-profile compute sweep, leaving only the
+// last-computed profile servable (observed: frame/bazzite runtime indexes
+// 404ed while hopper, computed last, kept its Tag→REF edge). Only profile-less
+// (superseded) indexes are pruned here; the caller detaches the re-pushed
+// profile from its previous index BEFORE this call so that stale index
+// qualifies as orphaned.
 func (n Neo) UnLinkCollectionTagFromOtherIndexes(mlID, colTagID int64) (err error) {
-	q := `MATCH (ct:Tag)-[r:REF]->(ml:Index) WHERE id(ct) = %d AND id(ml) <> %d DELETE r`
+	q := `MATCH (ct:Tag)-[r:REF]->(ml:Index) WHERE id(ct) = %d AND id(ml) <> %d AND NOT (:Profile)-[:REF]->(ml) DELETE r`
 	query := fmt.Sprintf(q, colTagID, mlID)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()

@@ -256,27 +256,35 @@ func (mag Magazine) linkComputedIndexToWrapperEra(ctx context.Context, l *logrus
 	if e := mag.Database.LinkManifestListToCollection(mlID, c.ID); e != nil {
 		return utils.ErrorHandler(l, span, e, "failed LinkManifestListToCollection")
 	}
-	// Prune stale Tag→REF edges before linking the new index. Without this,
-	// every recompute leaves an orphaned Tag-[:REF]->oldIndex alongside the new
-	// one — the wrapper-era query layer (Tag-REF→Index) then matches both,
-	// surfacing stale indexes in the UI. Mirrors the profile pattern above.
+	// Link Index to Profile — but first detach the profile from every other
+	// Index in this collection. The Profile→Index REF edge drives the
+	// profile-scoped serve resolution; without the detach a re-push leaves
+	// the old attachment in place and the resolver matches two indexes for
+	// (profile, repo, tag), serving stale content nondeterministically.
+	// NB: this MUST run before the Tag→REF prune below — detaching the
+	// profile from its previous index is what makes that index "orphaned"
+	// (no Profile claims it), which is the signal the scoped tag prune uses.
+	if e := mag.Database.UnLinkProfileFromOtherRepoIndexes(mlID, p.ID, c.ID); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed UnLinkProfileFromOtherRepoIndexes")
+	}
+	if e := mag.Database.LinkManifestListToProfile(mlID, p.ID); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed LinkManifestListToProfile")
+	}
+	// Prune stale Tag→REF edges before linking the new index. Scoped to
+	// ORPHANED indexes only (no Profile→REF): per-profile computed indexes
+	// legitimately share one Tag — one Index per (tag, profile) — so an
+	// unscoped prune here would strip the Tag→REF edge of every OTHER
+	// profile's current index computed earlier in the same sweep, leaving
+	// only the last-computed profile servable (observed: the frame/bazzite
+	// runtime indexes 404ed while hopper, computed last, kept working).
+	// After the profile detach above, the re-pushed profile's superseded
+	// index is profile-less and is exactly what gets pruned here.
 	if e := mag.Database.UnLinkCollectionTagFromOtherIndexes(mlID, ct.ID); e != nil {
 		return utils.ErrorHandler(l, span, e, "failed UnLinkCollectionTagFromOtherIndexes")
 	}
 	// Link Index to CollectionTag
 	if e := mag.Database.LinkManifestListToCollectionTag(mlID, ct.ID); e != nil {
 		return utils.ErrorHandler(l, span, e, "failed LinkManifestListToCollectionTag")
-	}
-	// Link Index to Profile — but first detach the profile from every other
-	// Index in this collection. The Profile→Index REF edge drives the
-	// profile-scoped serve resolution; without the detach a re-push leaves the
-	// old attachment in place and the resolver matches two indexes for
-	// (profile, repo, tag), serving stale content nondeterministically.
-	if e := mag.Database.UnLinkProfileFromOtherRepoIndexes(mlID, p.ID, c.ID); e != nil {
-		return utils.ErrorHandler(l, span, e, "failed UnLinkProfileFromOtherRepoIndexes")
-	}
-	if e := mag.Database.LinkManifestListToProfile(mlID, p.ID); e != nil {
-		return utils.ErrorHandler(l, span, e, "failed LinkManifestListToProfile")
 	}
 	return nil
 }
