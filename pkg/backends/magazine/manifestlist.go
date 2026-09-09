@@ -97,8 +97,104 @@ func (mag Magazine) filterManifestsForCTTP(ctx context.Context, l *logrus.Entry,
 	// nondeterministically and can serve the stale base (e.g. a runtime image
 	// rebuilt with a new entrypoint that never takes effect).
 	mds = types.DedupeLatestByUpstreamTagPlatform(mds)
+	// Slot-scoped latest-push-wins: HAS_PUSHED is an append-only log, so a
+	// profile re-pushing different content to the same tag (e.g. a re-tagged
+	// image whose Upstream triple differs from the earlier push) would
+	// otherwise accumulate every historical same-platform manifest into the
+	// slot's computed index — the upstream-keyed dedupe above cannot collapse
+	// those. Per platform, keep only the manifest from the most recent push:
+	// the slot's own if the profile pushed to the tag itself, otherwise the
+	// (repo, tag)-wide history so a passive profile's view still follows the
+	// registry tag. Platforms with no push-log entry (multi-arch union
+	// members) are untouched.
+	ts, tsErr := mag.Database.SlotLatestPushTimestamps(ctx, ctpp.Repo.Repo, ctpp.Tag.Tag, ctpp.Profile.Label)
+	if tsErr != nil {
+		utils.Warn(l, span, "SlotLatestPushTimestamps failed (non-fatal, skipping latest-push dedupe): %v", tsErr)
+	} else {
+		if len(ts) == 0 {
+			globalTs, gErr := mag.Database.RepoTagLatestPushTimestamps(ctx, ctpp.Repo.Repo, ctpp.Tag.Tag)
+			if gErr != nil {
+				utils.Warn(l, span, "RepoTagLatestPushTimestamps failed (non-fatal, skipping latest-push dedupe): %v", gErr)
+			} else {
+				ts = globalTs
+			}
+		}
+		mds = latestPerPlatformForSlot(mds, ts)
+	}
 	ml.Manifests = append(ml.Manifests, mds...)
 	return mds, nil
+}
+
+// latestPerPlatformForSlot applies latest-push-wins per platform to a slot's
+// computed-index candidates. ts maps manifest node ID -> the manifest's latest
+// HAS_PUSHED timestamp (slot-scoped, or (repo, tag)-wide as fallback).
+//
+//   - Candidates with no entry in ts are union members (pushed via another
+//     profile's slot, or seeded by fixtures). They survive unless their
+//     platform was pushed via this slot/tag — the author's own latest push is
+//     the authoritative statement for that platform.
+//   - Within a platform group holding at least one ts-carrying member, exactly
+//     one manifest survives: the highest timestamp (ties broken by the higher
+//     node ID for determinism).
+//
+// An empty ts map disables the dedupe entirely (no push log — fixtures).
+// The relative order of surviving manifests is preserved so the computed
+// index blob stays reproducible.
+type platformGroup struct {
+	hasTS   bool
+	bestIdx int
+	bestTS  int64
+}
+
+// isBetterCandidate reports whether a manifest with timestamp t and node ID
+// mdID beats the current best in group g (newer timestamp wins; ties broken by
+// higher node ID for determinism).
+func isBetterCandidate(g *platformGroup, t, mdID, bestMDID int64) bool {
+	return !g.hasTS || t > g.bestTS || (t == g.bestTS && mdID > bestMDID)
+}
+
+// groupLatestPerPlatform buckets candidate manifests by platform label and
+// records, per bucket, the index of the manifest carrying the latest push
+// timestamp (ties broken by higher node ID).
+func groupLatestPerPlatform(mds []types.Manifest, ts map[int64]int64) map[string]*platformGroup {
+	groups := map[string]*platformGroup{}
+	for i, md := range mds {
+		label := md.Platform.GetLabel()
+		g, ok := groups[label]
+		if !ok {
+			g = &platformGroup{bestIdx: -1}
+			groups[label] = g
+		}
+		if t, pushed := ts[md.ID]; pushed {
+			var bestMDID int64
+			if g.bestIdx >= 0 {
+				bestMDID = mds[g.bestIdx].ID
+			}
+			if isBetterCandidate(g, t, md.ID, bestMDID) {
+				g.hasTS = true
+				g.bestTS = t
+				g.bestIdx = i
+			}
+		}
+	}
+	return groups
+}
+
+func latestPerPlatformForSlot(mds []types.Manifest, ts map[int64]int64) []types.Manifest {
+	if len(ts) == 0 || len(mds) < 2 {
+		return mds
+	}
+	groups := groupLatestPerPlatform(mds, ts)
+	out := make([]types.Manifest, 0, len(mds))
+	for i, md := range mds {
+		if g := groups[md.Platform.GetLabel()]; g.hasTS && i != g.bestIdx {
+			// An older same-platform push (or a union member) loses to the
+			// slot's latest push for that platform.
+			continue
+		}
+		out = append(out, md)
+	}
+	return out
 }
 
 // persistComputedIndex stores the computed Index bytes in minio, MERGEs
@@ -160,13 +256,35 @@ func (mag Magazine) linkComputedIndexToWrapperEra(ctx context.Context, l *logrus
 	if e := mag.Database.LinkManifestListToCollection(mlID, c.ID); e != nil {
 		return utils.ErrorHandler(l, span, e, "failed LinkManifestListToCollection")
 	}
+	// Link Index to Profile — but first detach the profile from every other
+	// Index in this collection. The Profile→Index REF edge drives the
+	// profile-scoped serve resolution; without the detach a re-push leaves
+	// the old attachment in place and the resolver matches two indexes for
+	// (profile, repo, tag), serving stale content nondeterministically.
+	// NB: this MUST run before the Tag→REF prune below — detaching the
+	// profile from its previous index is what makes that index "orphaned"
+	// (no Profile claims it), which is the signal the scoped tag prune uses.
+	if e := mag.Database.UnLinkProfileFromOtherRepoIndexes(mlID, p.ID, c.ID); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed UnLinkProfileFromOtherRepoIndexes")
+	}
+	if e := mag.Database.LinkManifestListToProfile(mlID, p.ID); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed LinkManifestListToProfile")
+	}
+	// Prune stale Tag→REF edges before linking the new index. Scoped to
+	// ORPHANED indexes only (no Profile→REF): per-profile computed indexes
+	// legitimately share one Tag — one Index per (tag, profile) — so an
+	// unscoped prune here would strip the Tag→REF edge of every OTHER
+	// profile's current index computed earlier in the same sweep, leaving
+	// only the last-computed profile servable (observed: the frame/bazzite
+	// runtime indexes 404ed while hopper, computed last, kept working).
+	// After the profile detach above, the re-pushed profile's superseded
+	// index is profile-less and is exactly what gets pruned here.
+	if e := mag.Database.UnLinkCollectionTagFromOtherIndexes(mlID, ct.ID); e != nil {
+		return utils.ErrorHandler(l, span, e, "failed UnLinkCollectionTagFromOtherIndexes")
+	}
 	// Link Index to CollectionTag
 	if e := mag.Database.LinkManifestListToCollectionTag(mlID, ct.ID); e != nil {
 		return utils.ErrorHandler(l, span, e, "failed LinkManifestListToCollectionTag")
-	}
-	// Link Index to Profile
-	if e := mag.Database.LinkManifestListToProfile(mlID, p.ID); e != nil {
-		return utils.ErrorHandler(l, span, e, "failed LinkManifestListToProfile")
 	}
 	return nil
 }

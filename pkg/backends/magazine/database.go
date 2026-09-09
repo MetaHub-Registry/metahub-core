@@ -186,7 +186,16 @@ type Database interface {
 	ManifestLinkToConfig(ctx context.Context, maniID int64, cfg types.Config) error
 	LinkManifestListToCollection(mlID, colID int64) (err error)
 	LinkManifestListToCollectionTag(mlID, colTagID int64) (err error)
+	// UnLinkCollectionTagFromOtherIndexes removes all Tag→REF→Index edges for
+	// the given Tag except mlID; call before LinkManifestListToCollectionTag so
+	// a recompute prunes the stale old-index REF (mirrors the Profile pattern).
+	UnLinkCollectionTagFromOtherIndexes(mlID, colTagID int64) (err error)
 	LinkManifestListToProfile(mlID, prfID int64) (err error)
+	// UnLinkProfileFromOtherRepoIndexes detaches the profile from every other
+	// Index of the repo (one-image-per-profile invariant per collection); call
+	// it before LinkManifestListToProfile so a re-push detaches the old
+	// attachment before the new one is created.
+	UnLinkProfileFromOtherRepoIndexes(mlID, prfID, repoID int64) (err error)
 	LinkManifestListToManifest(ctx context.Context, mlID, mdID int64) (err error)
 	ManifestLinkToLayer(ctx context.Context, maniDataID int64, layer types.Layer, idx int) error
 	ManifestLinkToProfile(ctx context.Context, maniDataID, profileID int64) error
@@ -317,6 +326,19 @@ type Database interface {
 	// SlotGetAllForRepoTag returns every Slot for a (repo, tag) pair
 	// across all profiles. Used by the compute path.
 	SlotGetAllForRepoTag(ctx context.Context, repo, tag string) ([]types.Slot, error)
+	// SlotLatestPushTimestamps maps manifest node ID -> latest HAS_PUSHED
+	// timestamp within the (repo, tag, profile) slot; empty when the slot
+	// does not exist. Drives latest-push-wins dedupe at compute time.
+	SlotLatestPushTimestamps(ctx context.Context, repo, tag, profile string) (map[int64]int64, error)
+	// RepoTagLatestPushTimestamps maps manifest node ID -> latest HAS_PUSHED
+	// timestamp across all slots of the (repo, tag) pair. Fallback view for
+	// profiles that never pushed to the tag themselves.
+	RepoTagLatestPushTimestamps(ctx context.Context, repo, tag string) (map[int64]int64, error)
+	// SlotProfilesForCollectionTag maps manifest node ID -> sorted labels of
+	// the Slot profiles that pushed it into THIS (repo, tag) collection —
+	// collection-scoped attribution for listings, overriding the manifest's
+	// global first-upload UPLOADED_BY record.
+	SlotProfilesForCollectionTag(ctx context.Context, colID, colTagID int64) (map[int64][]string, error)
 	// SlotGetAllForRepo returns every Slot for a repo across all (tag,
 	// profile) pairs. Used by the catalog endpoint.
 	SlotGetAllForRepo(ctx context.Context, repo string) ([]types.Slot, error)

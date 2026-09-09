@@ -11,9 +11,12 @@ package neo
 import (
 	"context"
 	"fmt"
+	"sort"
 
+	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -142,6 +145,24 @@ func (n Neo) SlotGetByTriple(ctx context.Context, repo, tag, profile string) (s 
 	return s, true, nil
 }
 
+// slotsFromQuery runs q and decodes every record into a Slot list. fn is used
+// to attribute errors to the public entry point in log/error messages.
+func (n Neo) slotsFromQuery(l *logrus.Entry, span trace.Span, fn, q string) ([]types.Slot, error) {
+	results, e := n.Query(q)
+	if e != nil {
+		return nil, utils.ErrorHandler(l, span, e, fn+": executing query")
+	}
+	slots := make([]types.Slot, 0, len(results))
+	for _, r := range results {
+		sl, e := slotFromResult(r)
+		if e != nil {
+			return nil, utils.ErrorHandler(l, span, e, fn+": decoding Slot")
+		}
+		slots = append(slots, sl)
+	}
+	return slots, nil
+}
+
 // SlotGetAllForRepoTag returns every Slot sharing a (repo, tag) pair, across
 // all profiles. Used by the compute path to know which profiles need an Index
 // rebuild when a new Manifest lands on (repo, tag).
@@ -155,19 +176,7 @@ func (n Neo) SlotGetAllForRepoTag(ctx context.Context, repo, tag string) (slots 
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (s:Slot) WHERE s.repo = "%s" AND s.tag = "%s"`, repo, tag)
 	q += slotReturnClause
-	results, e := n.Query(q)
-	if e != nil {
-		return nil, utils.ErrorHandler(l, span, e, "SlotGetAllForRepoTag: executing query")
-	}
-	slots = make([]types.Slot, 0, len(results))
-	for _, r := range results {
-		sl, e := slotFromResult(r)
-		if e != nil {
-			return nil, utils.ErrorHandler(l, span, e, "SlotGetAllForRepoTag: decoding Slot")
-		}
-		slots = append(slots, sl)
-	}
-	return slots, nil
+	return n.slotsFromQuery(l, span, "SlotGetAllForRepoTag", q)
 }
 
 // SlotGetAllForRepo returns every Slot for a given repo, across all (tag,
@@ -182,19 +191,7 @@ func (n Neo) SlotGetAllForRepo(ctx context.Context, repo string) (slots []types.
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (s:Slot) WHERE s.repo = "%s"`, repo)
 	q += slotReturnClause
-	results, e := n.Query(q)
-	if e != nil {
-		return nil, utils.ErrorHandler(l, span, e, "SlotGetAllForRepo: executing query")
-	}
-	slots = make([]types.Slot, 0, len(results))
-	for _, r := range results {
-		sl, e := slotFromResult(r)
-		if e != nil {
-			return nil, utils.ErrorHandler(l, span, e, "SlotGetAllForRepo: decoding Slot")
-		}
-		slots = append(slots, sl)
-	}
-	return slots, nil
+	return n.slotsFromQuery(l, span, "SlotGetAllForRepo", q)
 }
 
 // SlotLinkPointsTo replaces the Slot's current POINTS_TO edge with a new one
@@ -293,6 +290,139 @@ func (n Neo) SlotAppendPushedIndex(ctx context.Context, slotID, indexID int64) (
 	}
 	utils.Debug(l, span, "SlotAppendPushedIndex: slot %d pushed index %d", slotID, indexID)
 	return nil
+}
+
+// latestPushTimestampsFromQuery runs a (Slot)-[HAS_PUSHED]->(m:Manifest)
+// aggregation query returning id(m) AS mid, max(hp.timestamp) AS ts rows and
+// folds them into a map of manifest node ID -> latest push timestamp. fn is
+// used to attribute errors to the public entry point in log/error messages.
+func (n Neo) latestPushTimestampsFromQuery(l *logrus.Entry, span trace.Span, fn, q string) (map[int64]int64, error) {
+	res, e := n.Query(q)
+	if e != nil {
+		return nil, utils.ErrorHandler(l, span, e, fn+": executing query")
+	}
+	ts := make(map[int64]int64, len(res))
+	for _, r := range res {
+		mid, e := r.GetInt64("mid")
+		if e != nil {
+			return nil, utils.ErrorHandler(l, span, e, fn+": decoding mid")
+		}
+		t, e := r.GetInt64("ts")
+		if e != nil {
+			return nil, utils.ErrorHandler(l, span, e, fn+": decoding ts")
+		}
+		ts[mid] = t
+	}
+	return ts, nil
+}
+
+// SlotLatestPushTimestamps returns, for the (repo, tag, profile) Slot, a map
+// of Manifest node ID -> timestamp of its most recent HAS_PUSHED edge. An
+// empty map (no error) means the Slot does not exist or never pushed.
+//
+// HAS_PUSHED is an append-only push log, so a manifest can carry several
+// edges; the map value is the LATEST timestamp. Consumers use this to apply
+// latest-push-wins semantics per platform when computing a Slot's index.
+func (n Neo) SlotLatestPushTimestamps(ctx context.Context, repo, tag, profile string) (map[int64]int64, error) {
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameSlot,
+		"func":    "SlotLatestPushTimestamps",
+		"repo":    repo,
+		"tag":     tag,
+		"profile": profile,
+	})
+	defer span.End()
+	if repo == "" || tag == "" || profile == "" {
+		return nil, utils.NewError(l, span, "SlotLatestPushTimestamps: empty triple component repo=%q tag=%q profile=%q", repo, tag, profile)
+	}
+	q := fmt.Sprintf(
+		`MATCH (s:Slot {repo: "%s", tag: "%s", profile: "%s"})-[hp:HAS_PUSHED]->(m:Manifest) RETURN id(m) AS mid, max(hp.timestamp) AS ts`,
+		repo, tag, profile,
+	)
+	return n.latestPushTimestampsFromQuery(l, span, "SlotLatestPushTimestamps", q)
+}
+
+// RepoTagLatestPushTimestamps returns a map of Manifest node ID -> timestamp
+// of its most recent HAS_PUSHED edge across EVERY Slot of the (repo, tag)
+// pair. Used as the fallback view for profiles that never pushed to the tag
+// themselves: their computed index follows the registry tag's push history
+// (latest push wins per platform) rather than a stale rule-union snapshot.
+func (n Neo) RepoTagLatestPushTimestamps(ctx context.Context, repo, tag string) (map[int64]int64, error) {
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameSlot,
+		"func":    "RepoTagLatestPushTimestamps",
+		"repo":    repo,
+		"tag":     tag,
+	})
+	defer span.End()
+	if repo == "" || tag == "" {
+		return nil, utils.NewError(l, span, "RepoTagLatestPushTimestamps: empty component repo=%q tag=%q", repo, tag)
+	}
+	q := fmt.Sprintf(
+		`MATCH (s:Slot {repo: "%s", tag: "%s"})-[hp:HAS_PUSHED]->(m:Manifest) RETURN id(m) AS mid, max(hp.timestamp) AS ts`,
+		repo, tag,
+	)
+	return n.latestPushTimestampsFromQuery(l, span, "RepoTagLatestPushTimestamps", q)
+}
+
+// SlotProfilesForCollectionTag returns, for the (repo, tag) collection, a map
+// of Manifest node ID -> the sorted labels of every Slot profile that pushed
+// that manifest to THIS collection. This is the collection-scoped attribution
+// ("who pushed this manifest into this collection") — in contrast to the
+// manifest's global UPLOADED_BY edge, which records who uploaded it FIRST
+// anywhere in the registry. The distinction matters when a manifest is
+// re-pushed into another collection by a different profile: the UI listing
+// must show the pushing profile of THIS collection, not the original
+// uploader.
+func (n Neo) SlotProfilesForCollectionTag(ctx context.Context, colID, colTagID int64) (map[int64][]string, error) {
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":  pkgNameSlot,
+		"func":     "SlotProfilesForCollectionTag",
+		"colID":    colID,
+		"colTagID": colTagID,
+	})
+	defer span.End()
+	if colID < 0 || colTagID < 0 {
+		return nil, utils.NewError(l, span, "SlotProfilesForCollectionTag: invalid ids colID=%d colTagID=%d", colID, colTagID)
+	}
+	// Return one row per (manifest, profile) — Result only has Strings/Int64s,
+	// so we can't use collect() here. Deduplication and sorting happen in Go.
+	q := fmt.Sprintf(
+		`MATCH (c:Repo)-[:HAS_TAG]->(t:Tag)<-[:OF_TAG]-(s:Slot)-[:HAS_PUSHED]->(m:Manifest)
+		 WHERE id(c) = %d AND id(t) = %d
+		 RETURN id(m) AS mid, s.profile AS profile`,
+		colID, colTagID,
+	)
+	res, e := n.Query(q)
+	if e != nil {
+		return nil, utils.ErrorHandler(l, span, e, "SlotProfilesForCollectionTag: executing query")
+	}
+	// Aggregate (mid -> set of profile labels) then sort for stable output.
+	seen := make(map[int64]map[string]struct{})
+	for _, r := range res {
+		mid, e := r.GetInt64("mid")
+		if e != nil {
+			return nil, utils.ErrorHandler(l, span, e, "SlotProfilesForCollectionTag: decoding mid")
+		}
+		profile, _ := r.GetStr("profile")
+		if profile == "" {
+			continue
+		}
+		if _, ok := seen[mid]; !ok {
+			seen[mid] = make(map[string]struct{})
+		}
+		seen[mid][profile] = struct{}{}
+	}
+	out := make(map[int64][]string, len(seen))
+	for mid, profileSet := range seen {
+		labels := make([]string, 0, len(profileSet))
+		for p := range profileSet {
+			labels = append(labels, p)
+		}
+		sort.Strings(labels)
+		out[mid] = labels
+	}
+	return out, nil
 }
 
 // ManifestGetAllForSlot walks the HAS_PUSHED edges from the :Slot with id

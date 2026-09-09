@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing/fstest"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/opencontainers/go-digest"
 	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -118,6 +120,7 @@ func (lyr Layer) EvalOS(ctx context.Context) (os OS, err error) {
 	fs, found, e := lyr.FindFile(ctx, "etc/os-release")
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to uncompress layer")
+		return
 	}
 	if !found {
 		err = utils.NewError(l, span, "failed to find /etc/os-release")
@@ -132,6 +135,31 @@ func (lyr Layer) EvalOS(ctx context.Context) (os OS, err error) {
 
 }
 
+// maxLinkDepth bounds symlink-chain resolution when materializing link names.
+const maxLinkDepth = 8
+
+// newTarReader returns a fresh tar.Reader over the layer's (possibly gzipped)
+// data. It is called once per scan pass because a tar.Reader is a stream.
+func (lyr Layer) newTarReader(l *logrus.Entry, span trace.Span) (*tar.Reader, error) {
+	kind, _ := filetype.Match(lyr.Data)
+	if kind == filetype.Unknown {
+		return nil, utils.NewError(l, span, "unknown file type %s", kind)
+	}
+	r := bytes.NewReader(lyr.Data)
+	switch kind.MIME.Value {
+	case "application/x-tar":
+		return tar.NewReader(r), nil
+	case "application/gzip":
+		gzRead, e := gzip.NewReader(r)
+		if e != nil {
+			return nil, utils.NewError(l, span, "error reading gzip")
+		}
+		return tar.NewReader(gzRead), nil
+	default:
+		return nil, utils.NewError(l, span, "unknown file type: %s", kind.MIME.Value)
+	}
+}
+
 func (lyr Layer) Uncompress(ctx context.Context, fnames ...string) (fs fstest.MapFS, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameLayer,
@@ -140,47 +168,119 @@ func (lyr Layer) Uncompress(ctx context.Context, fnames ...string) (fs fstest.Ma
 	defer span.End()
 	_ = ctx
 	fn := set.CreateStringSet(fnames...)
-	kind, _ := filetype.Match(lyr.Data)
-	if kind == filetype.Unknown {
-		err = utils.NewError(l, span, "unknown file type %s", kind)
-		return
-	}
-	var tarRead *tar.Reader
-	r := bytes.NewReader(lyr.Data)
-	switch kind.MIME.Value {
-	case "application/x-tar":
-		tarRead = tar.NewReader(r)
-	case "application/gzip":
-		gzRead, e := gzip.NewReader(r)
+
+	// Pass 1 (filtered scans only): resolve requested names that ship as
+	// symlink/hardlink entries — e.g. alpine >=3.21 ships /etc/os-release as
+	// a symlink to /usr/lib/os-release — to their tar-internal target path.
+	links := map[string]string{}
+	if !fn.IsEmpty() {
+		tr, e := lyr.newTarReader(l, span)
 		if e != nil {
-			return nil, utils.NewError(l, span, "error reading gzip")
+			return nil, e
 		}
-		tarRead = tar.NewReader(gzRead)
-	default:
-		err = utils.NewError(l, span, "unknown file type: %s", kind.MIME.Value)
-		return
+		links, e = scanLinkTargets(tr, fn, l, span)
+		if e != nil {
+			return nil, e
+		}
 	}
-	fs = make(fstest.MapFS)
+	// Pass 2: read the requested regular files plus the link targets.
+	targets := make(map[string]bool, len(links))
+	for _, t := range links {
+		targets[t] = true
+	}
+	tr, e := lyr.newTarReader(l, span)
+	if e != nil {
+		return nil, e
+	}
+	fs, e = readRegularFiles(tr, fn, targets, l, span)
+	if e != nil {
+		return nil, e
+	}
+	materializeLinks(fs, links)
+	return fs, nil
+}
+
+// scanLinkTargets walks tar headers and records requested symlink/hardlink
+// names, each resolved to its tar-internal target path.
+func scanLinkTargets(tr *tar.Reader, fn set.StringSet, l *logrus.Entry, span trace.Span) (map[string]string, error) {
+	links := make(map[string]string)
 	for {
-		cur, e := tarRead.Next()
+		cur, e := tr.Next()
 		if e == io.EOF {
-			break
-		} else if e != nil {
-			err = utils.ErrorHandler(l, span, e, "failed to read tar")
-			return nil, err
+			return links, nil
 		}
-		if !fn.IsEmpty() && !fn.Contains(cur.Name) {
+		if e != nil {
+			return nil, utils.ErrorHandler(l, span, e, "failed to read tar")
+		}
+		if !isLinkEntry(cur) || !fn.Contains(cur.Name) {
 			continue
+		}
+		links[cur.Name] = resolveLinkTarget(cur)
+	}
+}
+
+// isLinkEntry reports whether the tar header is a symlink or hardlink.
+func isLinkEntry(h *tar.Header) bool {
+	return h.Typeflag == tar.TypeSymlink || h.Typeflag == tar.TypeLink
+}
+
+// resolveLinkTarget normalizes a link's target to a tar-internal path:
+// relative symlink targets are resolved against the entry's directory,
+// absolute paths lose their leading slash.
+func resolveLinkTarget(h *tar.Header) string {
+	target := h.Linkname
+	if h.Typeflag == tar.TypeSymlink && !strings.HasPrefix(target, "/") {
+		target = filepath.Join(filepath.Dir(h.Name), target)
+	}
+	return strings.TrimPrefix(target, "/")
+}
+
+// readRegularFiles copies the content of regular-file entries whose name is
+// requested (or is a link target) into a MapFS. An empty request set reads
+// every regular file, preserving the unfiltered-scan behavior.
+func readRegularFiles(tr *tar.Reader, fn set.StringSet, targets map[string]bool, l *logrus.Entry, span trace.Span) (fstest.MapFS, error) {
+	fs := make(fstest.MapFS)
+	for {
+		cur, e := tr.Next()
+		if e == io.EOF {
+			return fs, nil
+		}
+		if e != nil {
+			return nil, utils.ErrorHandler(l, span, e, "failed to read tar")
 		}
 		if cur.Typeflag != tar.TypeReg {
 			continue
 		}
-		data, e := io.ReadAll(tarRead)
+		if !fn.IsEmpty() && !fn.Contains(cur.Name) && !targets[cur.Name] {
+			continue
+		}
+		data, e := io.ReadAll(tr)
 		if e != nil {
-			err = utils.ErrorHandler(l, span, e, "failed to ReadAll")
-			return nil, err
+			return nil, utils.ErrorHandler(l, span, e, "failed to ReadAll")
 		}
 		fs[cur.Name] = &fstest.MapFile{Data: data}
 	}
-	return fs, nil
+}
+
+// materializeLinks fills requested names that exist only as symlink/hardlink
+// entries with the content of the regular file they point at, following link
+// chains up to maxLinkDepth hops (loop-guarded).
+func materializeLinks(fs fstest.MapFS, links map[string]string) {
+	for name, target := range links {
+		if _, ok := fs[name]; ok {
+			continue
+		}
+		cur := target
+		for i := 0; i < maxLinkDepth; i++ {
+			if data, ok := fs[cur]; ok {
+				fs[name] = data
+				break
+			}
+			next, ok := links[cur]
+			if !ok {
+				break
+			}
+			cur = next
+		}
+	}
 }
