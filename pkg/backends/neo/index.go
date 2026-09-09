@@ -131,6 +131,35 @@ func (n Neo) UnLinkManifestListToCollectionTag(mlID, colTagID int64) (err error)
 	return
 }
 
+// UnLinkCollectionTagFromOtherIndexes removes every (ct:Tag)-[:REF]->(ml:Index)
+// edge where the Tag matches colTagID, the Index is NOT mlID, and NO Profile
+// claims the Index via (p:Profile)-[:REF]->(ml). Call directly before
+// LinkManifestListToCollectionTag on every recompute to enforce the
+// one-index-per-(tag, profile) invariant — mirroring what
+// UnLinkProfileFromOtherRepoIndexes does for profiles.
+//
+// The orphan scoping matters because per-profile computed indexes legitimately
+// share one Tag (one Index per (tag, profile)). An unscoped prune — as
+// originally shipped — stripped the Tag→REF edge of every OTHER profile's
+// current index during a multi-profile compute sweep, leaving only the
+// last-computed profile servable (observed: frame/bazzite runtime indexes
+// 404ed while hopper, computed last, kept its Tag→REF edge). Only profile-less
+// (superseded) indexes are pruned here; the caller detaches the re-pushed
+// profile from its previous index BEFORE this call so that stale index
+// qualifies as orphaned.
+func (n Neo) UnLinkCollectionTagFromOtherIndexes(mlID, colTagID int64) (err error) {
+	q := `MATCH (ct:Tag)-[r:REF]->(ml:Index) WHERE id(ct) = %d AND id(ml) <> %d AND NOT (:Profile)-[:REF]->(ml) DELETE r`
+	query := fmt.Sprintf(q, colTagID, mlID)
+	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close()
+	_, err = session.Run(query, map[string]interface{}{})
+	if err != nil {
+		logrus.Errorf("failed to unlink tag %d from other indexes: %v", colTagID, err)
+		return
+	}
+	return
+}
+
 func (n Neo) LinkManifestListToCollectionTag(mlID, colTagID int64) (err error) {
 	q := `MATCH (ct:Tag), (ml:Index) WHERE id(ct) = %d AND id(ml) = %d`
 	q += ` MERGE (ml)<-[:REF]-(ct)`
@@ -150,6 +179,34 @@ func (n Neo) LinkManifestListToProfile(mlID, pID int64) (err error) {
 	q += ` MERGE (ml)<-[:REF]-(p)`
 	query := fmt.Sprintf(q, pID, mlID)
 	_, err = n.Execute(query)
+	return
+}
+
+// UnLinkProfileFromOtherRepoIndexes enforces the one-image-per-profile
+// invariant within a collection: it deletes every (p:Profile)-[:REF]->(ml:Index)
+// edge that points at an Index of repo repoID other than mlID.
+//
+// The Profile→Index REF edge is what the serve path joins on
+// (ManifestListExistsForTagProfile / ManifestListExists:
+// Profile→Index←Repo-HAS_TAG→Tag-REF→Index). If a profile stays attached to
+// the index of a previously pushed image, that pattern matches two rows and
+// QueryOne serves a stale image nondeterministically — observed as a re-push
+// of different content still resolving to the old digest. Called directly
+// before LinkManifestListToProfile, the invariant "a profile is attached to at
+// most one image per collection" holds after every push: the profile is
+// detached from the old image before it is attached to the new one.
+func (n Neo) UnLinkProfileFromOtherRepoIndexes(mlID, pID, repoID int64) (err error) {
+	q := `MATCH (p:Profile)-[r:REF]->(ml:Index)<-[:REF]-(c:Repo)`
+	q += ` WHERE id(p) = %d AND id(c) = %d AND id(ml) <> %d`
+	q += ` DELETE r`
+	query := fmt.Sprintf(q, pID, repoID, mlID)
+	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close()
+	_, err = session.Run(query, map[string]interface{}{})
+	if err != nil {
+		logrus.Errorf("failed to unlink profile %d from other indexes of repo %d: %v", pID, repoID, err)
+		return
+	}
 	return
 }
 
@@ -413,6 +470,11 @@ func (n Neo) IndexGetByRequest(ctx context.Context, req types.Request) (ml types
 	q := fmt.Sprintf(`MATCH (c:Repo)-[:REF]->(ml)<-[:REF]-(t:Tag) WHERE c.repo = "%s"`, req.Repo)
 	if req.Tag != "" {
 		q += fmt.Sprintf(` AND t.name ="%s"`, req.Tag)
+		// Exclude indexes that are in any Slot's HAS_HISTORY for this (repo, tag):
+		// those are superseded computed indexes whose Tag→REF was not yet pruned
+		// by UnLinkCollectionTagFromOtherIndexes. HAS_HISTORY is the authoritative
+		// "this index is stale" signal from the Slot-centred model.
+		q += fmt.Sprintf(` AND NOT (:Slot {repo: "%s", tag: "%s"})-[:HAS_HISTORY]->(ml)`, req.Repo, req.Tag)
 	} else {
 		q += fmt.Sprintf(` AND ml.digest ="%s"`, req.Digest)
 	}
@@ -426,6 +488,16 @@ func (n Neo) IndexGetByRequest(ctx context.Context, req types.Request) (ml types
 	if err != nil {
 		logrus.Error(err)
 		return
+	}
+	if !found {
+		// Slot-based fallback (Path Z, mirrors ManifestListExists's fallback
+		// from commit 19a0327): the Slot's CURRENT POINTS_TO target keeps the
+		// serve path in agreement with the existence path during the
+		// transient REF-less push window (OpenProject #42).
+		if resSlot, ok := n.indexViaSlot(span, req); ok {
+			res = resSlot
+			found = true
+		}
 	}
 	if !found {
 		logrus.Warnf("Index not found for repo=%s tag=%s digest=%s profile=%s", req.Repo, req.Tag, req.Digest, req.Profile)
@@ -533,6 +605,12 @@ func (n Neo) ManifestListExists(ctx context.Context, up upstream.UpstreamTriple)
 		q += fmt.Sprintf(` WHERE prf.label = "%s" AND c.repo = "%s" AND ml.digest = "%s"`, up.Profile, up.Repo, up.Digest.String())
 	} else {
 		q += fmt.Sprintf(` WHERE prf.label = "%s" AND c.repo = "%s" AND t.name = "%s"`, up.Profile, up.Repo, up.Tag)
+		// Exclude superseded indexes recorded in the owning Slot's
+		// HAS_HISTORY chain — the same exclusion the serve path
+		// (IndexGetByRequest) applies, so HEAD cannot report an archived
+		// index that GET would hide (OpenProject #42). Digest-addressed
+		// lookups stay content-addressable (Path Z, cf. WP #41).
+		q += fmt.Sprintf(` AND NOT (:Slot {repo: "%s", tag: "%s"})-[:HAS_HISTORY]->(ml)`, up.Repo, up.Tag)
 	}
 	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo, ml.mediaType AS mediaType`
 	utils.Debug(l, span, q)
@@ -541,22 +619,83 @@ func (n Neo) ManifestListExists(ctx context.Context, up upstream.UpstreamTriple)
 		err = utils.ErrorHandler(l, span, e, FailQueryExec)
 		return "", false, err
 	}
+	if found {
+		md, err := res.GetStr("mediaType")
+		if err != nil {
+			err = utils.ErrorHandler(l, span, e, "failed to get mediaType from record")
+			return "", false, err
+		}
+		colID, err := res.GetInt64("collectionID")
+		if err != nil {
+			err = utils.ErrorHandler(l, span, e, "colID could not be found")
+			return "", false, err
+		}
+		l.Debugf("found collection with id %d and manifestList with type '%s' (wrapper-era REF path)", colID, md)
+		return md, true, nil
+	}
+
+	// Slot-based fallback (Path Z): walk via Slot-[:POINTS_TO]->Index.
+	if mdSlot, ok := n.manifestListViaSlot(l, span, up); ok {
+		return mdSlot, true, nil
+	}
+
+	utils.Debug(l, span, "Index not found")
+	return "", false, nil
+}
+
+// manifestListViaSlot is the Path-Z fallback for ManifestListExists: it walks
+// Slot-[:POINTS_TO]->Index to guarantee read-after-write consistency for
+// tag-based (non-digest) queries. Only runs when repo/tag/profile are all set.
+func (n Neo) manifestListViaSlot(l *logrus.Entry, span trace.Span, up upstream.UpstreamTriple) (string, bool) {
+	if up.Digest.String() != "" || up.Profile == "" || up.Repo == "" || up.Tag == "" {
+		return "", false
+	}
+	qSlot := fmt.Sprintf(`MATCH (s:Slot {repo: "%s", tag: "%s", profile: "%s"})-[:POINTS_TO]->(ml:Index) RETURN ml.mediaType AS mediaType LIMIT 1`,
+		up.Repo, up.Tag, up.Profile)
+	utils.Debug(l, span, "ManifestListExists: Slot-based fallback query: %s", qSlot)
+	resSlot, eSlot := n.Execute(qSlot)
+	if eSlot != nil {
+		utils.Debug(l, span, "ManifestListExists: Slot-based fallback query error (non-fatal): %v", eSlot)
+		return "", false
+	}
+	mdSlot, errSlot := resSlot.GetStr("mediaType")
+	if errSlot != nil || mdSlot == "" {
+		return "", false
+	}
+	utils.Debug(l, span, "found Index via Slot POINTS_TO with type '%s'", mdSlot)
+	return mdSlot, true
+}
+
+// indexViaSlot is the Path-Z fallback for IndexGetByRequest (the serve-path
+// mirror of ManifestListExists's manifestListViaSlot, OpenProject #42): the
+// Slot-[:POINTS_TO]->Index edge is wired synchronously at push time
+// (wireSlotOnPush), while the Profile/Repo/Tag :REF edges materialise
+// asynchronously during the compute sweep. In that transient REF-less window
+// the strict join misses and the serve path would 404 while HEAD — which
+// already has this fallback — reports the index as found: an "exists but
+// unservable" split (openspec align-manifest-existence-queries). Serving the
+// Slot's CURRENT target keeps HEAD and GET in agreement; the current target
+// is never in HAS_HISTORY, so superseded indexes stay hidden.
+func (n Neo) indexViaSlot(span trace.Span, req types.Request) (types.Result, bool) {
+	if req.Tag == "" || req.Repo == "" || req.Profile == "" {
+		return types.Result{}, false
+	}
+	qSlot := fmt.Sprintf(`MATCH (s:Slot {repo: "%s", tag: "%s", profile: "%s"})-[:POINTS_TO]->(ml:Index)`, req.Repo, req.Tag, req.Profile)
+	qSlot += ` RETURN id(ml) as manifestlistID, ml.digest as manifestlistDigest, ml.mediaType as manifestlistMediaType, ml.size as manifestlistSize LIMIT 1`
+	span.AddEvent("log", trace.WithAttributes(
+		attribute.String(attrLogSeverity, attrSevDebug),
+		attribute.String(attrLogQuery, qSlot),
+	))
+	res, found, err := n.QueryOne(qSlot)
+	if err != nil {
+		logrus.Error(err)
+		return types.Result{}, false
+	}
 	if !found {
-		utils.Debug(l, span, "Index not found")
-		return "", false, nil
+		return types.Result{}, false
 	}
-	md, err := res.GetStr("mediaType")
-	if err != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to get mediaType from record")
-		return "", false, err
-	}
-	colID, err := res.GetInt64("collectionID")
-	if err != nil {
-		err = utils.ErrorHandler(l, span, e, "colID could not be found")
-		return "", false, err
-	}
-	l.Debugf("found collection with id %d and manifestList with type '%s'", colID, md)
-	return md, true, nil
+	logrus.Infof("Index resolved via Slot POINTS_TO fallback for repo=%s tag=%s profile=%s", req.Repo, req.Tag, req.Profile)
+	return res, true
 }
 
 // Index origin labels used by SetIndexOrigin. These are the two sources of

@@ -2,6 +2,98 @@
 
 > This file helps AI agents understand the repo quickly.
 
+## Session: waldur-outfitter-improvements — manifest-existence fixes (2026-09-08)
+
+Two correctness fixes shipped on branch `137-waldur-outfitter-improvements`.
+
+### fix-digest-manifest-existence (WP #41, commits `33f59e7` + `a448aaf`)
+
+**Problem:** `HEAD /v2/<repo>/manifests/<digest>` returned 500 when the manifest
+existed in the graph but had no `(p:Profile)-[:REF]->` edge (e.g. pushed but
+compute sweep not yet run, or an upstream-only manifest). `ManifestFromResult`
+treated "unlinked" as an error; the handler mapped any error to 500.
+
+**Fix:** `ManifestFromResult` now returns `ok=false, nil` (no error) when the
+manifest has no profile link — i.e. "found but unlinked". The digest-branch of
+`ManifestExistsContent` hydrates **without** a profile (content-addressable).
+Tag-branch unlinked → `found=false`. metahub-api's Path Z
+(`resolveMissingManifest` → `handleManifest` → `ManifestGetByDigest`) already
+served without profile checks; no handler change was needed.
+
+**Tests:** `manifest_digest_exists_test.go` (`TestManifestExists_UnlinkedDigestIsNotAnError`).
+
+### align-manifest-existence-queries (WP #42, commit `d4564b2`)
+
+**Problem:** `ManifestListExists` had a Slot-POINTS_TO fallback (added `19a0327`)
+but `IndexGetByRequest` used only the strict REF-edge join → HEAD 200 / GET 404
+for a freshly-pushed (Slot-wired, REF-less) index.
+
+**Fix:**
+- `IndexGetByRequest` gains `indexViaSlot` helper + Slot fallback (mirrors
+  `ManifestListExists`).
+- `ManifestListExists` tag branch gains `AND NOT (:Slot)-[:HAS_HISTORY]->(ml)`
+  (mirrors `IndexGetByRequest`'s pre-existing exclusion so both paths agree on
+  what is hidden).
+
+**Tests:** 4-test regression suite in `pkg/backends/neo/`:
+- `TestHeadGetAgree_SlotWiredRefLessIndex` — Slot-wired, REF-less → both paths 200
+- `TestHeadGetAgree_HasHistoryHiddenOnBothPaths` — HAS_HISTORY → both paths hidden
+
+**Gotchas:**
+- `indexViaSlot` must not return an index that is in `HAS_HISTORY` — the
+  Slot's CURRENT `POINTS_TO` target is never in `HAS_HISTORY` (by construction),
+  so the fallback is safe without an extra exclusion clause.
+- Sonar gate deferred to GoCD `metalib_MR137_dev` on session push (sonar.example.com
+  off-network at commit time); same pattern as WPs #40/#41.
+
+## Session: waldur-outfitter-improvements — SonarQube gate closure (2026-09-07)
+
+Branch `137-waldur-outfitter-improvements` now passes the full quality gate
+(GoCD `metalib_MR137_dev` run 16, commit `c884210`):
+`new_violations 0`, `new_duplicated_lines_density 0.0%` (≤3), `new_coverage
+88.3%` (≥80). What moved the needle:
+
+**Commits:**
+- `2097f8d` S107 fix — `manifestColTagOCI` took 10 params; the five
+  query-shaping strings are now bundled in `colTagOCIQuery{pathLabel, relType,
+  matchQ, withVars, upstreamQ}`; `manifestColTagSlot`/`manifestColTagUpstream`
+  construct the spec.
+- `be00427` slot.go dedupe — extracted `slotsFromQuery(l, span, fn, q)`
+  (SlotGetAllForRepoTag/SlotGetAllForRepo twins) and
+  `latestPushTimestampsFromQuery(l, span, fn, q)`
+  (SlotLatestPushTimestamps/RepoTagLatestPushTimestamps twins). That removed
+  ALL 38 new duplicated lines (the only new-code duplication in the branch).
+- `c884210` coverage — new `pkg/backends/neo/manifest_legacy_path_test.go`:
+  legacy wrapper-path fixture (Repo/Tag-UPSTREAM→ManifestWrapper-REFERENCES→
+  Manifest) driving `manifestColTagLegacy`/`processLegacyManifestRecord`
+  (0%→82.5%) in three flavors (matched profile / FALSE-annotation filtered /
+  no profile); `applyContentSize` unit table via a `fakeNeoResult` wrapping
+  `neo4j.Record{Keys, Values}` (57%→100%); `hydrateOCIManifestRecord` error
+  branches with progressively-valid synthetic records (80%→96%).
+
+**Gotchas learned (do not rediscover):**
+- Rule match relations are `[:TRUE]` / `[:FALSE]` (`types.RelationSuccess` /
+  `RelationFailure`) — NOT `SUCCESS`/`FAILURE`. A fixture with `[:SUCCESS]`
+  silently matches zero profiles.
+- `Platform.label` and `Profile.label` are uniqueness-constrained; tests
+  sharing one graph (per-TEST `slotTestSetup`, not per-subtest) must use
+  per-repo labels AND per-repo Platform nodes — a shared MERGEd Platform lets
+  one subtest's `Rule-[:TRUE]->Platform` match another subtest's manifest
+  through `HAS_PLATFORM`.
+- `Platform.GetLabel()` derives from os/arch/variant, not the `label` property.
+- `neo4j.Result` is trivially fakeable in tests (8 methods); `neo4j.Record`
+  has exported `Keys`/`Values` — no DB needed for record-decoder coverage.
+- Sonar `new_*` per-file measures live under `measures[].period.value`; the
+  Sonar token `squ_…` (user-provided) HAS `api/duplications/show` +
+  `api/measures/component` privileges (the GoCD `sqa_…` token did not).
+- Duplication hunt shortcut: `api/duplications/show` per file gives exact
+  block pairs; cross-check with per-file `new_duplicated_lines` to see which
+  blocks are in the new-code period.
+
+**Deferred / downstream:** metahub-api dev image (`:17`) embeds metalib at
+docker build; the runtime fixes (stale index serving, profile attribution)
+warrant a rebuild to `:18` + flux bump — see session CONTEXT.md "Downstream".
+
 ## model-centric-pull (session isc-session-v2, 2026-07-07) — branch `132-isc-session-v2`
 
 Complete metalib foundation for model-centric pull (`docker run …/models/<org>/<name>:<quant>`).
@@ -526,3 +618,13 @@ also stops `wireSlotOnPush` receiving `md.ID == 0`.
 else admin". metahub-api now skips it when `registry.enforce_write_ownership` is
 on, because it silently overrode the namespace matrix. If you touch it, note the
 comment says "profile name" but the code compares `req.User`.
+
+## Update 2026-09-09 — session close: OpenSpec change carried forward
+
+`openspec/changes/add-upstream-registry-categories/` — metalib slice of the
+archived session change `pull-through-with-manipulation` (OpenProject WP #48):
+new `RegistryConfig` fields (upstream category `direct|s3-redirect|metahub`,
+per-upstream `blob_delivery: proxy|redirect|cache`) + upstream blob-fetch
+helpers. Proposal + intent-level delta spec; design deferred. Research:
+Obsidian `Metahub/docs/research/pull-through-upstream-registry-categories.md`.
+Consumed by metahub-api's `add-pull-through-manifest-intercept`.
