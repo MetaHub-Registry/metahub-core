@@ -2,6 +2,50 @@
 
 > This file helps AI agents understand the repo quickly.
 
+## Session: waldur-outfitter-improvements — manifest-existence fixes (2026-09-08)
+
+Two correctness fixes shipped on branch `137-waldur-outfitter-improvements`.
+
+### fix-digest-manifest-existence (WP #41, commits `33f59e7` + `a448aaf`)
+
+**Problem:** `HEAD /v2/<repo>/manifests/<digest>` returned 500 when the manifest
+existed in the graph but had no `(p:Profile)-[:REF]->` edge (e.g. pushed but
+compute sweep not yet run, or an upstream-only manifest). `ManifestFromResult`
+treated "unlinked" as an error; the handler mapped any error to 500.
+
+**Fix:** `ManifestFromResult` now returns `ok=false, nil` (no error) when the
+manifest has no profile link — i.e. "found but unlinked". The digest-branch of
+`ManifestExistsContent` hydrates **without** a profile (content-addressable).
+Tag-branch unlinked → `found=false`. metahub-api's Path Z
+(`resolveMissingManifest` → `handleManifest` → `ManifestGetByDigest`) already
+served without profile checks; no handler change was needed.
+
+**Tests:** `manifest_digest_exists_test.go` (`TestManifestExists_UnlinkedDigestIsNotAnError`).
+
+### align-manifest-existence-queries (WP #42, commit `d4564b2`)
+
+**Problem:** `ManifestListExists` had a Slot-POINTS_TO fallback (added `19a0327`)
+but `IndexGetByRequest` used only the strict REF-edge join → HEAD 200 / GET 404
+for a freshly-pushed (Slot-wired, REF-less) index.
+
+**Fix:**
+- `IndexGetByRequest` gains `indexViaSlot` helper + Slot fallback (mirrors
+  `ManifestListExists`).
+- `ManifestListExists` tag branch gains `AND NOT (:Slot)-[:HAS_HISTORY]->(ml)`
+  (mirrors `IndexGetByRequest`'s pre-existing exclusion so both paths agree on
+  what is hidden).
+
+**Tests:** 4-test regression suite in `pkg/backends/neo/`:
+- `TestHeadGetAgree_SlotWiredRefLessIndex` — Slot-wired, REF-less → both paths 200
+- `TestHeadGetAgree_HasHistoryHiddenOnBothPaths` — HAS_HISTORY → both paths hidden
+
+**Gotchas:**
+- `indexViaSlot` must not return an index that is in `HAS_HISTORY` — the
+  Slot's CURRENT `POINTS_TO` target is never in `HAS_HISTORY` (by construction),
+  so the fallback is safe without an extra exclusion clause.
+- Sonar gate deferred to GoCD `metalib_MR137_dev` on session push (sonar.example.com
+  off-network at commit time); same pattern as WPs #40/#41.
+
 ## Session: waldur-outfitter-improvements — SonarQube gate closure (2026-09-07)
 
 Branch `137-waldur-outfitter-improvements` now passes the full quality gate
