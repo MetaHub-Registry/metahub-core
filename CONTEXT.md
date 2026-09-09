@@ -618,3 +618,13 @@ also stops `wireSlotOnPush` receiving `md.ID == 0`.
 else admin". metahub-api now skips it when `registry.enforce_write_ownership` is
 on, because it silently overrode the namespace matrix. If you touch it, note the
 comment says "profile name" but the code compares `req.User`.
+
+## Update 2026-09-09 — session close: OpenSpec change carried forward
+
+`openspec/changes/add-upstream-registry-categories/` — metalib slice of the
+archived session change `pull-through-with-manipulation` (OpenProject WP #48):
+new `RegistryConfig` fields (upstream category `direct|s3-redirect|metahub`,
+per-upstream `blob_delivery: proxy|redirect|cache`) + upstream blob-fetch
+helpers. Proposal + intent-level delta spec; design deferred. Research:
+Obsidian `Metahub/docs/research/pull-through-upstream-registry-categories.md`.
+Consumed by metahub-api's `add-pull-through-manifest-intercept`.
