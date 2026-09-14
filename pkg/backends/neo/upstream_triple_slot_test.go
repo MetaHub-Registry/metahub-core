@@ -50,13 +50,19 @@ func TestCollectionGetCreateUpstreamTriple_NoWrapper(t *testing.T) {
 	}
 	upID, _, prf, err := db.CollectionGetCreateUpstreamTriple(ctx, ups, maniIn)
 	require.NoError(t, err)
-	assert.NotZero(t, prf.ID, "profile should resolve")
-	assert.NotZero(t, upID, "upstream should resolve/create")
+	// id(prf) / id(u) are neo4j internal ids: they start at 0 and are *reused*
+	// after a DETACH DELETE. Under bs.SetEmptyAll() the graph is wiped every
+	// run, so a freshly CREATEd :Profile can legitimately get id 0 — "non-zero
+	// id" is not a valid proxy for "resolved" (cf. 835255f for the same flake
+	// in TestStoreManifestUpload_WiresSlot). Assert the resolved values instead.
+	assert.Equal(t, "generic", prf.Label, "profile should resolve")
 
-	// Upstream must have been created/resolved.
-	_, upFound, err := db.UpstreamGet(ctx, ups)
+	// Upstream must have been created/resolved. Compare the id on both sides so
+	// the check holds whatever the id value is (0 is valid).
+	fetchedUpID, upFound, err := db.UpstreamGet(ctx, ups)
 	require.NoError(t, err)
 	assert.True(t, upFound, "upstream should exist after CollectionGetCreateUpstreamTriple")
+	assert.Equal(t, upID, fetchedUpID, "re-fetched upstream must resolve to the created id")
 
 	// No :ManifestWrapper node may have been created.
 	wrapperAfter := countWrapperNodes(t)

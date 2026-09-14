@@ -323,6 +323,12 @@ func extractRepoName(r *http.Request) (repo, img, ref string) {
 	if repo3 != "" {
 		repo = filepath.Join(repo, repo3)
 	}
+	// repo4 covers deep upstream repos pulled through the cache
+	// (e.g. harbor.example.com/<project>/<sub>/<sub>/<image>).
+	repo4 := chi.URLParam(r, "repo4")
+	if repo4 != "" {
+		repo = filepath.Join(repo, repo4)
+	}
 	img = chi.URLParam(r, "image")
 	ref = chi.URLParam(r, "reference")
 	return

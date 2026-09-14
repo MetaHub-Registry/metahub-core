@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	mhTypes "github.com/metahub-registry/metahub-core/pkg/types"
@@ -16,6 +17,7 @@ import (
 	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/platform"
 	"github.com/regclient/regclient/types/ref"
+	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -35,65 +37,92 @@ const (
 	cacheRegFlag                          = "cache-registry"
 	FailGetManifestFromCache              = "Failed getting manifest from cache registry"
 	FoundManifestInCache                  = "Found manifest in cache registry"
+	FailBlobNotFoundUpstream              = "did NOT find blob in upstream registry"
 )
 
+// registryCfgFor returns the first RegistryConfig whose EffectiveURL or
+// EffectiveName matches reg (first match wins, config order).
+func (mag Magazine) registryCfgFor(reg string) (RegistryConfig, bool) {
+	for _, regCfg := range mag.Config.Registries {
+		if regCfg.EffectiveURL() == reg || regCfg.EffectiveName() == reg {
+			return regCfg, true
+		}
+	}
+	return RegistryConfig{}, false
+}
+
+// heuristicTLSOff reports whether the hardcoded fallback heuristics say to
+// disable TLS — used for registries not present in the config (e.g. upstream
+// discovery before the config was populated).
+func heuristicTLSOff(reg string) bool {
+	return strings.HasPrefix(reg, "localhost") || reg == "registry:5050" || strings.HasPrefix(reg, "172.")
+}
+
+// tlsAndCredsFor resolves the registry host to use plus its TLS setting and
+// basic-auth credentials. Resolution order: TEST_REGISTRY override, then the
+// matching RegistryConfig entry, then the TLS-off heuristics.
+func (mag Magazine) tlsAndCredsFor(l *logrus.Entry, span trace.Span, reg string) (regOut string, tlsEnabled bool, user, pass string) {
+	tlsEnabled = true
+	regOut = reg
+	if testReg := mag.Config.Args["TEST_REGISTRY"]; testReg != "" {
+		utils.Info(l, span, "Testregistry configured: '%s'", testReg)
+		return testReg, false, "", ""
+	}
+	// Config-driven path: match on EffectiveURL (network endpoint) first,
+	// then EffectiveName for legacy compat.
+	if regCfg, found := mag.registryCfgFor(reg); found {
+		tlsEnabled = regCfg.TLS
+		user, pass = regCfg.User, regCfg.Password
+		if !tlsEnabled {
+			utils.Info(l, span, "TLS disabled for '%s' (from registry config)", reg)
+		}
+		if user != "" {
+			utils.Info(l, span, "Credentials configured for '%s'", reg)
+		}
+		return regOut, tlsEnabled, user, pass
+	}
+	if heuristicTLSOff(reg) {
+		utils.Info(l, span, "Disabling TLS for: '%s' (heuristic)", reg)
+		tlsEnabled = false
+	}
+	return regOut, tlsEnabled, user, pass
+}
+
+// newRegClientFor builds a regclient for the resolved host settings. A
+// config.Host is needed whenever we need non-default settings (TLS off or
+// basic-auth credentials); a plain regclient.New() is sufficient otherwise.
+func newRegClientFor(l *logrus.Entry, span trace.Span, reg string, tlsEnabled bool, user, pass string) *regclient.RegClient {
+	if !tlsEnabled {
+		utils.Info(l, span, "Disable TLS for registry '%s'", reg)
+	}
+	if !tlsEnabled || user != "" {
+		tlsConf := config.TLSEnabled
+		if !tlsEnabled {
+			tlsConf = config.TLSDisabled
+		}
+		rcHost := config.Host{
+			Name:     reg,
+			Hostname: reg,
+			TLS:      tlsConf,
+			User:     user,
+			Pass:     pass,
+		}
+		return regclient.New(regclient.WithConfigHost(rcHost))
+	}
+	return regclient.New()
+}
+
 func (mag Magazine) NewRegClient(ctx context.Context, reg string) (rc *regclient.RegClient, regOut string, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":  pkgNameRegcli,
 		"func":     "NewRegClient",
 		"registry": reg,
 	})
 	defer span.End()
-	_ = ctx
-	tlsEnabled := true
-	testReg, testRegOK := mag.Config.Args["TEST_REGISTRY"]
-	switch {
-	case testRegOK && testReg != "":
-		utils.Info(l, span, "Testregistry configured: '%s'", testReg)
-		reg = testReg
-		tlsEnabled = false
-	default:
-		// Check RegistryConfig for TLS setting — this is the config-driven
-		// path that replaces the old hardcoded hostname checks. Match on
-		// EffectiveURL (network endpoint) which is what reg contains at
-		// this point. Also match EffectiveName for legacy compat.
-		found := false
-		for _, regCfg := range mag.Config.Registries {
-			if regCfg.EffectiveURL() == reg || regCfg.EffectiveName() == reg {
-				tlsEnabled = regCfg.TLS
-				found = true
-				if !tlsEnabled {
-					utils.Info(l, span, "TLS disabled for '%s' (from registry config)", reg)
-				}
-				break
-			}
-		}
-		// Fallback for registries not in config (e.g. upstream discovery
-		// before config was populated): use hardcoded heuristics.
-		if !found {
-			switch {
-			case strings.HasPrefix(reg, "localhost") || reg == "registry:5050" || strings.HasPrefix(reg, "172."):
-				utils.Info(l, span, "Disabling TLS for: '%s' (heuristic)", reg)
-				tlsEnabled = false
-			}
-		}
-	}
-	utils.Info(l, span, "Create new regclient")
-	rc = regclient.New()
-	// Deal with TLS
-	if !tlsEnabled {
-		utils.Info(l, span, "Disable TLS for registry '%s'", reg)
-		rcHost := config.Host{
-			Name:     reg,
-			Hostname: reg,
-			TLS:      config.TLSDisabled,
-		}
-		rc = regclient.New(
-			regclient.WithConfigHost(rcHost),
-		)
-	}
-	return rc, reg, nil
 
+	reg, tlsEnabled, user, pass := mag.tlsAndCredsFor(l, span, reg)
+	utils.Info(l, span, "Create new regclient")
+	return newRegClientFor(l, span, reg, tlsEnabled, user, pass), reg, nil
 }
 
 func (mag Magazine) getBlob(ctx context.Context, reg, repo, dig, mt string, size int64) (b []byte, blob mhTypes.BlobMeta, found bool, err error) {
@@ -137,6 +166,80 @@ func (mag Magazine) getBlob(ctx context.Context, reg, repo, dig, mt string, size
 	return
 }
 
+// getBlobReader is the streaming counterpart of getBlob: it returns the
+// regclient body reader instead of buffering the whole blob, so callers can
+// stream straight into storage (constant memory).
+func (mag Magazine) getBlobReader(ctx context.Context, reg, repo, dig, mt string, size int64) (r io.ReadCloser, blob mhTypes.BlobMeta, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":    pkgNameRegcli,
+		"func":       "getBlobReader",
+		"repository": repo,
+		"registry":   reg,
+		"digest":     dig,
+	})
+	defer span.End()
+	if dig == "" {
+		err = utils.NewError(l, span, FailNoDigest)
+		return
+	}
+	rc, regURL, err := mag.NewRegClient(ctx, reg)
+	if err != nil {
+		err = utils.ErrorHandler(l, span, err, FailNewRegClient)
+		return
+	}
+	blobUrl := fmt.Sprintf("%s/%s", regURL, repo)
+	ref, e := ref.New(blobUrl)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, FailCreateRef)
+		return
+	}
+	ref.Digest = dig
+	ddigest := digest.Digest(dig)
+	desc := types.Descriptor{Digest: ddigest, Size: size}
+	reader, e := rc.BlobGet(ctx, ref, desc)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "while rc.BlobGet with digest")
+		return
+	}
+	blob.Digest = ddigest
+	blob.MediaType = mt
+	blob.Size = size
+	found = true
+	return reader, blob, true, nil
+}
+
+// GetBlobReaderByUpstreamTripleByDigest streams a blob from the cache registry
+// (if configured) or the upstream registry. The caller MUST Close the returned
+// reader. Mirrors getBlobByRegRepoMediaTypeDigestSize's precedence.
+func (mag Magazine) GetBlobReaderByUpstreamTripleByDigest(ctx context.Context, up upstream.UpstreamTriple, dig string) (r io.ReadCloser, blob mhTypes.BlobMeta, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package":    pkgNameRegcli,
+		"func":       "GetBlobReaderByUpstreamTripleByDigest",
+		"repository": up.Repo,
+		"registry":   up.Reg,
+		"digest":     utils.ShortenDigest(dig),
+	})
+	defer span.End()
+	if cacheReg, ok := mag.Config.Args[cacheRegFlag]; ok {
+		r, blob, found, err := mag.getBlobReader(ctx, cacheReg, up.Repo, dig, up.MediaType, up.Size)
+		if err != nil {
+			return nil, blob, utils.ErrorHandler(l, span, err, FailGetManifestFromCache)
+		}
+		if found {
+			return r, blob, nil
+		}
+	}
+	r, blob, found, err := mag.getBlobReader(ctx, up.Reg, up.Repo, dig, up.MediaType, up.Size)
+	if err != nil {
+		return nil, blob, utils.ErrorHandler(l, span, err, FailGetManifestFromCache)
+	}
+	if !found {
+		err = utils.NewError(l, span, FailBlobNotFoundUpstream)
+		return nil, blob, err
+	}
+	return r, blob, nil
+}
+
 func (mag Magazine) GetBlobByUpstream(ctx context.Context, up mhTypes.Upstream) (b []byte, blob mhTypes.BlobMeta, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNameRegcli,
@@ -163,7 +266,7 @@ func (mag Magazine) GetBlobByUpstream(ctx context.Context, up mhTypes.Upstream) 
 		return b, blob, utils.ErrorHandler(l, span, err, FailGetManifestFromCache)
 	}
 	if !found {
-		err = utils.NewError(l, span, "did NOT find blob in upstream registry")
+		err = utils.NewError(l, span, FailBlobNotFoundUpstream)
 		return b, blob, err
 	}
 	return
@@ -196,7 +299,7 @@ func (mag Magazine) getBlobByRegRepoMediaTypeDigestSize(ctx context.Context, reg
 		return b, blob, utils.ErrorHandler(l, span, err, FailGetManifestFromCache)
 	}
 	if !found {
-		err = utils.NewError(l, span, "did NOT find blob in upstream registry")
+		err = utils.NewError(l, span, FailBlobNotFoundUpstream)
 		return b, blob, err
 	}
 	return

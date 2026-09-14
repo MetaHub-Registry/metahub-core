@@ -3,6 +3,7 @@ package neo
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
@@ -105,4 +106,48 @@ func TestCollectionTagLinkCollection(t *testing.T) {
 	if err = db.CollectionTagCleanupByID(ctx, ct_got.ID); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestCollectionTagLastRefreshed(t *testing.T) {
+	ctx := context.Background()
+	bs := utils.NewBootstrap()
+	bs.SetEmptyAll()
+	br, err := SetupTest(ctx, bs)
+	_ = br
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs, br)
+
+	const repo, tag = "qnib/lastref", "v1"
+	if _, err = db.CollectionTagGetCreate(ctx, repo, tag); err != nil {
+		t.Fatal(err)
+	}
+
+	// Absent property → 0 (never fetched, TTL-expired).
+	got, found, err := db.CollectionTagGetLastRefreshed(ctx, repo, tag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.True(t, found)
+	assert.Equal(t, int64(0), got)
+
+	// Write/read round-trip.
+	want := time.Now().Unix()
+	if err = db.CollectionTagSetLastRefreshed(ctx, repo, tag, want); err != nil {
+		t.Fatal(err)
+	}
+	got, found, err = db.CollectionTagGetLastRefreshed(ctx, repo, tag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.True(t, found)
+	assert.Equal(t, want, got)
+
+	// Unknown (repo, tag) → found=false.
+	_, found, err = db.CollectionTagGetLastRefreshed(ctx, "qnib/absent", "v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.False(t, found)
 }

@@ -2458,6 +2458,45 @@ func (n Neo) ManifestGetPulledByRepoTag(ctx context.Context, repo, tag string) (
 	return maniData, true, nil
 }
 
+// hydrateManifestExistsResult decodes a ManifestExists query record and returns
+// the manifest's media type when it is linked to the given profile(s)
+// (tag-scoped) or unprofiled (digest-scoped). Shared by every ManifestExists
+// lookup path so they cannot drift.
+func (n Neo) hydrateManifestExistsResult(ctx context.Context, l *logrus.Entry, span trace.Span, up upstream.UpstreamTriple, res types.Result, prfArgs []types.Profile) (mediaType string, found bool, err error) {
+	maniData, ok, e := n.ManifestFromResult(ctx, res, prfArgs...)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed to get manifestData from result")
+		return "", false, err
+	}
+	if !ok {
+		utils.Debug(l, span, msgManifestNotLinkedWithProfile, up.Profile)
+		return "", false, nil
+	}
+	colID, e := res.GetInt64("collectionID")
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, "colID could not be found")
+		return "", false, err
+	}
+	utils.Debug(l, span, "found collection with id %d and manifestData with type '%s'", colID, maniData.MediaType)
+	return maniData.MediaType, true, nil
+}
+
+// runManifestExistsQuery executes a ManifestExists query and hydrates its
+// record. Shared tail for the Upstream-join and Slot-fallback lookups.
+func (n Neo) runManifestExistsQuery(ctx context.Context, l *logrus.Entry, span trace.Span, up upstream.UpstreamTriple, q string, prfArgs []types.Profile) (mediaType string, found bool, err error) {
+	utils.Debug(l, span, "%s", q)
+	res, found, e := n.QueryOne(q)
+	if e != nil {
+		err = utils.ErrorHandler(l, span, e, FailQueryExec)
+		return "", false, err
+	}
+	if !found {
+		utils.Debug(l, span, "manifestdata not found")
+		return "", false, nil
+	}
+	return n.hydrateManifestExistsResult(ctx, l, span, up, res, prfArgs)
+}
+
 func (n Neo) ManifestExistsForTagProfileContent(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMD,
@@ -2482,34 +2521,7 @@ func (n Neo) ManifestExistsForTagProfileContent(ctx context.Context, up upstream
 	q += fmt.Sprintf(` AND t.name = "%s"`, up.Tag)
 	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
 	q += `, ` + manifestDataReturn
-	utils.Debug(l, span, "Query: %s", q)
-	res, found, e := n.QueryOne(q)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, FailQueryExec)
-		return "", false, err
-	}
-	if !found {
-		utils.Debug(l, span, "manifestdata not found")
-		return "", false, nil
-	}
-	maniData, ok, e := n.ManifestFromResult(ctx, res, prf)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to get manifestData from result")
-		return "", false, err
-	} else if !ok {
-		// Profile-scoped tag lookup: an existing-but-unlinked manifest is not
-		// part of this profile's view — not-found, never an error (500s on
-		// HEAD broke oras cp pre-checks; OpenProject #41).
-		utils.Debug(l, span, msgManifestNotLinkedWithProfile, up.Profile)
-		return "", false, nil
-	}
-	colID, err := res.GetInt64("collectionID")
-	if err != nil {
-		err = utils.ErrorHandler(l, span, e, "colID could not be found")
-		return "", false, err
-	}
-	utils.Debug(l, span, "found collection with id %d and manifestData with type '%s'", colID, maniData.MediaType)
-	return maniData.MediaType, true, nil
+	return n.runManifestExistsQuery(ctx, l, span, up, q, []types.Profile{prf})
 }
 
 func (n Neo) ManifestExistsContent(ctx context.Context, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
@@ -2555,34 +2567,35 @@ func (n Neo) ManifestExistsContent(ctx context.Context, up upstream.UpstreamTrip
 		q += ` RETURN DISTINCT id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
 		q += `, ` + manifestDataReturn
 	}
-	utils.Debug(l, span, "%s", q)
-	res, found, e := n.QueryOne(q)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, FailQueryExec)
-		return "", false, err
-	}
-	if !found {
-		utils.Debug(l, span, "manifestdata not found")
+	return n.runManifestExistsQuery(ctx, l, span, up, q, prfArgs)
+}
+
+// manifestExistsViaSlot resolves a tag-based manifest for prefix-preserved
+// pull-through repos by walking Slot-[:HAS_PUSHED]->Manifest. Upstream
+// pullthrough stores the :Upstream node with the registry prefix stripped
+// (e.g. "library/alpine") for valid upstream HTTP refs, while the :Repo, :Tag
+// and :Slot nodes are keyed by the full client-facing alias
+// (e.g. "harbor.example.com/library/alpine"). The Upstream-based join in
+// ManifestExistsContent cannot bridge that mismatch, so this fallback (invoked
+// from ManifestExists) keeps the just-ingested content discoverable. Only
+// applies to tag-based lookups.
+func (n Neo) manifestExistsViaSlot(ctx context.Context, l *logrus.Entry, span trace.Span, up upstream.UpstreamTriple) (mediaType string, found bool, err error) {
+	if up.Digest.String() != "" || up.Repo == "" || up.Tag == "" || up.Profile == "" {
 		return "", false, nil
 	}
-	// Tag-based lookups are profile-scoped: an existing-but-unlinked manifest
-	// is reported as not found (never an error — see OpenProject #41).
-	// Digest-based lookups hydrate without a profile (content-addressable).
-	maniData, ok, e := n.ManifestFromResult(ctx, res, prfArgs...)
+	prf, prfFound, e := n.ProfileGetByLabel(ctx, up.Profile)
 	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to get manifestData from result")
+		err = utils.ErrorHandler(l, span, e, FailedProfGetByLabel)
 		return "", false, err
-	} else if !ok {
-		utils.Debug(l, span, msgManifestNotLinkedWithProfile, up.Profile)
+	}
+	if !prfFound {
 		return "", false, nil
 	}
-	colID, err := res.GetInt64("collectionID")
-	if err != nil {
-		err = utils.ErrorHandler(l, span, e, "colID could not be found")
-		return "", false, err
-	}
-	utils.Debug(l, span, "found collection with id %d and manifestData with type '%s'", colID, maniData.MediaType)
-	return maniData.MediaType, true, nil
+	q := fmt.Sprintf(`MATCH (s:Slot {repo: "%s", tag: "%s", profile: "%s"})-[:HAS_PUSHED]->(md:Manifest)`, up.Repo, up.Tag, up.Profile)
+	q += fmt.Sprintf(` MATCH (c:Repo {repo: "%s"})-[:HAS_TAG]->(t:Tag {name: "%s"})`, up.Repo, up.Tag)
+	q += ` RETURN DISTINCT id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
+	q += `, ` + manifestDataReturn
+	return n.runManifestExistsQuery(ctx, l, span, up, q, []types.Profile{prf})
 }
 
 func (n Neo) ManifestLinkToArtifactConfig(ctx context.Context, mdDigest string, cfg v1.Descriptor) (err error) {
@@ -2684,6 +2697,18 @@ func (n Neo) ManifestExists(ctx context.Context, up upstream.UpstreamTriple) (me
 	}
 	if found {
 		utils.DebugOK(l, span, "found manifestData w/ media type: %s", mediaType)
+		return mediaType, found, nil
+	}
+	// Prefix-preserved pull-through fallback: the Upstream-based join above
+	// misses repos whose :Upstream node stores the registry-stripped repo
+	// (e.g. "library/alpine") while :Repo/:Tag/:Slot use the full alias
+	// ("harbor.example.com/library/alpine").
+	if mediaType, found, e = n.manifestExistsViaSlot(ctx, l, span, up); e != nil {
+		err = utils.ErrorHandler(l, span, e, "failed slot-based manifest lookup")
+		return "", false, err
+	}
+	if found {
+		utils.DebugOK(l, span, "found manifestData via Slot fallback w/ media type: %s", mediaType)
 		return mediaType, found, nil
 	}
 	utils.Debug(l, span, "did not find manifestData w/ media type: %s", mediaType)
