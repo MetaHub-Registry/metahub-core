@@ -108,6 +108,24 @@ func (m Minio) PutBlob(ctx context.Context, b []byte, dig string) (err error) {
 	return
 }
 
+// PutBlobReader streams a blob from r into the blobs bucket under dig WITHOUT
+// buffering the whole payload (session readd-pull-through-cache, D6). The
+// caller does not know the size, so the multipart path is used: memory stays
+// bounded by the part size, not the layer size.
+func (m Minio) PutBlobReader(ctx context.Context, r io.Reader, dig string) (err error) {
+	l := logrus.WithFields(logrus.Fields{
+		"package": pkgName,
+		"func":    "PutBlobReader",
+		"digest":  utils.ShortenDigest(dig),
+	})
+	if err = m.BlobPutReader(ctx, r, -1, dig); err != nil {
+		l.Error(err)
+		return err
+	}
+	l.Infof("put blob (streamed) %s", utils.ShortenDigest(dig))
+	return
+}
+
 // BlobPutReader streams a blob from r (exactly size bytes) into the blobs bucket
 // under object, without buffering the whole payload — used to compose large
 // multi-chunk uploads at constant memory.

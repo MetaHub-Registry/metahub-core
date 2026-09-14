@@ -1,9 +1,14 @@
 package magazine
 
 import (
+	"archive/tar"
+	"bufio"
+	"compress/gzip"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -59,14 +64,16 @@ func (mag Magazine) PullLayer(ctx context.Context, up upstream.UpstreamTriple) (
 		"digest":  utils.ShortenDigest(up.Digest.String()),
 	})
 	defer span.End()
-	b, blobs, err := mag.GetBlobByUpstreamTripleByDigest(ctx, up, up.Digest.String())
+	rc, blobs, err := mag.GetBlobReaderByUpstreamTripleByDigest(ctx, up, up.Digest.String())
 	if err != nil {
-		err = errors.Wrapf(err, "failed to get blob for %s", up.GetLabel())
+		err = errors.Wrapf(err, "failed to get blob reader for %s", up.GetLabel())
 		l.Error(err)
 		return err
 	}
+	defer rc.Close()
 	_ = blobs
-	err = mag.Minio.PutBlob(ctx, b, up.Digest.String())
+	// Stream upstream -> MinIO at constant memory (D6); no whole-layer buffer.
+	err = mag.Minio.PutBlobReader(ctx, rc, up.Digest.String())
 	if err != nil {
 		logrus.Error(err)
 		return err
@@ -327,19 +334,12 @@ func (mag Magazine) BaseLayerEvalOS(ctx context.Context, lyr types.Layer) (os ty
 			return
 		}
 	}
-	// We should have a layer in Minio now
-	b, e := mag.Minio.BlobGetBytes(ctx, lyr.Digest)
-	if e != nil {
-		err = utils.ErrorHandler(l, span, e, "failed to fetch layer from storage")
-		return
-
-	}
-	lyr.Data = b
+	// Stream the layer from MinIO without buffering the full decompressed content.
 	mt := utils.ExpandMediaType(lyr.MediaType)
 	switch mt {
-	case "application/vnd.docker.image.rootfs.diff.tar.gzip":
-		utils.Warn(l, span, "layer fetched from storage w/ len %d and mediatype: %s", len(b), mt)
-		os, e = lyr.EvalOS(ctx)
+	case "application/vnd.docker.image.rootfs.diff.tar.gzip",
+		"application/vnd.oci.image.layer.v1.tar+gzip":
+		os, e = mag.EvalOSFromBlob(ctx, lyr.Digest)
 		if e != nil {
 			err = utils.ErrorHandler(l, span, e, "failed to eval layer")
 			return
@@ -349,4 +349,163 @@ func (mag Magazine) BaseLayerEvalOS(ctx context.Context, lyr types.Layer) (os ty
 		err = utils.NewError(l, span, "unknown media type: %s", mt)
 		return
 	}
+}
+
+// EvalOSFromBlob extracts OS information from the gzip-compressed tar layer
+// stored in MinIO under dig using two sequential streaming reads — no full
+// decompressed layer is ever buffered in memory. Pass 1 collects symlink
+// headers only; pass 2 reads the single target file. This prevents OOM during
+// pull-through cache ingest of images where /etc/os-release is a symlink
+// (e.g. Alpine >=3.21 → usr/lib/os-release).
+func (mag Magazine) EvalOSFromBlob(ctx context.Context, dig string) (os types.OS, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameLayer,
+		"func":    "EvalOSFromBlob",
+		"digest":  utils.ShortenDigest(dig),
+	})
+	defer span.End()
+
+	const osRelease = "etc/os-release"
+
+	// Pass 1: collect symlink/hardlink entries for etc/os-release (headers only,
+	// no decompressed data buffered).
+	r1, e := mag.Minio.BlobGetReader(ctx, dig)
+	if e != nil {
+		return os, utils.ErrorHandler(l, span, e, "failed to open blob reader (pass 1)")
+	}
+	links, e := scanGzipTarLinks(r1, osRelease)
+	r1.Close()
+	if e != nil {
+		return os, utils.ErrorHandler(l, span, e, "failed to scan tar links")
+	}
+
+	// Build the set of names to read in pass 2: the direct name plus any targets.
+	wanted := map[string]bool{osRelease: true}
+	for _, t := range links {
+		wanted[t] = true
+	}
+
+	// Pass 2: read only the identified file(s).
+	r2, e := mag.Minio.BlobGetReader(ctx, dig)
+	if e != nil {
+		return os, utils.ErrorHandler(l, span, e, "failed to open blob reader (pass 2)")
+	}
+	contents, e := readGzipTarFiles(r2, wanted)
+	r2.Close()
+	if e != nil {
+		return os, utils.ErrorHandler(l, span, e, "failed to read tar files")
+	}
+
+	content, found := resolveOSReleaseContent(osRelease, links, contents)
+	if !found {
+		return os, utils.NewError(l, span, "etc/os-release not found in layer %s", utils.ShortenDigest(dig))
+	}
+	return types.ParseOS(content)
+}
+
+// newTarReaderFromStream wraps r in a tar.Reader, auto-detecting gzip vs plain
+// tar by peeking the first two bytes. The returned closer must be closed after
+// use (it closes the gzip reader if one was opened; for plain tar it is a
+// no-op). This allows EvalOSFromBlob to handle both real gzip layer blobs from
+// production and plain-tar fixtures used in tests.
+func newTarReaderFromStream(r io.Reader) (*tar.Reader, io.Closer, error) {
+	br := bufio.NewReader(r)
+	magic, e := br.Peek(2)
+	if e != nil && e != io.EOF {
+		return nil, nil, e
+	}
+	if len(magic) >= 2 && magic[0] == 0x1f && magic[1] == 0x8b {
+		gz, e := gzip.NewReader(br)
+		if e != nil {
+			return nil, nil, e
+		}
+		return tar.NewReader(gz), gz, nil
+	}
+	return tar.NewReader(br), io.NopCloser(br), nil
+}
+
+// scanGzipTarLinks walks the (gzip-compressed or plain) tar stream r and
+// returns all symlink/hardlink entries whose normalized name equals wantedName,
+// mapped to their resolved (root-stripped) link target.
+func scanGzipTarLinks(r io.Reader, wantedName string) (map[string]string, error) {
+	tr, closer, e := newTarReaderFromStream(r)
+	if e != nil {
+		return nil, e
+	}
+	defer closer.Close()
+	links := map[string]string{}
+	for {
+		hdr, e := tr.Next()
+		if e == io.EOF {
+			return links, nil
+		}
+		if e != nil {
+			return nil, e
+		}
+		if hdr.Typeflag != tar.TypeSymlink && hdr.Typeflag != tar.TypeLink {
+			continue
+		}
+		name := strings.TrimPrefix(hdr.Name, "/")
+		if name != wantedName {
+			continue
+		}
+		target := hdr.Linkname
+		if hdr.Typeflag == tar.TypeSymlink && !strings.HasPrefix(target, "/") {
+			target = filepath.Join(filepath.Dir(name), target)
+		}
+		links[name] = strings.TrimPrefix(target, "/")
+	}
+}
+
+// readGzipTarFiles extracts the content of regular-file entries whose
+// normalized name appears in wanted from the (gzip-compressed or plain) tar
+// stream r.
+func readGzipTarFiles(r io.Reader, wanted map[string]bool) (map[string][]byte, error) {
+	tr, closer, e := newTarReaderFromStream(r)
+	if e != nil {
+		return nil, e
+	}
+	defer closer.Close()
+	contents := make(map[string][]byte, len(wanted))
+	for {
+		hdr, e := tr.Next()
+		if e == io.EOF {
+			return contents, nil
+		}
+		if e != nil {
+			return nil, e
+		}
+		if hdr.Typeflag != tar.TypeReg {
+			continue
+		}
+		name := strings.TrimPrefix(hdr.Name, "/")
+		if !wanted[name] {
+			continue
+		}
+		data, e := io.ReadAll(tr)
+		if e != nil {
+			return nil, e
+		}
+		contents[name] = data
+		if len(contents) == len(wanted) {
+			return contents, nil
+		}
+	}
+}
+
+// resolveOSReleaseContent follows the symlink chain from name through links,
+// returning the first matching content entry (up to 8 hops).
+func resolveOSReleaseContent(name string, links map[string]string, contents map[string][]byte) (string, bool) {
+	cur := name
+	for i := 0; i < 8; i++ {
+		if data, ok := contents[cur]; ok {
+			return string(data), true
+		}
+		next, ok := links[cur]
+		if !ok {
+			break
+		}
+		cur = next
+	}
+	return "", false
 }

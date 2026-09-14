@@ -178,6 +178,11 @@ type Database interface {
 	/**** CollectionTag ****/
 	CollectionTagCountRelationships(ctID int64) (count int64, err error)
 	CollectionGetTagsListByRepo(ctx context.Context, repo string) (tags types.TagResponse, err error)
+	// CollectionTagSetLastRefreshed stamps the pull-through freshness marker
+	// (Unix seconds) on the (repo, tag) Tag; CollectionTagGetLastRefreshed
+	// returns it (0 = never fetched / TTL-expired).
+	CollectionTagSetLastRefreshed(ctx context.Context, repo, tag string, ts int64) (err error)
+	CollectionTagGetLastRefreshed(ctx context.Context, repo, tag string) (ts int64, found bool, err error)
 
 	/********* Links **********/
 	LinkCollectionTagToManifest(ctx context.Context, colTagID, maniID int64) error // Connects a collection tag to a manifest to indicate it is servered by that collection

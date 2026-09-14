@@ -29,6 +29,10 @@ const (
 var (
 	mag             Magazine
 	regHttpURI      string
+	// anonRegHttpURI is a second pre-populated test registry used by upstream-
+	// variant tests that bypass the TEST_REGISTRY override (testing explicit
+	// RegistryConfig wiring instead of the catch-all redirect).
+	anonRegHttpURI  string
 	jeagerHttpURI   string
 	jeagerThriftURI string
 	svcName         = "magazine-test"
@@ -123,13 +127,20 @@ func TestMain(m *testing.M) {
 		logrus.Fatal(err)
 	}
 	min.BucketCheck()
-	/// Registry
+	/// Registry (primary — all existing tests use TEST_REGISTRY redirect to this)
 	regC, err := upstream.SetupRegistry(ctx)
 	if err != nil {
 		logrus.Fatal(err)
 	}
 	defer regC.Terminate(ctx)
 	regHttpURI = regC.HttpURI
+	/// Registry (anon variant — used by TestPullThroughAnonUpstream; bypasses TEST_REGISTRY)
+	anonRegC, err := upstream.SetupRegistry(ctx)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer anonRegC.Terminate(ctx)
+	anonRegHttpURI = anonRegC.HttpURI
 	//jeager
 	jeagerThriftURI := ""
 	jeagerHttpURI := ""
