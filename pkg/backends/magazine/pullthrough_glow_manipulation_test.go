@@ -98,9 +98,13 @@ func TestPullThroughGlowManipulation(t *testing.T) {
 	origRes, origFound, err := mag.Database.QueryOne(origQ)
 	require.NoError(t, err)
 	require.True(t, origFound, "original manifest must be linked to upstream via :ORIGINAL")
-	origMDID, err := origRes.GetInt64("mdID")
+	// Sanity: the projection carries a parsable int64 mdID. Do NOT assert
+	// NotZero on it — Neo4j internal node IDs start at 0 and after a full
+	// wipe the very first created node legitimately gets ID 0 (flaked in CI
+	// exactly that way: "Manifest ID: 0"). origFound above already proves the
+	// (md:Manifest)-[:ORIGINAL]->(u) edge.
+	_, err = origRes.GetInt64("mdID")
 	require.NoError(t, err)
-	require.NotZero(t, origMDID)
 
 	// The glow#1.5.0 Slot must have a pushed manifest. This is the manipulated
 	// image — alpine's original layers with the glow layer appended.

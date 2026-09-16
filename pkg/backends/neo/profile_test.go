@@ -491,3 +491,93 @@ func TestProfileFromManifestIDManipulations(t *testing.T) {
 	// Actual Test
 	span.End()
 }
+
+// TestCreateProfileAdoptsBareLabelNode is the regression for the masked
+// "CreateProfile: no result" seen in the e2e Parse-Base stage: the blob-upload
+// and slot paths MERGE bare :Profile {label} nodes for profiles they reference
+// before the profile itself is ever parsed. Once such a bare node exists, the
+// unique constraint (constraint_node_profile) rejected `parse profiles`' plain
+// CREATE — and the driver error surfaced on Next() was never checked, so it
+// masqueraded as "CreateProfile: no result". CreateProfile now MERGEs on label
+// and adopts the bare node, making parse profiles idempotent on a warm graph.
+func TestCreateProfileAdoptsBareLabelNode(t *testing.T) {
+	ctx := context.Background()
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.SetEmptyAll()
+
+	br, err := SetupTest(ctx, bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs, br)
+
+	const label = "frame"
+
+	t.Run("bare_label_node_is_adopted_not_duplicated", func(t *testing.T) {
+		// Simulate the blob-upload/slot path: a bare :Profile {label} node.
+		_, err := db.Execute(fmt.Sprintf(`MERGE (p:Profile {label: "%s"})`, label))
+		require.NoError(t, err)
+
+		p := types.Profile{
+			Tag:  label,
+			Rule: "os:linux=true && gpu:amd=true",
+			Hardware: &types.Hardware{
+				GPU:    &types.HardwareGPU{Vendor: "amd", VRAMGB: 124, CUCount: 40, SIMDCount: 80},
+				System: &types.HardwareSystem{RAMGB: 128, CPUCores: 32},
+			},
+		}
+		_, err = db.CreateProfile(p)
+		require.NoError(t, err)
+
+		// Exactly ONE :Profile node for the label — the adopted bare node,
+		// now fully populated. No duplicate, no constraint violation.
+		res, found, err := db.QueryOne(fmt.Sprintf(
+			`MATCH (n:Profile {label: "%s"}) RETURN count(n) AS cnt, id(n) AS id, n.name AS name, n.tag AS tag, n.hw_gpu_vram_gb AS vram`, label))
+		require.NoError(t, err)
+		require.True(t, found)
+		cnt, err := res.GetInt64("cnt")
+		require.NoError(t, err)
+		require.Equal(t, int64(1), cnt, "adopting a bare node must not create a duplicate :Profile")
+		name, err := res.GetStr("name")
+		require.NoError(t, err)
+		require.Equal(t, "", name)
+		tag, err := res.GetStr("tag")
+		require.NoError(t, err)
+		require.Equal(t, label, tag)
+		vram, err := res.GetInt64("vram")
+		require.NoError(t, err)
+		require.Equal(t, int64(124), vram)
+		// NOTE: do NOT assert Positive on the node id — Neo4j internal IDs
+		// start at 0 and after the wipe this adopted node is node 0.
+	})
+
+	t.Run("reparse_is_idempotent_single_node", func(t *testing.T) {
+		// Re-running parse profiles against the (now full) profile must
+		// update in place — never fail on the unique constraint.
+		p := types.Profile{
+			Tag:  label,
+			Rule: "os:linux=true && gpu:amd=true && gpu:amd-gfx1151=true",
+			Hardware: &types.Hardware{
+				GPU:    &types.HardwareGPU{Vendor: "amd", VRAMGB: 124, CUCount: 40, SIMDCount: 80},
+				System: &types.HardwareSystem{RAMGB: 128, CPUCores: 32},
+			},
+		}
+		id, err := db.CreateProfile(p)
+		require.NoError(t, err)
+
+		res, found, err := db.QueryOne(fmt.Sprintf(
+			`MATCH (n:Profile {label: "%s"}) RETURN count(n) AS cnt, id(n) AS id, n.rule AS rule`, label))
+		require.NoError(t, err)
+		require.True(t, found)
+		cnt, err := res.GetInt64("cnt")
+		require.NoError(t, err)
+		require.Equal(t, int64(1), cnt)
+		id2, err := res.GetInt64("id")
+		require.NoError(t, err)
+		require.Equal(t, id, id2, "re-parse must reuse the same node")
+		rule, err := res.GetStr("rule")
+		require.NoError(t, err)
+		require.Contains(t, rule, "gpu:amd-gfx1151=true", "re-parse must refresh properties")
+	})
+}
