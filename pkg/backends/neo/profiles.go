@@ -331,6 +331,15 @@ func (n Neo) CreateProfile(prf types.Profile) (prfID int64, err error) {
 		logrus.Errorf("failed to create profile: %v", err)
 		return
 	}
+	return profileResultID(result)
+}
+
+// profileResultID consumes a MERGE..RETURN id(n) result and yields the node ID.
+// Server-side statement failures (e.g. a constraint violation) surface on
+// Next() — not on Run — so the driver's error must be read from result.Err();
+// swallowing it is what once masked the unique-constraint violation as
+// "CreateProfile: no result".
+func profileResultID(result neo4j.Result) (prfID int64, err error) {
 	if result.Next() {
 		v, ok := result.Record().Get("ID")
 		if !ok {
@@ -338,18 +347,13 @@ func (n Neo) CreateProfile(prf types.Profile) (prfID int64, err error) {
 			return
 		}
 		prfID = v.(int64)
-
-	} else {
-		// Next() returned false: the query either returned no records (never
-		// happens for MERGE..RETURN) or failed server-side — surface the
-		// driver's error instead of masking it as "no result".
-		if e := result.Err(); e != nil {
-			err = fmt.Errorf("CreateProfile: %w", e)
-			return
-		}
-		err = fmt.Errorf("CreateProfile: no result")
 		return
 	}
+	if e := result.Err(); e != nil {
+		err = fmt.Errorf("CreateProfile: %w", e)
+		return
+	}
+	err = fmt.Errorf("CreateProfile: no result")
 	return
 }
 

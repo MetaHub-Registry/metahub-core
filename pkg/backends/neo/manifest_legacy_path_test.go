@@ -22,19 +22,23 @@ import (
 )
 
 // fakeNeoResult wraps a single *neo4j.Record as a neo4j.Result so the pure
-// record helpers can be exercised without a database round-trip.
+// record helpers can be exercised without a database round-trip. The zero
+// value mimics an exhausted stream (Next()==false, Err()==nil); set next/err
+// to emulate a yielded record or a server-side statement failure.
 type fakeNeoResult struct {
-	rec *neo4j.Record
+	rec  *neo4j.Record
+	next bool
+	err  error
 }
 
-func (f *fakeNeoResult) Keys() ([]string, error)              { return f.rec.Keys, nil }
-func (f *fakeNeoResult) Next() bool                           { return false }
-func (f *fakeNeoResult) NextRecord(**neo4j.Record) bool       { return false }
-func (f *fakeNeoResult) Err() error                           { return nil }
-func (f *fakeNeoResult) Record() *neo4j.Record                { return f.rec }
-func (f *fakeNeoResult) Collect() ([]*neo4j.Record, error)    { return nil, nil }
-func (f *fakeNeoResult) Single() (*neo4j.Record, error)       { return f.rec, nil }
-func (f *fakeNeoResult) Consume() (neo4j.ResultSummary, error) { return nil, nil }
+func (f *fakeNeoResult) Keys() ([]string, error)               { return f.rec.Keys, nil }
+func (f *fakeNeoResult) Next() bool                            { return f.next }
+func (f *fakeNeoResult) NextRecord(rec **neo4j.Record) bool    { *rec = f.rec; return f.next }
+func (f *fakeNeoResult) Err() error                            { return f.err }
+func (f *fakeNeoResult) Record() *neo4j.Record                 { return f.rec }
+func (f *fakeNeoResult) Collect() ([]*neo4j.Record, error)     { return nil, f.err }
+func (f *fakeNeoResult) Single() (*neo4j.Record, error)        { return f.rec, f.err }
+func (f *fakeNeoResult) Consume() (neo4j.ResultSummary, error) { return nil, f.err }
 
 func TestApplyContentSize(t *testing.T) {
 	tests := []struct {
