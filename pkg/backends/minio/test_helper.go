@@ -103,14 +103,18 @@ func SetupMinio(ctx context.Context, minioPorts string) (*MinioContainer, error)
 		}
 	}
 	req := testcontainers.ContainerRequest{
-		Image:        "quay.io/minio/minio:RELEASE.2022-08-02T23-59-16Z",
+		// MinIO withdrew anonymous access to quay.io/minio/minio; the
+		// Bitnami legacy mirror is the same server and remains pullable.
+		Image:        "docker.io/bitnamilegacy/minio:2025.7.23-debian-12-r5",
 		ExposedPorts: ports,
 		WaitingFor:   wait.ForHTTP("/minio/health/live").WithPort("9000"),
 		Env: map[string]string{
 			"MINIO_ROOT_USER":     minioAccessKey,
 			"MINIO_ROOT_PASSWORD": minioSecretKey,
 		},
-		Cmd: []string{"server", "/data", "--console-address=0.0.0.0:9001"},
+		// The Bitnami entrypoint runs `minio server` with /bitnami/minio/data
+		// and the console on :9001; no command override is needed.
+		Cmd: nil,
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
