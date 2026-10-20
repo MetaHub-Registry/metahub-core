@@ -748,3 +748,10 @@ per-upstream `blob_delivery: proxy|redirect|cache`) + upstream blob-fetch
 helpers. Proposal + intent-level delta spec; design deferred. Research:
 Obsidian `Metahub/docs/research/pull-through-upstream-registry-categories.md`.
 Consumed by metahub-api's `add-pull-through-manifest-intercept`.
+
+## Session close — 2026-10-20
+
+- Profile/rule test coverage and the bare-`:Profile` label adoption fix.
+- Dropped the absolute-path `replace` from `go.mod`.
+- Licence/community files added; history rewritten (secret removal, author
+  email normalisation). Session branch merged with `main`.
