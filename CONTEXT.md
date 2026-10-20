@@ -2,6 +2,126 @@
 
 > This file helps AI agents understand the repo quickly.
 
+## Session: readd-pull-through-cache — credentials tier + repo4 (2026-09-14)
+
+Commits `3a6b1fa`…`0a58711` on `138-readd-pull-through-cache`.
+Sonar gate OK (new coverage 82.6%, 0 new violations).
+
+### Flat registry credentials (`user`/`password`)
+
+- `RegistryConfig.User`/`Password` (yaml `user`/`password`), parsed in
+  `registryConfigFromKV` (shared by the map and string-map loaders).
+- **Pairing validation** in `ValidateRegistries`: exactly one of the two set →
+  load error ("incomplete credentials — 'user' and 'password' must be set
+  together"). Prevents typo'd configs from silently authenticating anonymously.
+- `NewRegClient` injects `User`/`Pass` into `config.Host` whenever TLS is off
+  OR credentials present; presence-only logging (`Credentials configured for
+  '%s'` — never the value). Complexity split:
+  `tlsAndCredsFor`/`registryCfgFor`/`heuristicTLSOff`/`newRegClientFor`.
+- `PullThroughEligible()` (exported 2026-09-14) = `PullThrough.Enabled &&
+  (AllowAnon || hasCredentials())` — **the** eligibility predicate; metahub-api's
+  `PolicyFor` consumes it.
+
+### repo4 (5-segment repos)
+
+`extractRepoName` (`pkg/types/request.go`) joins `repo`+`repo2`+`repo3`+
+`repo4` from chi URL params; needed for deep upstream repos like
+`harbor.example.com/metahub/api/dev/<image>` pulled through the cache.
+
+### Upstream-variant tests
+
+`pkg/backends/magazine/pullthrough_upstream_variants_test.go`: hermetic anon
+testcontainer case + skip-unless-env private-harbor / private-gitlab cases
+(`HARBOR_PRIVATE_USER/PASSWORD/IMAGE`, `GITLAB_USER/TOKEN/PRIVATE_IMAGE`).
+The same scenarios run continuously against metahub-dev via the GoCD
+`pull-through-test_MR116_dev` stages.
+
+### Gotchas
+
+- **`SOPS_AGE_KEY_FILE`**: sops on macOS looks in `~/Library/Application
+  Support/sops/age/keys.txt`; the lab key lives at
+  `~/.config/sops/age/keys.txt` — always prefix
+  `SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt`.
+- **Secret mounts don't reload config**: kubelet refreshes the mounted secret
+  file, but the app reads config at startup only — `kubectl rollout restart`
+  after rotating credentials.
+- **GitLab registry repos must exist**: `registry.github.com/metahub-registry/metahub-core`
+  has no container repo (`NAME_UNKNOWN`); use `qnib-golang/metahub-api`
+  (stable date tags) for private-GitLab pull-through tests.
+- **Flaky under load**: `TestMultiArchUpstreamYieldsPerProfileIndex` flaked
+  once under full-suite parallelism (index child count); passes in isolation —
+  candidate for `stabilize-flaky-testcontainer-tests`.
+- OpenSpec: `add-upstream-registry-credentials` is 16/17 (graph refresh
+  deferred); spec deltas amended to the flat `user`/`password` design
+  (session addendum D-cred1).
+
+## Session: readd-pull-through-cache (2026-09-13) — branch `138-readd-pull-through-cache`
+
+### Streaming OS eval — OOM fix (layer.go)
+
+**Problem**: `upstreamInsertGeneric` called `BlobGetBytes` (loads entire blob)
+then `EvalOS` which decompressed the full gzip tar layer into a `bytes.Buffer`.
+An Alpine rootfs layer (~8–15 MB compressed) pushed the pod past its 512 Mi
+limit → OOMKill (exit 137) → 503 on first pull.
+
+**Fix**: `EvalOSFromBlob(ctx, digest)` — two-pass streaming, never buffers the
+full decompressed layer:
+- Pass 1 (`scanGzipTarLinks`): reads only tar *headers* to build a symlink map.
+- Pass 2 (`readGzipTarFiles`): re-opens the blob stream, reads only the one
+  target file (`/etc/os-release` or its symlink target).
+- `resolveOSReleaseContent`: follows symlink chains up to 8 hops.
+
+`BaseLayerEvalOS` (layer.go:306) and `upstreamInsertGeneric` (upstream.go:636)
+now call `EvalOSFromBlob` instead of `BlobGetBytes + layer.Data + layer.EvalOS`.
+
+**Why two passes**: tar is sequential — you cannot seek back after finding a
+symlink in pass 1, so the second pass re-opens the blob stream from storage.
+
+### gzip / plain-tar auto-detection (layer.go)
+
+`newTarReaderFromStream(r io.Reader)` peeks the first 2 bytes with a
+`bufio.Reader`. If they are `\x1f\x8b` (gzip magic) it wraps in
+`gzip.NewReader`; otherwise it returns a plain `tar.Reader`. Both
+`scanGzipTarLinks` and `readGzipTarFiles` use this.
+
+**Why it exists**: test fixture blobs are plain tar (no gzip header);
+production layers are gzip-compressed tar. Hardcoding `gzip.NewReader` caused
+`gzip: invalid header` in all unit tests.
+
+### OCI media type support (layer.go + upstream.go)
+
+Alpine 3.21+ and most modern images use OCI media types rather than Docker types.
+
+- `application/vnd.oci.image.layer.v1.tar+gzip` added to the `switch` in
+  `BaseLayerEvalOS` (layer.go:306) and `upstreamInsertGeneric` (upstream.go:636).
+- `application/vnd.oci.image.manifest.v1+json` added to `UpstreamBlobInsertManifest`
+  (upstream.go:728) so the manifest blob is stored into MinIO / S3 on first pull.
+
+### Pull-through glow manipulation e2e test
+
+`pkg/backends/magazine/pullthrough_glow_manipulation_test.go` —
+`TestPullThroughGlowManipulation` seeds an upstream glow#1.5.0 layer fixture,
+runs `upstreamInsertGeneric` on alpine:3.17.3, and asserts that the resulting
+Slot has a glow#1.5.0 pushed manifest.
+
+**Gotcha — bootstrap order**: the manipulation definition must be added
+*before* the profile that references it:
+```go
+bs.AddBootstrap("manipulation:manipulations/layer/glow/1.5.0.yaml")
+bs.AddBootstrap("profile:profiles/glow/1.5.0.yaml")
+```
+`SetupTest` does NOT auto-load manipulation YAMLs referenced by a profile YAML —
+a missing explicit bootstrap silently yields an empty manipulation list, and the
+profile's rule-match returns no manipulations without any error.
+
+### Gotchas
+- **OOMKill diagnosis**: `reason: OOMKilled, exitCode: 137` in the pod's
+  `containerStatuses[].lastState.terminated`; the user-visible symptom is a 503.
+- **Alpine >=3.21 symlink**: `/etc/os-release` → `/usr/lib/os-release`; the
+  two-pass approach handles all symlink chains.
+- **Test blobs are plain tar**: `newTarReaderFromStream` auto-detects; do not
+  add a `gzip.NewReader` wrapper inside the helper functions.
+
 ## Session: waldur-outfitter-improvements — manifest-existence fixes (2026-09-08)
 
 Two correctness fixes shipped on branch `137-waldur-outfitter-improvements`.
@@ -628,3 +748,10 @@ per-upstream `blob_delivery: proxy|redirect|cache`) + upstream blob-fetch
 helpers. Proposal + intent-level delta spec; design deferred. Research:
 Obsidian `Metahub/docs/research/pull-through-upstream-registry-categories.md`.
 Consumed by metahub-api's `add-pull-through-manifest-intercept`.
+
+## Session close — 2026-10-20
+
+- Profile/rule test coverage and the bare-`:Profile` label adoption fix.
+- Dropped the absolute-path `replace` from `go.mod`.
+- Licence/community files added; history rewritten (secret removal, author
+  email normalisation). Session branch merged with `main`.

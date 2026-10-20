@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -293,7 +294,10 @@ func TestAllowsUnauthorizedPull_TestRegistryOverride(t *testing.T) {
 func newMagWithRegistries(hostnames ...string) Magazine {
 	var regs []RegistryConfig
 	for _, h := range hostnames {
-		regs = append(regs, RegistryConfig{Name: h, Hostname: h, AllowAnon: true, TLS: true})
+		regs = append(regs, RegistryConfig{
+			Name: h, Hostname: h, AllowAnon: true, TLS: true,
+			PullThrough: PullThroughConfig{Enabled: true},
+		})
 	}
 	return Magazine{
 		Config: MagConfig{
@@ -360,7 +364,7 @@ func TestResolveUpstreamRegistry_NameURLSplit(t *testing.T) {
 		Config: MagConfig{
 			Args: map[string]string{},
 			Registries: []RegistryConfig{
-				{Name: "local-reg", URL: "registry:5050", AllowAnon: true, TLS: false},
+				{Name: "local-reg", URL: "registry:5050", AllowAnon: true, TLS: false, PullThrough: PullThroughConfig{Enabled: true}},
 			},
 		},
 	}
@@ -376,7 +380,7 @@ func TestResolveUpstreamRegistry_LegacyHostnameStillWorks(t *testing.T) {
 		Config: MagConfig{
 			Args: map[string]string{},
 			Registries: []RegistryConfig{
-				{Hostname: "zot.example.com", AllowAnon: true, TLS: true},
+				RegistryConfigFromHostname("zot.example.com"),
 			},
 		},
 	}
@@ -384,6 +388,7 @@ func TestResolveUpstreamRegistry_LegacyHostnameStillWorks(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, "zot.example.com", reg)
 	assert.Equal(t, "library/alpine", stripped)
+	assert.True(t, found, "legacy hostname entries must stay pull-through eligible")
 }
 
 // --- DiscoverUpstream targeting tests (unit-level, no real registry) ---
@@ -447,6 +452,31 @@ func TestValidateRegistries_AcceptsLegacyHostnameOnly(t *testing.T) {
 func TestValidateRegistries_EmptySliceIsValid(t *testing.T) {
 	errs := ValidateRegistries(nil)
 	assert.Empty(t, errs)
+}
+
+func TestValidateRegistries_CredentialPairing(t *testing.T) {
+	tests := []struct {
+		name      string
+		reg       RegistryConfig
+		wantErr   bool
+		errSubstr string
+	}{
+		{"user without password", RegistryConfig{Name: "r", User: "u"}, true, "incomplete credentials"},
+		{"password without user", RegistryConfig{Name: "r", Password: "p"}, true, "incomplete credentials"},
+		{"both set", RegistryConfig{Name: "r", User: "u", Password: "p"}, false, ""},
+		{"neither set", RegistryConfig{Name: "r"}, false, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := ValidateRegistries([]RegistryConfig{tt.reg})
+			if tt.wantErr {
+				assert.Len(t, errs, 1)
+				assert.Contains(t, errs[0].Error(), tt.errSubstr)
+			} else {
+				assert.Empty(t, errs)
+			}
+		})
+	}
 }
 
 // --- GetBlobRedirectURL tests ---
@@ -597,4 +627,255 @@ func TestInferTLS(t *testing.T) {
 			assert.Equal(t, tt.expected, inferTLS(tt.hostname), "inferTLS(%q)", tt.hostname)
 		})
 	}
+}
+
+// --- pull_through block tests (add-upstream-registry-categories) ---
+
+func TestRegistryConfigFromMap_PullThroughAllFields(t *testing.T) {
+	m := map[interface{}]interface{}{
+		"name":       "up",
+		"allow_anon": true,
+		"pull_through": map[interface{}]interface{}{
+			"enabled":          true,
+			"client_redirect":  true,
+			"cache":            "off",
+			"refresh_interval": "30m",
+			"max_cache_bytes":  1024,
+			"workers":          4,
+		},
+	}
+	rc := registryConfigFromMap(m)
+	p := rc.PullThrough
+	assert.True(t, p.Enabled)
+	assert.True(t, p.ClientRedirect)
+	assert.Equal(t, "off", p.Cache)
+	assert.Equal(t, 30*time.Minute, p.RefreshInterval)
+	assert.Equal(t, int64(1024), p.MaxCacheBytes)
+	assert.Equal(t, 4, p.Workers)
+	assert.True(t, rc.PullThroughEligible())
+}
+
+func TestRegistryConfigFromMap_PullThroughDefaults(t *testing.T) {
+	m := map[interface{}]interface{}{
+		"name":         "up",
+		"allow_anon":   true,
+		"pull_through": map[interface{}]interface{}{"enabled": true},
+	}
+	p := registryConfigFromMap(m).PullThrough
+	assert.True(t, p.Enabled)
+	assert.False(t, p.ClientRedirect)
+	assert.Equal(t, "async", p.Cache)
+	assert.Equal(t, time.Hour, p.RefreshInterval)
+	assert.Equal(t, int64(0), p.MaxCacheBytes)
+	assert.Equal(t, 0, p.Workers)
+}
+
+func TestRegistryConfigFromMap_PullThroughAbsentDisabled(t *testing.T) {
+	m := map[interface{}]interface{}{"name": "up", "allow_anon": true}
+	rc := registryConfigFromMap(m)
+	assert.False(t, rc.PullThrough.Enabled)
+	assert.False(t, rc.PullThroughEligible())
+}
+
+func TestRegistryConfigFromStringMap_PullThrough(t *testing.T) {
+	m := map[string]interface{}{
+		"name":       "up",
+		"allow_anon": true,
+		"pull_through": map[string]interface{}{
+			"enabled":          true,
+			"cache":            "async",
+			"refresh_interval": 90,
+		},
+	}
+	p := registryConfigFromStringMap(m).PullThrough
+	assert.True(t, p.Enabled)
+	assert.Equal(t, "async", p.Cache)
+	assert.Equal(t, 90*time.Second, p.RefreshInterval)
+}
+
+func TestValidateRegistries_RejectsInvalidCache(t *testing.T) {
+	regs := []RegistryConfig{
+		{Name: "up", AllowAnon: true, PullThrough: PullThroughConfig{Enabled: true, Cache: "sync"}},
+	}
+	errs := ValidateRegistries(regs)
+	require.Len(t, errs, 1)
+	assert.Contains(t, errs[0].Error(), "pull_through.cache")
+}
+
+func TestValidateRegistries_AcceptsValidCacheValues(t *testing.T) {
+	regs := []RegistryConfig{
+		{Name: "off", AllowAnon: true, PullThrough: PullThroughConfig{Enabled: true, Cache: "off"}},
+		{Name: "async", AllowAnon: true, PullThrough: PullThroughConfig{Enabled: true, Cache: "async"}},
+		{Name: "disabled", AllowAnon: true},
+	}
+	assert.Empty(t, ValidateRegistries(regs))
+}
+
+func TestResolveUpstreamRegistry_DisabledYAMLRegistrySkipped(t *testing.T) {
+	// Structured YAML registry with no pull_through block is not eligible.
+	rc := registryConfigFromMap(map[interface{}]interface{}{
+		"name":       "zot.example.com",
+		"allow_anon": true,
+		"tls":        true,
+	})
+	m := Magazine{Config: MagConfig{Args: map[string]string{}, Registries: []RegistryConfig{rc}}}
+	reg, stripped, found := m.ResolveUpstreamRegistry("zot.example.com/library/alpine")
+	assert.False(t, found)
+	assert.Equal(t, "", reg)
+	assert.Equal(t, "zot.example.com/library/alpine", stripped)
+}
+
+func TestResolveUpstreamRegistry_AnonFalseSkipped(t *testing.T) {
+	m := Magazine{Config: MagConfig{Args: map[string]string{}, Registries: []RegistryConfig{
+		{Name: "zot.example.com", AllowAnon: false, PullThrough: PullThroughConfig{Enabled: true}},
+	}}}
+	_, _, found := m.ResolveUpstreamRegistry("zot.example.com/library/alpine")
+	assert.False(t, found, "allow_anon:false must block pull-through even when enabled")
+}
+
+func TestRegistryConfigFromHostname_LegacyEligibleCacheOff(t *testing.T) {
+	rc := RegistryConfigFromHostname("zot.example.com")
+	assert.True(t, rc.PullThroughEligible())
+	assert.True(t, rc.PullThrough.Enabled)
+	assert.Equal(t, "off", rc.PullThrough.Cache)
+}
+
+func TestPullThroughValueCoercion(t *testing.T) {
+	if d, ok := parseDurationValue(""); ok || d != 0 {
+		t.Fatalf("empty string must not parse: %v %v", d, ok)
+	}
+	if _, ok := parseDurationValue("not-a-duration"); ok {
+		t.Fatal("invalid duration string must not parse")
+	}
+	if d, ok := parseDurationValue(int64(5)); !ok || d != 5*time.Second {
+		t.Fatalf("int64 seconds: %v %v", d, ok)
+	}
+	if d, ok := parseDurationValue(float64(2.5)); !ok || d != time.Duration(2.5*float64(time.Second)) {
+		t.Fatalf("float seconds: %v %v", d, ok)
+	}
+	if n, ok := toInt64Value(int64(7)); !ok || n != 7 {
+		t.Fatal("int64 coercion")
+	}
+	if n, ok := toInt64Value(float64(3)); !ok || n != 3 {
+		t.Fatal("float64 coercion")
+	}
+	if n, ok := toIntValue(float64(4)); !ok || n != 4 {
+		t.Fatal("toInt float coercion")
+	}
+	if _, ok := toIntValue("nope"); ok {
+		t.Fatal("string must not coerce to int")
+	}
+	if m := asStringMap(map[interface{}]interface{}{"a": 1}); m == nil || m["a"] != 1 {
+		t.Fatal("asStringMap must normalise interface maps")
+	}
+	// Numeric shapes flow through the parse path too.
+	p := pullThroughFromMap(map[interface{}]interface{}{
+		"enabled": true, "max_cache_bytes": float64(2048), "workers": int64(3),
+	})
+	assert.Equal(t, int64(2048), p.MaxCacheBytes)
+	assert.Equal(t, 3, p.Workers)
+}
+
+func TestDiscoverRegList(t *testing.T) {
+	m := newMagWithRegistries("zot.example.com", "docker.io")
+
+	// Targeted: eligible registry matched on slug; prefix stripped from repo.
+	regs, repo, err := m.discoverRegList(context.Background(), "zot.example.com/library/alpine", "zot.example.com")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"zot.example.com"}, regs)
+	assert.Equal(t, "library/alpine", repo)
+
+	// Targeted but not configured → error.
+	_, _, err = m.discoverRegList(context.Background(), "x/y", "unknown.example.com")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not configured")
+
+	// No target: all eligible registries in order.
+	regs, _, err = m.discoverRegList(context.Background(), "library/alpine")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"zot.example.com", "docker.io"}, regs)
+}
+
+// --- Credential field tests ---
+
+func TestRegistryConfig_PullThroughEligible_WithCredentials(t *testing.T) {
+	rc := RegistryConfig{
+		Name:      "harbor.example.com",
+		AllowAnon: false,
+		TLS:       true,
+		User:      "robot$ci",
+		Password:  "secret",
+		PullThrough: PullThroughConfig{Enabled: true},
+	}
+	assert.True(t, rc.PullThroughEligible(),
+		"AllowAnon:false with User+Password set must be pull-through eligible when enabled")
+}
+
+func TestRegistryConfig_PullThroughEligible_CredentialsButDisabled(t *testing.T) {
+	rc := RegistryConfig{
+		Name:      "harbor.example.com",
+		AllowAnon: false,
+		User:      "robot$ci",
+		Password:  "secret",
+		PullThrough: PullThroughConfig{Enabled: false},
+	}
+	assert.False(t, rc.PullThroughEligible(),
+		"pull_through.enabled:false must block eligibility even with credentials")
+}
+
+func TestRegistryConfig_PullThroughEligible_NoCredentialsNoAnon(t *testing.T) {
+	rc := RegistryConfig{
+		Name:        "harbor.example.com",
+		AllowAnon:   false,
+		PullThrough: PullThroughConfig{Enabled: true},
+	}
+	assert.False(t, rc.PullThroughEligible(),
+		"AllowAnon:false with no credentials must not be eligible")
+}
+
+func TestRegistryConfigFromMap_UserPassword(t *testing.T) {
+	m := map[interface{}]interface{}{
+		"name":      "harbor.example.com",
+		"allow_anon": false,
+		"tls":       true,
+		"user":      "robot$ci",
+		"password":  "s3cr3t",
+		"pull_through": map[interface{}]interface{}{"enabled": true},
+	}
+	rc := registryConfigFromMap(m)
+	assert.Equal(t, "robot$ci", rc.User)
+	assert.Equal(t, "s3cr3t", rc.Password)
+	assert.True(t, rc.PullThroughEligible())
+}
+
+func TestRegistryConfigFromStringMap_UserPassword(t *testing.T) {
+	m := map[string]interface{}{
+		"name":      "registry.gitlab.com",
+		"allow_anon": false,
+		"tls":       true,
+		"user":      "gitlab-ci-token",
+		"password":  "glpat-xxxx",
+		"pull_through": map[string]interface{}{"enabled": true},
+	}
+	rc := registryConfigFromStringMap(m)
+	assert.Equal(t, "gitlab-ci-token", rc.User)
+	assert.Equal(t, "glpat-xxxx", rc.Password)
+	assert.True(t, rc.PullThroughEligible())
+}
+
+func TestResolveUpstreamRegistry_WithCredentials(t *testing.T) {
+	m := Magazine{Config: MagConfig{Args: map[string]string{}, Registries: []RegistryConfig{
+		{
+			Name:      "harbor.example.com",
+			AllowAnon: false,
+			TLS:       true,
+			User:      "robot$ci",
+			Password:  "secret",
+			PullThrough: PullThroughConfig{Enabled: true},
+		},
+	}}}
+	reg, stripped, found := m.ResolveUpstreamRegistry("harbor.example.com/library/alpine")
+	assert.True(t, found, "credentialed registry must be pull-through eligible")
+	assert.Equal(t, "harbor.example.com", reg)
+	assert.Equal(t, "library/alpine", stripped)
 }

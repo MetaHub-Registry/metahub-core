@@ -271,3 +271,52 @@ func (n Neo) CollectionTagDetachFromCollection(cID, ctID int64) (err error) {
 	}
 	return
 }
+
+// CollectionTagSetLastRefreshed stamps last_refreshed (Unix seconds) on the
+// (repo, tag) Tag node. Called at pull-through ingest so the TTL logic has a
+// per-alias freshness marker (decision D4). Additive: push-path nodes simply
+// never carry the property.
+func (n Neo) CollectionTagSetLastRefreshed(ctx context.Context, repo, tag string, ts int64) (err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameColTag,
+		"func":    "CollectionTagSetLastRefreshed",
+		"repo":    repo,
+		"tag":     tag,
+	})
+	_ = ctx
+	defer span.End()
+	q := fmt.Sprintf(`MATCH (t:Tag {name: "%s", repo: "%s"}) SET t.last_refreshed = %d`, tag, repo, ts)
+	utils.Debug(l, span, q)
+	if _, e := n.Execute(q); e != nil {
+		return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	}
+	return nil
+}
+
+// CollectionTagGetLastRefreshed returns last_refreshed (Unix seconds) for the
+// (repo, tag) Tag. found is false when the Tag node is absent. A returned 0
+// means "never fetched" and MUST be treated as TTL-expired (decision D4).
+func (n Neo) CollectionTagGetLastRefreshed(ctx context.Context, repo, tag string) (ts int64, found bool, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgNameColTag,
+		"func":    "CollectionTagGetLastRefreshed",
+		"repo":    repo,
+		"tag":     tag,
+	})
+	_ = ctx
+	defer span.End()
+	q := fmt.Sprintf(`MATCH (t:Tag {name: "%s", repo: "%s"}) RETURN coalesce(t.last_refreshed, 0) AS last_refreshed`, tag, repo)
+	utils.Debug(l, span, q)
+	res, f, e := n.QueryOne(q)
+	if e != nil {
+		return 0, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
+	}
+	if !f {
+		return 0, false, nil
+	}
+	ts, e = res.GetInt64("last_refreshed")
+	if e != nil {
+		return 0, false, utils.ErrorHandler(l, span, e, types.FailBrGet, "last_refreshed")
+	}
+	return ts, true, nil
+}

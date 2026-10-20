@@ -632,6 +632,18 @@ type collectionPin struct {
 // historical rule-union membership rather than failing the compute.
 func (mag Magazine) gatherCollectionPins(ctx context.Context, l *logrus.Entry, span trace.Span, repo, tag string) []collectionPin {
 	pins := make([]collectionPin, 0)
+	// Pull-through aliases (`<registry-slug>/<rest>`) are not parse-authored
+	// collections: their manifests are upstream bases pulled under whatever
+	// profile the client happened to use, not explicit collection
+	// `profile:` bindings. An upstream pull under a manipulation profile
+	// (e.g. glow#1.5.0) wires the ORIGINAL base into that profile's Slot;
+	// treating that edge as an exclusive pin drops the shared base from the
+	// generic index, leaving a plain `<registry>/<repo>:<tag>` pull with no
+	// servable Index (404). So pull-through aliases yield no pins.
+	if _, _, ok := mag.ResolveUpstreamRegistry(repo); ok {
+		utils.Debug(l, span, "gatherCollectionPins: %s:%s is a pull-through alias; no explicit pins", repo, tag)
+		return pins
+	}
 	slots, err := mag.Database.SlotGetAllForRepoTag(ctx, repo, tag)
 	if err != nil {
 		utils.Warn(l, span, "gatherCollectionPins: SlotGetAllForRepoTag(%s:%s) failed (non-fatal, pin-exclusivity off): %v", repo, tag, err)

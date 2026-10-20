@@ -304,19 +304,42 @@ func (n Neo) GetProfile(prf types.Profile) (prfID int64, success bool, err error
 }
 
 func (n Neo) CreateProfile(prf types.Profile) (prfID int64, err error) {
-	q := `CREATE (n:Profile {name: "%s", tag: "%s", label: "%s", rule: "%s"%s}) RETURN id(n) AS ID`
+	// MERGE on label — the unique-constrained key (constraint_node_profile) —
+	// instead of CREATE: the blob-upload and slot paths create bare
+	// :Profile {label} nodes for profiles they reference before the profile
+	// itself is ever parsed. A plain CREATE would violate the constraint on
+	// such a warm graph, which made `parse profiles` fail with the masked
+	// "CreateProfile: no result" (the driver error surfaces on Next() and was
+	// never checked). MERGE adopts the bare node and (re)sets the full
+	// property set, so both paths converge on a single :Profile node.
 	label := fmt.Sprintf("%s#%s", prf.Name, prf.Tag)
 	if prf.Name == "" {
 		label = prf.Tag
 	}
-	query := fmt.Sprintf(q, prf.Name, prf.Tag, label, prf.Rule, hardwareCreateProps(prf.Hardware))
+	q := `MERGE (n:Profile {label: "%s"}) SET n.name = "%s", n.tag = "%s", n.rule = "%s"`
+	if hw := hardwareCreateProps(prf.Hardware); hw != "" {
+		// hardwareCreateProps emits map syntax (", hw_gpu_vendor: ..."), which
+		// is valid inside a property map — so apply it via `n += {..}`.
+		q += fmt.Sprintf(` SET n += {%s}`, strings.TrimPrefix(hw, ", "))
+	}
+	q += ` RETURN id(n) AS ID`
+	query := fmt.Sprintf(q, label, prf.Name, prf.Tag, prf.Rule)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	result, err := session.Run(query, map[string]interface{}{})
 	if err != nil {
-		logrus.Errorf("failed to create conifg: %v", err)
+		logrus.Errorf("failed to create profile: %v", err)
 		return
 	}
+	return profileResultID(result)
+}
+
+// profileResultID consumes a MERGE..RETURN id(n) result and yields the node ID.
+// Server-side statement failures (e.g. a constraint violation) surface on
+// Next() — not on Run — so the driver's error must be read from result.Err();
+// swallowing it is what once masked the unique-constraint violation as
+// "CreateProfile: no result".
+func profileResultID(result neo4j.Result) (prfID int64, err error) {
 	if result.Next() {
 		v, ok := result.Record().Get("ID")
 		if !ok {
@@ -324,11 +347,13 @@ func (n Neo) CreateProfile(prf types.Profile) (prfID int64, err error) {
 			return
 		}
 		prfID = v.(int64)
-
-	} else {
-		err = fmt.Errorf("CreateProfile: no result")
 		return
 	}
+	if e := result.Err(); e != nil {
+		err = fmt.Errorf("CreateProfile: %w", e)
+		return
+	}
+	err = fmt.Errorf("CreateProfile: no result")
 	return
 }
 

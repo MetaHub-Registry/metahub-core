@@ -2,10 +2,12 @@ package neo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"testing"
 
+	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/metahub-registry/metahub-core/pkg/types"
@@ -490,4 +492,157 @@ func TestProfileFromManifestIDManipulations(t *testing.T) {
 	}
 	// Actual Test
 	span.End()
+}
+
+// TestCreateProfileAdoptsBareLabelNode is the regression for the masked
+// "CreateProfile: no result" seen in the e2e Parse-Base stage: the blob-upload
+// and slot paths MERGE bare :Profile {label} nodes for profiles they reference
+// before the profile itself is ever parsed. Once such a bare node exists, the
+// unique constraint (constraint_node_profile) rejected `parse profiles`' plain
+// CREATE — and the driver error surfaced on Next() was never checked, so it
+// masqueraded as "CreateProfile: no result". CreateProfile now MERGEs on label
+// and adopts the bare node, making parse profiles idempotent on a warm graph.
+func TestCreateProfileAdoptsBareLabelNode(t *testing.T) {
+	ctx := context.Background()
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.SetEmptyAll()
+
+	br, err := SetupTest(ctx, bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs, br)
+
+	const label = "frame"
+
+	t.Run("bare_label_node_is_adopted_not_duplicated", func(t *testing.T) {
+		// Simulate the blob-upload/slot path: a bare :Profile {label} node.
+		_, err := db.Execute(fmt.Sprintf(`MERGE (p:Profile {label: "%s"})`, label))
+		require.NoError(t, err)
+
+		p := types.Profile{
+			Tag:  label,
+			Rule: "os:linux=true && gpu:amd=true",
+			Hardware: &types.Hardware{
+				GPU:    &types.HardwareGPU{Vendor: "amd", VRAMGB: 124, CUCount: 40, SIMDCount: 80},
+				System: &types.HardwareSystem{RAMGB: 128, CPUCores: 32},
+			},
+		}
+		_, err = db.CreateProfile(p)
+		require.NoError(t, err)
+
+		// Exactly ONE :Profile node for the label — the adopted bare node,
+		// now fully populated. No duplicate, no constraint violation.
+		res, found, err := db.QueryOne(fmt.Sprintf(
+			`MATCH (n:Profile {label: "%s"}) RETURN count(n) AS cnt, n.name AS name, n.tag AS tag, n.hw_gpu_vram_gb AS vram`, label))
+		require.NoError(t, err)
+		require.True(t, found)
+		cnt, err := res.GetInt64("cnt")
+		require.NoError(t, err)
+		require.Equal(t, int64(1), cnt, "adopting a bare node must not create a duplicate :Profile")
+		name, err := res.GetStr("name")
+		require.NoError(t, err)
+		require.Equal(t, "", name)
+		tag, err := res.GetStr("tag")
+		require.NoError(t, err)
+		require.Equal(t, label, tag)
+		vram, err := res.GetInt64("vram")
+		require.NoError(t, err)
+		require.Equal(t, int64(124), vram)
+		// NOTE: do NOT assert Positive on node ids — Neo4j internal IDs start
+		// at 0 and after the wipe this adopted node is node 0.
+	})
+
+	t.Run("reparse_is_idempotent_single_node", func(t *testing.T) {
+		// Re-running parse profiles against the (now full) profile must
+		// update in place — never fail on the unique constraint.
+		p := types.Profile{
+			Tag:  label,
+			Rule: "os:linux=true && gpu:amd=true && gpu:amd-gfx1151=true",
+			Hardware: &types.Hardware{
+				GPU:    &types.HardwareGPU{Vendor: "amd", VRAMGB: 124, CUCount: 40, SIMDCount: 80},
+				System: &types.HardwareSystem{RAMGB: 128, CPUCores: 32},
+			},
+		}
+		id, err := db.CreateProfile(p)
+		require.NoError(t, err)
+
+		res, found, err := db.QueryOne(fmt.Sprintf(
+			`MATCH (n:Profile {label: "%s"}) RETURN count(n) AS cnt, id(n) AS id, n.rule AS rule`, label))
+		require.NoError(t, err)
+		require.True(t, found)
+		cnt, err := res.GetInt64("cnt")
+		require.NoError(t, err)
+		require.Equal(t, int64(1), cnt)
+		id2, err := res.GetInt64("id")
+		require.NoError(t, err)
+		require.Equal(t, id, id2, "re-parse must reuse the same node")
+		rule, err := res.GetStr("rule")
+		require.NoError(t, err)
+		require.Contains(t, rule, "gpu:amd-gfx1151=true", "re-parse must refresh properties")
+	})
+
+	t.Run("profile_without_hardware_block", func(t *testing.T) {
+		// Plain (non model-serving) profile: MERGE without the `n += {..}`
+		// hardware fragment.
+		const plain = "cpu#plain"
+		id, err := db.CreateProfile(types.Profile{Name: "cpu", Tag: "plain", Rule: "cpu:noop=true"})
+		require.NoError(t, err)
+		res, found, err := db.QueryOne(fmt.Sprintf(
+			`MATCH (n:Profile {label: "%s"}) RETURN count(n) AS cnt, id(n) AS id`, plain))
+		require.NoError(t, err)
+		require.True(t, found)
+		cnt, err := res.GetInt64("cnt")
+		require.NoError(t, err)
+		require.Equal(t, int64(1), cnt)
+		id2, err := res.GetInt64("id")
+		require.NoError(t, err)
+		require.Equal(t, id, id2)
+	})
+}
+
+// --- pure unit tests for profileResultID (reuses the package fakeNeoResult) ---
+
+// TestProfileResultID covers every branch of the result consumption: the
+// statement-failure branch (Next()==false with Err()) is the one that once
+// masked the unique-constraint violation as "CreateProfile: no result".
+func TestProfileResultID(t *testing.T) {
+	t.Run("record_yields_id", func(t *testing.T) {
+		rec := &neo4j.Record{Keys: []string{"ID"}, Values: []interface{}{int64(42)}}
+		id, err := profileResultID(&fakeNeoResult{next: true, rec: rec})
+		require.NoError(t, err)
+		require.Equal(t, int64(42), id)
+	})
+
+	t.Run("record_without_id_column", func(t *testing.T) {
+		rec := &neo4j.Record{Keys: []string{"other"}, Values: []interface{}{int64(42)}}
+		_, err := profileResultID(&fakeNeoResult{next: true, rec: rec})
+		require.ErrorContains(t, err, "CreateProfile: failed to get ID")
+	})
+
+	t.Run("server_side_failure_surfaces_driver_error", func(t *testing.T) {
+		// e.g. Neo.ClientError.Schema.ConstraintVerificationFailed — surfaced
+		// on Next(), not Run.
+		_, err := profileResultID(&fakeNeoResult{next: false,
+			err: errors.New("Neo.ClientError.Schema.ConstraintVerificationFailed")})
+		require.ErrorContains(t, err, "CreateProfile:")
+		require.ErrorContains(t, err, "ConstraintVerificationFailed")
+	})
+
+	t.Run("no_records_no_error", func(t *testing.T) {
+		_, err := profileResultID(&fakeNeoResult{next: false, err: nil})
+		require.EqualError(t, err, "CreateProfile: no result")
+	})
+}
+
+// TestCreateProfileUnreachableServer covers the Run-error path of
+// CreateProfile: the driver surfaces connectivity failures on Run.
+func TestCreateProfileUnreachableServer(t *testing.T) {
+	drv, err := neo4j.NewDriver("bolt://127.0.0.1:1", neo4j.BasicAuth("u", "p", ""))
+	require.NoError(t, err)
+	defer drv.Close()
+	d := Neo{Enabled: true, neoDriver: drv}
+	_, err = d.CreateProfile(types.Profile{Tag: "unreachable"})
+	require.Error(t, err)
 }

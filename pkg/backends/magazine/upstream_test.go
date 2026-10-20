@@ -1,11 +1,15 @@
 package magazine
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/opencontainers/go-digest"
 	"github.com/stretchr/testify/assert"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
@@ -641,4 +645,207 @@ func TestManifestUpsertBackendsAdoptsExistingConfigID(t *testing.T) {
 		t.Fatal("config not found for manifest after re-upsert")
 	}
 	assert.Equal(t, wantCfgDigest, gotCfg.Digest, "manifest must resolve to its own config, not a phantom (node id 0)")
+}
+
+// --- multi-arch index expansion (add-upstream-registry-categories 4.3) ---
+
+func TestSupportedIndexChildren(t *testing.T) {
+	// amd64 + arm64 kept; unsupported arch and non-linux OS skipped.
+	const idxJSON = `{"schemaVersion":2,"manifests":[
+	  {"digest":"sha256:aaa","platform":{"os":"linux","architecture":"amd64"}},
+	  {"digest":"sha256:bbb","platform":{"os":"linux","architecture":"arm64"}},
+	  {"digest":"sha256:ccc","platform":{"os":"linux","architecture":"ppc64le"}},
+	  {"digest":"sha256:ddd","platform":{"os":"windows","architecture":"amd64"}}
+	]}`
+	var idx types.OCIManifestList
+	if err := json.Unmarshal([]byte(idxJSON), &idx); err != nil {
+		t.Fatal(err)
+	}
+	got := supportedIndexChildren(idx)
+	assert.Len(t, got, 2)
+	assert.Equal(t, "sha256:aaa", got[0].String())
+	assert.Equal(t, "sha256:bbb", got[1].String())
+}
+
+func TestUpstreamBlobInsertIndex(t *testing.T) {
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:amd64")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("profile:profiles/generic.yaml")
+	bs.SetEmptyAll()
+	br, err := mag.SetupTest(context.Background(), bs)
+	if err != nil {
+		TeardownTest(bs, br)
+		t.Fatal(err)
+	}
+	defer TeardownTest(bs, br)
+
+	ctx := context.Background()
+	const repo, tag = "alpine", "3.17.2" // multi-arch manifest list in the test registry
+	blob, reg, found, err := mag.DiscoverUpstream(ctx, repo, tag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("upstream manifest list not found")
+	}
+	assert.Equal(t, MediaTypeManifestList, blob.MediaType)
+
+	req := types.Request{Host: reg, Repo: repo, Tag: tag, Profile: "generic"}
+	if err := mag.UpstreamBlobInsertIndex(ctx, req, blob); err != nil {
+		t.Fatal(err)
+	}
+	// Index expansion ingests the children and stamps last_refreshed (Section 3).
+	ts, tagFound, err := mag.Database.CollectionTagGetLastRefreshed(ctx, repo, tag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.True(t, tagFound)
+	assert.NotZero(t, ts)
+}
+
+// TestMultiArchUpstreamYieldsPerProfileIndex is the
+// add-pull-through-manifest-intercept 4.2 integration test: a multi-arch upstream
+// (Docker manifest list) is expanded into per-architecture children, the
+// per-profile Index is computed from them, and the serve-path IndexGetByRequest
+// returns an Index carrying both architecture children — no index media type is
+// rejected anywhere on the path.
+func TestMultiArchUpstreamYieldsPerProfileIndex(t *testing.T) {
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic") // registers linux/amd64 + linux/arm64 (+ others)
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("profile:profiles/generic.yaml")
+	bs.SetEmptyAll()
+	br, err := mag.SetupTest(context.Background(), bs)
+	if err != nil {
+		TeardownTest(bs, br)
+		t.Fatal(err)
+	}
+	defer TeardownTest(bs, br)
+
+	ctx := context.Background()
+	const repo, tag = "alpine", "3.17.2" // multi-arch manifest list in the test registry
+	blob, reg, found, err := mag.DiscoverUpstream(ctx, repo, tag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("upstream manifest list not found")
+	}
+	if blob.MediaType != MediaTypeManifestList {
+		t.Fatalf("precondition: expected a manifest list upstream, got %s", blob.MediaType)
+	}
+
+	// Expansion: ingest every supported child (amd64 + arm64) metadata-only.
+	req := types.Request{Host: reg, Repo: repo, Tag: tag, Profile: "generic"}
+	if err := mag.UpstreamBlobInsertIndex(ctx, req, blob); err != nil {
+		t.Fatal(err)
+	}
+
+	// Per-profile Index computed from the ingested children.
+	prf, prfFound, err := mag.Database.ProfileGetByLabel(ctx, "generic")
+	if err != nil || !prfFound {
+		t.Fatalf("generic profile not found: %v", err)
+	}
+	if err := mag.ComputeManifestlistsForRepoTag(ctx, repo, tag, &prf); err != nil {
+		t.Fatal(err)
+	}
+
+	// Serve path: the per-profile Index must carry both architecture children.
+	ml, mlFound, err := mag.IndexGetByRequest(ctx, types.Request{Repo: repo, Tag: tag, Profile: "generic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !mlFound {
+		t.Fatal("per-profile Index not found after compute")
+	}
+	arches := map[string]bool{}
+	for _, m := range ml.Manifests {
+		if m.Platform.Arch != "" {
+			arches[m.Platform.Arch] = true
+		}
+	}
+	assert.GreaterOrEqual(t, len(ml.Manifests), 2, "multi-arch index must carry >= 2 children")
+	assert.True(t, arches["amd64"], "amd64 child must be present")
+	assert.True(t, arches["arm64"], "arm64 child must be present")
+}
+
+// --- streaming layer transfer (add-upstream-registry-categories 5.4) ---
+
+func TestPutBlobReaderStreamsLargePayload(t *testing.T) {
+	ctx := context.Background()
+	// > 5 MiB so minio-go uses its multipart/streaming path (constant memory).
+	data := bytes.Repeat([]byte("metahub-stream-"), 512*1024) // ~7.3 MiB
+	sum := sha256.Sum256(data)
+	dig := fmt.Sprintf("sha256:%x", sum[:])
+
+	if err := mag.Minio.PutBlobReader(ctx, bytes.NewReader(data), dig); err != nil {
+		t.Fatal(err)
+	}
+	got, err := mag.Minio.BlobGetBytes(ctx, dig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, len(data), len(got), "streamed blob length must match")
+	assert.Equal(t, sum[:], sum256(got), "streamed blob content must round-trip")
+}
+
+// sum256 is a small helper so the assertion reads clearly.
+func sum256(b []byte) []byte {
+	s := sha256.Sum256(b)
+	return s[:]
+}
+
+func TestCacheLayersStreamsEachLayer(t *testing.T) {
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:amd64")
+	bs.AddBootstrap("rules:rules/cpu/noop.yaml")
+	bs.AddBootstrap("rules:rules/os/linux.yaml")
+	bs.AddBootstrap("profile:profiles/generic.yaml")
+	bs.SetEmptyAll()
+	br, err := mag.SetupTest(context.Background(), bs)
+	if err != nil {
+		TeardownTest(bs, br)
+		t.Fatal(err)
+	}
+	defer TeardownTest(bs, br)
+
+	ctx := context.Background()
+	req := types.Request{Host: regHttpURI, Repo: "alpine", Tag: "3.17.3", Profile: "generic"}
+	blob := types.BlobMeta{MediaType: MediaTypeManifest, Digest: shab5a}
+	if err := mag.UpstreamBlobInsertManifest(ctx, req, blob); err != nil {
+		t.Fatal(err)
+	}
+	md, found, err := mag.Database.ManifestGetPulledByRepoTag(ctx, req.Repo, req.Tag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("manifest not found after ingest")
+	}
+	if len(md.Layers) == 0 {
+		t.Fatal("precondition: ingested manifest must carry layers")
+	}
+	// CacheLayers must transfer each layer via the streaming path (PullLayer).
+	if err := mag.CacheLayers(ctx, md); err != nil {
+		t.Fatal(err)
+	}
+	for _, layer := range md.Layers {
+		up := upstream.UpstreamTriple{
+			Reg:    md.Upstream.Reg,
+			Repo:   md.Upstream.Repo,
+			Tag:    md.Upstream.Tag,
+			Digest: digest.Digest(layer.Digest),
+		}
+		cached, err := mag.Minio.GetBlob(ctx, up)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assert.True(t, cached, "layer %s must be cached via the reader path", layer.Digest)
+	}
 }
