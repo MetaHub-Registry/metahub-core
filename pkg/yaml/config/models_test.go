@@ -74,6 +74,25 @@ func TestFindModels(t *testing.T) {
 	}
 }
 
+func TestFindModelsSkipsNonMatchingFiles(t *testing.T) {
+	dir := writeModelFile(t, sampleModelYAML)
+	// A template that loads as a valid model but whose path is not
+	// `<repo>/<tag>.yaml` used to abort the whole scan: FindModels returned the
+	// normalize error and metahub-admin's parse models then skipped the
+	// directory, so every model was silently dropped.
+	extra := filepath.Join(dir, "models", "sources.example.yaml")
+	if err := os.WriteFile(extra, []byte(sampleModelYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	models, err := FindModels(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("a non-matching filename must not fail the scan: %v", err)
+	}
+	if _, ok := models["qnib/minicpm5:latest"]; !ok {
+		t.Fatalf("valid model dropped because of a stray file; keys %v", keys(models))
+	}
+}
+
 func TestModelValidate(t *testing.T) {
 	base := func() Model {
 		return Model{

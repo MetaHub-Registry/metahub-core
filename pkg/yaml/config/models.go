@@ -135,12 +135,18 @@ func FindModels(ctx context.Context, cacheDir string) (models map[string]Model, 
 			l.Errorf("failed to load model file %s: %s", mfile, e)
 			continue
 		}
+		// A single unusable file must not discard the whole scan: callers
+		// (metahub-admin parse models) treat a returned error as "skip this
+		// directory", which silently dropped every model when an example
+		// template lived under models/.
 		repo, tag, e := normalizeModelFname(&m, mfile)
 		if e != nil {
-			return models, e
+			l.Errorf("skipping model file %s: %s", mfile, e)
+			continue
 		}
 		if e := m.Validate(); e != nil {
-			return models, e
+			l.Errorf("skipping invalid model file %s: %s", mfile, e)
+			continue
 		}
 		uri := repo + ":" + tag
 		if strings.Count(repo, "/") == 0 {
