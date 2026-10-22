@@ -77,3 +77,31 @@ func TestGetLayersForManifestDigest_Unknown(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, layers)
 }
+
+// TestNaturalKeyLookupsWithClosedDriver covers the query-error branch of the
+// three natural-key lookups without needing a malformed graph: close the
+// driver, call each lookup, then reconnect for the deferred teardown.
+func TestNaturalKeyLookupsWithClosedDriver(t *testing.T) {
+	ctx := context.Background()
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.SetEmptyAll()
+	br, err := SetupTest(ctx, bs)
+	require.NoError(t, err)
+	// Evaluate the receiver at call time so the teardown sees the reconnected
+	// driver (a plain defer captures the closed-driver copy).
+	defer func() { db.TeardownTest(bs, br) }()
+
+	// Reconnect before the deferred teardown (LIFO: this runs first).
+	defer func() { _ = db.Connect() }()
+	require.NoError(t, db.neoDriver.Close())
+
+	_, err = db.GetLayersForManifestDigest(ctx, "sha256:0000000000000000000000000000000000000000000000000000000000000000")
+	assert.Error(t, err)
+
+	_, err = db.OrasArtifactGetByDigest(ctx, "qnib/featuretest", "sha256:0000000000000000000000000000000000000000000000000000000000000000")
+	assert.Error(t, err)
+
+	_, err = db.ManipulationsWithConfigByProfileLabel(ctx, "does-not-exist#v1")
+	assert.Error(t, err)
+}
