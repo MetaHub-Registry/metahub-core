@@ -172,6 +172,10 @@ func TestManipulationsWithConfigByProfileID(t *testing.T) {
 	require.Len(t, byLabel, 1)
 	assert.Equal(t, "test-linked#1", byLabel[0].Label)
 	assert.Equal(t, "/opt/default", byLabel[0].Default.Workdir)
+
+	empty, err := db.ManipulationsWithConfigByProfileLabel(ctx, "does-not-exist#v1")
+	require.NoError(t, err)
+	assert.Empty(t, empty)
 }
 
 // TestManipulationsWithConfigByProfileID_UnknownProfile verifies the helper

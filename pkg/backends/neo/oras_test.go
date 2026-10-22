@@ -142,6 +142,11 @@ func TestOrasAll(t *testing.T) {
 		assert.Equal(t, artifact.Repo, byDigest.Repo)
 		assert.Equal(t, artifact.Digest, byDigest.Digest)
 		assert.Equal(t, artifact.ArtifactType, byDigest.ArtifactType)
+
+		t.Run("GetByDigest_unknown", func(t *testing.T) {
+			_, err := db.OrasArtifactGetByDigest(ctx, "qnib/featuretest", "sha256:0000000000000000000000000000000000000000000000000000000000000000")
+			assert.Error(t, err)
+		})
 		assert.Equal(t, "sbom.cdx.json", artifact.Blobs[0].Annotations["org.opencontainers.image.title"])
 	})
 

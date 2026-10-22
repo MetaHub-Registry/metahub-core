@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	pkgOrasName = "neo/oras.go"
+	orasEnrichWarn = "OrasArtifactEnrich failed (non-fatal): %v"
+	pkgOrasName    = "neo/oras.go"
 )
 
 // containerImageConfigFilter returns a Cypher IN list for the container image config media type allowlist.
@@ -104,7 +105,7 @@ func (n Neo) OrasArtifactGetByName(ctx context.Context, repo, artifactType strin
 		return artifact, err
 	}
 	if err = n.OrasArtifactEnrich(ctx, artifact.ID, &artifact); err != nil {
-		utils.Warn(l, span, "OrasArtifactEnrich failed (non-fatal): %v", err)
+		utils.Warn(l, span, orasEnrichWarn, err)
 		err = nil // enrichment failure is non-fatal — return basic artifact
 	}
 	return
@@ -140,7 +141,7 @@ func (n Neo) OrasArtifactGetByDigest(ctx context.Context, repo, dig string) (art
 		return artifact, err
 	}
 	if err = n.OrasArtifactEnrich(ctx, artifact.ID, &artifact); err != nil {
-		utils.Warn(l, span, "OrasArtifactEnrich failed (non-fatal): %v", err)
+		utils.Warn(l, span, orasEnrichWarn, err)
 		err = nil
 	}
 	return
@@ -173,7 +174,7 @@ func (n Neo) OrasArtifactGetByID(ctx context.Context, manifestID int64) (artifac
 		return artifact, err
 	}
 	if err = n.OrasArtifactEnrich(ctx, artifact.ID, &artifact); err != nil {
-		utils.Warn(l, span, "OrasArtifactEnrich failed (non-fatal): %v", err)
+		utils.Warn(l, span, orasEnrichWarn, err)
 		err = nil
 	}
 	return
