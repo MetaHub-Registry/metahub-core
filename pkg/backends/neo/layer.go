@@ -5,14 +5,14 @@ import (
 	"fmt"
 
 	"github.com/docker/distribution"
+	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/upstream"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"github.com/minio/minio-go/v7/pkg/set"
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/metahub-registry/metahub-core/pkg/types"
-	"github.com/metahub-registry/metahub-core/pkg/upstream"
-	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -319,11 +319,24 @@ func (n Neo) LayerCreateByDescriptor(l distribution.Descriptor) (layerID int64, 
 }
 
 func (n Neo) GetLayersForManifestID(ctx context.Context, maniDataID int64) (layers []types.Layer, err error) {
-	layers = []types.Layer{}
 	q := `MATCH (l:Blob)<-[r]-(m:Manifest) WHERE id(m) = %d AND l.type = "layer"`
 	q += ` RETURN id(l) AS layerID, l.digest AS layerDigest, l.mediaType AS layerMediaType, l.size AS layerSize`
 	q += ` ORDER BY r.order`
-	query := fmt.Sprintf(q, maniDataID)
+	return n.layersForManifestQuery(ctx, fmt.Sprintf(q, maniDataID))
+}
+
+// GetLayersForManifestDigest returns the ordered layers of the manifest with
+// the given digest. Public callers address a manifest by digest; the element
+// ID stays inside this query.
+func (n Neo) GetLayersForManifestDigest(ctx context.Context, maniDigest string) (layers []types.Layer, err error) {
+	q := `MATCH (l:Blob)<-[r]-(m:Manifest) WHERE m.digest = "%s" AND l.type = "layer"`
+	q += ` RETURN id(l) AS layerID, l.digest AS layerDigest, l.mediaType AS layerMediaType, l.size AS layerSize`
+	q += ` ORDER BY r.order`
+	return n.layersForManifestQuery(ctx, fmt.Sprintf(q, maniDigest))
+}
+
+func (n Neo) layersForManifestQuery(ctx context.Context, query string) (layers []types.Layer, err error) {
+	layers = []types.Layer{}
 	res, err := n.Query(query)
 	if err != nil {
 		logrus.Errorf(errFailedRunQueryFmt, err)
@@ -332,7 +345,7 @@ func (n Neo) GetLayersForManifestID(ctx context.Context, maniDataID int64) (laye
 	for _, r := range res {
 		l, e := n.LayerFromResult(ctx, r)
 		if e != nil {
-			err = errors.Wrap(e, "failed to get layers for manifest id")
+			err = errors.Wrap(e, "failed to get layers for manifest")
 			return
 		}
 		layers = append(layers, l)
@@ -492,7 +505,6 @@ func (n Neo) LayersDeleteUnused(ctx context.Context) (err error) {
 	))
 	return
 }
-
 
 func (n Neo) LayerExists(ctx context.Context, up upstream.UpstreamTriple) (found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{

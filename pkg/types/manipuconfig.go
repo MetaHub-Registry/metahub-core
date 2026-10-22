@@ -5,7 +5,7 @@ package types
 //
 // All fields are optional; `IsZero() == true` when nothing is set.
 type ManipuConfig struct {
-	ID         int64             `json:"id,omitempty"`
+	ID         int64             `json:"-"`
 	Env        map[string]string `json:"env,omitempty"`
 	Workdir    string            `json:"workdir,omitempty"`
 	User       string            `json:"user,omitempty"`

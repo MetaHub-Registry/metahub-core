@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -106,6 +106,42 @@ func (n Neo) OrasArtifactGetByName(ctx context.Context, repo, artifactType strin
 	if err = n.OrasArtifactEnrich(ctx, artifact.ID, &artifact); err != nil {
 		utils.Warn(l, span, "OrasArtifactEnrich failed (non-fatal): %v", err)
 		err = nil // enrichment failure is non-fatal — return basic artifact
+	}
+	return
+}
+
+// OrasArtifactGetByDigest returns a single OrasArtifact matching the given
+// repo and manifest digest. Public callers address an artifact by repo +
+// digest; the element ID stays inside the query.
+func (n Neo) OrasArtifactGetByDigest(ctx context.Context, repo, dig string) (artifact types.OrasArtifact, err error) {
+	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+		"package": pkgOrasName,
+		"func":    "OrasArtifactGetByDigest",
+		"repo":    repo,
+		"digest":  utils.ShortenDigest(dig),
+	})
+	defer span.End()
+	_ = ctx
+
+	q := fmt.Sprintf(`MATCH (c:Repo)<-[:OF_REPO]-(s:Slot)-[:HAS_PUSHED]->(md:Manifest)-[:USES]->(cfg:Blob) WHERE cfg.type = "config" AND c.repo = "%s" AND md.digest = "%s" AND NOT cfg.mediaType IN %s RETURN id(md) AS manifestDataID, md.digest AS manifestDataDigest, md.mediaType AS manifestDataMediaType, c.repo AS repo, COALESCE(md.artifactType, cfg.mediaType) AS artifactType LIMIT 1`,
+		repo, dig, containerImageConfigFilter())
+
+	utils.Debug(l, span, q)
+	res, found, err := n.QueryOne(q)
+	if err != nil {
+		return artifact, err
+	}
+	if !found {
+		return artifact, fmt.Errorf("ORAS artifact not found: repo=%s digest=%s", repo, dig)
+	}
+
+	artifact, err = orasArtifactFromResult(res)
+	if err != nil {
+		return artifact, err
+	}
+	if err = n.OrasArtifactEnrich(ctx, artifact.ID, &artifact); err != nil {
+		utils.Warn(l, span, "OrasArtifactEnrich failed (non-fatal): %v", err)
+		err = nil
 	}
 	return
 }
