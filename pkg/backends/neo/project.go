@@ -18,7 +18,6 @@ import (
 // graph (sum of distinct blob sizes reachable from the project's manifests);
 // nothing is cached on the node in v1.
 
-const pkgNameProject = "backends/neo/project.go"
 
 // projectReturn is the shared RETURN projection so every read yields the same shape.
 // visibility/kind/owner use coalesce so pre-existing :Project nodes (created before

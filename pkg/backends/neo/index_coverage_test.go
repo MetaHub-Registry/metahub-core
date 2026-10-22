@@ -78,7 +78,7 @@ func TestIndexLinkingWorkflow(t *testing.T) {
 	assert.Equal(t, "application/vnd.oci.image.index.v1+json", mt)
 
 	// ManifestListExists (tag-based) should find it
-	mt, found, err = db.ManifestListExists(ctx, upstream.UpstreamTriple{
+	_, found, err = db.ManifestListExists(ctx, upstream.UpstreamTriple{
 		Repo:    "qnib/linktest",
 		Tag:     "v1",
 		Profile: "generic",
@@ -87,7 +87,7 @@ func TestIndexLinkingWorkflow(t *testing.T) {
 	assert.True(t, found, "ManifestListExists (tag) should find linked index")
 
 	// ManifestListExists (digest-based) should find it
-	mt, found, err = db.ManifestListExists(ctx, upstream.UpstreamTriple{
+	_, found, err = db.ManifestListExists(ctx, upstream.UpstreamTriple{
 		Repo:    "qnib/linktest",
 		Digest:  digest.Digest(mlDigest),
 		Profile: "generic",

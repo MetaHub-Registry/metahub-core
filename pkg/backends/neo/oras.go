@@ -157,7 +157,6 @@ func orasArtifactFromResult(res types.Result) (a types.OrasArtifact, err error) 
 	if err != nil {
 		// mediaType may be empty for some manifests — not fatal
 		a.MediaType = ""
-		err = nil
 	}
 	a.Repo, err = res.GetStr("repo")
 	if err != nil {
@@ -179,7 +178,7 @@ func orasArtifactFromResult(res types.Result) (a types.OrasArtifact, err error) 
 // OrasArtifactEnrich populates the Blobs and Annotations fields of an
 // OrasArtifact by querying existing graph data. No graph writes occur.
 func (n Neo) OrasArtifactEnrich(ctx context.Context, manifestID int64, artifact *types.OrasArtifact) error {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgOrasName,
 		"func":       "OrasArtifactEnrich",
 		"manifestID": manifestID,

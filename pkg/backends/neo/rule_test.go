@@ -11,7 +11,6 @@ import (
 )
 
 func TestRuleGetCreate(t *testing.T) {
-	ctx := context.Background()
 	debug := 0
 	_, ctx, span := utils.InitLogging(context.Background(), tracer, map[string]any{
 		"func": "TestRuleGetCreate.Setup",

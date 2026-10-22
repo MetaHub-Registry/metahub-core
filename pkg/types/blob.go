@@ -9,7 +9,6 @@ import (
 )
 
 const (
-	pkgNameBlob = "types/blob.go"
 )
 
 type Blob struct {

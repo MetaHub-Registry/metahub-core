@@ -152,7 +152,7 @@ func (n Neo) AnnotationEvalRule(ctx context.Context, a types.Annotation) (err er
 }
 
 func (n Neo) AnnotationGetByKeyValue(ctx context.Context, k, v string) (a types.Annotation, found bool, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"func":  "AnnotationGetByKeyValue",
 		"key":   k,
 		"value": v,

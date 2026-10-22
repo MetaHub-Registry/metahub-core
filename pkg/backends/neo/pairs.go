@@ -178,19 +178,19 @@ func (n Neo) collectionTagProfilePairFromResult(ctx context.Context, res []types
 		p, err := n.ProfileFromResult(r)
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
-			err = utils.ErrorHandler(l, span, err, "while getting profile from result")
+			_ = utils.ErrorHandler(l, span, err, "while getting profile from result")
 			continue
 		}
 		c, err := CollectionFromResult(r)
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
-			err = utils.ErrorHandler(l, span, err, "while getting collection from result")
+			_ = utils.ErrorHandler(l, span, err, "while getting collection from result")
 			continue
 		}
 		t, err := CollectionTagFromResult(r)
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
-			err = utils.ErrorHandler(l, span, err, "while getting collection tag from result")
+			_ = utils.ErrorHandler(l, span, err, "while getting collection tag from result")
 			continue
 		}
 		c.ColTag = t

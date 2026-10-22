@@ -250,7 +250,7 @@ func (n Neo) UpstreamCleanupByID(ctx context.Context, upID int64) (err error) {
 	key := "countUpstream"
 	q := fmt.Sprintf(`MATCH (m:ManifestWrapper)-[]->(up:Upstream) WHERE id(up) = %d`, upID)
 	q += fmt.Sprintf(` RETURN count(up) AS %s`, key)
-	countUpstream := -1
+	var countUpstream int
 	if res, _, e := n.QueryOne(q); e != nil {
 		return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 	} else {
@@ -327,7 +327,7 @@ func (n Neo) UpstreamGet(ctx context.Context, up types.Upstream) (upID int64, su
 
 func (n Neo) CreateUpstream(ctx context.Context, up types.Upstream) (upID int64, err error) {
 	label := fmt.Sprintf("%s/%s:%s", up.Reg, up.Repo, up.Tag)
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameUp,
 		"func":    "CreateUpstream",
 		"repo":    up.Repo,

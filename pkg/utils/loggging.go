@@ -213,11 +213,11 @@ func InitLogging(ctx context.Context, tracer trace.Tracer, attr map[string]any) 
 			v = ShortenDigest(v.(string))
 		}
 		l = l.WithField(k, v)
-		switch v.(type) {
+		switch v := v.(type) {
 		case int, int64:
 			span.SetAttributes(attribute.Key(k).String(fmt.Sprintf("%d", v)))
 		case string:
-			span.SetAttributes(attribute.Key(k).String(v.(string)))
+			span.SetAttributes(attribute.Key(k).String(v))
 		default:
 			NewError(l, span, "Could not set attribute %s : %v", k, v)
 		}

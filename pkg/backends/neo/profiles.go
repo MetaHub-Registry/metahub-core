@@ -234,7 +234,7 @@ func (n Neo) GetProfiles(ctx context.Context) (ps []types.Profile, err error) {
 // ProfileGetAll returns all Profile nodes from the graph, each with its linked Rules populated.
 // It fetches profiles first, then resolves their rules using the existing rule query infrastructure.
 func (n Neo) ProfileGetAll(ctx context.Context) (ps []types.Profile, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameProfile,
 		"func":    "ProfileGetAll",
 	})
@@ -549,7 +549,7 @@ func (n Neo) ProfileFromManifestID(ctx context.Context, mdID int64) (prfs []type
 }
 
 func (n Neo) ProfileFromManifestIDViaAnnotations(ctx context.Context, mdID int64) (prfs []types.Profile, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameProfile,
 		"func":    "ProfileFromManifestIDViaAnnotations",
 		"maniID":  mdID,

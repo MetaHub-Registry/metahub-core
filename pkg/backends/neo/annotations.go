@@ -95,7 +95,7 @@ func (n Neo) GetAnnotationsByManifestID(ctx context.Context, msID int64) (as typ
 }
 
 func (n Neo) GetAnnotationsByManifestWrapperID(ctx context.Context, msID int64) (as types.Annotations, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMani,
 		"func":    "neo.GetAnnotationsByManifestID",
 		"mani.ID": msID,

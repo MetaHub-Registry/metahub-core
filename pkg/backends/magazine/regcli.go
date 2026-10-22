@@ -204,7 +204,6 @@ func (mag Magazine) getBlobReader(ctx context.Context, reg, repo, dig, mt string
 	blob.Digest = ddigest
 	blob.MediaType = mt
 	blob.Size = size
-	found = true
 	return reader, blob, true, nil
 }
 

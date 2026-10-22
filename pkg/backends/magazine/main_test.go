@@ -34,8 +34,6 @@ var (
 	// variant tests that bypass the TEST_REGISTRY override (testing explicit
 	// RegistryConfig wiring instead of the catch-all redirect).
 	anonRegHttpURI  string
-	jeagerHttpURI   string
-	jeagerThriftURI string
 	svcName         = "magazine-test"
 	ctx             = context.Background()
 )

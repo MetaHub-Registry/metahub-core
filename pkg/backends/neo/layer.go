@@ -493,61 +493,6 @@ func (n Neo) LayersDeleteUnused(ctx context.Context) (err error) {
 	return
 }
 
-func (n Neo) layerGetUpstreamRegistryMediaTypeTypeByDigest(ctx context.Context, dig string) (mediaType, registry string, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": pkgNameLyr,
-		"func":    "layerGetUpstreamRegistryMediaTypeTypeByDigest",
-		"digest":  dig,
-	})
-	_ = ctx
-	defer span.End()
-	q := `MATCH (l:Blob)<-[r]-(md:Manifest)-[]-(u:Upstream) `
-	q += fmt.Sprintf(` WHERE l.digest = "%s" AND l.type = "layer"`, dig)
-	q += " RETURN DISTINCT u.reg AS upstreamRegistry, l.mediaType AS layerMediaType"
-	utils.Debug(l, span, q)
-	res, err := n.Query(q)
-	if err != nil {
-		err = utils.ErrorHandler(l, span, err, "failed to get upstream registry and media type")
-	}
-	switch len(res) {
-	case 0:
-		return "", "", utils.NewError(l, span, "no upstream registry and media type found")
-	case 1:
-		if mediaType, err = res[0].GetStr("layerMediaType"); err != nil {
-			return "", "", utils.ErrorHandler(l, span, err, "failed to get media type")
-		}
-		if registry, err = res[0].GetStr("upstreamRegistry"); err != nil {
-			return "", "", utils.ErrorHandler(l, span, err, "failed to get upstream registry")
-		}
-		return utils.ExpandMediaType(mediaType), registry, nil
-	default:
-		utils.Debug(l, span, "found %d Upstream<>Layer and media type found", len(res))
-		regMt := map[string]string{}
-		mtSet := set.CreateStringSet()
-		for _, r := range res {
-			var mt string
-			if val, err := r.GetStr("layerMediaType"); err != nil {
-				return "", "", utils.ErrorHandler(l, span, err, "failed to get media type")
-			} else {
-				mt = utils.ExpandMediaType(val)
-				mtSet.Add(mt)
-			}
-			if val, err := r.GetStr("upstreamRegistry"); err != nil {
-				return "", "", utils.ErrorHandler(l, span, err, "failed to get upstream registry")
-			} else {
-				regMt[mt] = val
-			}
-		}
-		if mtSet.Contains(v1.MediaTypeImageLayerGzip) {
-			return v1.MediaTypeImageLayerGzip, regMt[v1.MediaTypeImageLayerGzip], nil
-		}
-		for mt, reg := range regMt {
-			return mt, reg, nil
-		}
-		utils.NewError(l, span, "no upstream registry and media type found")
-		return "", "", nil
-	}
-}
 
 func (n Neo) LayerExists(ctx context.Context, up upstream.UpstreamTriple) (found bool, err error) {
 	l := logrus.WithFields(logrus.Fields{

@@ -19,7 +19,7 @@ const (
 )
 
 func (n Neo) BlobUploadCreateByOCI(ctx context.Context, i *types.OCIBlobUpload) (err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameBlobUpload,
 		"func":    "BlobUploadCreateByOCI",
 	})
@@ -145,7 +145,7 @@ func (n Neo) BlobUploadComplete(ctx context.Context, i *types.OCIBlobUpload) (er
 	return
 }
 func (n Neo) BlobUploadGetByLocation(ctx context.Context, location string) (bu types.OCIBlobUpload, found bool, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":  pkgNameBlobUpload,
 		"func":     "BlobUploadGetByLocation",
 		"location": location,
@@ -171,7 +171,7 @@ func (n Neo) BlobUploadGetByLocation(ctx context.Context, location string) (bu t
 
 // // CHUNKS
 func (n Neo) UploadChunkCreate(ctx context.Context, bu *types.OCIBlobUpload, startByte, lenBytes int64) (bc types.BlobChunk, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":   pkgNameBlobUpload,
 		"func":      "UploadChunkCreate",
 		"repo":      bu.Repo,

@@ -67,9 +67,6 @@ func TestSplitImage(t *testing.T) {
 
 }
 
-func getMirrorConf(regs []string) []byte {
-	return []byte(fmt.Sprintf(`unqualified-search-registries = ["%s"]`, strings.Join(regs, `", "`)))
-}
 
 func TestNormalizeRepoNameV0(t *testing.T) {
 	input := "alpine"

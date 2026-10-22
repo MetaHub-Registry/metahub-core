@@ -49,7 +49,7 @@ type Config struct {
 }
 
 func NewConfigFromBytes(ctx context.Context, data []byte) (res Config, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": "types",
 		"func":    "NewConfigFromBytes",
 	})
@@ -222,8 +222,8 @@ func (c Config) ToOCISpecV1Image() (res imgspecv1.Image) {
 func (cfg *Config) SwitchMediaType(bu *OCIBlobUpload, buf []byte) (err error) {
 	if bu.MediaType != "" && cfg.MediaType != bu.MediaType {
 		msg := fmt.Sprintf("Mismatched media types: cfg='%s' / bu='%s'", cfg.MediaType, bu.MediaType)
-		logrus.Errorf(msg)
-		return fmt.Errorf(msg)
+		logrus.Error(msg)
+		return fmt.Errorf("%s", msg)
 
 	}
 	switch bu.MediaType {

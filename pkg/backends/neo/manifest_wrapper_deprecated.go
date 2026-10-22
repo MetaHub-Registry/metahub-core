@@ -263,7 +263,7 @@ func (n Neo) ManifestWrapperCleanUpByID(ctx context.Context, maniID int64) (err 
 	// Check how mani connection the Manifest still has
 	q := fmt.Sprintf(`MATCH (m:ManifestWrapper)-[]->(md:Manifest) WHERE id(m) = %d`, maniID)
 	q += ` RETURN count(md) AS countManiData`
-	countManiData := -1
+	var countManiData int
 	if res, _, e := n.QueryOne(q); e != nil {
 		return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 	} else {

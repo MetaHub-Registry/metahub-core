@@ -48,6 +48,7 @@ func TestProfileManifestType(t *testing.T) {
 
 	// ProfileManifestType for the wrapper — should find the relType
 	relType, found, err := db.ProfileManifestType(ctx, maniID)
+	require.NoError(t, err)
 	if found {
 		assert.NotEmpty(t, relType)
 	}

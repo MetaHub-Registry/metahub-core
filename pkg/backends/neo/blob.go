@@ -19,7 +19,7 @@ const (
 )
 
 func (n Neo) CreateBlobFromChunk(ctx context.Context, bu *types.OCIBlobUpload, chunk types.BlobChunk) (err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameBlob,
 		"func":    "CreateBlobFromChunk",
 		"repo":    bu.Repo,
@@ -188,7 +188,7 @@ func (n Neo) BlobGetByDigest(ctx context.Context, dig string) (b *types.Blob, fo
 }
 
 func (n Neo) BlobDeleteByDigest(ctx context.Context, dig string) (err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameBlob,
 		"func":    "BlobDeleteByDigest",
 		"digest":  utils.ShortenDigest(dig),

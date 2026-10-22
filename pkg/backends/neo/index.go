@@ -92,7 +92,7 @@ func (n Neo) LinkManifestListToCollection(mlID, colID int64) (err error) {
 }
 
 func (n Neo) LinkManifestListToManifest(ctx context.Context, mlID, mdID int64) (err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameML,
 		"func":    "LinkManifestListToManifest",
 		"mlID":    mlID,
@@ -302,7 +302,7 @@ func (n Neo) ManifestListInsert(ctx context.Context, ml *types.Index) (err error
 }
 
 func (n Neo) InsertManifestList(ctx context.Context, dig digest.Digest, mt string, size int) (mlID int64, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":   pkgNameML,
 		"func":      "InsertManifestList",
 		"digest":    utils.ShortenDigest(dig.String()),
@@ -390,7 +390,7 @@ func (n Neo) IndexFromResult(ctx context.Context, res types.Result) (ml types.In
 }
 
 func (n Neo) GetAnnotationsByManifestListID(ctx context.Context, mlID int64) (as types.Annotations, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameML,
 		"func":    "GetAnnotationsByManifestListID",
 		"mlID":    mlID,

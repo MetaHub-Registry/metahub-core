@@ -38,7 +38,7 @@ func (n Neo) RuleCreate(ctx context.Context, r types.Rule) (ruleID int64, err er
 }
 
 func (n Neo) RuleGet(ctx context.Context, r types.Rule) (ruleID int64, found bool, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"func": "RuleGet",
 	})
 	_ = l
@@ -425,7 +425,7 @@ func (n Neo) RuleGetSuccessPlatform(ctx context.Context, r types.Rule) (ps []typ
 }
 
 func (n Neo) RulePlatformSuccess(ctx context.Context, ruleID, platformID int64) (err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameRule,
 		"func":    "RulePlatformSuccess",
 	})
@@ -440,7 +440,7 @@ func (n Neo) RulePlatformSuccess(ctx context.Context, ruleID, platformID int64) 
 }
 
 func (n Neo) RuleManifestSuccess(ctx context.Context, ruleID, mdID int64) (err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameRule,
 		"func":    "RuleManifestSuccess",
 	})

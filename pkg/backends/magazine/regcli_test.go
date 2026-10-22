@@ -11,7 +11,6 @@ import (
 )
 
 const (
-	pkgNameRegcliTest = "pkg/backends/magazine/regcli_test.go"
 )
 
 func TestNewRegclient(t *testing.T) {
