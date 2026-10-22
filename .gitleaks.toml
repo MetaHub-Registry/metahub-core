@@ -1,0 +1,6 @@
+# Naming the config in every public repository makes the scan reproducible and
+# keeps the bar identical across repos. This repository has no triaged findings,
+# so there is no allowlist: add path- or pattern-scoped entries only with a
+# reason, never a blanket rule suppression.
+[extend]
+useDefault = true

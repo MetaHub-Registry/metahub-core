@@ -6,4 +6,6 @@ lcov.info
 .env
 .opencode/package-lock.json
 *.log
-.understand-anything/.trash-*
+openspec/changes/
+agent.compose.yaml
+agent.compose.lock

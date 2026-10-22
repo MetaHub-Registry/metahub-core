@@ -2,7 +2,8 @@ package config
 
 // ManipuConfig is the new extended manipulation block used by both the
 // top-level defaults and each rule-keyed variant. See
-// `openspec/changes/extend-manipulation-schema/design.md` for the schema
+// the MetaHub-Registry/openspec change extend-manipulation-schema
+// (design.md) for the schema
 // rationale.
 //
 // All fields are optional. The parser treats a config block as empty when

@@ -24,7 +24,8 @@
 //	assert.Empty(t, violations, "rule shortcut taxonomy violated")
 //
 // See design decision D5 in
-// `metalib/openspec/changes/refactor-graph-model-slot-centred/design.md`
+// the MetaHub-Registry/openspec change refactor-graph-model-slot-centred
+// (design.md, D5)
 // and [[docs/path-z-design-decisions#D5]] in the Obsidian vault.
 package neo
 

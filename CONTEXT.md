@@ -741,7 +741,7 @@ comment says "profile name" but the code compares `req.User`.
 
 ## Update 2026-09-09 — session close: OpenSpec change carried forward
 
-`openspec/changes/add-upstream-registry-categories/` — metalib slice of the
+`MetaHub-Registry/openspec` → `changes/add-upstream-registry-categories/` — metalib slice of the
 archived session change `pull-through-with-manipulation` (OpenProject WP #48):
 new `RegistryConfig` fields (upstream category `direct|s3-redirect|metahub`,
 per-upstream `blob_delivery: proxy|redirect|cache`) + upstream blob-fetch
