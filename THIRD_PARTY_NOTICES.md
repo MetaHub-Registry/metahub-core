@@ -74,7 +74,6 @@ parse, so the licence check ignores it explicitly.
 | `github.com/rs/xid` | MIT | <https://github.com/rs/xid/blob/v1.4.0/LICENSE> |
 | `github.com/scylladb/go-set/i64set` | Apache-2.0 | <https://github.com/scylladb/go-set/blob/v1.0.2/LICENSE> |
 | `github.com/shirou/gopsutil/v3` | BSD-3-Clause | <https://github.com/shirou/gopsutil/blob/v3.23.12/LICENSE> |
-| `github.com/shoenig/go-m1cpu` | MPL-2.0 | <https://github.com/shoenig/go-m1cpu/blob/v0.1.6/LICENSE> |
 | `github.com/sirupsen/logrus` | MIT | <https://github.com/sirupsen/logrus/blob/v1.9.3/LICENSE> |
 | `github.com/spf13/afero` | Apache-2.0 | <https://github.com/spf13/afero/blob/v1.8.2/LICENSE.txt> |
 | `github.com/spf13/cast` | MIT | <https://github.com/spf13/cast/blob/v1.5.0/LICENSE> |
@@ -85,6 +84,7 @@ parse, so the licence check ignores it explicitly.
 | `github.com/subosito/gotenv` | MIT | <https://github.com/subosito/gotenv/blob/v1.4.1/LICENSE> |
 | `github.com/testcontainers/testcontainers-go` | MIT | <https://github.com/testcontainers/testcontainers-go/blob/v0.28.0/LICENSE> |
 | `github.com/tklauser/go-sysconf` | BSD-3-Clause | <https://github.com/tklauser/go-sysconf/blob/v0.3.12/LICENSE> |
+| `github.com/tklauser/numcpus` | Apache-2.0 | <https://github.com/tklauser/numcpus/blob/v0.6.1/LICENSE> |
 | `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` | Apache-2.0 | <https://github.com/open-telemetry/opentelemetry-go-contrib/blob/instrumentation/net/http/otelhttp/v0.45.0/instrumentation/net/http/otelhttp/LICENSE> |
 | `go.opentelemetry.io/otel` | Apache-2.0 | <https://github.com/open-telemetry/opentelemetry-go/blob/v1.19.0/LICENSE> |
 | `go.opentelemetry.io/otel/exporters/jaeger` | Apache-2.0 | <https://github.com/open-telemetry/opentelemetry-go/blob/exporters/jaeger/v1.14.0/exporters/jaeger/LICENSE> |
@@ -100,7 +100,7 @@ parse, so the licence check ignores it explicitly.
 | `golang.org/x/crypto` | BSD-3-Clause | <https://cs.opensource.google/go/x/crypto/+/v0.14.0:LICENSE> |
 | `golang.org/x/exp` | BSD-3-Clause | <https://cs.opensource.google/go/x/exp/+/dd950f8a:LICENSE> |
 | `golang.org/x/net` | BSD-3-Clause | <https://cs.opensource.google/go/x/net/+/v0.17.0:LICENSE> |
-| `golang.org/x/sys/unix` | BSD-3-Clause | <https://cs.opensource.google/go/x/sys/+/v0.16.0:LICENSE> |
+| `golang.org/x/sys` | BSD-3-Clause | <https://cs.opensource.google/go/x/sys/+/v0.16.0:LICENSE> |
 | `golang.org/x/text` | BSD-3-Clause | <https://cs.opensource.google/go/x/text/+/v0.13.0:LICENSE> |
 | `google.golang.org/genproto/googleapis/api/httpbody` | Apache-2.0 | <https://github.com/googleapis/go-genproto/blob/782d3b101e98/googleapis/api/LICENSE> |
 | `google.golang.org/genproto/googleapis/rpc/status` | Apache-2.0 | <https://github.com/googleapis/go-genproto/blob/782d3b101e98/googleapis/rpc/LICENSE> |
