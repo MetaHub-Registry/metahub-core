@@ -7,6 +7,9 @@ import (
 )
 
 func TestSetupJeager(t *testing.T) {
+	if testing.Short() {
+		t.Skip("starts a Jaeger container; the integration lane covers this")
+	}
 	ctx := context.Background()
 	jeagerC, err := SetupJeager(ctx)
 	if err != nil {
@@ -19,6 +22,9 @@ func TestSetupJeager(t *testing.T) {
 }
 
 func TestSetupJeagerENV(t *testing.T) {
+	if testing.Short() {
+		t.Skip("starts a Jaeger container; the integration lane covers this")
+	}
 	os.Setenv("JEAGER_PORT", "26686")
 	ctx := context.Background()
 	jeagerC, err := SetupJeager(ctx)

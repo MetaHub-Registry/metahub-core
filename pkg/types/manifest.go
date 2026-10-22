@@ -52,12 +52,12 @@ func (m Manifest) ToOCIManifestDescriptor() (md manifestlist.ManifestDescriptor)
 	feats := []string{}
 	logrus.Warnf("Platofmr: %#v", m.Platform)
 	return manifestlist.ManifestDescriptor{
-		distribution.Descriptor{
+		Descriptor: distribution.Descriptor{
 			Digest:    digest.Digest(m.Digest),
 			MediaType: m.MediaType,
 			Size:      m.Size,
 		},
-		manifestlist.PlatformSpec{
+		Platform: manifestlist.PlatformSpec{
 			Architecture: m.Platform.Arch,
 			OS:           m.Platform.OS,
 			Variant:      m.Platform.Variant,
