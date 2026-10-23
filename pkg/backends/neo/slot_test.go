@@ -372,7 +372,7 @@ func TestSlotGetAllForRepoTag_NoSlots(t *testing.T) {
 	assert.Empty(t, slots, "should return empty for nonexistent repo/tag")
 }
 
-func TestSlotGetCreate_RejectsEmptyTriple(t *testing.T) {
+func TestSlotGetCreate_EmptyComponents(t *testing.T) {
 	ctx := context.Background()
 	defer slotTestSetup(ctx, t)()
 
@@ -380,6 +380,10 @@ func TestSlotGetCreate_RejectsEmptyTriple(t *testing.T) {
 	assert.Error(t, err, "empty repo should be rejected")
 	_, err = db.SlotGetCreate(ctx, "qnib/alpine", "", "generic")
 	assert.Error(t, err, "empty tag should be rejected")
-	_, err = db.SlotGetCreate(ctx, "qnib/alpine", "latest", "")
-	assert.Error(t, err, "empty profile should be rejected")
+
+	// The empty profile is the generic pull; it normalises to the same slot
+	// sentinel the generic compute uses rather than being rejected.
+	slot, err := db.SlotGetCreate(ctx, "qnib/alpine", "latest", "")
+	require.NoError(t, err, "empty profile should map to the generic slot")
+	assert.Equal(t, "generic", slot.Profile, "empty profile maps to the generic sentinel")
 }
