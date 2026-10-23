@@ -13,15 +13,27 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel/trace"
 )
 
 const (
 	pkgNameSlot = "neo/slot.go"
+	// genericSlotProfile is the slot key for the un-manipulated/generic index.
+	// An empty profile is the generic pull; the slot triple rejects empty
+	// components, so normalise it to the sentinel used by the tests and API.
+	genericSlotProfile = "generic"
 )
+
+// normalizeSlotProfile maps the empty (generic) profile to its slot sentinel.
+func normalizeSlotProfile(profile string) string {
+	if profile == "" {
+		return genericSlotProfile
+	}
+	return profile
+}
 
 // slotFromResult decodes a Slot from a cypher result that returned at least
 // id(s) AS slotID, s.repo AS slotRepo, s.tag AS slotTag, s.profile AS slotProfile.
@@ -69,6 +81,7 @@ func (n Neo) SlotGetCreate(ctx context.Context, repo, tag, profile string) (s ty
 		"profile": profile,
 	})
 	defer span.End()
+	profile = normalizeSlotProfile(profile)
 	if repo == "" || tag == "" || profile == "" {
 		return s, utils.NewError(l, span, "SlotGetCreate: empty triple component repo=%q tag=%q profile=%q", repo, tag, profile)
 	}
@@ -129,6 +142,7 @@ func (n Neo) SlotGetByTriple(ctx context.Context, repo, tag, profile string) (s 
 		"profile": profile,
 	})
 	defer span.End()
+	profile = normalizeSlotProfile(profile)
 	q := fmt.Sprintf(`MATCH (s:Slot {repo: "%s", tag: "%s", profile: "%s"})`, repo, tag, profile)
 	q += slotReturnClause
 	res, found, e := n.QueryOne(q)
@@ -332,6 +346,7 @@ func (n Neo) SlotLatestPushTimestamps(ctx context.Context, repo, tag, profile st
 		"profile": profile,
 	})
 	defer span.End()
+	profile = normalizeSlotProfile(profile)
 	if repo == "" || tag == "" || profile == "" {
 		return nil, utils.NewError(l, span, "SlotLatestPushTimestamps: empty triple component repo=%q tag=%q profile=%q", repo, tag, profile)
 	}
