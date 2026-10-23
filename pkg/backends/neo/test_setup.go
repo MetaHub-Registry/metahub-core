@@ -3,6 +3,7 @@ package neo
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -42,8 +43,14 @@ func SetupNeo4j(ctx context.Context, neoPorts string) (*Neo4jContainer, error) {
 		}
 	}
 	logrus.Infof("Starting Neo4j with ports: %v", ports)
+	image := os.Getenv("METAHUB_NEO4J_IMAGE")
+	if image == "" {
+		// 4.4.9's JDK 11 crashes reading cgroup v2 on the GitHub runner
+		// (CgroupV2Subsystem NPE); the latest 4.4 patch carries the fix.
+		image = "neo4j:4.4.44"
+	}
 	req := testcontainers.ContainerRequest{
-		Image:        "neo4j:4.4.9",
+		Image:        image,
 		ExposedPorts: ports,
 		WaitingFor:   wait.ForHTTP("/").WithPort("7474"),
 		Env: map[string]string{
