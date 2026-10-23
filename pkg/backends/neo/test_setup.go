@@ -47,7 +47,7 @@ func SetupNeo4j(ctx context.Context, neoPorts string) (*Neo4jContainer, error) {
 	if image == "" {
 		// 4.4.9's JDK 11 crashes reading cgroup v2 on the GitHub runner
 		// (CgroupV2Subsystem NPE); the latest 4.4 patch carries the fix.
-		image = "neo4j:4.4.44"
+		image = "mirror.gcr.io/library/neo4j:4.4.44"
 	}
 	req := testcontainers.ContainerRequest{
 		Image:        image,

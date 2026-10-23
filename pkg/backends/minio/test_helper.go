@@ -105,7 +105,7 @@ func SetupMinio(ctx context.Context, minioPorts string) (*MinioContainer, error)
 	req := testcontainers.ContainerRequest{
 		// MinIO withdrew anonymous access to quay.io/minio/minio; the
 		// Bitnami legacy mirror is the same server and remains pullable.
-		Image:        "bitnamilegacy/minio:2025.7.23-debian-12-r5",
+		Image:        "mirror.gcr.io/bitnamilegacy/minio:2025.7.23-debian-12-r5",
 		ExposedPorts: ports,
 		WaitingFor:   wait.ForHTTP("/minio/health/live").WithPort("9000"),
 		Env: map[string]string{
