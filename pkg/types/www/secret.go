@@ -8,7 +8,7 @@ import (
 )
 
 type Secret struct {
-	ID         int64     `json:"id"`
+	ID         int64     `json:"-"`
 	Name       string    `json:"name"`
 	Key        string    `json:"secret_key"`
 	IsCopied   bool      `json:"is_copied"`

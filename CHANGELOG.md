@@ -16,4 +16,6 @@ semantic versioning once it reaches 1.0.
 
 - `types.OrasArtifact`, `types.Manipulation`, `types.ManipuConfig` and
   `types.ManipuCommand` no longer serialise their element ID (`json:"-"`).
-  Code that consumed `id` from these JSON payloads must use the natural key.
+  `www.User` and `www.Secret` likewise hide the SQLite rowid. Code that
+  consumed `id` from these JSON payloads must use the natural key
+  (`username` / `name`).

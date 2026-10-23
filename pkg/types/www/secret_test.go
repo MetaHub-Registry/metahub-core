@@ -1,6 +1,7 @@
 package www
 
 import (
+	"bytes"
 	"testing"
 	"time"
 )
@@ -15,6 +16,9 @@ func TestSecretToBytes(t *testing.T) {
 		CreatedAt: now,
 	}
 	b0 := s0.ToBytes()
+	if bytes.Contains(b0, []byte(`"id"`)) {
+		t.Fatalf("Secret.ToBytes() leaked the storage ID: %s", b0)
+	}
 	s1 := Secret{
 		ID:        1,
 		Name:      "foo",

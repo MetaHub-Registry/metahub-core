@@ -1,6 +1,7 @@
 package www
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 )
@@ -20,6 +21,9 @@ func TestUserToBytes(t *testing.T) {
 	b := u.ToBytes()
 	if len(b) == 0 {
 		t.Fatal("ToBytes() returned empty bytes")
+	}
+	if bytes.Contains(b, []byte(`"id"`)) {
+		t.Fatalf("ToBytes() leaked the storage ID: %s", b)
 	}
 	var decoded User
 	if err := json.Unmarshal(b, &decoded); err != nil {
