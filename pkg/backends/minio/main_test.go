@@ -2,13 +2,14 @@ package minio
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
 	"testing"
 
-	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/tracing"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -18,6 +19,13 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	flag.Parse()
+	if testing.Short() {
+		// The package fixture starts MinIO and, unless JAEGER_BASE is set, a
+		// Jaeger container. The public fast lane runs with -short and no
+		// container runtime; the integration lane runs the full suite.
+		os.Exit(0)
+	}
 	logrus.Info("Start TestMain")
 	ctx := context.Background()
 	minioP := os.Getenv("MINIO_PORTS")

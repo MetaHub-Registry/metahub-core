@@ -347,7 +347,7 @@ func TestManifestRemove(t *testing.T) {
 	reqMissing := types.Request{
 		Digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
 	}
-	found, err = db.ManifestRemove(ctx, reqMissing)
+	found, _ = db.ManifestRemove(ctx, reqMissing)
 	// ManifestRemove returns found=false when manifest doesn't exist
 	assert.False(t, found)
 }

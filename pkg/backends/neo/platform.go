@@ -45,7 +45,7 @@ func (n Neo) PlatformGetByID(platID int64) (plat types.Platform, found bool, err
 }
 
 func (n Neo) PlatformGetByManifestID(ctx context.Context, maniDataID int64) (plat types.Platform, found bool, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":    pkgNamePlatform,
 		"func":       "PlatformGetByManifestID",
 		"maniDataID": maniDataID,
@@ -64,7 +64,7 @@ func (n Neo) PlatformGetByManifestID(ctx context.Context, maniDataID int64) (pla
 }
 
 func (n Neo) GetPlatform(ctx context.Context, plat types.Platform) (platID int64, success bool, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":  pkgNamePlatform,
 		"func":     "GetPlatform",
 		"platform": fmt.Sprintf("%s/%s/%s", plat.OS, plat.Arch, plat.Variant),

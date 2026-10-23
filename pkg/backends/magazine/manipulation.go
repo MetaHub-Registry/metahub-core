@@ -862,9 +862,7 @@ func flattenManipuLayers(mp *types.Manipulation) []types.ManipuLayer {
 		out = append(out, mp.ManipuLayers...)
 		return out
 	}
-	for _, lyr := range mp.Default.Layers {
-		out = append(out, lyr) // rule stays as-is (typically empty)
-	}
+	out = append(out, mp.Default.Layers...) // rules stay as-is (typically empty)
 	for _, v := range mp.Variants {
 		for _, lyr := range v.Config.Layers {
 			// The variant key IS the rule that selects this layer; copy

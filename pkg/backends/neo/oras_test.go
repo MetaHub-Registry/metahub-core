@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
 // TestOrasListingSeparation verifies that image-only repos do not appear in OrasArtifactGetByRepoLike
@@ -135,6 +135,18 @@ func TestOrasAll(t *testing.T) {
 		assert.Equal(t, "application/vnd.oci.image.layer.v1.tar", artifact.Blobs[0].MediaType)
 		assert.Equal(t, int64(12), artifact.Blobs[0].Size)
 		assert.Equal(t, "sbom.cdx.json", artifact.Blobs[0].Title)
+
+		// The natural-key digest lookup must resolve the same artifact.
+		byDigest, err := db.OrasArtifactGetByDigest(ctx, artifact.Repo, artifact.Digest)
+		require.NoError(t, err)
+		assert.Equal(t, artifact.Repo, byDigest.Repo)
+		assert.Equal(t, artifact.Digest, byDigest.Digest)
+		assert.Equal(t, artifact.ArtifactType, byDigest.ArtifactType)
+
+		t.Run("GetByDigest_unknown", func(t *testing.T) {
+			_, err := db.OrasArtifactGetByDigest(ctx, "qnib/featuretest", "sha256:0000000000000000000000000000000000000000000000000000000000000000")
+			assert.Error(t, err)
+		})
 		assert.Equal(t, "sbom.cdx.json", artifact.Blobs[0].Annotations["org.opencontainers.image.title"])
 	})
 

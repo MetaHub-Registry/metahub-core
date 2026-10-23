@@ -2,6 +2,7 @@ package magazine
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -9,7 +10,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/backends/minio"
 	"github.com/metahub-registry/metahub-core/pkg/backends/neo"
 	"github.com/metahub-registry/metahub-core/pkg/backends/sqlite"
@@ -18,6 +18,7 @@ import (
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"github.com/metahub-registry/metahub-core/pkg/yaml/config"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -27,14 +28,12 @@ const (
 )
 
 var (
-	mag             Magazine
-	regHttpURI      string
+	mag        Magazine
+	regHttpURI string
 	// anonRegHttpURI is a second pre-populated test registry used by upstream-
 	// variant tests that bypass the TEST_REGISTRY override (testing explicit
 	// RegistryConfig wiring instead of the catch-all redirect).
 	anonRegHttpURI  string
-	jeagerHttpURI   string
-	jeagerThriftURI string
 	svcName         = "magazine-test"
 	ctx             = context.Background()
 )
@@ -81,6 +80,13 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	flag.Parse()
+	if testing.Short() {
+		// The package fixture starts Neo4j, MinIO, a registry and Jaeger
+		// containers. The public fast lane runs with -short and no container
+		// runtime; the integration lane runs the full suite.
+		os.Exit(0)
+	}
 	logrus.Info("Start TestMain")
 	/// Neo4j
 	neoP := os.Getenv("NEO4J_PORTS")

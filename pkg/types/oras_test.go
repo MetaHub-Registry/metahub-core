@@ -46,7 +46,7 @@ func TestOrasArtifactJSONRoundTrip(t *testing.T) {
 	err = json.Unmarshal(data, &decoded)
 	require.NoError(t, err)
 
-	assert.Equal(t, original.ID, decoded.ID)
+	assert.Zero(t, decoded.ID, "the storage element ID is not part of the JSON contract")
 	assert.Equal(t, original.Repo, decoded.Repo)
 	assert.Equal(t, original.Digest, decoded.Digest)
 	assert.Equal(t, original.MediaType, decoded.MediaType)
@@ -71,7 +71,7 @@ func TestOrasArtifactJSONFields(t *testing.T) {
 	var m map[string]interface{}
 	require.NoError(t, json.Unmarshal(data, &m))
 
-	assert.Contains(t, m, "id")
+	assert.NotContains(t, m, "id", "storage element IDs are not public JSON")
 	assert.Contains(t, m, "repo")
 	assert.Contains(t, m, "digest")
 	assert.Contains(t, m, "media_type")

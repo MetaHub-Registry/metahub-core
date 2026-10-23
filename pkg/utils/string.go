@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"unicode"
 
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"golang.org/x/crypto/bcrypt"
@@ -187,18 +186,6 @@ func UpLabelKey(key string) string {
 	return res
 }
 
-func isAllUpper(s string) bool {
-	hasLetter := false
-	for _, r := range s {
-		if unicode.IsLetter(r) {
-			hasLetter = true
-			if !unicode.IsUpper(r) {
-				return false
-			}
-		}
-	}
-	return hasLetter
-}
 
 func SortTags(in []string) []string {
 	out := append([]string(nil), in...) // copy; don't mutate caller

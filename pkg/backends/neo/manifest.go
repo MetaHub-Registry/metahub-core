@@ -150,7 +150,7 @@ func (n Neo) ManifestV1GetInsert(ctx context.Context, maniSiID int64, maniDataV1
 }
 
 func (n Neo) ManifestV1Get(ctx context.Context, maniDataV1 v1.Descriptor) (maniDataID int64, found bool, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMD,
 		"func":    "ManifestV1Get",
 	})
@@ -905,7 +905,7 @@ func (n Neo) ManifestsMatchingPlatformRule(ctx context.Context, rule types.Rule)
 // The function checks each rule type and evaluates whether the manifest data satisfies the conditions defined by the profile's rules.
 // If all rules are satisfied, the function returns true; otherwise, it returns false.
 func (n Neo) ManifestMatchesProfile(ctx context.Context, md types.Manifest, prf types.Profile) (matches bool, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":      pkgNameMD,
 		"func":         "ManifestMatchesProfile",
 		keyMDLabel:     md.Label,
@@ -943,7 +943,7 @@ func (n Neo) ManifestCheckProfile(ctx context.Context, md types.Manifest, prf ty
 
 // ManifestCheckProfileCreationRelationship checks if the manifest data is created by the profile
 func (n Neo) ManifestCheckProfileCreationRelationship(ctx context.Context, md types.Manifest, prf types.Profile) (ok bool, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":      pkgNameMD,
 		"func":         "ManifestCheckProfileCreationRelationship",
 		keyMDLabel:     md.Label,
@@ -1086,7 +1086,7 @@ func (n Neo) ManifestsMatchingAnnotationRule(ctx context.Context, rule types.Rul
 }
 
 func (n Neo) ManifestLinkToConfig(ctx context.Context, maniID int64, cfg types.Config) (err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMD,
 		"func":    "ManifestLinkToConfig",
 		"maniID":  maniID,
@@ -2446,7 +2446,7 @@ func (n Neo) ManifestGetPulledByRepoTag(ctx context.Context, repo, tag string) (
 		err = utils.ErrorHandler(l, span, e, "failed to get manifest")
 		return maniData, false, err
 	} else if !found {
-		err = utils.ErrorHandler(l, span, errors.New("manifestData not found"), "")
+		_ = utils.ErrorHandler(l, span, errors.New("manifestData not found"), "")
 		return maniData, false, nil
 	} else {
 		maniData, _, e = n.ManifestFromResult(ctx, res)
@@ -2627,7 +2627,7 @@ func (n Neo) ManifestLinkToArtifactConfig(ctx context.Context, mdDigest string, 
 }
 
 func (n Neo) LinkManifestToSubject(ctx context.Context, mdDigest string, subId int64) (err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMD,
 		"func":    "LinkManifestToSubject",
 	})

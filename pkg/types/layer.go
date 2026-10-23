@@ -82,7 +82,7 @@ func NewLayerFromBytes(data []byte) (res Layer, err error) {
 }
 
 func LayerFromDesc(ctx context.Context, lyrDesc distribution.Descriptor) (lyr Layer, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameLayer,
 		"func":    "LayerFromDesc",
 		"digest":  lyrDesc.Digest.String(),

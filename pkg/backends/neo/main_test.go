@@ -2,13 +2,14 @@ package neo
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"testing"
 
-	"github.com/sirupsen/logrus"
 	"github.com/metahub-registry/metahub-core/pkg/tracing"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -18,6 +19,13 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	flag.Parse()
+	if testing.Short() {
+		// The package fixture starts Neo4j and Jaeger containers. The public
+		// fast lane runs with -short and no container runtime; the integration
+		// lane runs the full suite. See openspec/oss-public-ci.
+		os.Exit(0)
+	}
 	logrus.Info("Start TestMain")
 	ctx := context.Background()
 	neoP := os.Getenv("NEO4J_PORTS")

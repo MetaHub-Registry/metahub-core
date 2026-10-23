@@ -12,26 +12,6 @@ const (
 	pkgNameInternal = "neo/internal.go"
 )
 
-func (n Neo) getMani(ctx context.Context, br utils.BootstrapResult, label string) (mani types.ManifestWrapper, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": pkgNameInternal,
-		"func":    "getMani",
-	})
-	defer span.End()
-	_ = l
-	maniID, e := br.GetInt64(fmt.Sprintf("%s#id", label))
-	if e != nil {
-		return mani, e
-	}
-	mani, maniFound, err := n.ManifestWrapperGetByID(ctx, maniID)
-	if err != nil {
-		return mani, err
-	}
-	if !maniFound {
-		return mani, fmt.Errorf("did not find manifest with ID %d", maniID)
-	}
-	return mani, nil
-}
 
 func (n Neo) getManiData(ctx context.Context, br utils.BootstrapResult, label string) (maniData types.Manifest, err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{

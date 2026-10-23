@@ -132,7 +132,7 @@ func (er *ExprRes) GetManifestdataForRules(rules ...string) []Manifest {
 }
 
 func (er ExprRes) FilterByCTPP(ctx context.Context, ctpp CollectionTagProfilePair) (mds []Manifest) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":        "types/expres.go",
 		"func":           "FilterByCTPP",
 		"ctpp":           ctpp.String(),

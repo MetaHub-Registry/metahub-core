@@ -755,3 +755,20 @@ Consumed by metahub-api's `add-pull-through-manifest-intercept`.
 - Dropped the absolute-path `replace` from `go.mod`.
 - Licence/community files added; history rewritten (secret removal, author
   email normalisation). Session branch merged with `main`.
+
+## 2026-10-23 — open-source-metahub
+
+### What changed
+
+- Natural-key lookups: `GetLayersForManifestDigest`,
+  `ManipulationsWithConfigByProfileLabel`, `OrasArtifactGetByDigest`.
+- `OrasArtifact`/`Manipulation`/`ManipuConfig`/`ManipuCommand` hide `ID`;
+  `www.User.ID`/`www.Secret.ID` are `json:"-"`.
+- Public CI + fast lane; OpenSpec `add-public-ci`, `natural-key-identifiers`.
+
+### Gotchas
+
+- `id(n)` stays internal; do not add an exported lookup that takes an element
+  ID from the public API.
+- The restart round-trip test depends on digest ordering; keep it when
+  touching layer hydration.

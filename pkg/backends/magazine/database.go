@@ -4,12 +4,12 @@ import (
 	"context"
 
 	"github.com/docker/distribution/manifest/manifestlist"
-	"github.com/opencontainers/go-digest"
-	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/upstream"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	yamlCfg "github.com/metahub-registry/metahub-core/pkg/yaml/config"
+	"github.com/opencontainers/go-digest"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 type Database interface {
@@ -59,6 +59,7 @@ type Database interface {
 	LayerExists(ctx context.Context, up upstream.UpstreamTriple) (found bool, err error)
 	LayerGetUpstream(ctx context.Context, lID int64) (up types.Upstream, found bool, err error)
 	GetLayersForManifestID(ctx context.Context, maniDataID int64) (layers []types.Layer, err error)
+	GetLayersForManifestDigest(ctx context.Context, maniDigest string) (layers []types.Layer, err error)
 	LayerGetByLayerAndManifestID(ctx context.Context, layerID, mdID int64) (lyr types.Layer, found bool, err error)
 	/********* Config **********/
 	ConfigGetByDigest(ctx context.Context, dig string) (cfg types.Config, found bool, err error)
@@ -271,6 +272,7 @@ type Database interface {
 	// to the given Profile with both the legacy flat ManipuLayers and the
 	// extended Default/Variants model fully hydrated.
 	ManipulationsWithConfigByProfileID(ctx context.Context, prfID int64) (mps []types.Manipulation, err error)
+	ManipulationsWithConfigByProfileLabel(ctx context.Context, label string) (mps []types.Manipulation, err error)
 	ManipuLayerFromConfigYAML(ctx context.Context, cmpl yamlCfg.ManipuLayer) (mpl types.ManipuLayer, err error)
 	ManipulationFromYAML(ctx context.Context, cmp yamlCfg.Manipulation) (mp types.Manipulation, err error)
 	ManipulationCheckRules(ctx context.Context, prfID, maniID int64) (ok bool, err error)
@@ -304,6 +306,7 @@ type Database interface {
 	/**** ORAS ********/
 	OrasArtifactGetByRepoLike(ctx context.Context, repo string) ([]types.OrasListing, error)
 	OrasArtifactGetByName(ctx context.Context, repo, artifactType string) (types.OrasArtifact, error)
+	OrasArtifactGetByDigest(ctx context.Context, repo, dig string) (types.OrasArtifact, error)
 	OrasArtifactGetByID(ctx context.Context, manifestID int64) (types.OrasArtifact, error)
 	/**** Profiles (all with rules) ********/
 	ProfileGetAll(ctx context.Context) ([]types.Profile, error)

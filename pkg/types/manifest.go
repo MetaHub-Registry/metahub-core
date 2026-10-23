@@ -9,7 +9,6 @@ import (
 	"github.com/docker/distribution/manifest/manifestlist"
 	"github.com/minio/minio-go/v7/pkg/set"
 	"github.com/opencontainers/go-digest"
-	imgspecv1 "github.com/opencontainers/image-spec/specs-go/v1"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 
@@ -18,7 +17,7 @@ import (
 
 var (
 	containerConfigMediaTypes = set.CreateStringSet(
-		imgspecv1.MediaTypeImageConfig,
+		v1.MediaTypeImageConfig,
 		"application/vnd.docker.container.image.v1+json",
 	)
 )
@@ -52,12 +51,12 @@ func (m Manifest) ToOCIManifestDescriptor() (md manifestlist.ManifestDescriptor)
 	feats := []string{}
 	logrus.Warnf("Platofmr: %#v", m.Platform)
 	return manifestlist.ManifestDescriptor{
-		distribution.Descriptor{
+		Descriptor: distribution.Descriptor{
 			Digest:    digest.Digest(m.Digest),
 			MediaType: m.MediaType,
 			Size:      m.Size,
 		},
-		manifestlist.PlatformSpec{
+		Platform: manifestlist.PlatformSpec{
 			Architecture: m.Platform.Arch,
 			OS:           m.Platform.OS,
 			Variant:      m.Platform.Variant,
@@ -87,15 +86,15 @@ func ManifestFromOciDescriptor(md v1.Descriptor) (m Manifest) {
 	return
 }
 
-func (md Manifest) ToOCIDescriptor() (mdes imgspecv1.Descriptor) {
-	mdes = imgspecv1.Descriptor{
+func (md Manifest) ToOCIDescriptor() (mdes v1.Descriptor) {
+	mdes = v1.Descriptor{
 		Digest:      digest.Digest(md.Digest),
 		MediaType:   md.MediaType,
 		Size:        md.Size,
 		Annotations: md.Annotations.ToMap(),
 	}
 	if md.Platform.Arch != "" || md.Platform.OS != "" || md.Platform.Variant != "" {
-		mdes.Platform = &imgspecv1.Platform{
+		mdes.Platform = &v1.Platform{
 			Architecture: md.Platform.Arch,
 			OS:           md.Platform.OS,
 			Variant:      md.Platform.Variant,
@@ -126,11 +125,11 @@ type OCIManifest struct {
 	MediaType    string `json:"mediaType,omitempty"`
 	ArtifactType string `json:"artifactType,omitempty"`
 	// Config references the image configuration as a blob.
-	Config imgspecv1.Descriptor `json:"config"`
+	Config v1.Descriptor `json:"config"`
 	// Layers lists descriptors for the layers referenced by the
 	// configuration.
 	Layers      []distribution.Descriptor `json:"layers"`
-	Subject     *imgspecv1.Descriptor     `json:"subject,omitempty"`
+	Subject     *v1.Descriptor     `json:"subject,omitempty"`
 	Annotations map[string]string         `json:"annotations,omitempty"`
 }
 

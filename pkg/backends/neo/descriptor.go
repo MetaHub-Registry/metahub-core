@@ -13,7 +13,7 @@ const (
 )
 
 func (neo Neo) LinkSubjectByDigestMediaType(ctx context.Context, refID int64, subDigest, subMediaType string) (err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
+	l, _, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package":      neoSubFile,
 		"func":         "LinkSubjectByDigestMediaType",
 		"ref":          refID,

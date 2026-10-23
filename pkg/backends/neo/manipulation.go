@@ -227,15 +227,29 @@ func (n Neo) ManipulationsWithConfigByProfileID(ctx context.Context, prfID int64
 }
 
 func (n Neo) ManipulationsGetByProfileID(ctx context.Context, prfID int64) (mps []types.Manipulation, err error) {
-	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
-		"package": pkgNameManipulation,
-		"func":    "ManipulationGetByProfileID",
-		"prfID":   prfID,
+	return n.manipulationsGetByProfileWhere(ctx, fmt.Sprintf(`id(prf) = %d`, prfID), map[string]any{
+		"func":  "ManipulationGetByProfileID",
+		"prfID": prfID,
 	})
+}
+
+// ManipulationsWithConfigByProfileLabel returns every manipulation linked to
+// the profile with the given (stored) label. Public callers address a profile
+// by label; the element ID stays inside this query.
+func (n Neo) ManipulationsWithConfigByProfileLabel(ctx context.Context, label string) ([]types.Manipulation, error) {
+	return n.manipulationsGetByProfileWhere(ctx, fmt.Sprintf(`prf.label = "%s"`, label), map[string]any{
+		"func":  "ManipulationGetByProfileLabel",
+		"label": label,
+	})
+}
+
+func (n Neo) manipulationsGetByProfileWhere(ctx context.Context, where string, fields map[string]any) (mps []types.Manipulation, err error) {
+	fields["package"] = pkgNameManipulation
+	l, ctx, span := utils.InitLogging(ctx, tracer, fields)
 	defer span.End()
 	mps = make([]types.Manipulation, 0)
 	_ = ctx
-	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(mp:Manipulation) WHERE id(prf) = %d`, prfID)
+	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(mp:Manipulation) WHERE %s`, where)
 	q += fmt.Sprintf(` RETURN %s`, ManipulationReturn)
 	utils.Debug(l, span, q)
 	if res, err := n.Query(q); err != nil {

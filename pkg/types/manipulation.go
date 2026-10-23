@@ -8,7 +8,7 @@ package types
 // existing consumers.
 type Manipulation struct {
 	Label        string          `json:"label"`
-	ID           int64           `json:"id,omitempty"`
+	ID           int64           `json:"-"`
 	ManipuLayers []ManipuLayer   `json:"layers,omitempty"`
 	Default      ManipuConfig    `json:"default,omitempty"`
 	Variants     []ManipuVariant `json:"variants,omitempty"`

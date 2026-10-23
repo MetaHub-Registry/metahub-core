@@ -55,7 +55,7 @@ func (n Neo) CollectionTagCleanupByID(ctx context.Context, tagID int64) (err err
 	key := "countTag"
 	q := fmt.Sprintf(`MATCH (m:ManifestWrapper)<-[]-(t:Tag) WHERE id(t) = %d`, tagID)
 	q += fmt.Sprintf(` RETURN count(t) AS %s`, key)
-	countUpstream := -1
+	var countUpstream int
 	if res, _, e := n.QueryOne(q); e != nil {
 		return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 	} else {

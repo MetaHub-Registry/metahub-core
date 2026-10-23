@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestManipuConfigRoundTrip verifies that a Manipulation with a Default
@@ -165,6 +165,17 @@ func TestManipulationsWithConfigByProfileID(t *testing.T) {
 	require.Len(t, got[0].Variants, 1)
 	assert.Equal(t, "arch:arm64=true", got[0].Variants[0].Rule)
 	assert.Equal(t, "/opt/arm", got[0].Variants[0].Config.Workdir)
+
+	// The natural-key lookup must return the same manipulation.
+	byLabel, err := db.ManipulationsWithConfigByProfileLabel(ctx, "cfg-test#v1")
+	require.NoError(t, err)
+	require.Len(t, byLabel, 1)
+	assert.Equal(t, "test-linked#1", byLabel[0].Label)
+	assert.Equal(t, "/opt/default", byLabel[0].Default.Workdir)
+
+	empty, err := db.ManipulationsWithConfigByProfileLabel(ctx, "does-not-exist#v1")
+	require.NoError(t, err)
+	assert.Empty(t, empty)
 }
 
 // TestManipulationsWithConfigByProfileID_UnknownProfile verifies the helper

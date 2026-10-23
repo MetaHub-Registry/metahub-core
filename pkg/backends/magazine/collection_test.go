@@ -9,7 +9,6 @@ import (
 )
 
 func TestCollectionHeadManifestNotFoundManifest(t *testing.T) {
-	ctx := context.Background()
 	bs := utils.NewBootstrap()
 	debug := 0
 	bs.SetYAMLPrefix("../../../misc/yaml")

@@ -18,7 +18,7 @@ var ValidManipuCmdOps = []string{
 // config. It is intentionally separate from the legacy `ManipuCmd` type
 // which only carried a single-string value and a rule.
 type ManipuCommand struct {
-	ID    int64    `json:"id,omitempty"`
+	ID    int64    `json:"-"`
 	Op    string   `json:"op"`
 	Value []string `json:"value"`
 }

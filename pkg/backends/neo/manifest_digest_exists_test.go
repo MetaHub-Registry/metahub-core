@@ -93,7 +93,7 @@ func TestManifestExists_UnlinkedDigestIsNotAnError(t *testing.T) {
 		Tag:     upTag,
 		Profile: "generic",
 	}
-	mediaType, found, err = db.ManifestExistsContent(ctx, upTagged)
+	_, found, err = db.ManifestExistsContent(ctx, upTagged)
 	require.NoError(t, err, "tag-based existence of an unlinked manifest must NOT error (was the 500)")
 	assert.False(t, found, "unlinked manifest is not part of the profile's tag-scoped view")
 

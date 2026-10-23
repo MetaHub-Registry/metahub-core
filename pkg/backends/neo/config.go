@@ -332,7 +332,7 @@ func (n Neo) ConfigInsert(ctx context.Context, cfg types.Config) (cfgID int64, e
 }
 
 func (n Neo) ConfigFromResult(ctx context.Context, res types.Result) (cfg types.Config, err error) {
-	ctx, span := tracer.Start(ctx, "ConfigFromResult")
+	_, span := tracer.Start(ctx, "ConfigFromResult")
 	defer span.End()
 	err = res.CheckKeys("configID", "configDigest", "configSize")
 	if err != nil {

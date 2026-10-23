@@ -2,7 +2,7 @@ package types
 
 // OrasArtifact represents a single ORAS artifact manifest with its full metadata.
 type OrasArtifact struct {
-	ID           int64             `json:"id"`
+	ID           int64             `json:"-"`
 	Repo         string            `json:"repo"`
 	Digest       string            `json:"digest"`
 	MediaType    string            `json:"media_type"`

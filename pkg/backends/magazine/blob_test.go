@@ -154,7 +154,7 @@ func TestStoreBlobUpload(t *testing.T) {
 	utils.Debug(l, span, "Compose blob from chunk")
 	err = mag.ComposeFromChunks(ctx, &bu, []types.BlobChunk{chunk})
 	if err != nil {
-
+		t.Fatal(err)
 	}
 	dt := types.DataTupeFTConfigArm64()
 	upt, err := upstream.UpstreamToUpstreamTriple(dt.Upstream, types.MediaTypeImageConfig)
