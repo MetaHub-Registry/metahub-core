@@ -82,7 +82,7 @@ func (n Neo) CollectionTagProfilePairPlatformGetRegexFiltered(ctx context.Contex
 	q += fmt.Sprintf(` WHERE s.repo =~ "%s" AND s.tag =~ "%s"`, repoRegex, tagRegex)
 	q += ` MATCH (c:Repo {repo: s.repo})-[:HAS_TAG]->(t:Tag {name: s.tag})`
 	utils.Debug(l, span, q+" RETURN *")
-	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule,`
+	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule, prf.label AS profileLabel,`
 	q += ` id(c) AS collectionID, c.repo AS collectionRepo,`
 	q += ` id(t) AS tagID, t.name AS tagName`
 	res, err := n.Query(q)
@@ -102,7 +102,7 @@ func (n Neo) CollectionTagProfilePairPlatformGetAll(ctx context.Context) (ctpps 
 	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(Rule)-[%s]->(p:Platform)<-[:HAS_PLATFORM]-(md:Manifest)`, rel)
 	q += ` MATCH (s:Slot)-[:HAS_PUSHED]->(md)`
 	q += ` MATCH (c:Repo {repo: s.repo})-[:HAS_TAG]->(t:Tag {name: s.tag})`
-	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule,`
+	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule, prf.label AS profileLabel,`
 	q += ` id(c) AS collectionID, c.repo AS collectionRepo,`
 	q += ` id(t) AS tagID, t.name AS tagName`
 	span.AddEvent("log", trace.WithAttributes(
@@ -128,7 +128,7 @@ func (n Neo) CollectionTagProfilePairAnnotationGetRegexFiltered(ctx context.Cont
 	q += ` MATCH (s:Slot)-[:HAS_PUSHED]->(md)`
 	q += fmt.Sprintf(` WHERE s.repo =~ "%s" AND s.tag =~ "%s"`, repoRegex, tagRegex)
 	q += ` MATCH (c:Repo {repo: s.repo})-[:HAS_TAG]->(t:Tag {name: s.tag})`
-	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule,`
+	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule, prf.label AS profileLabel,`
 	q += ` id(c) AS collectionID, c.repo AS collectionRepo,`
 	q += ` id(t) AS tagID, t.name AS tagName`
 	span.AddEvent("log", trace.WithAttributes(
@@ -155,7 +155,7 @@ func (n Neo) CollectionTagProfilePairAnnotationGetAll(ctx context.Context) (ctpp
 	q += ` MATCH (s:Slot)-[:HAS_PUSHED]->(md)`
 	q += ` MATCH (c:Repo {repo: s.repo})-[:HAS_TAG]->(t:Tag {name: s.tag})`
 	utils.Debug(l, span, q+" RETURN *")
-	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule,`
+	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule, prf.label AS profileLabel,`
 	q += ` id(c) AS collectionID, c.repo AS collectionRepo,`
 	q += ` id(t) AS tagID, t.name AS tagName`
 	res, err := n.Query(q)
