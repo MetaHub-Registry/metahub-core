@@ -45,7 +45,7 @@ func (n Neo) RuleGet(ctx context.Context, r types.Rule) (ruleID int64, found boo
 	defer span.End()
 	q := `MATCH (r:Rule) WHERE r.name = "%s" AND r.tag = "%s" AND r.op = "%s" AND r.key = "%s" AND r.value = "%s" RETURN id(r) AS ID`
 	query := fmt.Sprintf(q, r.Name, r.Tag, r.Op, r.Key, r.Value)
-	utils.Debug(l, span, query)
+	utils.Debug(l, span, "%s", query)
 	res, found, err := n.QueryOne(query)
 	if err != nil {
 		logrus.Error(err)
@@ -127,7 +127,7 @@ func (n Neo) RulesGetByManipuLayerID(ctx context.Context, mplID int64) (rules ty
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (mpl:ManipuLayer)-[]->(r:Rule) WHERE id(mpl) = %d`, mplID)
 	q += fmt.Sprintf(` RETURN %s`, ruleReturn)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Query(q)
 	if err != nil {
 		return
@@ -210,7 +210,7 @@ func (n Neo) RulesGetByManifestID(ctx context.Context, maniID int64) (rules type
 	// instead of through the legacy :ManifestWrapper wrapper node.
 	q := `MATCH (md:Manifest)-[:HAS_PLATFORM]->(plat:Platform)<-[:TRUE]-(r:Rule)`
 	q += fmt.Sprintf(` WHERE id(md) = %d RETURN %s`, maniID, ruleReturn)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Query(q)
 	if err != nil {
 		return
@@ -267,7 +267,7 @@ func (n Neo) RuleEvalPlatformRule(ctx context.Context, r types.Rule) (err error)
 
 	q := fmt.Sprintf(`MATCH (p:Platform) WHERE p.%s = "%s"`, r.Key, r.Value)
 	q += ` RETURN id(p) as platformID, p.os as platformOS, p.arch as platformArch, p.variant as platformVariant`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Query(q)
 	if err != nil {
 		return
@@ -302,7 +302,7 @@ func (n Neo) RuleEvalAnnotationRuleNULL(ctx context.Context, r types.Rule) (err 
 	q := `MATCH (a:Annotation) WHERE a.key =~ "%s"`
 	q += ` RETURN id(a) as annotationID, a.key as annotationKey, a.value as annotationValue`
 	query := fmt.Sprintf(q, r.Key)
-	utils.Debug(l, span, query)
+	utils.Debug(l, span, "%s", query)
 	res, err := n.Query(query)
 	if err != nil {
 		return
@@ -321,7 +321,7 @@ func (n Neo) RuleEvalAnnotationRuleNULL(ctx context.Context, r types.Rule) (err 
 	q = `MATCH (md:Manifest) WHERE NOT EXISTS { MATCH (md)-[:HAS_ANNOTATION]->(a:Annotation) WHERE a.key =~ "%s" }`
 	q += ` RETURN id(md) AS manifestDataID`
 	query = fmt.Sprintf(q, r.Key)
-	utils.Debug(l, span, query)
+	utils.Debug(l, span, "%s", query)
 	res, err = n.Query(query)
 	if err != nil {
 		return
@@ -434,7 +434,7 @@ func (n Neo) RulePlatformSuccess(ctx context.Context, ruleID, platformID int64) 
 	q += ` WHERE id(r) = %d AND id(p) = %d`
 	q += ` MERGE (r)-[:%s]->(p)`
 	query := fmt.Sprintf(q, ruleID, platformID, types.RelationSuccess)
-	utils.Debug(l, span, query)
+	utils.Debug(l, span, "%s", query)
 	_, err = n.Execute(query)
 	return
 }
@@ -449,7 +449,7 @@ func (n Neo) RuleManifestSuccess(ctx context.Context, ruleID, mdID int64) (err e
 	q += ` WHERE id(r) = %d AND id(md) = %d`
 	q += ` MERGE (r)-[:%s]->(md)`
 	query := fmt.Sprintf(q, ruleID, mdID, types.RelationSuccess)
-	utils.Debug(l, span, query)
+	utils.Debug(l, span, "%s", query)
 	_, err = n.Execute(query)
 	return
 }

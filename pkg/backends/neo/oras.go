@@ -44,7 +44,7 @@ func (n Neo) OrasArtifactGetByRepoLike(ctx context.Context, repo string) (listin
 	q := fmt.Sprintf(`MATCH (c:Repo)<-[:OF_REPO]-(s:Slot)-[:HAS_PUSHED]->(md:Manifest)-[:USES]->(cfg:Blob) WHERE cfg.type = "config" AND c.repo =~ "%s" AND NOT cfg.mediaType IN %s RETURN c.repo AS repo, COALESCE(md.artifactType, cfg.mediaType) AS artifactType, count(DISTINCT md) AS artifactCount`,
 		repoPattern, containerImageConfigFilter())
 
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Query(q)
 	if err != nil {
 		utils.ErrorHandler(l, span, err, "while executing Query")
@@ -91,7 +91,7 @@ func (n Neo) OrasArtifactGetByName(ctx context.Context, repo, artifactType strin
 	q := fmt.Sprintf(`MATCH (c:Repo)<-[:OF_REPO]-(s:Slot)-[:HAS_PUSHED]->(md:Manifest)-[:USES]->(cfg:Blob) WHERE cfg.type = "config" AND c.repo = "%s" AND COALESCE(md.artifactType, cfg.mediaType) = "%s" RETURN id(md) AS manifestDataID, md.digest AS manifestDataDigest, md.mediaType AS manifestDataMediaType, c.repo AS repo, COALESCE(md.artifactType, cfg.mediaType) AS artifactType LIMIT 1`,
 		repo, artifactType)
 
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
 		return artifact, err
@@ -127,7 +127,7 @@ func (n Neo) OrasArtifactGetByDigest(ctx context.Context, repo, dig string) (art
 	q := fmt.Sprintf(`MATCH (c:Repo)<-[:OF_REPO]-(s:Slot)-[:HAS_PUSHED]->(md:Manifest)-[:USES]->(cfg:Blob) WHERE cfg.type = "config" AND c.repo = "%s" AND md.digest = "%s" AND NOT cfg.mediaType IN %s RETURN id(md) AS manifestDataID, md.digest AS manifestDataDigest, md.mediaType AS manifestDataMediaType, c.repo AS repo, COALESCE(md.artifactType, cfg.mediaType) AS artifactType LIMIT 1`,
 		repo, dig, containerImageConfigFilter())
 
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
 		return artifact, err
@@ -160,7 +160,7 @@ func (n Neo) OrasArtifactGetByID(ctx context.Context, manifestID int64) (artifac
 	q := fmt.Sprintf(`MATCH (c:Repo)<-[:OF_REPO]-(s:Slot)-[:HAS_PUSHED]->(md:Manifest)-[:USES]->(cfg:Blob) WHERE cfg.type = "config" AND id(md) = %d AND NOT cfg.mediaType IN %s RETURN id(md) AS manifestDataID, md.digest AS manifestDataDigest, md.mediaType AS manifestDataMediaType, c.repo AS repo, COALESCE(md.artifactType, cfg.mediaType) AS artifactType LIMIT 1`,
 		manifestID, containerImageConfigFilter())
 
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
 		return artifact, err
@@ -227,7 +227,7 @@ func (n Neo) OrasArtifactEnrich(ctx context.Context, manifestID int64, artifact 
 		`MATCH (md:Manifest)-[:HAS_ANNOTATION]->(a:Annotation) WHERE id(md) = %d RETURN a.key AS key, a.value AS value`,
 		manifestID,
 	)
-	utils.Debug(l, span, qAnnotations)
+	utils.Debug(l, span, "%s", qAnnotations)
 	annoResults, err := n.Query(qAnnotations)
 	if err != nil {
 		return fmt.Errorf("OrasArtifactEnrich: manifest annotations: %w", err)
@@ -248,7 +248,7 @@ func (n Neo) OrasArtifactEnrich(ctx context.Context, manifestID int64, artifact 
 		`MATCH (md:Manifest)-[r:HAS_LAYER]->(b:Blob) WHERE id(md) = %d AND b.type = "layer" RETURN id(b) AS blobID, b.digest AS digest, b.mediaType AS mediaType, b.size AS size ORDER BY r.order`,
 		manifestID,
 	)
-	utils.Debug(l, span, qLayers)
+	utils.Debug(l, span, "%s", qLayers)
 	layerResults, err := n.Query(qLayers)
 	if err != nil {
 		return fmt.Errorf("OrasArtifactEnrich: layers: %w", err)
@@ -285,7 +285,7 @@ func (n Neo) OrasArtifactEnrich(ctx context.Context, manifestID int64, artifact 
 			`MATCH (b:Blob)-[:HAS_ANNOTATION]->(a:Annotation) WHERE id(b) IN [%s] RETURN id(b) AS blobID, a.key AS key, a.value AS value`,
 			ids,
 		)
-		utils.Debug(l, span, qBlobAnnos)
+		utils.Debug(l, span, "%s", qBlobAnnos)
 		blobAnnoResults, err := n.Query(qBlobAnnos)
 		if err != nil {
 			return fmt.Errorf("OrasArtifactEnrich: blob annotations: %w", err)

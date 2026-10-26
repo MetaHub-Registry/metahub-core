@@ -31,7 +31,7 @@ func (n Neo) BlobUploadCreateByOCI(ctx context.Context, i *types.OCIBlobUpload) 
 	i.Location = fmt.Sprintf("/v2/%s/blobs/uploads/%s", i.Repo, i.UUID.String())
 	q := fmt.Sprintf(`CREATE (bu:BlobUpload {upload_user: "%s", upload_profile:"%s", digest: "%s", repo: "%s", uuid: "%s", location:"%s", created_at: TIMESTAMP()})`, i.UploadUser, i.UploadProfile, i.Digest, i.Repo, i.UUID.String(), i.Location)
 	q += ` RETURN ID(bu) AS blobuploadID`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Execute(q)
 	if err != nil {
 		span.RecordError(err)
@@ -71,7 +71,7 @@ func (n Neo) BlobUploadUpdateByUUID(ctx context.Context, i *types.OCIBlobUpload)
 	defer span.End()
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (n)<-[]-(bu:BlobUpload) WHERE (n:Blob OR n:BlobChunk) AND n.digest = "%s" AND bu.uuid = "%s" RETURN DISTINCT LABELS(n) AS nodeType, ID(n) AS nodeID`, i.Digest, i.UUID.String())
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Query(q)
 	if err != nil {
 		return
@@ -95,7 +95,7 @@ func (n Neo) BlobUploadUpdateByUUID(ctx context.Context, i *types.OCIBlobUpload)
 		q += ` MATCH (n:%s) WHERE id(n) = %d`
 		q += ` MERGE (bu)-[:UPLOADED]->(n)`
 		query := fmt.Sprintf(q, i.ID, nodeType, nodeID)
-		utils.Debug(l, span, query)
+		utils.Debug(l, span, "%s", query)
 		_, err = n.Execute(query)
 		if err != nil {
 			return err
@@ -115,7 +115,7 @@ func (n Neo) BlobUploadUpdateByUUID(ctx context.Context, i *types.OCIBlobUpload)
 				`MERGE (p:Profile {label: "%s"}) WITH p MATCH (b:Blob) WHERE id(b) = %d MERGE (p)-[rel:UPLOADED]->(b) ON CREATE SET rel.repo = "%s", rel.timestamp = timestamp()`,
 				i.UploadProfile, nodeID, i.Repo,
 			)
-			utils.Debug(l, span, profEdgeQ)
+			utils.Debug(l, span, "%s", profEdgeQ)
 			if _, e := n.Execute(profEdgeQ); e != nil {
 				// Non-fatal: the primary BlobUpload->Blob edge is already in
 				// place, and the pull handler can still walk via the
@@ -155,7 +155,7 @@ func (n Neo) BlobUploadGetByLocation(ctx context.Context, location string) (bu t
 	query += ` RETURN ID(bu) AS blobuploadID, bu.upload_user AS blobuploadUploadUser, bu.upload_user AS blobuploadUploadProfile, bu.digest AS blobuploadDigest,`
 	query += ` bu.uuid AS blobuploadUUID, bu.location AS blobuploadLocation`
 
-	utils.Debug(l, span, query)
+	utils.Debug(l, span, "%s", query)
 	res, found, err := n.QueryOne(query)
 	if err != nil {
 		return bu, false, utils.ErrorHandler(l, span, err, FailNeoExecute)
@@ -193,7 +193,7 @@ func (n Neo) UploadChunkCreate(ctx context.Context, bu *types.OCIBlobUpload, sta
 	q += ` MERGE (bu)-[:CHUNK]->(bc)`
 	q += ` RETURN ID(bc) AS blobchunkID`
 	query := fmt.Sprintf(q, bu.ID, startByte, lenBytes, fmt.Sprintf("%d-%d", startByte, startByte+lenBytes), bu.Digest)
-	utils.Debug(l, span, query)
+	utils.Debug(l, span, "%s", query)
 	res, err := n.Execute(query)
 	if err != nil {
 		return
@@ -380,7 +380,7 @@ func (n Neo) BlobUploadGetByBlobDigest(ctx context.Context, dig string) (bu type
 	q += fmt.Sprintf(` WHERE b.digest = "%s"`, dig)
 	q += ` RETURN ID(bu) AS blobuploadID, bu.upload_user AS blobuploadUploadUser, bu.upload_user AS blobuploadUploadProfile, bu.digest AS blobuploadDigest,`
 	q += ` bu.uuid AS blobuploadUUID, bu.location AS blobuploadLocation`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, found, err := n.QueryOne(q); err != nil {
 		return bu, false, utils.ErrorHandler(l, span, err, FailNeoExecute)
 	} else if !found {

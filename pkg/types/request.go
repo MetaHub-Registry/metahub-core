@@ -73,7 +73,7 @@ func (req *Request) ExtractRepoName(span trace.Span, r *http.Request) (err error
 	} else {
 		tag = parRef
 	}
-	req.Log(span, "Extracted from URL - repo:"+parRepo+" / image:"+parImg+" / reference:"+parRef+" / digest:"+dig)
+	req.Log(span, "%s", "Extracted from URL - repo:"+parRepo+" / image:"+parImg+" / reference:"+parRef+" / digest:"+dig)
 	repo := filepath.Join(parRepo, parImg)
 	req.Repo = repo
 	req.Tag = tag

@@ -150,7 +150,7 @@ func (n Neo) ProfileGetByLabelWithStats(ctx context.Context, label string) (ps t
 			`RETURN count(DISTINCT s) AS slotCount, count(DISTINCT m) AS manifestCount`,
 		prf.ID,
 	)
-	utils.Debug(l, span, statsQ)
+	utils.Debug(l, span, "%s", statsQ)
 	statsRes, statsFound, qErr := n.QueryOne(statsQ)
 	if qErr != nil {
 		utils.ErrorHandler(l, span, qErr, "while fetching profile stats")
@@ -241,7 +241,7 @@ func (n Neo) ProfileGetAll(ctx context.Context) (ps []types.Profile, err error) 
 	defer span.End()
 
 	q := fmt.Sprintf(`MATCH (prf:Profile) RETURN %s`, returnStatementProfile)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Query(q)
 	if err != nil {
 		utils.ErrorHandler(l, span, err, "while executing ProfileGetAll query")
@@ -503,7 +503,7 @@ func (n Neo) ProfileFromManifestIDViaOrig(ctx context.Context, maniDataID int64)
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(:Rule)-[:TRUE]->(p:Platform)<-[r]-(md:Manifest) WHERE id(md) = %d`, maniDataID)
 	q += fmt.Sprintf(` RETURN DISTINCT %s`, returnStatementProfile)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, e := n.Query(q)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, FailNeoExecute)
@@ -557,7 +557,7 @@ func (n Neo) ProfileFromManifestIDViaAnnotations(ctx context.Context, mdID int64
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(r:Rule)-[:%s]-(a:Annotation)-[]-(md:Manifest) WHERE id(md) = %d`, types.RelationSuccess, mdID)
 	q += fmt.Sprintf(` RETURN DISTINCT %s`, returnStatementProfile)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Query(q)
 	if err != nil {
 		return
@@ -573,7 +573,7 @@ func (n Neo) ProfileFromManifestIDViaAnnotations(ctx context.Context, mdID int64
 		}
 		q := fmt.Sprintf(`MATCH (md:Manifest)-[:HAS_ANNOTATION]->(a:Annotation)<-[:%s]-(r:Rule)<-[:USES]-(p:Profile)`, types.RelationFailure)
 		q += fmt.Sprintf(` WHERE id(md) = %d AND id(p) = %d RETURN count(a) AS countAnnotations`, mdID, p.ID)
-		utils.Debug(l, span, q)
+		utils.Debug(l, span, "%s", q)
 		res, _, e := n.QueryOne(q)
 		if e != nil {
 			utils.ErrorHandler(l, span, e, errQueryOne)
@@ -812,7 +812,7 @@ func (n Neo) ProfileGetPlatformRules(ctx context.Context, prfID int64) (rs []typ
 	q := `MATCH (prf:Profile)-[:USES]->(r:Rule)`
 	q += fmt.Sprintf(` WHERE id(prf) = %d AND r.type = "%s" AND r.op = "%s"`, prfID, types.RuleTypePlatform, "eq")
 	q += fmt.Sprintf(` RETURN %s`, ruleReturn)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Query(q)
 	if err != nil {
 		err = errors.Wrapf(err, "failed to unwind rules for profile %d", prfID)
@@ -837,7 +837,7 @@ func (n Neo) ProfileGetAnnoEqRules(ctx context.Context, prfID int64) (rs []types
 	q := `MATCH (prf:Profile)-[:USES]->(r:Rule)`
 	q += fmt.Sprintf(` WHERE id(prf) = %d`, prfID)
 	q += fmt.Sprintf(` RETURN %s`, ruleReturn)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Query(q)
 	if err != nil {
 		err = errors.Wrapf(err, "failed to unwind rules for profile %d", prfID)
@@ -902,7 +902,7 @@ func (n Neo) ProfileLinkToManipulation(ctx context.Context, prfID, mpID int64) (
 	defer span.End()
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (p:Profile), (mp:Manipulation) WHERE id(p) = %d AND id(mp) = %d MERGE (p)-[:USES]->(mp)`, prfID, mpID)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if _, err := n.Execute(q); err != nil {
 		return utils.ErrorHandler(l, span, err, FailNeoExecute)
 	}

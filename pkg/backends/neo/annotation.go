@@ -74,7 +74,7 @@ func (n Neo) AnnotationUpdate(ctx context.Context, a types.Annotation) (err erro
 		return utils.NewError(l, span, "annotation with ID %d has different key (%s != %s)", a.ID, curA.Key, a.Key)
 	}
 	q := fmt.Sprintf(`MATCH (n:Annotation) WHERE id(n) = %d SET n.value = "%s"`, a.ID, a.Value)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	_, e = n.Execute(q)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, "error while executing query")
@@ -161,7 +161,7 @@ func (n Neo) AnnotationGetByKeyValue(ctx context.Context, k, v string) (a types.
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (a:Annotation {key: '%s', value: '%s'})`, k, v)
 	q += ` RETURN id(a) as annotationID, a.key as annotationKey, a.value as annotationValue`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, found, err := n.QueryOne(q)
 	if err != nil || !found {
 		return

@@ -23,7 +23,7 @@ func (neo Neo) LinkSubjectByDigestMediaType(ctx context.Context, refID int64, su
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (r),(s) WHERE id(r) = %d AND s.digest = "%s" AND s.mediaType = "%s"`, refID, subDigest, subMediaType)
 	q += ` MERGE (r)-[:SUBJECT_OF]->(s)`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	_, err = neo.Execute(q)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, "while linking Subject")
@@ -39,7 +39,7 @@ func (neo Neo) ReferrersGetBySubjectDigest(ctx context.Context, dig string) (ref
 	})
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (s)<-[:SUBJECT_OF]-(r) WHERE s.digest = "%s" RETURN r.digest AS digest, r.mediaType AS mediaType, labels(r) AS nodeType`, dig)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := neo.Query(q)
 	if err != nil {
 		return refs, utils.ErrorHandler(l, span, err, "while querying Referrers")

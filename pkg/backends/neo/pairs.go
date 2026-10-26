@@ -81,7 +81,7 @@ func (n Neo) CollectionTagProfilePairPlatformGetRegexFiltered(ctx context.Contex
 	q += ` MATCH (s:Slot)-[:HAS_PUSHED]->(md)`
 	q += fmt.Sprintf(` WHERE s.repo =~ "%s" AND s.tag =~ "%s"`, repoRegex, tagRegex)
 	q += ` MATCH (c:Repo {repo: s.repo})-[:HAS_TAG]->(t:Tag {name: s.tag})`
-	utils.Debug(l, span, q+" RETURN *")
+	utils.Debug(l, span, "%s", q+" RETURN *")
 	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule, prf.label AS profileLabel,`
 	q += ` id(c) AS collectionID, c.repo AS collectionRepo,`
 	q += ` id(t) AS tagID, t.name AS tagName`
@@ -154,7 +154,7 @@ func (n Neo) CollectionTagProfilePairAnnotationGetAll(ctx context.Context) (ctpp
 	q := `MATCH (prf:Profile)-[:USES]->(Rule)-[:TRUE]->(Annotation)<-[:HAS_ANNOTATION]-(md:Manifest)`
 	q += ` MATCH (s:Slot)-[:HAS_PUSHED]->(md)`
 	q += ` MATCH (c:Repo {repo: s.repo})-[:HAS_TAG]->(t:Tag {name: s.tag})`
-	utils.Debug(l, span, q+" RETURN *")
+	utils.Debug(l, span, "%s", q+" RETURN *")
 	q += ` RETURN DISTINCT id(prf) AS profileID, prf.name AS profileName, prf.tag AS profileTag, prf.rule AS profileRule, prf.label AS profileLabel,`
 	q += ` id(c) AS collectionID, c.repo AS collectionRepo,`
 	q += ` id(t) AS tagID, t.name AS tagName`

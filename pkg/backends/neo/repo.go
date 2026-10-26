@@ -82,7 +82,7 @@ func (n Neo) CollectionExists(ctx context.Context, up upstream.UpstreamTriple) (
 		q += fmt.Sprintf(`WHERE c.repo = "%s" AND md.digest = "%s"`, up.Repo, up.Digest.String())
 	}
 	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
 		return found, utils.NewError(l, span, types.FailNeoExecute)
@@ -143,7 +143,7 @@ func (n Neo) CollectionUpdate(ctx context.Context, col *types.Repo) (found bool,
 	}
 	q := fmt.Sprintf(`MATCH (c:Repo)-[:HAS_TAG]->(t:Tag) WHERE id(c) = %d AND t.name = "%s"`, col.ID, col.Tag)
 	q += ` RETURN t.name AS tagName, id(t) AS tagID`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, found, e := n.QueryOne(q); e != nil {
 		return false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 	} else if found {
@@ -159,7 +159,7 @@ func (n Neo) CollectionUpdate(ctx context.Context, col *types.Repo) (found bool,
 	q += ` RETURN id(ml) AS manifestListID, id(f) AS filterID,`
 	q += ` c.repo AS collectionRepo, t.name AS tagName, id(t) AS tagID,`
 	q += ` ml.digest AS manifestListDigest, ml.mediaType AS manifestListMediaType, ml.size AS manifestListSize`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, e := n.Query(q); e != nil {
 		return false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 	} else {
@@ -188,7 +188,7 @@ func (n Neo) CollectionGetIDByRepo(ctx context.Context, repo string) (colID int6
 	_ = ctx
 	key := "colID"
 	q := fmt.Sprintf(`MATCH (c:Repo) WHERE c.repo = "%s" RETURN id(c) AS %s`, repo, key)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, found, e := n.QueryOne(q); e != nil {
 		return colID, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 	} else if !found {
@@ -283,7 +283,7 @@ func (n Neo) GetAllCollections(ctx context.Context) (collections []types.Repo, e
 	q += ` RETURN id(c) AS collectionID, id(ml) AS manifestListID, id(f) AS filterID,`
 	q += ` c.repo AS collectionRepo, t.name AS tagName, id(t) AS tagID,`
 	q += ` ml.digest AS manifestListDigest, ml.mediaType AS manifestListMediaType, ml.size AS manifestListSize`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	input := map[string]interface{}{}
 	result, e := session.Run(q, input)
 	if e != nil {
@@ -351,7 +351,7 @@ func (n Neo) CollectionGetCreateByRepoTag(ctx context.Context, repo, tag string)
 	q := `MATCH (c:Repo), (t:Tag) WHERE id(c) = %d AND id(t) = %d`
 	q += ` MERGE (c)-[:HAS_TAG]->(t)`
 	query := fmt.Sprintf(q, c.ID, ct.ID)
-	utils.Debug(l, span, query)
+	utils.Debug(l, span, "%s", query)
 	_, err = n.Execute(query)
 	if err != nil {
 		err = utils.ErrorHandler(l, span, err, "failed to connect collection and tag")

@@ -142,7 +142,7 @@ func (mag Magazine) ManifestGetByHTTPRequest(ctx context.Context, r *http.Reques
 	if req.Profile != "generic" {
 		msg += fmt.Sprintf(" - profile: %s", req.Profile)
 	}
-	utils.Debug(l, span, msg)
+	utils.Debug(l, span, "%s", msg)
 	m, found, e := mag.ManifestGetByRequest(ctx, req)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to get manifest")
@@ -169,7 +169,7 @@ func (mag Magazine) ManifestDeleteByHTTPRequest(ctx context.Context, r *http.Req
 	} else {
 		msg += fmt.Sprintf("%s)", req.Tag)
 	}
-	utils.Info(l, span, msg)
+	utils.Info(l, span, "%s", msg)
 	found, e := mag.RemoveManifestByRequest(ctx, req)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, "failed to delete manifest")

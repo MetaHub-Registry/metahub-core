@@ -57,7 +57,7 @@ func (n Neo) LayerGetByLayerAndManifestID(ctx context.Context, layerID, mdID int
 	q := `MATCH (md:Manifest)-[r]->(n:Blob)`
 	q += fmt.Sprintf(` WHERE id(n) = %d AND id(md) = %d`, layerID, mdID)
 	q += ` RETURN id(n) AS layerID, n.digest AS layerDigest, n.size AS layerSize, n.mediaType AS layerMediaType`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
 		return lyr, found, utils.ErrorHandler(l, span, err, FailLayerGetByID)
@@ -235,7 +235,7 @@ func (n Neo) GetLayersForManifest(ctx context.Context, m types.Manifest) (layers
 	layers = []types.Layer{}
 	q := fmt.Sprintf(`MATCH (l:Blob)<-[lyRel]-(m:Manifest) WHERE m.digest = "%s" AND l.type = "layer"`, m.Digest)
 	q += ` RETURN id(l) AS ID, l.digest AS digest, l.mediaType AS mediaType, l.size AS size`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	result, err := session.Run(q, map[string]interface{}{})
@@ -393,7 +393,7 @@ func (n Neo) LayerGetMediaTypeByID(ctx context.Context, lyID int64) (mt string, 
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (l:Blob)<-[layerRel]-(md:Manifest) WHERE id(l) = %d AND l.type = "layer"`, lyID)
 	q += ` RETURN DISTINCT l.mediaType AS layerMediaType`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, e := n.Query(q)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, errFailedRunQuery)
@@ -468,7 +468,7 @@ func (n Neo) LayerDescriptorGetInsert(ctx context.Context, desc v1.Descriptor) (
 	label := utils.ShortenDigest(desc.Digest.String())
 	q := `CREATE (n:Blob {digest: "%s", size: %d, label: "%s", type: "layer"}) RETURN id(n) AS ID`
 	query := fmt.Sprintf(q, desc.Digest.String(), desc.Size, label)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Execute(query)
 	if err != nil {
 		return 0, err
@@ -599,7 +599,7 @@ func (n Neo) GetLayersForManipuLayerID(ctx context.Context, mplID int64) (layers
 	q := fmt.Sprintf(`MATCH (l:Blob)<-[r]-(mpl:ManipuLayer) WHERE id(mpl) = %d AND l.type = "layer"`, mplID)
 	q += fmt.Sprintf(` RETURN %s`, layerReturn)
 	q += ` ORDER BY r.order`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, e := n.Query(q)
 	if e != nil {
 		return layers, utils.ErrorHandler(l, span, e, FailQueryExec)

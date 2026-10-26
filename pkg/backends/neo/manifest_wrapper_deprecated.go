@@ -192,7 +192,7 @@ func (n Neo) GetManifestWrapperLinksManifestByID(ctx context.Context, maniID int
 	q := `MATCH (m:ManifestWrapper)-[]->(md:Manifest)`
 	q += fmt.Sprintf(` WHERE id(m) = %d`, maniID)
 	q += ` RETURN id(md) AS maniDataID`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Query(q)
 	if err != nil {
 		return maniDataIDs, utils.ErrorHandler(l, span, err, FailNeoExecute)
@@ -245,7 +245,7 @@ func (n Neo) LinkManifestWrapperToManifest(ctx context.Context, maniID, maniData
 		rel = strings.ToUpper(props[0])
 	}
 	q += fmt.Sprintf(` MERGE (m)-[:%s]->(md)`, rel)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if _, e := n.Execute(q); e != nil {
 		return utils.ErrorHandler(l, span, e, FailNeoExecute)
 	}
@@ -342,7 +342,7 @@ func (n Neo) ManifestWrapperGetByID(ctx context.Context, maniID int64) (mani typ
 	q += fmt.Sprintf(` WHERE id(m) = %d`, maniID)
 	q += ` RETURN id(m) AS manifestID, m.label AS manifestLabel`
 	//q += ` ,` + UpstreamReturn
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	input := map[string]interface{}{}
 	result, err := session.Run(q, input)
 	if err != nil {
@@ -398,7 +398,7 @@ func (n Neo) ManifestWrapperGetByLabel(ctx context.Context, maniLabel string) (m
 	q += fmt.Sprintf(` WHERE m.label = "%s"`, maniLabel)
 	q += ` RETURN id(m) AS manifestID, m.label AS manifestLabel`
 	//q += ` ,` + UpstreamReturn
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, found, e := n.QueryOne(q)
 	if e != nil {
 		return mani, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
@@ -425,7 +425,7 @@ func (n Neo) ManifestWrapperGetAll(ctx context.Context) (manis []types.ManifestW
 	defer session.Close()
 	q := `MATCH (m:ManifestWrapper)`
 	q += ` RETURN id(m) AS manifestID, m.label AS manifestLabel`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	input := map[string]interface{}{}
 	result, err := session.Run(q, input)
 	if err != nil {
@@ -562,7 +562,7 @@ func (n Neo) GetManifestWrapperLinksUpstreamByID(ctx context.Context, maniID int
 	q := `MATCH (m:ManifestWrapper)-[]->(up:Upstream)`
 	q += fmt.Sprintf(` WHERE id(m) = %d`, maniID)
 	q += ` RETURN id(up) AS upID`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Query(q)
 	if err != nil {
 		return UpstreamIDs, utils.ErrorHandler(l, span, err, FailNeoExecute)
@@ -610,7 +610,7 @@ func (n Neo) ManifestWrapperLinkToUpstream(ctx context.Context, maniID, upID int
 	}
 	q := fmt.Sprintf(`MATCH (m:ManifestWrapper),(u:Upstream) WHERE id(m) = %d AND id(u) = %d`, maniID, upID)
 	q += ` MERGE (m)-[:UPSTREAM]->(u)`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	_, e := n.Execute(q)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, types.FailNeoExecute)
