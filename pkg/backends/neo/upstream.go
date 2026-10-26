@@ -109,7 +109,7 @@ func (n Neo) UpstreamGetByManifestID(ctx context.Context, maniDataID int64) (up 
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (md:Manifest)-[r]->(u:Upstream) WHERE id(md) = %d`, maniDataID)
 	q += ` RETURN type(r) AS relationType,` + UpstreamReturn
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, found, e := n.QueryOne(q)
 	if e != nil {
 		return up, relType, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
@@ -138,7 +138,7 @@ func (n Neo) UpstreamGetIDByManifestID(ctx context.Context, maniID int64) (upID 
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (m:ManifestWrapper)-[]->(up:Upstream) WHERE id(m) = %d`, maniID)
 	q += ` RETURN id(up) AS ID`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, found, e := n.QueryOne(q); e != nil {
 		return upID, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 	} else {
@@ -166,7 +166,7 @@ func (n Neo) UpstreamGetIDByManifestWrapperID(ctx context.Context, maniDataID in
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (md:Manifest)-[]->(up:Upstream) WHERE id(md) = %d`, maniDataID)
 	q += ` RETURN id(up) AS ID`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, found, e := n.QueryOne(q); e != nil {
 		return upID, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 	} else {
@@ -194,7 +194,7 @@ func (n Neo) UpstreamGetIDByDigest(ctx context.Context, dig string) (upID int64,
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (up:Upstream) WHERE up.digest = "%s"`, dig)
 	q += ` RETURN id(up) AS ID`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, found, e := n.QueryOne(q); e != nil {
 		return upID, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 	} else {
@@ -222,7 +222,7 @@ func (n Neo) UpstreamGetByManipuLayerID(ctx context.Context, mplID int64) (up ty
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (mpl:ManipuLayer)-[]->(u:Upstream) WHERE id(mpl) = %d`, mplID)
 	q += fmt.Sprintf(` RETURN %s`, UpstreamReturn)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, found, e := n.QueryOne(q); e != nil {
 		return up, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 	} else {
@@ -278,7 +278,7 @@ func (n Neo) UpstreamGetByID(ctx context.Context, upID int64) (up types.Upstream
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (u:Upstream) WHERE id(u) = %d`, upID)
 	q += ` RETURN ` + UpstreamReturn
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Execute(q)
 	if err != nil {
 		logrus.Errorf(errFailedRunQueryFmt, err)
@@ -310,7 +310,7 @@ func (n Neo) UpstreamGet(ctx context.Context, up types.Upstream) (upID int64, su
 		q += fmt.Sprintf(` AND u.digest = "%s"`, up.Digest.String())
 	}
 	q += ` RETURN id(u) AS ID, u.digest AS upstreamDigest`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, found, e := n.QueryOne(q); e != nil {
 		return upID, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 	} else if !found {
@@ -344,7 +344,7 @@ func (n Neo) CreateUpstream(ctx context.Context, up types.Upstream) (upID int64,
 		q += fmt.Sprintf(`,digest: "%s"`, up.Digest.String())
 	}
 	q += `}) RETURN id(u) AS ID`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Execute(q)
 	if err != nil {
 		err = utils.ErrorHandler(l, span, err, errFailedRunQuery)

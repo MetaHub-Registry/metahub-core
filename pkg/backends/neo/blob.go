@@ -40,7 +40,7 @@ func (n Neo) CreateBlobFromChunk(ctx context.Context, bu *types.OCIBlobUpload, c
 	// with "number of layers and diffIDs don't match".
 	q := fmt.Sprintf(`MERGE (b:Blob {digest: "%s"}) ON CREATE SET b.label = "%s", b.created_at = TIMESTAMP(), b.size = %d`, dig, utils.ShortenDigest(dig), chunk.Bytes)
 	q = q + ` RETURN ID(b) AS blobID`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Execute(q)
 	if err != nil {
 		span.RecordError(err)
@@ -260,7 +260,7 @@ func (n Neo) BlobEnsureByDigest(ctx context.Context, dig string, size int64) (er
 	defer span.End()
 	_ = ctx
 	q := fmt.Sprintf(`MERGE (b:Blob {digest: "%s"}) ON CREATE SET b.label = "%s", b.created_at = TIMESTAMP(), b.size = %d`, dig, utils.ShortenDigest(dig), size)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if _, err = n.Execute(q); err != nil {
 		return utils.ErrorHandler(l, span, err, FailQueryExec)
 	}

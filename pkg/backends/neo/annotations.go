@@ -104,7 +104,7 @@ func (n Neo) GetAnnotationsByManifestWrapperID(ctx context.Context, msID int64) 
 	_ = l
 	q := fmt.Sprintf(`MATCH (ms:ManifestWrapper)-[:HAS_ANNOTATION]->(a:Annotation) WHERE id(ms) = %d`, msID)
 	q += ` RETURN id(a) AS annotationID, a.key AS annotationKey, a.value AS annotationValue`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Query(q)
 	if err != nil {
 		return

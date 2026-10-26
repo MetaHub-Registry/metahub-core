@@ -26,7 +26,7 @@ func (n Neo) CollectionTagGetIDByManifestID(ctx context.Context, maniID int64) (
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (m:ManifestWrapper)<-[]-(t:Tag) WHERE id(m) = %d`, maniID)
 	q += ` RETURN id(t) AS ID`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, found, e := n.QueryOne(q); e != nil {
 		return tagID, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 	} else {
@@ -117,7 +117,7 @@ func (n Neo) LinkCollectionTagToManifest(ctx context.Context, colTagID, maniID i
 	q := `MATCH (t:Tag), (m:Manifest) WHERE id(t) = %d AND id(m) = %d`
 	q += ` MERGE (t)-[:UPSTREAM]->(m)`
 	query := fmt.Sprintf(q, colTagID, maniID)
-	utils.Debug(l, span, query)
+	utils.Debug(l, span, "%s", query)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	_, err = session.Run(query, map[string]interface{}{})
@@ -140,7 +140,7 @@ func (n Neo) LinkCollectionTagToManifestRemove(ctx context.Context, colTagID, ma
 	q := `MATCH (t:Tag)-[u:UPSTREAM]->(m:ManifestWrapper) WHERE id(t) = %d AND id(m) = %d`
 	q += ` DELETE u`
 	query := fmt.Sprintf(q, colTagID, maniID)
-	utils.Debug(l, span, query)
+	utils.Debug(l, span, "%s", query)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	_, err = session.Run(query, map[string]interface{}{})
@@ -185,7 +185,7 @@ func (n Neo) CollectionGetTagsListByRepo(ctx context.Context, repo string) (tags
 	var colID int64
 	key := "colID"
 	q := fmt.Sprintf(`MATCH (c:Repo) WHERE c.repo = "%s" RETURN id(c) AS %s`, repo, key)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, found, e := n.QueryOne(q); e != nil {
 		return tags, utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 	} else if !found {
@@ -197,7 +197,7 @@ func (n Neo) CollectionGetTagsListByRepo(ctx context.Context, repo string) (tags
 	}
 	q = fmt.Sprintf(`MATCH (c:Repo)-[:HAS_TAG]->(t:Tag) WHERE id(c) = %d`, colID)
 	q += ` RETURN id(t) AS tagID, t.name AS tagName`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, err := n.Query(q); err != nil {
 		return tags, utils.ErrorHandler(l, span, err, types.FailNeoExecute)
 	} else {
@@ -286,7 +286,7 @@ func (n Neo) CollectionTagSetLastRefreshed(ctx context.Context, repo, tag string
 	_ = ctx
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (t:Tag {name: "%s", repo: "%s"}) SET t.last_refreshed = %d`, tag, repo, ts)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if _, e := n.Execute(q); e != nil {
 		return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 	}
@@ -306,7 +306,7 @@ func (n Neo) CollectionTagGetLastRefreshed(ctx context.Context, repo, tag string
 	_ = ctx
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (t:Tag {name: "%s", repo: "%s"}) RETURN coalesce(t.last_refreshed, 0) AS last_refreshed`, tag, repo)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, f, e := n.QueryOne(q)
 	if e != nil {
 		return 0, false, utils.ErrorHandler(l, span, e, types.FailNeoExecute)

@@ -41,7 +41,7 @@ func (n Neo) CollectionListingGetByID(ctx context.Context, colID, colTagID int64
 		return col, err
 	}
 	if !found {
-		err = utils.NewError(l, span, fmt.Sprintf("collection with ID '%d' npt found", colID))
+		err = utils.NewError(l, span, "%s", fmt.Sprintf("collection with ID '%d' npt found", colID))
 		return col, err
 	}
 	col, err = CollectionListingFromResult(res)
@@ -57,7 +57,7 @@ func (n Neo) CollectionListingGetByID(ctx context.Context, colID, colTagID int64
 	}
 	for _, m := range manis {
 		k := m.Label
-		utils.Debug(l, span, fmt.Sprintf(msgAddManifest, k))
+		utils.Debug(l, span, "%s", fmt.Sprintf(msgAddManifest, k))
 		col.Manifests[k] = m
 		col.ManifestCount++
 	}
@@ -76,7 +76,7 @@ func (n Neo) CollectionListingGetByName(ctx context.Context, repoName, colTagNam
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (c:Repo)-[:HAS_TAG]->(t) WHERE c.repo = "%s" AND t.name = "%s"`, repoName, colTagName)
 	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
 		return col, err
@@ -90,7 +90,7 @@ func (n Neo) CollectionListingGetByName(ctx context.Context, repoName, colTagNam
 		return
 	}
 	msg := fmt.Sprintf("CL > %d / %d", col.ID, col.ColTag.ID)
-	utils.Debug(l, span, msg)
+	utils.Debug(l, span, "%s", msg)
 	// Fill Manifests
 	manis, err := n.ManifestGetByCollectionTag(ctx, col.ID, col.ColTag.ID)
 	if err != nil {
@@ -99,7 +99,7 @@ func (n Neo) CollectionListingGetByName(ctx context.Context, repoName, colTagNam
 	}
 	for _, m := range manis {
 		k := m.Label //fmt.Sprintf("%s/%s:%s@%s-%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag, m.Profile, m.Platform.Arch)
-		utils.Debug(l, span, fmt.Sprintf(msgAddManifest, k))
+		utils.Debug(l, span, "%s", fmt.Sprintf(msgAddManifest, k))
 		col.Manifests[k] = m
 		col.ManifestCount++
 	}
@@ -153,7 +153,7 @@ func (n Neo) CollectionListingGetByRepoLike(ctx context.Context, repo string) (c
 	q += ` }`
 	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
 	query := fmt.Sprintf(q, repo)
-	utils.Debug(l, span, query)
+	utils.Debug(l, span, "%s", query)
 	res, err := n.Query(query)
 	if err != nil {
 		utils.ErrorHandler(l, span, err, "while executing Query")
@@ -173,7 +173,7 @@ func (n Neo) CollectionListingGetByRepoLike(ctx context.Context, repo string) (c
 		}
 		for _, m := range manis {
 			k := fmt.Sprintf("%s/%s:%s-%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag, m.Platform.Arch)
-			utils.Debug(l, span, fmt.Sprintf(msgAddManifest, k))
+			utils.Debug(l, span, "%s", fmt.Sprintf(msgAddManifest, k))
 			col.Manifests[k] = m
 			col.ManifestCount++
 		}
@@ -216,7 +216,7 @@ func (n Neo) CollectionListingGetByRepoLikeForProfile(ctx context.Context, repo 
 	q += ` )`
 	q += ` RETURN DISTINCT id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo`
 	query := fmt.Sprintf(q, profileLabel, repo)
-	utils.Debug(l, span, query)
+	utils.Debug(l, span, "%s", query)
 	res, err := n.Query(query)
 	if err != nil {
 		utils.ErrorHandler(l, span, err, "while executing Query")
@@ -237,7 +237,7 @@ func (n Neo) CollectionListingGetByRepoLikeForProfile(ctx context.Context, repo 
 		}
 		for _, m := range manis {
 			k := fmt.Sprintf("%s/%s:%s-%s", m.Upstream.Reg, m.Upstream.Repo, m.Upstream.Tag, m.Platform.Arch)
-			utils.Debug(l, span, fmt.Sprintf(msgAddManifest, k))
+			utils.Debug(l, span, "%s", fmt.Sprintf(msgAddManifest, k))
 			col.Manifests[k] = m
 			col.ManifestCount++
 		}

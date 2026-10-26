@@ -150,7 +150,7 @@ func (n Neo) Setup(ctx context.Context) (err error) {
 	for _, name := range legacyConstraints {
 		qDrop := fmt.Sprintf(`DROP CONSTRAINT %s IF EXISTS`, name)
 		if _, e := session.Run(qDrop, input); e != nil {
-			utils.ErrorHandler(l, span, e, fmt.Sprintf("dropping legacy constraint %s", name))
+			utils.ErrorHandler(l, span, e, "%s", fmt.Sprintf("dropping legacy constraint %s", name))
 			l.Fatal()
 		}
 	}

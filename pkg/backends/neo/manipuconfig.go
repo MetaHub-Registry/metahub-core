@@ -58,7 +58,7 @@ func (n Neo) manipuConfigCreate(ctx context.Context, cfg *types.ManipuConfig) (e
 		`CREATE (cfg:ManipuConfig {env: %s, workdir: %s, user: %s, volumes: %s}) RETURN id(cfg) AS cfgID`,
 		cypherQuote(envStr), cypherQuote(cfg.Workdir), cypherQuote(cfg.User), cypherQuote(volumesStr),
 	)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, e := n.Execute(q)
 	if e != nil {
 		return utils.ErrorHandler(l, span, e, FailNeoExecute)
@@ -100,7 +100,7 @@ func (n Neo) manipuCommandCreateAndLink(ctx context.Context, cfgID int64, rel st
 		`MATCH (cfg:ManipuConfig) WHERE id(cfg) = %d CREATE (mc:ManipuCommand {op: %s, value: %s}) CREATE (cfg)-[:%s]->(mc) RETURN id(mc) AS mcID`,
 		cfgID, cypherQuote(cmd.Op), cypherQuote(valuesStr), rel,
 	)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Execute(q)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, FailNeoExecute)
@@ -131,7 +131,7 @@ func (n Neo) manipuConfigLink(ctx context.Context, mpID, cfgID int64, rel string
 		`MATCH (mp:Manipulation), (cfg:ManipuConfig) WHERE id(mp) = %d AND id(cfg) = %d MERGE (mp)-[:%s%s]->(cfg)`,
 		mpID, cfgID, rel, props,
 	)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if _, err := n.Execute(q); err != nil {
 		return utils.ErrorHandler(l, span, err, FailNeoExecute)
 	}
@@ -197,7 +197,7 @@ func (n Neo) manipuLayerCreateForConfig(ctx context.Context, up types.Upstream, 
 		`CREATE (mpl:ManipuLayer {label: %s, rule: "", select: %s}) RETURN id(mpl) AS mplID`,
 		cypherQuote(label), cypherQuote(sel),
 	)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Execute(q)
 	if err != nil {
 		return types.ManipuLayer{}, utils.ErrorHandler(l, span, err, FailNeoExecute)
@@ -234,7 +234,7 @@ func (n Neo) manipuConfigLinkLayer(ctx context.Context, cfgID, mplID int64, orde
 		`MATCH (cfg:ManipuConfig), (mpl:ManipuLayer) WHERE id(cfg) = %d AND id(mpl) = %d MERGE (cfg)-[:HAS_LAYER {order: %d}]->(mpl)`,
 		cfgID, mplID, order,
 	)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if _, err := n.Execute(q); err != nil {
 		return utils.ErrorHandler(l, span, err, FailNeoExecute)
 	}
@@ -258,7 +258,7 @@ func (n Neo) manipulationLinkToManipuLayerLegacy(ctx context.Context, mpID, mplI
 		`MATCH (mp:Manipulation), (mpl:ManipuLayer) WHERE id(mp) = %d AND id(mpl) = %d MERGE (mp)-[:HAS]->(mpl)`,
 		mpID, mplID,
 	)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if _, err := n.Execute(q); err != nil {
 		return utils.ErrorHandler(l, span, err, FailNeoExecute)
 	}
@@ -286,7 +286,7 @@ func (n Neo) manipuConfigsByManipulationID(ctx context.Context, mpID int64) (lin
 		`MATCH (mp:Manipulation)-[r]->(cfg:ManipuConfig) WHERE id(mp) = %d AND type(r) IN ["HAS_DEFAULT","HAS_VARIANT"] RETURN id(cfg) AS cfgID, type(r) AS rel, coalesce(r.rule, "") AS rule`,
 		mpID,
 	)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Query(q)
 	if err != nil {
 		return links, utils.ErrorHandler(l, span, err, FailNeoExecute)
@@ -339,7 +339,7 @@ func (n Neo) manipuConfigHydrateProps(ctx context.Context, cfgID int64, cfg *typ
 		`MATCH (cfg:ManipuConfig) WHERE id(cfg) = %d RETURN id(cfg) AS cfgID, coalesce(cfg.env, "") AS env, coalesce(cfg.workdir, "") AS workdir, coalesce(cfg.user, "") AS user, coalesce(cfg.volumes, "") AS volumes`,
 		cfgID,
 	)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
 		return false, utils.ErrorHandler(l, span, err, FailNeoExecute)
@@ -399,7 +399,7 @@ func (n Neo) manipuCommandByRel(ctx context.Context, cfgID int64, rel string) (*
 		`MATCH (cfg:ManipuConfig)-[:%s]->(mc:ManipuCommand) WHERE id(cfg) = %d RETURN id(mc) AS mcID, coalesce(mc.op, "") AS op, coalesce(mc.value, "") AS value LIMIT 1`,
 		rel, cfgID,
 	)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
 		return nil, utils.ErrorHandler(l, span, err, FailNeoExecute)
@@ -431,7 +431,7 @@ func (n Neo) manipuConfigLayers(ctx context.Context, cfgID int64) ([]types.Manip
 		`MATCH (cfg:ManipuConfig)-[r:HAS_LAYER]->(mpl:ManipuLayer) WHERE id(cfg) = %d RETURN %s, coalesce(r.order, 0) AS layerOrder ORDER BY layerOrder`,
 		cfgID, ManipuLayerReturn,
 	)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Query(q)
 	if err != nil {
 		return nil, utils.ErrorHandler(l, span, err, FailNeoExecute)

@@ -46,7 +46,7 @@ func (n Neo) RuntimeUpsert(ctx context.Context, rt types.Runtime) (rtID int64, e
 	q += ` rt.formats = "` + formatsCSV + `",`
 	q += ` rt.configContract = "` + rt.ConfigContract + `"`
 	q += ` RETURN id(rt) AS rtID`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 
 	res, err := n.Execute(q)
 	if err != nil {
@@ -76,7 +76,7 @@ func (n Neo) RuntimesGetAll(ctx context.Context) (runtimes []types.Runtime, err 
 	q += ` COALESCE(rt.formats, "") AS formats,`
 	q += ` COALESCE(rt.configContract, "") AS contract`
 	q += ` ORDER BY name`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 
 	res, err := n.Query(q)
 	if err != nil {

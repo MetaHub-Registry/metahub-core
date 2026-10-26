@@ -114,7 +114,7 @@ func (s Sqlite) DelSecret(ctx context.Context, uID int, sID string) (err error) 
 	defer span.End()
 	_ = ctx
 	q := `DELETE FROM secrets WHERE id = ? AND user_id = ?`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	stmt, err := db.Prepare(q)
 	if err != nil {
 		return

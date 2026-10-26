@@ -45,7 +45,7 @@ func (n Neo) ManipuCmdCreate(ctx context.Context, mplID int64, mpc *types.Manipu
 	_ = ctx
 	key := "mpcID"
 	q := fmt.Sprintf(`CREATE (mpc:ManipuCmd {rule: "%s", cmd: "%s"}) RETURN id(mpc) AS %s`, mpc.Rule, utils.Base64Encode(mpc.Cmd), key)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, err := n.Execute(q); err != nil {
 		return utils.ErrorHandler(l, span, err, FailNeoExecute)
 	} else {
@@ -56,7 +56,7 @@ func (n Neo) ManipuCmdCreate(ctx context.Context, mplID int64, mpc *types.Manipu
 		mpc.ID = mpcID
 		q := `MATCH (mpl:ManipuLayer),(mpc:ManipuCmd)`
 		q += fmt.Sprintf(` WHERE id(mpl) = %d AND id(mpc) = %d MERGE (mpl)-[:CMD_%s]->(mpc)`, mplID, mpcID, mpc.Rule)
-		utils.Debug(l, span, q)
+		utils.Debug(l, span, "%s", q)
 		if _, err := n.Execute(q); err != nil {
 			return utils.ErrorHandler(l, span, err, FailNeoExecute)
 		}
@@ -75,7 +75,7 @@ func (n Neo) ManipuCmdGet(ctx context.Context, mpc *types.ManipuCmd) (found bool
 	_ = ctx
 	key := "mpcID"
 	q := fmt.Sprintf(`MATCH (mpc:ManipuCmd) WHERE mpc.rule = "%s" AND mpc.cmd = "%s" RETURN id(mpc) AS %s`, mpc.Rule, utils.Base64Encode(mpc.Cmd), key)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, found, err := n.QueryOne(q); err != nil {
 		return false, utils.ErrorHandler(l, span, err, FailNeoExecute)
 	} else if !found {
@@ -99,7 +99,7 @@ func (n Neo) ManipuCmdsGetByManipulayerID(ctx context.Context, mplyrID int64) (m
 	defer span.End()
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (mpc:ManipuCmd)<-[]-(mpl:ManipuLayer) WHERE id(mpl) = %d RETURN %s`, mplyrID, returnManipuCmd)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Query(q)
 	if err != nil {
 		return mpcs, utils.ErrorHandler(l, span, err, FailNeoExecute)

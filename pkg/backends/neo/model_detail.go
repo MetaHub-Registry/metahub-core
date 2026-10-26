@@ -68,7 +68,7 @@ func (n Neo) ModelDetailGet(ctx context.Context, name string) (detail types.Mode
 	qa += ` COALESCE(lb.size, 0) AS size,`
 	qa += ` COALESCE(srcRepo.repo, "") AS srcRepo,`
 	qa += ` COALESCE(mdSrc.digest, "") AS srcDigest`
-	utils.Debug(l, span, qa)
+	utils.Debug(l, span, "%s", qa)
 
 	res, err := n.Query(qa)
 	if err != nil {
@@ -159,7 +159,7 @@ func (n Neo) modelCompositionsGet(ctx context.Context, name string) (comps []typ
 	q += ` COALESCE(cfgUp.tag, "") AS cfgTag,`
 	q += ` COALESCE(a.key, "") AS annKey,`
 	q += ` COALESCE(a.value, "") AS annValue`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 
 	res, err := n.Query(q)
 	if err != nil {
@@ -258,7 +258,7 @@ func (n Neo) modelConfigsGet(ctx context.Context, name string) (configs []types.
 	q += ` COALESCE(cup.tag, "") AS tag,`
 	q += ` COALESCE(cup.digest, "") AS digest,`
 	q += ` COALESCE(mc.env, "") AS env`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 
 	res, err := n.Query(q)
 	if err != nil {

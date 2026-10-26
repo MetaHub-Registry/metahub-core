@@ -56,7 +56,7 @@ func (n Neo) ConfigGetByManiDataID(ctx context.Context, mdID int64) (cfg types.C
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (md:Manifest)-[rel]->(n:Blob) WHERE id(md) = %d AND n.type = "config"`, mdID)
 	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
 		utils.ErrorHandler(l, span, err, errFailedRunQuery)
@@ -83,7 +83,7 @@ func (n Neo) ConfigGetByID(ctx context.Context, cfgID int64) (cfg types.Config, 
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (n:Blob) WHERE id(n) = %d`, cfgID)
 	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize, n.mediaType AS configMediaType`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
 		err = utils.ErrorHandler(l, span, err, errFailedRunQuery)
@@ -135,7 +135,7 @@ func (n Neo) ConfigGetByDigest(ctx context.Context, dig string) (cfg types.Confi
 	)
 	q := fmt.Sprintf(`MATCH (n:Blob) WHERE n.digest = "%s"`, dig)
 	q += ` RETURN id(n) AS configID, n.digest AS configDigest, n.size AS configSize, n.mediaType AS configMediaType`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
 		err = utils.ErrorHandler(l, span, err, errFailedRunQuery)
@@ -162,7 +162,7 @@ func (n Neo) ConfigDeleteByDigest(ctx context.Context, dig string) (err error) {
 	_ = ctx
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (c:Blob)<-[]-(md:Manifest) WHERE c.digest = "%s" RETURN count(md) AS count`, dig)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, _, err := n.QueryOne(q); err != nil {
 		return utils.ErrorHandler(l, span, err, types.FailNeoExecute)
 	} else {
@@ -180,7 +180,7 @@ func (n Neo) ConfigDeleteByDigest(ctx context.Context, dig string) (err error) {
 		for _, a := range as.ToSlice() {
 			q := fmt.Sprintf(`MATCH (c:Blob)-[]->(l:Label) WHERE (NOT c.digest = "%s") AND id(l) = %d`, dig, a.ID)
 			q += ` RETURN count(c) AS countConfig`
-			utils.Debug(l, span, q)
+			utils.Debug(l, span, "%s", q)
 			if res, _, e := n.QueryOne(q); e != nil {
 				return utils.ErrorHandler(l, span, e, types.FailNeoExecute)
 			} else {

@@ -81,7 +81,7 @@ func (n Neo) ModelQuantVariantUpsert(ctx context.Context, name, quant, imgDigest
 	q += ` MERGE (mpl)-[:UPSTREAM]->(up)`
 	q += ` MERGE (mpl)-[:USES]->(img)`
 	q += ` RETURN id(mp) AS mpID`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 
 	res, err := n.Execute(q)
 	if err != nil {
@@ -128,7 +128,7 @@ func (n Neo) ModelQuantsGetByName(ctx context.Context, name string) (quants []ty
 	q += ` COALESCE(up.tag, "") AS tag,`
 	q += ` COALESCE(up.digest, "") AS digest,`
 	q += ` COALESCE(lb.size, 0) AS size`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 
 	res, err := n.Query(q)
 	if err != nil {

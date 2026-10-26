@@ -106,7 +106,7 @@ func (n Neo) LinkManifestListToManifest(ctx context.Context, mlID, mdID int64) (
 	q := `MATCH (ml:Index), (md:Manifest) WHERE id(ml) = %d AND id(md) = %d`
 	q += ` MERGE (ml)-[:REFERENCES]-(md)`
 	query := fmt.Sprintf(q, mlID, mdID)
-	utils.Debug(l, span, query)
+	utils.Debug(l, span, "%s", query)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	_, err = session.Run(query, map[string]interface{}{})
@@ -272,7 +272,7 @@ func (n Neo) ManifestListLinkToAnnotation(ctx context.Context, mlID, annotationI
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (ml:Index), (a:Annotation) WHERE id(ml) = %d AND id(a) = %d`, mlID, annotationID)
 	q += ` MERGE (ml)-[:HAS_ANNOTATION]->(a)`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	_, err = n.Execute(q)
 	if err != nil {
 		return
@@ -334,10 +334,10 @@ func (n Neo) ManifestListGetByDigest(ctx context.Context, dig string) (ml *types
 	})
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (ml:Index) WHERE ml.digest = "%s"`, dig)
-	utils.Debug(l, span, q+` RETURN *`)
+	utils.Debug(l, span, "%s", q+` RETURN *`)
 	q += fmt.Sprintf(` RETURN %s`, manifestListReturn)
 
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, found, err := n.QueryOne(q)
 	if err != nil {
 		logrus.Error(err)
@@ -398,7 +398,7 @@ func (n Neo) GetAnnotationsByManifestListID(ctx context.Context, mlID int64) (as
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (ml:Index)-[:HAS_ANNOTATION]->(a:Annotation) WHERE id(ml) = %d`, mlID)
 	q += ` RETURN id(a) AS annotationID, a.key AS annotationKey, a.value AS annotationValue`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Query(q)
 	if err != nil {
 		return
@@ -566,7 +566,7 @@ func (n Neo) ManifestListExistsForTagProfile(ctx context.Context, up upstream.Up
 	q := `MATCH (prf:Profile)-[:REF]->(ml:Index)<-[:REF]-(c:Repo)-[:HAS_TAG]->(t:Tag)-[:REF]->(ml)`
 	q += fmt.Sprintf(` WHERE prf.label = "%s" AND c.repo = "%s" AND t.name = "%s"`, up.Profile, up.Repo, up.Tag)
 	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo, ml.mediaType AS mediaType`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, found, e := n.QueryOne(q)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, FailQueryExec)
@@ -613,7 +613,7 @@ func (n Neo) ManifestListExists(ctx context.Context, up upstream.UpstreamTriple)
 		q += fmt.Sprintf(` AND NOT (:Slot {repo: "%s", tag: "%s"})-[:HAS_HISTORY]->(ml)`, up.Repo, up.Tag)
 	}
 	q += ` RETURN id(c) AS collectionID, id(t) AS tagID, t.name AS tagName, c.repo AS collectionRepo, ml.mediaType AS mediaType`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, found, e := n.QueryOne(q)
 	if e != nil {
 		err = utils.ErrorHandler(l, span, e, FailQueryExec)

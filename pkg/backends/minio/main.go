@@ -222,7 +222,7 @@ func (m Minio) BucketCheck() (err error) {
 			logrus.Infof("Creating bucket '%s'", bc.Bucket)
 			err = bc.Client.MakeBucket(ctx, bc.Bucket, minio.MakeBucketOptions{Region: bc.Region})
 			if err != nil {
-				logrus.Errorf(err.Error())
+				logrus.Errorf("%s", err.Error())
 				return err
 			}
 		} else {

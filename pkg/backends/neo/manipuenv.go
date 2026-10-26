@@ -46,7 +46,7 @@ func (n Neo) ManipuEnvCreate(ctx context.Context, mplID int64, mpe *types.Manipu
 	_ = ctx
 	key := "mpeID"
 	q := fmt.Sprintf(`CREATE (mpe:ManipuEnv {rule: "%s", key: "%s"}) RETURN id(mpe) AS %s`, mpe.Rule, utils.Base64Encode(mpe.Key), key)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, err := n.Execute(q); err != nil {
 		return utils.ErrorHandler(l, span, err, FailNeoExecute)
 	} else {
@@ -57,7 +57,7 @@ func (n Neo) ManipuEnvCreate(ctx context.Context, mplID int64, mpe *types.Manipu
 		mpe.ID = mpeID
 		q := `MATCH (mpl:ManipuLayer),(mpe:ManipuEnv)`
 		q += fmt.Sprintf(` WHERE id(mpl) = %d AND id(mpe) = %d MERGE (mpl)-[:ENV_%s]->(mpe)`, mplID, mpeID, mpe.Rule)
-		utils.Debug(l, span, q)
+		utils.Debug(l, span, "%s", q)
 		if _, err := n.Execute(q); err != nil {
 			return utils.ErrorHandler(l, span, err, FailNeoExecute)
 		}
@@ -77,7 +77,7 @@ func (n Neo) ManipuEnvGet(ctx context.Context, mpe *types.ManipuEnv) (found bool
 	_ = ctx
 	key := "mpeID"
 	q := fmt.Sprintf(`MATCH (mpe:ManipuEnv) WHERE mpe.rule = "%s" AND mpe.key = "%s" RETURN id(mpe) AS %s`, mpe.Rule, utils.Base64Encode(mpe.Key), key)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, found, err := n.QueryOne(q); err != nil {
 		return false, utils.ErrorHandler(l, span, err, FailNeoExecute)
 	} else if !found {
@@ -102,7 +102,7 @@ func (n Neo) ManipuEnvsGetByManipulayerID(ctx context.Context, mplyrID int64) (m
 	_ = ctx
 	_ = l
 	q := fmt.Sprintf(`MATCH (mpe:ManipuEnv)<-[]-(mpl:ManipuLayer) WHERE id(mpl) = %d RETURN %s`, mplyrID, returnManipuEnv)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Query(q)
 	if err != nil {
 		return mpes, utils.ErrorHandler(l, span, err, FailNeoExecute)

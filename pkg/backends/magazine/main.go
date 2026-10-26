@@ -32,7 +32,7 @@ type Magazine struct {
 
 func checkErr(err error, msg string) {
 	if err != nil {
-		err = errors.Wrapf(err, msg)
+		err = errors.Wrapf(err, "%s", msg)
 		logrus.Fatal(err)
 	}
 }

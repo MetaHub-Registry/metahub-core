@@ -74,7 +74,7 @@ func (n Neo) ManipulationCreate(ctx context.Context, mp *types.Manipulation) (er
 	defer span.End()
 	key := "mpID"
 	q := fmt.Sprintf(`CREATE (mp:Manipulation {label: "%s"}) RETURN id(mp) AS %s`, mp.Label, key)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Execute(q)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, FailNeoExecute)
@@ -163,7 +163,7 @@ func (n Neo) ManipulationLinkToManipuLayer(ctx context.Context, mpID, mplID int6
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (mp:Manipulation), (mpl:ManipuLayer) WHERE id(mp) = %d AND id(mpl) = %d`, mpID, mplID)
 	q += " MERGE (mp)-[:HAS]->(mpl)"
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if _, err := n.Execute(q); err != nil {
 		return utils.ErrorHandler(l, span, err, FailNeoExecute)
 	}
@@ -179,7 +179,7 @@ func (n Neo) ManipulationGetIDByLabel(ctx context.Context, label string) (mpID i
 	_ = ctx
 	key := "mpID"
 	q := fmt.Sprintf(`MATCH (mp:Manipulation) WHERE mp.label = "%s" RETURN id(mp) AS %s`, label, key)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, found, err := n.QueryOne(q); err != nil {
 		return mpID, false, utils.ErrorHandler(l, span, err, FailNeoExecute)
 	} else if !found {
@@ -202,7 +202,7 @@ func (n Neo) ManipulationGetByID(ctx context.Context, mpID int64) (mp types.Mani
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (mp:Manipulation) WHERE id(mp) = %d`, mpID)
 	q += fmt.Sprintf(` RETURN %s`, ManipulationReturn)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, found, err := n.QueryOne(q); err != nil {
 		return mp, false, utils.ErrorHandler(l, span, err, FailNeoExecute)
 	} else if !found {
@@ -251,7 +251,7 @@ func (n Neo) manipulationsGetByProfileWhere(ctx context.Context, where string, f
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (prf:Profile)-[:USES]->(mp:Manipulation) WHERE %s`, where)
 	q += fmt.Sprintf(` RETURN %s`, ManipulationReturn)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, err := n.Query(q); err != nil {
 		return mps, utils.ErrorHandler(l, span, err, FailNeoExecute)
 	} else {

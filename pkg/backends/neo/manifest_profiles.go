@@ -40,7 +40,7 @@ func (n Neo) ManifestGetProfileLabels(ctx context.Context, digests []string) (ma
 			`RETURN m.digest AS digest, collect(DISTINCT p.label) AS profiles`,
 		digestList,
 	)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
 	defer session.Close()

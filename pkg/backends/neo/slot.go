@@ -164,13 +164,13 @@ func (n Neo) SlotGetByTriple(ctx context.Context, repo, tag, profile string) (s 
 func (n Neo) slotsFromQuery(l *logrus.Entry, span trace.Span, fn, q string) ([]types.Slot, error) {
 	results, e := n.Query(q)
 	if e != nil {
-		return nil, utils.ErrorHandler(l, span, e, fn+": executing query")
+		return nil, utils.ErrorHandler(l, span, e, "%s", fn+": executing query")
 	}
 	slots := make([]types.Slot, 0, len(results))
 	for _, r := range results {
 		sl, e := slotFromResult(r)
 		if e != nil {
-			return nil, utils.ErrorHandler(l, span, e, fn+": decoding Slot")
+			return nil, utils.ErrorHandler(l, span, e, "%s", fn+": decoding Slot")
 		}
 		slots = append(slots, sl)
 	}
@@ -313,17 +313,17 @@ func (n Neo) SlotAppendPushedIndex(ctx context.Context, slotID, indexID int64) (
 func (n Neo) latestPushTimestampsFromQuery(l *logrus.Entry, span trace.Span, fn, q string) (map[int64]int64, error) {
 	res, e := n.Query(q)
 	if e != nil {
-		return nil, utils.ErrorHandler(l, span, e, fn+": executing query")
+		return nil, utils.ErrorHandler(l, span, e, "%s", fn+": executing query")
 	}
 	ts := make(map[int64]int64, len(res))
 	for _, r := range res {
 		mid, e := r.GetInt64("mid")
 		if e != nil {
-			return nil, utils.ErrorHandler(l, span, e, fn+": decoding mid")
+			return nil, utils.ErrorHandler(l, span, e, "%s", fn+": decoding mid")
 		}
 		t, e := r.GetInt64("ts")
 		if e != nil {
-			return nil, utils.ErrorHandler(l, span, e, fn+": decoding ts")
+			return nil, utils.ErrorHandler(l, span, e, "%s", fn+": decoding ts")
 		}
 		ts[mid] = t
 	}
@@ -478,7 +478,7 @@ func (n Neo) ManifestGetAllForSlot(ctx context.Context, slotID int64) (manis []t
 		`MATCH (s:Slot)-[:HAS_PUSHED]->(md:Manifest) WHERE id(s) = %d RETURN DISTINCT %s ORDER BY md.digest`,
 		slotID, manifestDataReturn,
 	)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	results, e := n.Query(q)
 	if e != nil {
 		return nil, utils.ErrorHandler(l, span, e, "ManifestGetAllForSlot: executing query")

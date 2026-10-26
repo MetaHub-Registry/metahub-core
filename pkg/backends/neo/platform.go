@@ -54,7 +54,7 @@ func (n Neo) PlatformGetByManifestID(ctx context.Context, maniDataID int64) (pla
 
 	q := fmt.Sprintf(`MATCH (n:Platform)<-[:HAS_PLATFORM]-(md:Manifest) WHERE id(md) = %d`, maniDataID)
 	q += ` RETURN id(n) AS platformID, n.arch AS platformArch, n.os AS platformOS, n.variant AS platformVariant`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, found, err := n.QueryOne(q)
 	if err != nil || !found {
 		return
@@ -72,7 +72,7 @@ func (n Neo) GetPlatform(ctx context.Context, plat types.Platform) (platID int64
 	defer span.End()
 	q := `MATCH (n:Platform) WHERE n.arch = "%s" AND n.os = "%s" AND n.variant = "%s" RETURN id(n) AS ID`
 	query := fmt.Sprintf(q, plat.Arch, plat.OS, plat.Variant)
-	utils.Debug(l, span, query)
+	utils.Debug(l, span, "%s", query)
 	session := n.neoDriver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close()
 	result, err := session.Run(query, map[string]interface{}{})

@@ -50,7 +50,7 @@ func (n Neo) ModelListingGetAll(ctx context.Context) (listings []types.ModelList
 	q += ` COALESCE(lb.size, 0) AS size,`
 	q += ` COALESCE(srcRepo.repo, "") AS srcRepo,`
 	q += ` COALESCE(mdSrc.digest, "") AS srcDigest`
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 
 	res, err := n.Query(q)
 	if err != nil {

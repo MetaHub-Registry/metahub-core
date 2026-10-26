@@ -89,7 +89,7 @@ func (n Neo) manipuLayerInsertNode(ctx context.Context, mpl *types.ManipuLayer) 
 		`CREATE (mpl:ManipuLayer {label: "%s", rule: "%s", select: "%s"}) RETURN id(mpl) AS %s`,
 		mpl.Label, mpl.Rule, selectEsc, key,
 	)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	res, err := n.Execute(q)
 	if err != nil {
 		return utils.ErrorHandler(l, span, err, FailNeoExecute)
@@ -173,7 +173,7 @@ func (n Neo) ManipuLayersGetByManipulationID(ctx context.Context, mpID int64) (m
 	})
 	defer span.End()
 	q := fmt.Sprintf(`MATCH (mp:Manipulation)-[]->(mpl:ManipuLayer) WHERE id(mp) = %d RETURN  %s`, mpID, ManipuLayerReturn)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, err := n.Query(q); err != nil {
 		return mpls, utils.ErrorHandler(l, span, err, FailNeoExecute)
 	} else {
@@ -197,7 +197,7 @@ func (n Neo) ManipuLayerGetByLabel(ctx context.Context, label string) (mpl types
 
 	q := fmt.Sprintf(`MATCH (mpl:ManipuLayer) WHERE mpl.label = "%s"`, label)
 	q += fmt.Sprintf(` RETURN  %s`, ManipuLayerReturn)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if res, found, err := n.QueryOne(q); err != nil {
 		return mpl, false, utils.ErrorHandler(l, span, err, FailNeoExecute)
 	} else if !found {
@@ -262,7 +262,7 @@ func (n Neo) ManipuLayerLinkToUpstream(ctx context.Context, mplID, upID int64) (
 	defer span.End()
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (mpl:ManipuLayer), (up:Upstream) WHERE id(mpl) = %d AND id(up) = %d MERGE (mpl)-[:UPSTREAM]->(up)`, mplID, upID)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if _, err := n.Execute(q); err != nil {
 		return utils.ErrorHandler(l, span, err, FailNeoExecute)
 	}
@@ -282,7 +282,7 @@ func (n Neo) ManipuLayerLinkToLayer(ctx context.Context, mplID, lyrID int64, med
 	rel := utils.ShortenMediaType(mediaType)
 	q := fmt.Sprintf(`MATCH (mpl:ManipuLayer), (l:Blob) WHERE id(mpl) = %d AND id(l) = %d`, mplID, lyrID)
 	q += fmt.Sprintf(` MERGE (mpl)-[:LayerLink {mediaType: "%s", order: %d}]->(l)`, rel, idx)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if _, err := n.Execute(q); err != nil {
 		return utils.ErrorHandler(l, span, err, FailNeoExecute)
 	}
@@ -362,7 +362,7 @@ func (n Neo) ManipuLayerLinkToRule(ctx context.Context, mplID, ruleID int64) (er
 	defer span.End()
 	_ = ctx
 	q := fmt.Sprintf(`MATCH (mpl:ManipuLayer), (r:Rule) WHERE id(mpl) = %d AND id(r) = %d MERGE (mpl)-[:USES]->(r)`, mplID, ruleID)
-	utils.Debug(l, span, q)
+	utils.Debug(l, span, "%s", q)
 	if _, err := n.Execute(q); err != nil {
 		return utils.ErrorHandler(l, span, err, FailNeoExecute)
 	}
