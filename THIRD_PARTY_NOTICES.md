@@ -65,7 +65,7 @@ parse, so the licence check ignores it explicitly.
 | `github.com/mr-tron/base58/base58` | MIT | <https://github.com/mr-tron/base58/blob/v1.1.0/LICENSE> |
 | `github.com/multiformats/go-base32` | BSD-3-Clause | <https://github.com/multiformats/go-base32/blob/v0.0.3/LICENSE> |
 | `github.com/multiformats/go-multibase` | MIT | <https://github.com/multiformats/go-multibase/blob/v0.1.1/LICENSE> |
-| `github.com/neo4j/neo4j-go-driver/v4/neo4j` | Apache-2.0 | <https://github.com/neo4j/neo4j-go-driver/blob/v4.4.4/LICENSE> |
+| `github.com/neo4j/neo4j-go-driver/v4/neo4j` | Apache-2.0 | <https://github.com/neo4j/neo4j-go-driver/blob/v4.4.8/LICENSE> |
 | `github.com/opencontainers/go-digest` | Apache-2.0 | <https://github.com/opencontainers/go-digest/blob/v1.0.0/LICENSE> |
 | `github.com/opencontainers/image-spec/specs-go` | Apache-2.0 | <https://github.com/opencontainers/image-spec/blob/v1.1.1/LICENSE> |
 | `github.com/pelletier/go-toml/v2` | MIT | <https://github.com/pelletier/go-toml/blob/v2.0.5/LICENSE> |
