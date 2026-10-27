@@ -792,3 +792,43 @@ The module map was derived from the GitHub API, not from `go.mod`: GitHub files
 one alert per *advisory*, so `golang.org/x/crypto` shows up eleven times in the
 consumers for a single bump. Always `--paginate` the alerts endpoint — the
 default page size of 30 understates the count.
+
+## 2026-10-27 — Remediation: root-module bumps + no-fix acceptance
+
+The `dependabot-security-alert-remediation` change bumped the five root modules
+in one graph:
+
+| module | was | now | advisory |
+| --- | --- | --- | --- |
+| `containerd/containerd` | 1.7.12 | **1.7.33** | GHSA-pwhc-rpq9-4c8w, GHSA-xhf5-7wjv-pqxp |
+| `containers/image/v5` | 5.23.0 | **5.29.3** | GHSA-6wvf-f2vw-3425 |
+| `docker/distribution` | 2.8.1+incompatible | **2.8.3+incompatible** | GHSA-hqxw-f8mx-cpmw |
+| `docker/docker` | 25.0.2+incompatible | **25.0.6+incompatible** | GHSA-v23v-6jw2-98fq (critical) |
+| `klauspost/compress` | 1.16.4 | **1.18.7** | GHSA-259r-337f-4rfw |
+
+`docker/distribution` is **2.8.3**, not the advisory's `2.8.2-beta.1` floor:
+`containers/image/v5 v5.29.3` requires `docker/distribution v2.8.3`, which is
+newer than the first patched version and therefore satisfies the advisory.
+
+### Accepted advisories with no upstream fix (revisit 2027-01-27)
+
+Both are **daemon-side** Docker advisories; `metahub-core` links only the client
+API type packages (`github.com/docker/docker/api/types…`) through
+`testcontainers-go`, and never runs a Docker daemon or serves the affected
+endpoints. Verified with `GOWORK=off go list -deps ./...`: no
+`github.com/docker/docker/daemon`, `pkg/archive` or other daemon package is in
+the compiled graph.
+
+| advisory | severity | affected | why it is not reachable |
+| --- | --- | --- | --- |
+| GHSA-rg2x-37c3-w2rh | high | `docker/docker <= 28.5.2` | race in the daemon's `docker cp` bind-mount setup; core is a Docker *client* only |
+| GHSA-x86f-5xw2-fm2r | high | `docker/docker <= 28.5.2` | daemon executes a decompression binary on `PUT /containers/{id}/archive`; that endpoint is served by the daemon, not by core |
+
+`github.com/distribution/distribution` has **no alert in this repository** (not
+in the module graph), so the generic acceptance note from the shared proposal
+does not apply here.
+
+Verification on the branch: `GOWORK=off go build ./...`, `go vet ./...` clean;
+`./test.sh` and the GoCD dev pipeline results are recorded in the session
+DevDiary. Alert closure is only observable on `main` after merge — the
+Dependabot alerts API reports the default branch.
