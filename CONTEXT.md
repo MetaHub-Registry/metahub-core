@@ -772,3 +772,23 @@ Consumed by metahub-api's `add-pull-through-manifest-intercept`.
   ID from the public API.
 - The restart round-trip test depends on digest ordering; keep it when
   touching layer hydration.
+
+## 2026-10-27 — Dependabot alerts enabled, backlog decomposed
+
+Alerting had been off for the whole open-source session. Enabling it
+(`PUT /repos/{o}/{r}/vulnerability-alerts`) returned 24 open alerts here —
+1 critical, 7 high, 15 medium, 1 low — collapsing into five module bumps
+(`docker/docker`, `containerd/containerd`, `klauspost/compress`,
+`containers/image/v5`, `docker/distribution`).
+
+Two changes now sit in `openspec/changes/`:
+- `dependabot-security-alert-remediation` — the outstanding work (per-module
+  targets, no-fix acceptances, verification recipe).
+- `refresh-go-dependencies-and-toolchain` — **already implemented**; kept as the
+  durable record of the `go-toolchain-policy` capability (Go floor == CI
+  toolchain, one graph per repository, consumers pin after the branch is final).
+
+The module map was derived from the GitHub API, not from `go.mod`: GitHub files
+one alert per *advisory*, so `golang.org/x/crypto` shows up eleven times in the
+consumers for a single bump. Always `--paginate` the alerts endpoint — the
+default page size of 30 understates the count.
