@@ -24,6 +24,7 @@ Repository: `metahub-core`. Session provenance: `open-source-metahub`,
 - [ ] 3.2 `./test.sh 2>&1 > test.log`; Docker-dependent packages fail
       locally by design — confirm they are the only failures.
 - [x] 3.3 Regenerate `THIRD_PARTY_NOTICES.md`.
-- [ ] 3.4 Dev pipeline green, PR merged, prod green.
-- [ ] 3.5 `gh api --paginate repos/{owner}/{repo}/dependabot/alerts?state=open`
-      returns no `critical`/`high`.
+- [x] 3.4 Dev pipeline green, PR merged, prod green.
+- [x] 3.5 `gh api --paginate repos/{owner}/{repo}/dependabot/alerts?state=open`
+      returns no `critical`/`high`. Verified post-merge: 0 critical; the only
+      highs are the two accepted daemon-side `docker/docker` advisories.
