@@ -37,7 +37,7 @@ require (
 	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.61.0
 	gopkg.in/yaml.v3 v3.0.1
-	gotest.tools/v3 v3.5.0
+	gotest.tools/v3 v3.5.2
 )
 
 require (
