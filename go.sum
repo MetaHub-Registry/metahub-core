@@ -371,8 +371,8 @@ github.com/mattn/go-runewidth v0.0.10/go.mod h1:RAqKPSqVFrSLVXbA8x7dzmKdmGzieGRC
 github.com/mattn/go-sqlite3 v1.14.52 h1:wVbm2Qnf4OXkqhBTSPuCRZDRnxfbVrrmiCEroVdog8U=
 github.com/mattn/go-sqlite3 v1.14.52/go.mod h1:6JTjA44L93a0QCyJef5YvlPoKXntQPjzWv5gtm9sB6w=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
-github.com/mgudov/logic-expression-parser v0.1.2 h1:VNPAHUTVm3zHzLn77YKJFYS4M8bmPLVSNnPCorjYcTI=
-github.com/mgudov/logic-expression-parser v0.1.2/go.mod h1:XQJyAlRrbqsKd3NrlBQr1YmMvTyXId+rZDv8qXQArB4=
+github.com/mgudov/logic-expression-parser v0.1.4 h1:oBAGk5RsAhBC2u0d9AZTYK3194iy9CuMmkLmUsEfo/k=
+github.com/mgudov/logic-expression-parser v0.1.4/go.mod h1:XQJyAlRrbqsKd3NrlBQr1YmMvTyXId+rZDv8qXQArB4=
 github.com/miekg/dns v1.0.14/go.mod h1:W1PPwlIAgtquWBMBEV9nkV9Cazfe8ScdGz/Lj7v3Nrg=
 github.com/miekg/dns v1.1.26/go.mod h1:bPDLeHnStXmXAq1m/Ch/hvfNHr14JKNPMBo3VZKjuso=
 github.com/miekg/dns v1.1.41/go.mod h1:p6aan82bvRIyn+zDIv9xYNUpwa73JcSh9BKwknJysuI=
