@@ -13,7 +13,7 @@ require (
 	github.com/gorilla/context v1.1.1
 	github.com/h2non/filetype v1.1.3
 	github.com/mattn/go-sqlite3 v1.14.52
-	github.com/mgudov/logic-expression-parser v0.1.2
+	github.com/mgudov/logic-expression-parser v0.1.4
 	github.com/minio/minio-go v6.0.14+incompatible
 	github.com/minio/minio-go/v7 v7.0.42
 	github.com/mitchellh/go-homedir v1.1.0
