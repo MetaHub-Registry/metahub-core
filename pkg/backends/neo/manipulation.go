@@ -1,12 +1,12 @@
 package neo
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/metahub-registry/metahub-core/pkg/types"
 	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"github.com/metahub-registry/metahub-core/pkg/yaml/config"
-	"golang.org/x/net/context"
 )
 
 const (
