@@ -27,5 +27,6 @@ API used are gone; the methods that remain by-ID are internal or unused.
 
 ## D4. The API switches at the pin
 
-The API pins the session commit as a pseudo-version and calls the new methods.
-The release lane replaces the pseudo-version with the tag.
+The API pinned the session commit as a pseudo-version and called the new
+methods. The release lane has since replaced that pseudo-version with the
+released tag `v0.3.12`, which `metahub-api` and `metahub-admin` now consume.

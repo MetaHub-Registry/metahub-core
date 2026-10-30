@@ -8,7 +8,7 @@ in GoCD, which contributors cannot see or run.
 
 ## What Changes
 
-Add a public, fork-safe fast lane to `metalib` and keep the slow, container-
+Add a public, fork-safe fast lane to `metahub-core` and keep the slow, container-
 backed checks in a separate release-gating workflow.
 
 - `go build ./...`
@@ -30,7 +30,7 @@ and avoids `pull_request_target`.
 
 ### New Capabilities
 
-- `public-ci`: the fast checks, fork-safety rules and aggregator for `metalib`.
+- `public-ci`: the fast checks, fork-safety rules and aggregator for `metahub-core`.
 
 ### Modified Capabilities
 

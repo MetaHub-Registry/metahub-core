@@ -2,7 +2,7 @@
 
 ### Requirement: Fast checks run on every contribution
 
-`metalib` SHALL run a fast check suite on every pull request and every push to
+`metahub-core` SHALL run a fast check suite on every pull request and every push to
 the default branch. The suite SHALL NOT require a container runtime, a database
 or any project secret.
 

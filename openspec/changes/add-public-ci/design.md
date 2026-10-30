@@ -1,8 +1,9 @@
-# Design — public CI for metalib
+# Design — public CI for metahub-core
 
 ## Stack and boundary
 
-Go 1.19 declared, module `metahub-core` (CI builds with 1.26.x).
+Go 1.26.0 declared in `go.mod` (CI pins `1.26.x`). The old `go 1.19` floor was
+raised by the dependency refresh.
 
 Fast checks:
 
@@ -44,10 +45,13 @@ Tests that need Docker run in `integration.yml` on release tags and
 ### Dependencies and licences
 
 The licence check fails on a dependency outside the allowlist and the notices
-file is regenerated in CI; a drift fails the job. `npm audit --omit=dev` is
-blocking for the production graph. `govulncheck` is advisory until the current
-transitive baseline (containerd, docker, regclient, OpenTelemetry) is refreshed;
-the job still runs on every pull request.
+file is regenerated in CI; a drift fails the job. `govulncheck` is advisory
+(`continue-on-error: true`) until the remaining baseline is cleared. The
+2026-10-30 scan reported 42 reachable findings: 30 in the Go standard library
+(fixed by `go1.26.9`/`go1.26.10`, which `1.26.x` picks up in CI) and 12 through
+modules — `containerd v1.7.33` (7), `docker v25.0.6` (3) and `regclient v0.4.5`
+(2). Six of the module findings have no patched version. The job still runs on
+every pull request.
 
 ### Outbound hosts
 
