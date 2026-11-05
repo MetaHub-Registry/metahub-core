@@ -14,6 +14,3 @@ tasks:
   test:
     cmds: 
       - ./test.sh
-  sonar:
-    cmds:
-      - ./misc/bin/sonar.sh {{.CLI_ARGS}}
