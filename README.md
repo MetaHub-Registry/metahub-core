@@ -1,3 +1,6 @@
-# metalib
+# metahub-core
 
-`qnib-golang/metalib` holds common structs and functions to support the API and the `metahub-admin` CLI.
+Shared types and functions behind the MetaHub registry: the graph-backed
+storage backends, OCI/ORAS handling and the configuration model.
+
+The module path is `github.com/metahub-registry/metahub-core`.
