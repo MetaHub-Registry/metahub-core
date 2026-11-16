@@ -6,11 +6,11 @@ import (
 	"testing"
 
 	"github.com/docker/distribution/manifest/schema2"
+	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
-	"github.com/metahub-registry/metahub-core/pkg/types"
-	"github.com/metahub-registry/metahub-core/pkg/utils"
 )
 
 func TestManifestCRUD(t *testing.T) {
@@ -1297,4 +1297,70 @@ func TestManifestCheckProfileCreationRelationship(t *testing.T) {
 		assert.True(t, ok)
 	}
 
+}
+
+// TestManifestArtifactTypeBackfill guards the digest-keyed node: the upstream-pull
+// path creates a :Manifest without the OCI artifactType, and the later upload
+// path used to find the node and skip it, leaving `parse models` unable to
+// recognise the artifact it had just pushed.
+func TestManifestArtifactTypeBackfill(t *testing.T) {
+	c := context.Background()
+	l, ctx, span := utils.InitLogging(c, tracer, map[string]any{
+		"func": "TestManifestArtifactTypeBackfill",
+	})
+	defer span.End()
+	bs := utils.NewBootstrap()
+	bs.SetYAMLPrefix("../../../misc/yaml")
+	bs.AddBootstrap("platforms:generic")
+	bs.AddBootstrap("upstream:ft_arm64")
+	bs.AddBootstrap("config:ft_arm64")
+	bs.AddBootstrap("layer:0:ft_arm64")
+	bs.AddBootstrap("layer:1:ft_arm64")
+	bs.AddBootstrap("manifest:ft_arm64")
+	bs.AddBootstrap("rules:rules/cpu/generic.yaml")
+	bs.SetEmptyAll()
+	br, err := SetupTest(ctx, bs)
+	if err != nil {
+		db.TeardownTest(bs, br)
+		t.Fatal(err)
+	}
+	defer db.TeardownTest(bs, br)
+
+	upID, err := br.GetInt64("upstream:ft_arm64#id")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Pull path first: no artifactType.
+	mdPull := types.ManifestFeaturetestArm64
+	mdPull.Upstream.ID = upID
+	mdPull.ArtifactType = ""
+	if _, e := db.ManifestInsert(ctx, &mdPull); e != nil {
+		t.Fatal(e)
+	}
+
+	// Upload path second: it knows the artifactType and must repair the node.
+	mdPush := types.ManifestFeaturetestArm64
+	mdPush.Upstream.ID = upID
+	mdPush.ArtifactType = "application/vnd.qnib.model.artifact"
+	if _, e := db.ManifestInsert(ctx, &mdPush); e != nil {
+		t.Fatal(e)
+	}
+
+	q := fmt.Sprintf(`MATCH (md:Manifest) WHERE md.digest = "%s" RETURN md.artifactType AS at`, mdPush.Digest)
+	res, found, err := db.QueryOne(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatalf("manifest %s not found", utils.ShortenDigest(mdPush.Digest))
+	}
+	at, err := res.GetStr("at")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if at != mdPush.ArtifactType {
+		t.Fatalf("artifactType not backfilled: got %q, want %q", at, mdPush.ArtifactType)
+	}
+	utils.Debug(l, span, "artifactType backfilled to %q", at)
 }
