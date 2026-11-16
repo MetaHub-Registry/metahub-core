@@ -6,14 +6,14 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/metahub-registry/metahub-core/pkg/types"
+	"github.com/metahub-registry/metahub-core/pkg/upstream"
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"github.com/minio/minio-go/v7/pkg/set"
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/metahub-registry/metahub-core/pkg/types"
-	"github.com/metahub-registry/metahub-core/pkg/upstream"
-	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -1235,6 +1235,12 @@ func (n Neo) ManifestInsert(ctx context.Context, maniData *types.Manifest) (mdId
 	} else if found {
 		utils.Debug(l, span, "manifestData already exists: %s", fMD.Label)
 		// TODO: check if manifestData and FMD are exactly the same
+		// A :Manifest node is global per digest, and different paths create it
+		// with different amounts of information: the upload path knows the OCI
+		// artifactType, the upstream-pull path does not. Whichever runs first
+		// wins, so a later insert that does know it must repair the node —
+		// otherwise `parse models` cannot recognise the artifact it just pushed.
+		n.backfillManifestArtifactType(ctx, l, span, fMD.ID, fMD.ArtifactType, maniData.ArtifactType)
 		maniData = &fMD
 		return fMD.ID, nil
 	}
@@ -2206,6 +2212,22 @@ func (n Neo) ManifestGetByManifestList(ctx context.Context, mlID int64) (manifes
 	return
 }
 
+// backfillManifestArtifactType repairs an existing :Manifest node that was
+// created by a path which did not know the OCI artifactType (notably the
+// upstream-pull insert). Only ever adds information: a node that already has
+// the value — or an incoming empty one — is left untouched.
+func (n Neo) backfillManifestArtifactType(ctx context.Context, l *logrus.Entry, span trace.Span, id int64, stored, incoming string) {
+	if incoming == "" || stored == incoming {
+		return
+	}
+	q := fmt.Sprintf(`MATCH (md:Manifest) WHERE id(md) = %d SET md.artifactType = "%s" RETURN id(md) AS manifestID`, id, incoming)
+	if _, err := n.Execute(q); err != nil {
+		utils.Warn(l, span, "failed to backfill artifactType on Manifest %d: %v", id, err)
+		return
+	}
+	utils.Info(l, span, "backfilled artifactType '%s' on Manifest %d", incoming, id)
+}
+
 func (n Neo) ManifestGetInsert(ctx context.Context, mani *types.Manifest) (err error) {
 	l, ctx, span := utils.InitLogging(ctx, tracer, map[string]any{
 		"package": pkgNameMD,
@@ -2223,6 +2245,7 @@ func (n Neo) ManifestGetInsert(ctx context.Context, mani *types.Manifest) (err e
 	}
 	if found {
 		utils.Debug(l, span, "Found Manifest %s/%s#%s", mani.Upstream.Repo, mani.Upstream.Tag, mani.Digest)
+		n.backfillManifestArtifactType(ctx, l, span, m.ID, m.ArtifactType, mani.ArtifactType)
 		mani.ID = m.ID
 		return
 	}
