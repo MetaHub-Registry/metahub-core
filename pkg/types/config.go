@@ -10,10 +10,11 @@ import (
 	"github.com/opencontainers/go-digest"
 	imgspecv1 "github.com/opencontainers/image-spec/specs-go/v1"
 
+	"github.com/metahub-registry/metahub-core/pkg/utils"
 	"github.com/pkg/errors"
 	v1 "github.com/regclient/regclient/types/oci/v1"
+	"github.com/regclient/regclient/types/platform"
 	"github.com/sirupsen/logrus"
-	"github.com/metahub-registry/metahub-core/pkg/utils"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -136,14 +137,16 @@ func ConfigFromOCISpecV1Image(v1Img imgspecv1.Image) (res Config) {
 		})
 	}
 	res.Cfg = v1.Image{
-		Created:      v1Img.Created,
-		Author:       v1Img.Author,
-		Architecture: v1Img.Architecture,
-		OS:           v1Img.OS,
-		Variant:      v1Img.Variant,
-		OSVersion:    v1Img.OSVersion,
-		OSFeatures:   v1Img.OSFeatures,
-		Config:       v1ImageConfig,
+		Created: v1Img.Created,
+		Author:  v1Img.Author,
+		Platform: platform.Platform{
+			Architecture: v1Img.Architecture,
+			OS:           v1Img.OS,
+			Variant:      v1Img.Variant,
+			OSVersion:    v1Img.OSVersion,
+			OSFeatures:   v1Img.OSFeatures,
+		},
+		Config: v1ImageConfig,
 		RootFS: v1.RootFS{
 			Type:    v1Img.RootFS.Type,
 			DiffIDs: v1Img.RootFS.DiffIDs,
