@@ -51,7 +51,7 @@ parse, so the licence check ignores it explicitly.
 | `github.com/klauspost/cpuid/v2` | MIT | <https://github.com/klauspost/cpuid/blob/v2.1.0/LICENSE> |
 | `github.com/magiconair/properties` | BSD-2-Clause | <https://github.com/magiconair/properties/blob/v1.8.7/LICENSE.md> |
 | `github.com/mattn/go-sqlite3` | MIT | <https://github.com/mattn/go-sqlite3/blob/v1.14.52/LICENSE> |
-| `github.com/mgudov/logic-expression-parser` | MIT | <https://github.com/mgudov/logic-expression-parser/blob/v0.1.2/LICENSE> |
+| `github.com/mgudov/logic-expression-parser` | MIT | <https://github.com/mgudov/logic-expression-parser/blob/v0.1.4/LICENSE> |
 | `github.com/minio/md5-simd` | Apache-2.0 | <https://github.com/minio/md5-simd/blob/v1.1.2/LICENSE> |
 | `github.com/minio/minio-go/pkg/set` | Apache-2.0 | <https://github.com/minio/minio-go/blob/v6.0.14/LICENSE> |
 | `github.com/minio/minio-go/v7` | Apache-2.0 | <https://github.com/minio/minio-go/blob/v7.0.42/LICENSE> |
@@ -66,8 +66,8 @@ parse, so the licence check ignores it explicitly.
 | `github.com/modern-go/concurrent` | Apache-2.0 | <https://github.com/modern-go/concurrent/blob/bacd9c7ef1dd/LICENSE> |
 | `github.com/modern-go/reflect2` | Apache-2.0 | <https://github.com/modern-go/reflect2/blob/v1.0.2/LICENSE> |
 | `github.com/morikuni/aec` | MIT | <https://github.com/morikuni/aec/blob/v1.0.0/LICENSE> |
-| `github.com/mr-tron/base58/base58` | MIT | <https://github.com/mr-tron/base58/blob/v1.1.0/LICENSE> |
-| `github.com/multiformats/go-base32` | BSD-3-Clause | <https://github.com/multiformats/go-base32/blob/v0.0.3/LICENSE> |
+| `github.com/mr-tron/base58/base58` | MIT | <https://github.com/mr-tron/base58/blob/v1.3.0/LICENSE> |
+| `github.com/multiformats/go-base32` | BSD-3-Clause | <https://github.com/multiformats/go-base32/blob/v0.1.0/LICENSE> |
 | `github.com/multiformats/go-multibase` | MIT | <https://github.com/multiformats/go-multibase/blob/v0.1.1/LICENSE> |
 | `github.com/neo4j/neo4j-go-driver/v4/neo4j` | Apache-2.0 | <https://github.com/neo4j/neo4j-go-driver/blob/v4.4.8/LICENSE> |
 | `github.com/opencontainers/go-digest` | Apache-2.0 | <https://github.com/opencontainers/go-digest/blob/v1.0.0/LICENSE> |
@@ -78,12 +78,12 @@ parse, so the licence check ignores it explicitly.
 | `github.com/rs/xid` | MIT | <https://github.com/rs/xid/blob/v1.4.0/LICENSE> |
 | `github.com/scylladb/go-set/i64set` | Apache-2.0 | <https://github.com/scylladb/go-set/blob/v1.0.2/LICENSE> |
 | `github.com/shirou/gopsutil/v3` | BSD-3-Clause | <https://github.com/shirou/gopsutil/blob/v3.23.12/LICENSE> |
-| `github.com/sirupsen/logrus` | MIT | <https://github.com/sirupsen/logrus/blob/v1.9.3/LICENSE> |
+| `github.com/sirupsen/logrus` | MIT | <https://github.com/sirupsen/logrus/blob/v1.10.2/LICENSE> |
 | `github.com/spf13/afero` | Apache-2.0 | <https://github.com/spf13/afero/blob/v1.8.2/LICENSE.txt> |
 | `github.com/spf13/cast` | MIT | <https://github.com/spf13/cast/blob/v1.5.0/LICENSE> |
-| `github.com/spf13/cobra` | Apache-2.0 | <https://github.com/spf13/cobra/blob/v1.3.0/LICENSE.txt> |
+| `github.com/spf13/cobra` | Apache-2.0 | <https://github.com/spf13/cobra/blob/v1.10.2/LICENSE.txt> |
 | `github.com/spf13/jwalterweatherman` | MIT | <https://github.com/spf13/jwalterweatherman/blob/v1.1.0/LICENSE> |
-| `github.com/spf13/pflag` | BSD-3-Clause | <https://github.com/spf13/pflag/blob/v1.0.5/LICENSE> |
+| `github.com/spf13/pflag` | BSD-3-Clause | <https://github.com/spf13/pflag/blob/v1.0.9/LICENSE> |
 | `github.com/spf13/viper` | MIT | <https://github.com/spf13/viper/blob/v1.13.0/LICENSE> |
 | `github.com/subosito/gotenv` | MIT | <https://github.com/subosito/gotenv/blob/v1.4.1/LICENSE> |
 | `github.com/testcontainers/testcontainers-go` | MIT | <https://github.com/testcontainers/testcontainers-go/blob/v0.28.0/LICENSE> |
