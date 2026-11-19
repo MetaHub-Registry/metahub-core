@@ -6,7 +6,7 @@ require (
 	github.com/chrispappas/golang-generics-set v1.0.1
 	github.com/containers/image/v5 v5.29.3
 	github.com/docker/distribution v2.8.3+incompatible
-	github.com/docker/go-connections v0.5.0
+	github.com/docker/go-connections v0.8.2
 	github.com/gemnasium/logrus-graylog-hook/v3 v3.1.0
 	github.com/go-chi/chi/v5 v5.0.7
 	github.com/google/uuid v1.6.0
